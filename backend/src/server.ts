@@ -5,6 +5,7 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import { logger } from './utils/logger';
 import authRoutes from './routes/auth';
+import pantryRoutes from './routes/pantry';
 
 dotenv.config({ path: '../.env' });
 
@@ -26,6 +27,7 @@ app.use(limiter);
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/pantry', pantryRoutes);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
