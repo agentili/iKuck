@@ -1,19 +1,17 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-
-const queryClient = new QueryClient();
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <Router>
-        <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
-          <Routes>
-            <Route path="/" element={<div className="p-8 text-center"><h1>iRicetto MVP</h1><p>Pronto per lo sviluppo.</p></div>} />
-          </Routes>
-        </div>
-      </Router>
-    </QueryClientProvider>
+    <Router>
+      <Routes>
+        <Route path="/" element={<Navigate to="/suggest" />} />
+        <Route path="/login" element={<div>Login Page</div>} />
+        <Route path="/register" element={<div>Register Page</div>} />
+        <Route path="/suggest" element={<div>Suggestions Page</div>} />
+        <Route path="/pantry" element={<div>Pantry Page</div>} />
+        <Route path="/history" element={<div>History Page</div>} />
+      </Routes>
+    </Router>
   );
 }
 

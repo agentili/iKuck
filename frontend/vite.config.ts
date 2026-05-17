@@ -6,25 +6,20 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      strategies: 'injectManifest',
-      srcDir: 'src',
-      filename: 'sw.ts',
       registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
-        name: 'iRicetto - Cosa Ceno?',
-        short_name: 'iRicetto',
-        description: 'Suggerimenti intelligenti per la tua cena in base alla dispensa',
-        theme_color: '#10b981',
+        name: 'Meal Planner',
+        short_name: 'Meal',
+        description: 'Pianifica i tuoi pasti in base alla dispensa',
+        theme_color: '#0F6E56',
         background_color: '#ffffff',
         display: 'standalone',
-        orientation: 'portrait',
         icons: [
           {
             src: 'icons/icon-192x192.png',
             sizes: '192x192',
-            type: 'image/png',
-            purpose: 'any maskable'
+            type: 'image/png'
           },
           {
             src: 'icons/icon-512x512.png',
@@ -32,11 +27,15 @@ export default defineConfig({
             type: 'image/png'
           }
         ]
-      },
-      devOptions: {
-        enabled: true,
-        type: 'module'
       }
     })
-  ]
+  ],
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      }
+    }
+  }
 });

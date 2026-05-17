@@ -1,12 +1,3 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-:root {
-  -webkit-tap-highlight-color: transparent;
-}
-
-body {
-  @apply antialiased text-gray-900 bg-gray-50;
-  touch-action: manipulation;
-}
