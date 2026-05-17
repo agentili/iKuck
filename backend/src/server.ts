@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import { logger } from './utils/logger';
+import authRoutes from './routes/auth';
 
 dotenv.config({ path: '../.env' });
 
@@ -22,6 +23,9 @@ const limiter = rateLimit({
   max: 100, // limit each IP to 100 requests per windowMs
 });
 app.use(limiter);
+
+// Routes
+app.use('/api/auth', authRoutes);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
