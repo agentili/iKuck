@@ -4,6 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore } from './store/authStore';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import SuggestionPage from './pages/SuggestionPage';
+import PantryPage from './pages/PantryPage';
+import RecipeDetailPage from './pages/RecipeDetailPage';
 import ProtectedRoute from './components/shared/ProtectedRoute';
 
 const queryClient = new QueryClient();
@@ -23,9 +26,10 @@ function App() {
           <Route path="/register" element={<RegisterPage />} />
           
           <Route element={<ProtectedRoute />}>
-            <Route path="/suggest" element={<div className="p-4"><h1>Suggerimenti</h1><p>Work in progress...</p></div>} />
-            <Route path="/pantry" element={<div className="p-4"><h1>Dispensa</h1><p>Work in progress...</p></div>} />
+            <Route path="/suggest" element={<SuggestionPage />} />
+            <Route path="/pantry" element={<PantryPage />} />
             <Route path="/history" element={<div className="p-4"><h1>Storico</h1><p>Work in progress...</p></div>} />
+            <Route path="/recipe/:recipeId" element={<RecipeDetailPage />} />
             <Route path="/" element={<Navigate to="/suggest" replace />} />
           </Route>
 
