@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import { logger } from './utils/logger';
 import authRoutes from './routes/auth';
 import pantryRoutes from './routes/pantry';
+import recipeRoutes from './routes/recipes';
 
 dotenv.config({ path: '../.env' });
 
@@ -28,6 +29,7 @@ app.use(limiter);
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/pantry', pantryRoutes);
+app.use('/api/recipes', recipeRoutes);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
