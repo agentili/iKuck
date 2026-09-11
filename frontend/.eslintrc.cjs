@@ -16,9 +16,6 @@ module.exports = {
     'coverage',
     'playwright-report',
     'test-results',
-    'src/pages/HistoryPage.tsx',
-    'src/store/authStore.ts',
-    'src/store/suggestionStore.ts',
   ],
   parser: '@typescript-eslint/parser',
   parserOptions: {
