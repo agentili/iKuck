@@ -39,7 +39,7 @@
 - `frontend/src/App.tsx`: due route pubbliche, home e dettaglio ricetta.
 - `frontend/src/index.css`: token visivi, tipografia, focus e movimento ridotto.
 - `frontend/src/domain/types.ts`: tipi del nuovo dominio locale, isolati dai tipi legacy fino alla rimozione finale.
-- `frontend/src/store/pantryStore.ts`: stato persistente della dispensa.
+- `frontend/src/store/localPantryStore.ts`: stato persistente della nuova dispensa, isolato dallo store remoto fino alla migrazione della UI.
 - `frontend/src/pages/RecipeDetailPage.tsx`: dettaglio letto dal catalogo statico.
 - `frontend/public/icons/*`: icone PWA esistenti, rigenerate solo se la verifica visiva ne mostra la necessità.
 - `README.md`: setup, test, build e descrizione corretta dell'MVP.
@@ -725,7 +725,7 @@ git commit -m "feat: add transparent recipe matching"
 
 **Files:**
 
-- Replace: `frontend/src/store/pantryStore.ts`
+- Create: `frontend/src/store/localPantryStore.ts`
 - Create: `frontend/src/store/__tests__/pantryStore.test.ts`
 
 **Interfaces:**
@@ -860,7 +860,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add frontend/src/store/pantryStore.ts frontend/src/store/__tests__/pantryStore.test.ts
+git add frontend/src/store/localPantryStore.ts frontend/src/store/__tests__/pantryStore.test.ts
 git commit -m "feat: persist pantry locally"
 ```
 
