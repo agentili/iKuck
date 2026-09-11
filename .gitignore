@@ -5,3 +5,6 @@ dist/
 *.log
 coverage/
 .worktrees/
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
