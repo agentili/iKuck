@@ -58,7 +58,7 @@
 - `frontend/src/components/pantry/IngredientChip.tsx`: ingrediente rimovibile e stato noto/sconosciuto.
 - `frontend/src/components/pantry/StaplesPanel.tsx`: gestione ingredienti di base.
 - `frontend/src/components/suggestions/SuggestionControls.tsx`: ricerca e modalità con un mancante.
-- `frontend/src/components/suggestions/RecipeCard.tsx`: risultato e stato di disponibilità.
+- `frontend/src/components/suggestions/LocalRecipeCard.tsx`: risultato locale e stato di disponibilità, separato dalla card legacy fino al cleanup.
 - `frontend/src/pages/HomePage.tsx`: esperienza principale in una schermata.
 - `frontend/src/pages/NotFoundPage.tsx`: errore ricetta/route con recupero.
 - `frontend/src/test/setup.ts`: matcher DOM e pulizia storage.
