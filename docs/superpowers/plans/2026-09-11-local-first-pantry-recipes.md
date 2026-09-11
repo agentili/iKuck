@@ -38,7 +38,7 @@
 - `frontend/src/main.tsx`: import valido di `App`.
 - `frontend/src/App.tsx`: due route pubbliche, home e dettaglio ricetta.
 - `frontend/src/index.css`: token visivi, tipografia, focus e movimento ridotto.
-- `frontend/src/types/index.ts`: tipi del dominio locale.
+- `frontend/src/domain/types.ts`: tipi del nuovo dominio locale, isolati dai tipi legacy fino alla rimozione finale.
 - `frontend/src/store/pantryStore.ts`: stato persistente della dispensa.
 - `frontend/src/pages/RecipeDetailPage.tsx`: dettaglio letto dal catalogo statico.
 - `frontend/public/icons/*`: icone PWA esistenti, rigenerate solo se la verifica visiva ne mostra la necessità.
@@ -218,7 +218,7 @@ git commit -m "test: establish frontend verification baseline"
 
 **Files:**
 
-- Replace: `frontend/src/types/index.ts`
+- Create: `frontend/src/domain/types.ts`
 - Create: `frontend/src/domain/ingredients.ts`
 - Create: `frontend/src/domain/__tests__/ingredients.test.ts`
 
@@ -382,7 +382,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add frontend/src/types/index.ts frontend/src/domain/ingredients.ts frontend/src/domain/__tests__/ingredients.test.ts
+git add frontend/src/domain/types.ts frontend/src/domain/ingredients.ts frontend/src/domain/__tests__/ingredients.test.ts
 git commit -m "feat: add canonical ingredient parser"
 ```
 
