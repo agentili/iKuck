@@ -1,3 +1,60 @@
+@import '@fontsource-variable/bricolage-grotesque';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  font-family: 'Bricolage Grotesque Variable', system-ui, sans-serif;
+  color: #183028;
+  background: #fafbf7;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: #fafbf7;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background-color: #fafbf7;
+  background-image:
+    linear-gradient(rgba(36, 122, 74, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(36, 122, 74, 0.055) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+button,
+input,
+summary {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid #f2be3e;
+  outline-offset: 3px;
+}
+
+::selection {
+  color: #183028;
+  background: #f2be3e;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

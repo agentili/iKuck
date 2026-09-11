@@ -1,125 +1,79 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useSuggestionStore } from '../store/suggestionStore';
-import InstructionsSection from '../components/recipe/InstructionsSection';
-import RatingModal from '../components/recipe/RatingModal';
-import { Clock, ChefHat, Users, Check } from 'lucide-react';
-import * as api from '../utils/apiClient';
-import { ApiResponse } from '../types';
+import { ArrowLeft, ChefHat, Clock, Users } from 'lucide-react';
+import { Link, useParams } from 'react-router-dom';
+import { getIngredient } from '../domain/ingredients';
+import { getRecipeById } from '../domain/recipes';
+import type { RecipeCategory } from '../domain/types';
+import NotFoundPage from './NotFoundPage';
 
-const RecipeDetailPage: React.FC = () => {
-  const { recipeId } = useParams<{ recipeId: string }>();
-  const navigate = useNavigate();
-  const { suggestions } = useSuggestionStore();
-  const [recipe, setRecipe] = useState<any>(null);
-  const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
-  const [historyId, setHistoryId] = useState<string | null>(null);
+const CATEGORY_LABELS: Record<RecipeCategory, string> = {
+  meat: 'Carne',
+  fish: 'Pesce',
+  eggs: 'Uova',
+  legumes: 'Legumi',
+  vegetables: 'Verdure',
+};
 
-  useEffect(() => {
-    const found = suggestions.find((s) => s.id === recipeId);
-    if (found) {
-      setRecipe(found);
-    } else {
-      // Fallback: fetch from API if not in store
-      // For now just redirect
-      // navigate('/suggest');
-    }
-  }, [recipeId, suggestions, navigate]);
+export default function RecipeDetailPage() {
+  const { recipeId = '' } = useParams();
+  const recipe = getRecipeById(recipeId);
 
-  if (!recipe) return <div className="p-8 text-center">Caricamento...</div>;
-
-  const handleComplete = async () => {
-    try {
-      const res = await api.post<ApiResponse<any>>('/recipes/history', {
-        recipeId: recipe.id,
-        mealType: 'dinner',
-        completedDate: new Date().toISOString(),
-      });
-      if (res.success && res.data) {
-        setHistoryId(res.data.id);
-        setIsRatingModalOpen(true);
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Errore nel salvare lo storico.');
-    }
-  };
-
-  const handleRatingSubmit = async (rating: number, notes: string) => {
-    if (!historyId) return;
-    try {
-      await api.put(`/recipes/history/${historyId}`, { rating, notes });
-      navigate('/suggest');
-    } catch (err) {
-      console.error(err);
-      alert('Errore nel salvare il rating.');
-    }
-  };
+  if (!recipe) return <NotFoundPage />;
 
   return (
-    <div className="flex flex-col min-h-screen bg-white pb-24">
-      <header className="p-4 bg-gray-50 border-b">
-        <button onClick={() => navigate(-1)} className="text-primary font-semibold mb-2">← Indietro</button>
-        <h1 className="text-3xl font-bold text-gray-800 leading-tight">{recipe.title}</h1>
+    <main className="mx-auto min-h-screen w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+      <Link to="/" className="inline-flex min-h-11 items-center gap-2 rounded-xl px-2 py-2 font-semibold text-emerald-800 hover:bg-emerald-50">
+        <ArrowLeft size={18} aria-hidden="true" />
+        Torna alla dispensa
+      </Link>
+
+      <header className="mt-6 rounded-3xl bg-gray-950 px-5 py-8 text-white sm:px-9 sm:py-10">
+        <p className="font-semibold text-amber-300">{CATEGORY_LABELS[recipe.category]}</p>
+        <h1 className="mt-2 max-w-3xl text-4xl font-black leading-tight sm:text-6xl">{recipe.title}</h1>
+        <p className="mt-4 max-w-2xl text-lg leading-relaxed text-gray-300">{recipe.description}</p>
+        <dl className="mt-7 flex flex-wrap gap-3">
+          <div className="flex min-h-11 items-center gap-2 rounded-full bg-white/10 px-4 py-2">
+            <Clock size={18} aria-hidden="true" />
+            <dt className="sr-only">Tempo</dt>
+            <dd>{recipe.durationMinutes} min</dd>
+          </div>
+          <div className="flex min-h-11 items-center gap-2 rounded-full bg-white/10 px-4 py-2">
+            <Users size={18} aria-hidden="true" />
+            <dt className="sr-only">Porzioni</dt>
+            <dd>{recipe.servings} porzioni</dd>
+          </div>
+          <div className="flex min-h-11 items-center gap-2 rounded-full bg-white/10 px-4 py-2">
+            <ChefHat size={18} aria-hidden="true" />
+            <dt className="sr-only">Difficoltà</dt>
+            <dd>{recipe.difficulty === 'easy' ? 'Facile' : 'Media'}</dd>
+          </div>
+        </dl>
       </header>
 
-      <main className="p-4 space-y-8">
-        {/* Info Grid */}
-        <div className="grid grid-cols-3 gap-2 py-4 border-b border-gray-100">
-          <div className="flex flex-col items-center">
-            <Clock size={20} className="text-primary mb-1" />
-            <span className="text-xs text-gray-500 font-medium">Tempo</span>
-            <span className="font-bold">{recipe.preparation_time} min</span>
-          </div>
-          <div className="flex flex-col items-center">
-            <ChefHat size={20} className="text-primary mb-1" />
-            <span className="text-xs text-gray-500 font-medium">Difficoltà</span>
-            <span className="font-bold">{recipe.difficulty === 'easy' ? 'Facile' : 'Media'}</span>
-          </div>
-          <div className="flex flex-col items-center">
-            <Users size={20} className="text-primary mb-1" />
-            <span className="text-xs text-gray-500 font-medium">Porzioni</span>
-            <span className="font-bold">{recipe.servings}</span>
-          </div>
-        </div>
-
-        {/* Ingredients */}
-        <section>
-          <h2 className="text-xl font-bold text-gray-800 mb-4">Ingredienti</h2>
-          <ul className="space-y-3">
-            {recipe.ingredients.map((ing: any, idx: number) => (
-              <li key={idx} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                <div className="w-5 h-5 rounded border border-gray-300 flex items-center justify-center bg-white">
-                  <Check size={14} className="text-primary" />
-                </div>
-                <span className="flex-1 text-gray-700">
-                  <span className="font-bold">{ing.quantity} {ing.unit}</span> {ing.name}
-                </span>
-                {ing.isOptional && <span className="text-xs text-gray-400 italic">Opzionale</span>}
+      <div className="grid gap-8 py-10 lg:grid-cols-[0.9fr_1.1fr]">
+        <section aria-labelledby="ingredients-title">
+          <h2 id="ingredients-title" className="text-3xl font-black text-gray-950">Ingredienti</h2>
+          <ul className="mt-5 divide-y divide-gray-200 rounded-3xl border-2 border-gray-200 bg-white px-5">
+            {recipe.ingredients.map((item) => (
+              <li key={item.ingredientId} className="flex items-start justify-between gap-4 py-4">
+                <span className="font-semibold text-gray-900">{getIngredient(item.ingredientId)?.label}</span>
+                <span className="text-right text-gray-600">{item.amount}{item.optional ? ' · facoltativo' : ''}</span>
               </li>
             ))}
           </ul>
         </section>
 
-        {/* Instructions */}
-        <InstructionsSection instructions={recipe.instructions} />
-
-        {/* Complete Button */}
-        <button
-          onClick={handleComplete}
-          className="w-full py-4 bg-primary text-white font-bold rounded-xl shadow-lg hover:bg-emerald-700 transition-all active:scale-95"
-        >
-          Ho finito di cucinare!
-        </button>
-      </main>
-
-      <RatingModal
-        isOpen={isRatingModalOpen}
-        onClose={() => navigate('/suggest')}
-        onSubmit={handleRatingSubmit}
-      />
-    </div>
+        <section aria-labelledby="steps-title">
+          <h2 id="steps-title" className="text-3xl font-black text-gray-950">Preparazione</h2>
+          <ol className="mt-5 space-y-4">
+            {recipe.steps.map((step, index) => (
+              <li key={step} className="grid grid-cols-[2.75rem_1fr] gap-4 rounded-3xl bg-emerald-50 p-5">
+                <span className="grid h-11 w-11 place-items-center rounded-full bg-emerald-700 font-black text-white" aria-hidden="true">{index + 1}</span>
+                <p className="pt-2 leading-relaxed text-gray-800">{step}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      </div>
+    </main>
   );
-};
-
-export default RecipeDetailPage;
+}
