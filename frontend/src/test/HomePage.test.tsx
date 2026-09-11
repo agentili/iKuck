@@ -5,7 +5,7 @@ import HomePage from '../pages/HomePage';
 import { usePantryStore } from '../store/localPantryStore';
 
 const renderHome = () => render(
-  <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+  <MemoryRouter>
     <HomePage />
   </MemoryRouter>,
 );

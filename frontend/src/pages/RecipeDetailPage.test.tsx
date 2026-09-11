@@ -3,10 +3,7 @@ import { render, screen } from '@testing-library/react';
 import RecipeDetailPage from './RecipeDetailPage';
 
 const renderRoute = (path: string) => render(
-  <MemoryRouter
-    initialEntries={[path]}
-    future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-  >
+  <MemoryRouter initialEntries={[path]}>
     <Routes>
       <Route path="/recipes/:recipeId" element={<RecipeDetailPage />} />
     </Routes>

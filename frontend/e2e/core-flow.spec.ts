@@ -36,6 +36,33 @@ test('pantry survives reload and extended mode names one missing ingredient', as
   await expect(page.getByText('Ti manca solo: Parmigiano')).toBeVisible();
 });
 
+test('the core flow works at 320px using only the keyboard', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto('/');
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
+
+  await page.keyboard.press('Tab');
+  await expect(page.getByLabel('Ingredienti presenti')).toBeFocused();
+  await page.keyboard.type('pasta, tonno, passata');
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('Passata di pomodoro', { exact: true })).toBeVisible();
+
+  const searchButton = page.getByRole('button', { name: 'Trova ricette' });
+  for (let step = 0; step < 8; step += 1) {
+    if (await searchButton.evaluate((element) => element === document.activeElement)) break;
+    await page.keyboard.press('Tab');
+  }
+  await expect(searchButton).toBeFocused();
+  await page.keyboard.press('Enter');
+
+  await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
+});
+
 test('manifest is available and the application works offline after first load', async ({ page, context }) => {
   await page.goto('/');
   await expect(page).toHaveTitle(/iRicetto/);
