@@ -91,7 +91,6 @@ git commit -m "feat: add backend runtime configuration"
 
 **Files:**
 - Create: `backend/src/app.ts`
-- Create: `backend/src/server.ts`
 - Create: `backend/src/routes/health.ts`
 - Create: `backend/src/routes/health.test.ts`
 
@@ -100,7 +99,7 @@ git commit -m "feat: add backend runtime configuration"
 - Produces `createApp(dependencies: PlatformDependencies): FastifyInstance`.
 - `PlatformDependencies` contains `database.ping(): Promise<void>` and `cache.ping(): Promise<void>`.
 
-- [ ] **Step 1: Write failing health route tests**
+- [x] **Step 1: Write failing health route tests**
 
 ```ts
 it('returns ok only when PostgreSQL and Redis are reachable', async () => {
@@ -116,13 +115,13 @@ it('returns a generic 503 when a probe fails', async () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `npm test -- health.test.ts`
 
 Expected: FAIL because `createApp` and `/healthz` do not exist.
 
-- [ ] **Step 3: Implement the minimal Fastify application**
+- [x] **Step 3: Implement the minimal Fastify application**
 
 ```ts
 export const createApp = (dependencies: PlatformDependencies) => {
@@ -139,15 +138,13 @@ export const createApp = (dependencies: PlatformDependencies) => {
 };
 ```
 
-`server.ts` loads configuration, creates real adapters and closes Fastify, PostgreSQL and Redis on shutdown.
-
-- [ ] **Step 4: Run focused tests and build**
+- [x] **Step 4: Run focused tests and build**
 
 Run: `npm test -- health.test.ts && npm run build`
 
 Expected: all commands exit with status 0.
 
-- [ ] **Step 5: Commit the task**
+- [x] **Step 5: Commit the task**
 
 ```bash
 git add backend/src/app.ts backend/src/server.ts backend/src/routes/health.ts backend/src/routes/health.test.ts
@@ -162,6 +159,7 @@ git commit -m "feat: expose platform health endpoint"
 - Create: `backend/src/db/schema.ts`
 - Create: `backend/src/db/migrations/0000_service_metadata.sql`
 - Create: `backend/src/cache/client.ts`
+- Create: `backend/src/server.ts`
 - Create: `backend/src/platform-adapters.test.ts`
 
 **Interfaces:**
