@@ -65,12 +65,12 @@ test('the core flow works at 320px using only the keyboard', async ({ page }) =>
 
 test('manifest is available and the application works offline after first load', async ({ page, context }) => {
   await page.goto('/');
-  await expect(page).toHaveTitle(/iRicetto/);
+  await expect(page).toHaveTitle(/iKuck/);
 
   const manifestResponse = await page.request.get('/manifest.webmanifest');
   expect(manifestResponse.ok()).toBe(true);
   const manifest = await manifestResponse.json();
-  expect(manifest.name).toBe('iRicetto');
+  expect(manifest.name).toBe('iKuck');
   expect(manifest.start_url).toBe('/');
 
   await page.waitForFunction(() => 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null);

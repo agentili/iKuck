@@ -11,8 +11,8 @@ export default defineConfig({
       strategies: 'generateSW',
       includeAssets: ['icons/icon-192x192.png', 'icons/icon-512x512.png'],
       manifest: {
-        name: 'iRicetto',
-        short_name: 'iRicetto',
+        name: 'iKuck',
+        short_name: 'iKuck',
         description: 'Ricette semplici basate sugli ingredienti della tua dispensa.',
         start_url: '/',
         scope: '/',

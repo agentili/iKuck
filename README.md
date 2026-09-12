@@ -1,6 +1,6 @@
-# iRicetto
+# iKuck
 
-iRicetto suggerisce ricette semplici usando gli ingredienti presenti in dispensa. Funziona senza account, non richiede quantità e conserva i dati soltanto nel browser.
+iKuck suggerisce ricette semplici usando gli ingredienti presenti in dispensa. Funziona senza account, non richiede quantità e conserva i dati soltanto nel browser.
 
 ## Come funziona
 
@@ -34,4 +34,4 @@ I test end-to-end avviano la build di produzione e verificano il percorso princi
 
 ## Dati
 
-La dispensa è salvata in `localStorage` con la chiave `iricetto-pantry-v1`. Disinstallare l'app o cancellare i dati del sito elimina la dispensa. Nessun dato viene inviato a un server.
+La dispensa è salvata in `localStorage` con la chiave `ikuck-pantry-v1`. Le dispense salvate nelle versioni precedenti con la chiave `iricetto-pantry-v1` vengono migrate automaticamente. Disinstallare l'app o cancellare i dati del sito elimina la dispensa. Nessun dato viene inviato a un server.

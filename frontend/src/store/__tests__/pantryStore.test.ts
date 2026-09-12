@@ -69,9 +69,9 @@ describe('pantry store', () => {
   it('persists pantry and staples across rehydration', async () => {
     usePantryStore.getState().addIngredients([{ id: 'pasta', label: 'Pasta', known: true }]);
     usePantryStore.getState().toggleStaple('salt');
-    const persisted = window.localStorage.getItem('iricetto-pantry-v1');
+    const persisted = window.localStorage.getItem('ikuck-pantry-v1');
     usePantryStore.setState({ pantryItems: [], stapleIds: [] });
-    window.localStorage.setItem('iricetto-pantry-v1', persisted!);
+    window.localStorage.setItem('ikuck-pantry-v1', persisted!);
 
     await usePantryStore.persist.rehydrate();
 
@@ -83,12 +83,32 @@ describe('pantry store', () => {
 
   it('recovers from unreadable persisted data', async () => {
     usePantryStore.setState({ pantryItems: [], stapleIds: [...DEFAULT_STAPLE_IDS] });
-    window.localStorage.setItem('iricetto-pantry-v1', '{not-json');
+    window.localStorage.setItem('ikuck-pantry-v1', '{not-json');
 
     await usePantryStore.persist.rehydrate();
 
     expect(usePantryStore.getState().pantryItems).toEqual([]);
     expect(usePantryStore.getState().stapleIds).toEqual([...DEFAULT_STAPLE_IDS]);
-    expect(window.localStorage.getItem('iricetto-pantry-v1')).toBeNull();
+    expect(window.localStorage.getItem('ikuck-pantry-v1')).toBeNull();
+  });
+
+  it('migrates an existing iRicetto pantry to the iKuck storage key', async () => {
+    const legacyPersisted = JSON.stringify({
+      state: {
+        pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+        stapleIds: [...DEFAULT_STAPLE_IDS],
+      },
+      version: 1,
+    });
+    usePantryStore.setState({ pantryItems: [], stapleIds: [] });
+    window.localStorage.removeItem('ikuck-pantry-v1');
+    window.localStorage.setItem('iricetto-pantry-v1', legacyPersisted);
+
+    await usePantryStore.persist.rehydrate();
+
+    expect(usePantryStore.getState().pantryItems).toEqual([
+      { id: 'pasta', label: 'Pasta', known: true },
+    ]);
+    expect(window.localStorage.getItem('ikuck-pantry-v1')).toBe(legacyPersisted);
   });
 });

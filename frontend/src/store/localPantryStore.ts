@@ -13,18 +13,30 @@ interface PantryState {
   getAvailableIngredientIds: () => string[];
 }
 
+const PANTRY_STORAGE_KEY = 'ikuck-pantry-v1';
+const LEGACY_PANTRY_STORAGE_KEY = 'iricetto-pantry-v1';
+
 const safeLocalStorage: StateStorage = {
   getItem: (name) => {
-    const raw = window.localStorage.getItem(name);
+    const primaryRaw = window.localStorage.getItem(name);
+    const legacyRaw = name === PANTRY_STORAGE_KEY
+      ? window.localStorage.getItem(LEGACY_PANTRY_STORAGE_KEY)
+      : null;
+    const raw = primaryRaw ?? legacyRaw;
     if (raw === null) return null;
 
     try {
       JSON.parse(raw);
-      return raw;
     } catch {
-      window.localStorage.removeItem(name);
+      window.localStorage.removeItem(primaryRaw === null ? LEGACY_PANTRY_STORAGE_KEY : name);
       return null;
     }
+
+    if (primaryRaw === null && legacyRaw !== null) {
+      window.localStorage.setItem(PANTRY_STORAGE_KEY, legacyRaw);
+    }
+
+    return raw;
   },
   setItem: (name, value) => window.localStorage.setItem(name, value),
   removeItem: (name) => window.localStorage.removeItem(name),
@@ -73,7 +85,7 @@ export const usePantryStore = create<PantryState>()(
       ],
     }),
     {
-      name: 'iricetto-pantry-v1',
+      name: PANTRY_STORAGE_KEY,
       version: 1,
       storage: createJSONStorage(() => safeLocalStorage),
     },
