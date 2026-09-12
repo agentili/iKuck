@@ -1,27 +1,36 @@
 import { MemoryRouter } from 'react-router-dom';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { DEFAULT_STAPLE_IDS } from '../domain/ingredients';
 import HomePage from '../pages/HomePage';
 import { usePantryStore } from '../store/localPantryStore';
 
-const renderHome = () => render(
-  <MemoryRouter>
-    <HomePage />
-  </MemoryRouter>,
-);
+const renderHome = async () => {
+  render(
+    <MemoryRouter>
+      <HomePage />
+    </MemoryRouter>,
+  );
+
+  return screen.findByLabelText('Ingredienti presenti');
+};
 
 describe('HomePage integration', () => {
   beforeEach(() => {
     window.localStorage.clear();
-    usePantryStore.getState().resetPantry();
+    usePantryStore.setState({
+      hasHydrated: false,
+      pantryItems: [],
+      stapleIds: [...DEFAULT_STAPLE_IDS],
+    });
   });
 
   it('adds comma-separated ingredients and searches only on request', async () => {
     const user = userEvent.setup();
-    renderHome();
+    const input = await renderHome();
 
     expect(screen.queryByRole('heading', { name: 'Ricette per te' })).not.toBeInTheDocument();
-    await user.type(screen.getByLabelText('Ingredienti presenti'), 'pasta, tonno, passata');
+    await user.type(input, 'pasta, tonno, passata');
     await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
 
     const pantry = screen.getByRole('list', { name: 'La tua dispensa' });
@@ -43,9 +52,9 @@ describe('HomePage integration', () => {
 
   it('shows one named missing ingredient only in extended mode', async () => {
     const user = userEvent.setup();
-    renderHome();
+    const input = await renderHome();
 
-    await user.type(screen.getByLabelText('Ingredienti presenti'), 'pasta, uova, pancetta');
+    await user.type(input, 'pasta, uova, pancetta');
     await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
     await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
     expect(screen.queryByText('Carbonara semplice')).not.toBeInTheDocument();
@@ -60,9 +69,9 @@ describe('HomePage integration', () => {
 
   it('offers known ingredients while the current token is typed', async () => {
     const user = userEvent.setup();
-    renderHome();
+    const input = await renderHome();
 
-    await user.type(screen.getByLabelText('Ingredienti presenti'), 'pom');
+    await user.type(input, 'pom');
 
     const suggestions = screen.getByRole('list', { name: 'Ingredienti suggeriti' });
     expect(within(suggestions).getByRole('button', { name: 'Pomodoro' })).toBeInTheDocument();
@@ -72,7 +81,7 @@ describe('HomePage integration', () => {
 
   it('offers useful ingredients that can be added directly', async () => {
     const user = userEvent.setup();
-    renderHome();
+    await renderHome();
 
     const suggestions = screen.getByRole('region', { name: 'Potresti aggiungere' });
     expect(within(suggestions).getByRole('button', { name: 'Aggiungi Cipolla' })).toBeInTheDocument();
@@ -85,9 +94,9 @@ describe('HomePage integration', () => {
 
   it('keeps an unknown ingredient and explains that it is not matched', async () => {
     const user = userEvent.setup();
-    renderHome();
+    const input = await renderHome();
 
-    await user.type(screen.getByLabelText('Ingredienti presenti'), 'Tempeh');
+    await user.type(input, 'Tempeh');
     await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
 
     expect(screen.getByText('Tempeh')).toBeInTheDocument();
@@ -96,7 +105,7 @@ describe('HomePage integration', () => {
 
   it('lets the user change default staples', async () => {
     const user = userEvent.setup();
-    renderHome();
+    await renderHome();
 
     await user.click(screen.getByText('Ingredienti di base'));
     const salt = screen.getByLabelText('Sale');

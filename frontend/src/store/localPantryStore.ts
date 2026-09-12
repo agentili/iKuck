@@ -1,9 +1,16 @@
 import { create } from 'zustand';
-import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import { DEFAULT_STAPLE_IDS } from '../domain/ingredients';
 import type { ParsedIngredient } from '../domain/types';
+import {
+  PANTRY_STORAGE_KEY,
+  pantryStorage,
+} from '../storage/pantryStorage';
 
-interface PantryState {
+export { LEGACY_PANTRY_STORAGE_KEY, PANTRY_STORAGE_KEY } from '../storage/pantryStorage';
+
+export interface PantryState {
+  hasHydrated: boolean;
   pantryItems: ParsedIngredient[];
   stapleIds: string[];
   addIngredients: (items: ParsedIngredient[]) => void;
@@ -12,35 +19,6 @@ interface PantryState {
   resetPantry: () => void;
   getAvailableIngredientIds: () => string[];
 }
-
-const PANTRY_STORAGE_KEY = 'ikuck-pantry-v1';
-const LEGACY_PANTRY_STORAGE_KEY = 'iricetto-pantry-v1';
-
-const safeLocalStorage: StateStorage = {
-  getItem: (name) => {
-    const primaryRaw = window.localStorage.getItem(name);
-    const legacyRaw = name === PANTRY_STORAGE_KEY
-      ? window.localStorage.getItem(LEGACY_PANTRY_STORAGE_KEY)
-      : null;
-    const raw = primaryRaw ?? legacyRaw;
-    if (raw === null) return null;
-
-    try {
-      JSON.parse(raw);
-    } catch {
-      window.localStorage.removeItem(primaryRaw === null ? LEGACY_PANTRY_STORAGE_KEY : name);
-      return null;
-    }
-
-    if (primaryRaw === null && legacyRaw !== null) {
-      window.localStorage.setItem(PANTRY_STORAGE_KEY, legacyRaw);
-    }
-
-    return raw;
-  },
-  setItem: (name, value) => window.localStorage.setItem(name, value),
-  removeItem: (name) => window.localStorage.removeItem(name),
-};
 
 const mergeUniqueIngredients = (
   existing: ParsedIngredient[],
@@ -55,39 +33,75 @@ const mergeUniqueIngredients = (
   return [...unique.values()];
 };
 
+let markHydrated: (() => void) | null = null;
+let hydrationPromise: Promise<void> | null = null;
+
 export const usePantryStore = create<PantryState>()(
   persist(
-    (set, get) => ({
-      pantryItems: [],
-      stapleIds: [...DEFAULT_STAPLE_IDS],
-      addIngredients: (items) =>
-        set((state) => ({
-          pantryItems: mergeUniqueIngredients(state.pantryItems, items),
-        })),
-      removeIngredient: (id) =>
-        set((state) => ({
-          pantryItems: state.pantryItems.filter((item) => item.id !== id),
-        })),
-      toggleStaple: (id) =>
-        set((state) => ({
-          stapleIds: state.stapleIds.includes(id)
-            ? state.stapleIds.filter((item) => item !== id)
-            : [...state.stapleIds, id],
-        })),
-      resetPantry: () =>
-        set({
-          pantryItems: [],
-          stapleIds: [...DEFAULT_STAPLE_IDS],
-        }),
-      getAvailableIngredientIds: () => [
-        ...get().pantryItems.filter((item) => item.known).map((item) => item.id),
-        ...get().stapleIds,
-      ],
-    }),
+    (set, get) => {
+      markHydrated = () => set({ hasHydrated: true });
+
+      return {
+        hasHydrated: false,
+        pantryItems: [],
+        stapleIds: [...DEFAULT_STAPLE_IDS],
+        addIngredients: (items) =>
+          set((state) => ({
+            pantryItems: mergeUniqueIngredients(state.pantryItems, items),
+          })),
+        removeIngredient: (id) =>
+          set((state) => ({
+            pantryItems: state.pantryItems.filter((item) => item.id !== id),
+          })),
+        toggleStaple: (id) =>
+          set((state) => ({
+            stapleIds: state.stapleIds.includes(id)
+              ? state.stapleIds.filter((item) => item !== id)
+              : [...state.stapleIds, id],
+          })),
+        resetPantry: () =>
+          set({
+            pantryItems: [],
+            stapleIds: [...DEFAULT_STAPLE_IDS],
+          }),
+        getAvailableIngredientIds: () => [
+          ...get().pantryItems.filter((item) => item.known).map((item) => item.id),
+          ...get().stapleIds,
+        ],
+      };
+    },
     {
       name: PANTRY_STORAGE_KEY,
       version: 1,
-      storage: createJSONStorage(() => safeLocalStorage),
+      storage: createJSONStorage(() => pantryStorage),
+      skipHydration: true,
+      partialize: (state) => {
+        const persistedState = { ...state };
+        Reflect.deleteProperty(persistedState, 'hasHydrated');
+        return persistedState;
+      },
+      onRehydrateStorage: () => () => {
+        markHydrated?.();
+      },
     },
   ),
 );
+
+export async function hydratePantryStore(): Promise<void> {
+  if (usePantryStore.getState().hasHydrated) return;
+
+  if (hydrationPromise === null) {
+    hydrationPromise = Promise.resolve(usePantryStore.persist.rehydrate())
+      .catch(() => undefined)
+      .then(() => {
+        if (!usePantryStore.getState().hasHydrated) {
+          usePantryStore.setState({ hasHydrated: true });
+        }
+      })
+      .finally(() => {
+        hydrationPromise = null;
+      });
+  }
+
+  await hydrationPromise;
+}

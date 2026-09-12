@@ -1,10 +1,18 @@
 import { DEFAULT_STAPLE_IDS } from '../../domain/ingredients';
-import { usePantryStore } from '../localPantryStore';
+import { deleteLocalDatabase, readKeyValue, writeKeyValue } from '../../storage/indexedDb';
+import { hydratePantryStore, usePantryStore } from '../localPantryStore';
 
 describe('pantry store', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await deleteLocalDatabase();
     window.localStorage.clear();
-    usePantryStore.getState().resetPantry();
+    usePantryStore.setState({
+      hasHydrated: false,
+      pantryItems: [],
+      stapleIds: [...DEFAULT_STAPLE_IDS],
+    });
+    await readKeyValue('pantry');
+    await deleteLocalDatabase();
   });
 
   it('starts with default staples and no pantry items', () => {
@@ -12,6 +20,14 @@ describe('pantry store', () => {
 
     expect(state.pantryItems).toEqual([]);
     expect(state.stapleIds).toEqual([...DEFAULT_STAPLE_IDS]);
+  });
+
+  it('exposes hydration state and becomes ready after IndexedDB rehydration', async () => {
+    expect(usePantryStore.getState().hasHydrated).toBe(false);
+
+    await hydratePantryStore();
+
+    expect(usePantryStore.getState().hasHydrated).toBe(true);
   });
 
   it('adds unique ingredients while preserving the first label', () => {
@@ -69,9 +85,11 @@ describe('pantry store', () => {
   it('persists pantry and staples across rehydration', async () => {
     usePantryStore.getState().addIngredients([{ id: 'pasta', label: 'Pasta', known: true }]);
     usePantryStore.getState().toggleStaple('salt');
-    const persisted = window.localStorage.getItem('ikuck-pantry-v1');
-    usePantryStore.setState({ pantryItems: [], stapleIds: [] });
-    window.localStorage.setItem('ikuck-pantry-v1', persisted!);
+    const persisted = await readKeyValue<string>('pantry');
+    expect(persisted).not.toBeNull();
+    usePantryStore.setState({ pantryItems: [], stapleIds: [], hasHydrated: false });
+    await readKeyValue('pantry');
+    await writeKeyValue('pantry', persisted!);
 
     await usePantryStore.persist.rehydrate();
 
@@ -82,14 +100,15 @@ describe('pantry store', () => {
   });
 
   it('recovers from unreadable persisted data', async () => {
-    usePantryStore.setState({ pantryItems: [], stapleIds: [...DEFAULT_STAPLE_IDS] });
-    window.localStorage.setItem('ikuck-pantry-v1', '{not-json');
+    await writeKeyValue('pantry', '{not-json');
 
     await usePantryStore.persist.rehydrate();
 
     expect(usePantryStore.getState().pantryItems).toEqual([]);
     expect(usePantryStore.getState().stapleIds).toEqual([...DEFAULT_STAPLE_IDS]);
-    expect(window.localStorage.getItem('ikuck-pantry-v1')).toBeNull();
+    await expect(readKeyValue<string>('pantry').then((raw) => JSON.parse(raw!))).resolves.toMatchObject({
+      state: { pantryItems: [], stapleIds: [...DEFAULT_STAPLE_IDS] },
+    });
   });
 
   it('migrates an existing iRicetto pantry to the iKuck storage key', async () => {
@@ -100,7 +119,6 @@ describe('pantry store', () => {
       },
       version: 1,
     });
-    usePantryStore.setState({ pantryItems: [], stapleIds: [] });
     window.localStorage.removeItem('ikuck-pantry-v1');
     window.localStorage.setItem('iricetto-pantry-v1', legacyPersisted);
 
@@ -109,6 +127,7 @@ describe('pantry store', () => {
     expect(usePantryStore.getState().pantryItems).toEqual([
       { id: 'pasta', label: 'Pasta', known: true },
     ]);
-    expect(window.localStorage.getItem('ikuck-pantry-v1')).toBe(legacyPersisted);
+    expect(window.localStorage.getItem('iricetto-pantry-v1')).toBeNull();
+    await expect(readKeyValue('pantry')).resolves.toBe(legacyPersisted);
   });
 });

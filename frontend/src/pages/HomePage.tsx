@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import IngredientChip from '../components/pantry/IngredientChip';
 import IngredientInput from '../components/pantry/IngredientInput';
@@ -8,9 +8,10 @@ import LocalRecipeCard from '../components/suggestions/LocalRecipeCard';
 import SuggestionControls from '../components/suggestions/SuggestionControls';
 import { findHelpfulIngredients, findRecipeSuggestions } from '../domain/suggestions';
 import type { IngredientDefinition, ParsedIngredient, RecipeSuggestion } from '../domain/types';
-import { usePantryStore } from '../store/localPantryStore';
+import { hydratePantryStore, usePantryStore } from '../store/localPantryStore';
 
 export default function HomePage() {
+  const hasHydrated = usePantryStore((state) => state.hasHydrated);
   const [hasSearched, setHasSearched] = useState(false);
   const [allowOneMissing, setAllowOneMissing] = useState(false);
   const [suggestions, setSuggestions] = useState<RecipeSuggestion[]>([]);
@@ -20,6 +21,21 @@ export default function HomePage() {
   const removeIngredient = usePantryStore((state) => state.removeIngredient);
   const toggleStaple = usePantryStore((state) => state.toggleStaple);
   const getAvailableIngredientIds = usePantryStore((state) => state.getAvailableIngredientIds);
+
+  useEffect(() => {
+    void hydratePantryStore();
+  }, []);
+
+  if (!hasHydrated) {
+    return (
+      <main className="mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
+        <p role="status" className="rounded-2xl border border-gray-200 bg-white px-5 py-4 font-semibold text-gray-700">
+          Caricamento della tua dispensa…
+        </p>
+      </main>
+    );
+  }
+
   const suggestedIngredients = findHelpfulIngredients(getAvailableIngredientIds(), 5);
 
   const clearResults = () => {

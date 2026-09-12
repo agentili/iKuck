@@ -332,7 +332,7 @@ git commit -m "feat: add profile and last-write-wins sync API"
 - Produces `migrateLegacyPantry()` that imports `ikuck-pantry-v1` or `iricetto-pantry-v1` once before normal IndexedDB reads.
 - Preserves the existing `usePantryStore` action names and recipe behavior.
 
-- [ ] **Step 1: Write failing storage tests**
+- [x] **Step 1: Write failing storage tests**
 
 ```ts
 it('imports the iKuck localStorage snapshot into IndexedDB once', async () => {
@@ -348,21 +348,21 @@ it('imports the iKuck localStorage snapshot into IndexedDB once', async () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `cd frontend && npm test -- indexedDb.test.ts pantryStorage.test.ts`
 
 Expected: FAIL because the IndexedDB adapter and migration do not exist.
 
-- [ ] **Step 3: Add IndexedDB stores and test polyfill**
+- [x] **Step 3: Add IndexedDB stores and test polyfill**
 
 Use database name `ikuck-local-v2` with stores `keyValue`, `syncQueue` and `syncMeta`. Store JSON snapshots under `pantry`. Use `fake-indexeddb` in the Vitest setup. Keep the localStorage fallback scoped to the same keys and delete a legacy snapshot only after the IndexedDB write succeeds.
 
-- [ ] **Step 4: Replace Zustand persistence without changing the public store API**
+- [x] **Step 4: Replace Zustand persistence without changing the public store API**
 
 Use an asynchronous Zustand storage adapter, expose `hasHydrated` through the store, and render a short Italian loading state until rehydration finishes. Existing add/remove/toggle/reset behavior and default staples must remain unchanged. A failed IndexedDB write must leave the in-memory state usable and must not erase the last valid snapshot.
 
-- [ ] **Step 5: Update unit and browser regression tests and commit**
+- [x] **Step 5: Update unit and browser regression tests and commit**
 
 Run: `cd frontend && npm test -- indexedDb.test.ts pantryStorage.test.ts pantryStore.test.ts && npm run lint && npm run build`
 
