@@ -1,5 +1,7 @@
 import { DEFAULT_STAPLE_IDS } from '../../domain/ingredients';
+import { vi } from 'vitest';
 import { deleteLocalDatabase, readKeyValue, writeKeyValue } from '../../storage/indexedDb';
+import { readQueuedMutations, syncNow, waitForPendingQueueWrites } from '../../sync/syncQueue';
 import { hydratePantryStore, usePantryStore } from '../localPantryStore';
 
 describe('pantry store', () => {
@@ -80,6 +82,63 @@ describe('pantry store', () => {
       'black_pepper',
       'olive_oil',
     ]);
+  });
+
+  it('queues pantry and staple changes without delaying the local state update', async () => {
+    usePantryStore.getState().addIngredients([{ id: 'pasta', label: 'Pasta', known: true }]);
+    usePantryStore.getState().toggleStaple('salt');
+    await waitForPendingQueueWrites();
+
+    const mutations = await readQueuedMutations();
+    expect(usePantryStore.getState().pantryItems).toEqual([
+      { id: 'pasta', label: 'Pasta', known: true },
+    ]);
+    expect(mutations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        entityType: 'pantry_item',
+        entityId: 'pasta',
+        operation: 'upsert',
+      }),
+      expect.objectContaining({
+        entityType: 'staple_preference',
+        entityId: 'salt',
+        operation: 'upsert',
+        payload: { enabled: false },
+      }),
+    ]));
+  });
+
+  it('applies a server change without creating a second local mutation', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      changes: [{
+        mutationId: 'server-change',
+        deviceId: 'server-device',
+        entityType: 'pantry_item',
+        entityId: 'tomato',
+        operation: 'upsert',
+        payload: { id: 'tomato', label: 'Pomodoro', known: true },
+        clientUpdatedAt: '2026-09-12T12:00:00.000Z',
+        serverSequence: 1,
+      }],
+      nextCursor: 1,
+    }), { status: 200 }));
+
+    await syncNow({
+      fetch,
+      session: {
+        userId: 'user-1',
+        emailVerifiedAt: '2026-09-12T10:00:00.000Z',
+        csrfToken: 'csrf-1',
+      },
+    });
+    await waitForPendingQueueWrites();
+
+    expect(usePantryStore.getState().pantryItems).toContainEqual({
+      id: 'tomato',
+      label: 'Pomodoro',
+      known: true,
+    });
+    await expect(readQueuedMutations()).resolves.toEqual([]);
   });
 
   it('persists pantry and staples across rehydration', async () => {

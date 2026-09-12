@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { RefreshCw, Sparkles } from 'lucide-react';
+import AccountPanel from '../components/account/AccountPanel';
 import IngredientChip from '../components/pantry/IngredientChip';
 import IngredientInput from '../components/pantry/IngredientInput';
 import IngredientSuggestions from '../components/pantry/IngredientSuggestions';
@@ -87,6 +88,10 @@ export default function HomePage() {
         <h1 className="text-4xl font-black leading-tight text-gray-950 sm:text-6xl">Cosa c’è in dispensa?</h1>
         <p className="mt-4 max-w-2xl text-lg leading-relaxed text-gray-600">Scrivi gli ingredienti che hai. Alle ricette pensiamo noi.</p>
       </header>
+
+      <div className="mb-6 max-w-3xl">
+        <AccountPanel />
+      </div>
 
       <section aria-labelledby="pantry-title" className="space-y-5 rounded-3xl border-2 border-gray-200 bg-gray-50 p-4 sm:p-6">
         <div>

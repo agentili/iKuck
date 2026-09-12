@@ -281,11 +281,13 @@ Run all store, queue, auth and API tests, then lint/build. Confirm that the exis
 - Create: `frontend/src/components/account/AccountPanel.tsx`
 - Create: `frontend/src/pages/ProfilePage.tsx`
 - Create: `frontend/src/pages/VerifyEmailPage.tsx`
+- Create: `frontend/src/pages/ResetPasswordPage.tsx`
 - Modify: `frontend/src/App.tsx`
 - Modify: `frontend/src/pages/HomePage.tsx`
 - Test: `frontend/src/components/account/AccountPanel.test.tsx`
 - Test: `frontend/src/pages/ProfilePage.test.tsx`
 - Test: `frontend/src/pages/VerifyEmailPage.test.tsx`
+- Test: `frontend/src/pages/ResetPasswordPage.test.tsx`
 - Modify: `frontend/src/test/HomePage.test.tsx`
 
 ### Step 1: Write failing component tests

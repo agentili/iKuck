@@ -39,7 +39,7 @@
 - Produces PostgreSQL tables for users, sessions, verification tokens, password-reset tokens, sync items and processed mutation ids.
 - Consumes the existing `service_metadata` migration without changing or deleting it.
 
-- [ ] **Step 1: Write failing contract and migration tests**
+- [x] **Step 1: Write failing contract and migration tests**
 
 ```ts
 it('keeps sync mutations entity-scoped and serializable', () => {
@@ -62,13 +62,13 @@ it('contains the account and sync tables in the first feature migration', () => 
 });
 ```
 
-- [ ] **Step 2: Run the focused test to verify it fails**
+- [x] **Step 2: Run the focused test to verify it fails**
 
 Run: `cd backend && npm test -- contracts.test.ts`
 
 Expected: FAIL because the shared package, contracts and migration do not exist.
 
-- [ ] **Step 3: Add the shared package and exact contracts**
+- [x] **Step 3: Add the shared package and exact contracts**
 
 Define the entities used by the API and browser:
 
@@ -104,11 +104,11 @@ export interface AccountSummary {
 
 Use a local `file:../shared` dependency in backend and frontend so both TypeScript projects consume the same type declarations without bundling server code into the PWA.
 
-- [ ] **Step 4: Add the PostgreSQL schema and migration**
+- [x] **Step 4: Add the PostgreSQL schema and migration**
 
 Create UUID users with unique normalized email, Argon2id password hash and verification timestamp. Store only SHA-256 hashes of opaque session, verification and reset tokens. Store sync items by `(user_id, entity_type, entity_id)` with JSONB payload, tombstone flag, client timestamp, mutation id and monotonically increasing server sequence. Store processed mutation ids with a unique `(user_id, mutation_id)` constraint for idempotent retries. Add cascading foreign keys, indexes on user/session expiry and `(user_id, server_sequence)`.
 
-- [ ] **Step 5: Run migration-independent checks and commit**
+- [x] **Step 5: Run migration-independent checks and commit**
 
 Run: `cd backend && npm test -- contracts.test.ts && npm run lint && npm run build`
 
@@ -136,7 +136,7 @@ git commit -m "feat: add account and sync persistence contracts"
 - Produces `createResendEmailProvider({ apiKey, from, fetch })` without performing network I/O during construction.
 - Consumes the existing `EmailProvider` port and returns `ProviderUnavailableError` when Resend configuration is absent.
 
-- [ ] **Step 1: Write failing crypto and provider tests**
+- [x] **Step 1: Write failing crypto and provider tests**
 
 ```ts
 it('verifies an Argon2id password hash and rejects a different password', async () => {
@@ -155,21 +155,21 @@ it('sends verification mail through the Resend HTTP boundary', async () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd backend && npm test -- crypto.test.ts tokens.test.ts`
 
 Expected: FAIL because Argon2id helpers, token helpers and the Resend adapter do not exist.
 
-- [ ] **Step 3: Add Argon2id and opaque-token helpers**
+- [x] **Step 3: Add Argon2id and opaque-token helpers**
 
 Use `argon2` with `argon2id`, memory cost 19456 KiB, time cost 2 and parallelism 1. Generate at least 32 random bytes for every opaque token, return the raw token only to the caller and persist only its SHA-256 digest. Use constant-time comparison for token digests and reject expired or already-consumed tokens in the service layer.
 
-- [ ] **Step 4: Add the Resend adapter and provider selection**
+- [x] **Step 4: Add the Resend adapter and provider selection**
 
 POST `{ from, to: [message.to], subject, html }` to `https://api.resend.com/emails` with `Authorization: Bearer <key>`. Treat non-2xx responses as a typed provider error without including response bodies in logs. Update `createProviders` to select this adapter only when both `RESEND_API_KEY` and `RESEND_FROM` are configured.
 
-- [ ] **Step 5: Run focused tests and commit**
+- [x] **Step 5: Run focused tests and commit**
 
 Run: `cd backend && npm test -- crypto.test.ts tokens.test.ts factory.test.ts && npm run lint && npm run build`
 
@@ -197,7 +197,7 @@ git commit -m "feat: add password and verification email services"
 - Produces `AuthSession` request decoration with `userId`, `email` and `csrfToken` for protected routes.
 - Consumes `EmailProvider`, token helpers and the account tables through an injectable `AuthRepository`.
 
-- [ ] **Step 1: Write failing service and route tests**
+- [x] **Step 1: Write failing service and route tests**
 
 ```ts
 it('does not permit login before email verification', async () => {
@@ -219,25 +219,25 @@ it('sets an HttpOnly session cookie only after a verified login', async () => {
 });
 ```
 
-- [ ] **Step 2: Run focused tests to verify they fail**
+- [x] **Step 2: Run focused tests to verify they fail**
 
 Run: `cd backend && npm test -- service.test.ts auth.test.ts`
 
 Expected: FAIL because the auth service, repository and routes do not exist.
 
-- [ ] **Step 3: Implement the repository and lifecycle service**
+- [x] **Step 3: Implement the repository and lifecycle service**
 
 Normalize emails with trim and lowercase. Registration rejects passwords shorter than 12 characters, creates the user, creates a 24-hour verification token and sends a link to `${APP_ORIGIN}/verify-email?token=<raw-token>`. Verification consumes the token atomically and sets `email_verified_at`. Login verifies Argon2id, rejects unverified users, creates a 30-day session and a separate CSRF token. Password reset requests always return the same generic response; existing users receive a one-hour reset link. Resetting a password consumes the token and revokes all sessions.
 
-- [ ] **Step 4: Implement cookie and CSRF boundaries**
+- [x] **Step 4: Implement cookie and CSRF boundaries**
 
 Use cookie name `ikuck_session`, `HttpOnly`, `SameSite=Lax`, `Path=/` and `Secure` only in production. Validate the `Origin` header against `APP_ORIGIN` on every state-changing request. Require `x-csrf-token` to match the session token digest on authenticated state-changing requests. Never accept a session token from query strings, JSON bodies or localStorage. Return stable error codes such as `invalid_credentials`, `email_not_verified`, `email_already_registered`, `invalid_token` and `csrf_failed` without account enumeration details.
 
-- [ ] **Step 5: Wire routes and server dependencies**
+- [x] **Step 5: Wire routes and server dependencies**
 
 Extend `PlatformDependencies` with injectable auth services and pass the real Drizzle repository plus selected email provider from `server.ts`. Keep `createApp` usable with only health probes so existing health tests remain isolated. Add Zod request schemas with bounded email, password and token lengths.
 
-- [ ] **Step 6: Run focused tests and commit**
+- [x] **Step 6: Run focused tests and commit**
 
 Run: `cd backend && npm test -- service.test.ts auth.test.ts health.test.ts && npm run lint && npm run build`
 
@@ -266,7 +266,7 @@ git commit -m "feat: add verified account authentication"
 - Produces `POST /v1/sync` with body `{ deviceId, cursor, mutations }` and `SyncChangeSet` response.
 - Consumes the authenticated session from Task 3 and the shared sync contracts from Task 1.
 
-- [ ] **Step 1: Write failing repository and route tests**
+- [x] **Step 1: Write failing repository and route tests**
 
 ```ts
 it('keeps the newer mutation and ignores an older mutation for the same entity', async () => {
@@ -289,21 +289,21 @@ it('exports and deletes only the authenticated account data', async () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd backend && npm test -- repository.test.ts profile.test.ts sync.test.ts`
 
 Expected: FAIL because profile and sync repositories/routes do not exist.
 
-- [ ] **Step 3: Implement per-user profile and account lifecycle operations**
+- [x] **Step 3: Implement per-user profile and account lifecycle operations**
 
 Keep profile fields minimal (`displayName` and `updatedAt`) so later diet preferences can extend the same boundary. Export a JSON document containing account summary, profile and sync entities, never password hashes, token digests or sessions. Delete the user in one transaction with cascading data and return `204` after revoking all sessions.
 
-- [ ] **Step 4: Implement transactional LWW sync**
+- [x] **Step 4: Implement transactional LWW sync**
 
 Validate at most 100 mutations per request and 100 KB per payload. For each mutation, insert its idempotency key; if it already exists, do not apply it again. Lock the entity row, compare `clientUpdatedAt`, then `mutationId` on ties, and update only when the incoming mutation wins. Assign a server sequence to every accepted state change, including tombstones. Return all changes after the requested cursor plus changes accepted from the current request, capped at 200 and with `nextCursor` equal to the highest returned sequence.
 
-- [ ] **Step 5: Register versioned routes and run focused checks**
+- [x] **Step 5: Register versioned routes and run focused checks**
 
 Run: `cd backend && npm test -- repository.test.ts profile.test.ts sync.test.ts auth.test.ts && npm run lint && npm run build`
 
@@ -395,7 +395,7 @@ git commit -m "feat: migrate guest pantry storage to IndexedDB"
 - Produces routes `/profile` and `/verify-email` with Italian account forms.
 - Consumes the API endpoints from Tasks 3-4 and the IndexedDB stores from Task 5.
 
-- [ ] **Step 1: Write failing client and queue tests**
+- [x] **Step 1: Write failing client and queue tests**
 
 ```ts
 it('adds the CSRF header only when a session token is available', async () => {
@@ -412,25 +412,25 @@ it('keeps mutations queued while offline and drains them after connectivity retu
 });
 ```
 
-- [ ] **Step 2: Run focused tests to verify they fail**
+- [x] **Step 2: Run focused tests to verify they fail**
 
 Run: `cd frontend && npm test -- apiClient.test.ts authStore.test.ts syncQueue.test.ts`
 
 Expected: FAIL because the client, auth store and sync queue do not exist.
 
-- [ ] **Step 3: Implement the API client and in-memory session state**
+- [x] **Step 3: Implement the API client and in-memory session state**
 
 Use `credentials: 'include'`, same-origin relative URLs and JSON content types. `GET /v1/auth/session` restores the current account and CSRF token; logout clears only in-memory session state and server cookie. Network errors are represented as offline state, not as destructive local resets.
 
-- [ ] **Step 4: Queue local pantry mutations and synchronize on demand/reconnect**
+- [x] **Step 4: Queue local pantry mutations and synchronize on demand/reconnect**
 
 Add a unique mutation id and ISO timestamp for every pantry/staple change. Guest changes are queued locally but never sent without `emailVerifiedAt`. On explicit account import, enqueue the complete current local snapshot, call `/v1/sync`, apply remote changes without re-enqueuing them, advance the cursor and retry later when `navigator.onLine` changes to true. On conflict, use the server change returned by LWW and keep the queue idempotent.
 
-- [ ] **Step 5: Build account/profile screens**
+- [x] **Step 5: Build account/profile screens**
 
 Add login, registration, verification resend, password-reset request, reset form, logout, import-local-data, export-download and delete-account controls. Explain in Italian that guests remain local and that verification is required for synchronization. Do not display or persist passwords, session cookies or raw tokens. Keep the main pantry flow usable when the API is offline.
 
-- [ ] **Step 6: Run component tests and commit**
+- [x] **Step 6: Run component tests and commit**
 
 Run: `cd frontend && npm test -- apiClient.test.ts authStore.test.ts syncQueue.test.ts HomePage.test.tsx && npm run lint && npm run build`
 

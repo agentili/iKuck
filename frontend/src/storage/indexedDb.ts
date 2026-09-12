@@ -76,6 +76,33 @@ export async function deleteKeyValue(key: string): Promise<void> {
   await database.delete(KEY_VALUE_STORE, key);
 }
 
+export async function readQueueValues<T>(): Promise<T[]> {
+  const database = await openLocalDatabase();
+  const values = await database.getAll(SYNC_QUEUE_STORE);
+  return values as T[];
+}
+
+export async function writeQueueValue<T extends { mutationId: string }>(value: T): Promise<void> {
+  const database = await openLocalDatabase();
+  await database.put(SYNC_QUEUE_STORE, value);
+}
+
+export async function deleteQueueValue(mutationId: string): Promise<void> {
+  const database = await openLocalDatabase();
+  await database.delete(SYNC_QUEUE_STORE, mutationId);
+}
+
+export async function readMeta<T>(key: string): Promise<T | null> {
+  const database = await openLocalDatabase();
+  const value = await database.get(SYNC_META_STORE, key);
+  return (value as T | undefined) ?? null;
+}
+
+export async function writeMeta<T>(key: string, value: T): Promise<void> {
+  const database = await openLocalDatabase();
+  await database.put(SYNC_META_STORE, value, key);
+}
+
 export async function deleteLocalDatabase(): Promise<void> {
   const activeDatabase = databasePromise;
   databasePromise = null;
