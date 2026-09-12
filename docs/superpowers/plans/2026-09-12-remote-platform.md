@@ -219,7 +219,7 @@ git commit -m "feat: connect platform storage adapters"
 - Produces `createProviders(config: AppConfig): ProviderBundle`.
 - A missing provider key returns a typed `ProviderUnavailableError`; no provider performs network I/O during construction.
 
-- [ ] **Step 1: Write failing provider factory tests**
+- [x] **Step 1: Write failing provider factory tests**
 
 ```ts
 it('does not expose missing provider credentials', async () => {
@@ -232,23 +232,23 @@ it('keeps provider ports independent from Fastify routes', () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `npm test -- factory.test.ts`
 
 Expected: FAIL because provider ports and factory do not exist.
 
-- [ ] **Step 3: Implement provider ports and unavailable implementations**
+- [x] **Step 3: Implement provider ports and unavailable implementations**
 
 Define request and response types without provider SDK types. The future Resend, USDA and OpenAI adapters must satisfy these ports. Log only the provider name and error class; never log a request payload, secret or account identifier.
 
-- [ ] **Step 4: Run the backend suite**
+- [x] **Step 4: Run the backend suite**
 
 Run: `npm test && npm run lint && npm run build`
 
 Expected: all commands exit with status 0.
 
-- [ ] **Step 5: Commit the task**
+- [x] **Step 5: Commit the task**
 
 ```bash
 git add backend/src/providers backend/src/providers/factory.test.ts backend/src/config.ts backend/src/config.test.ts backend/.env.example
