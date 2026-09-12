@@ -1,15 +1,32 @@
 import { pathToFileURL } from 'node:url';
 import { createApp } from './app.js';
+import { createAuthService } from './auth/service.js';
 import { createCache } from './cache/client.js';
 import { loadConfig } from './config.js';
 import { createDatabase } from './db/client.js';
+import { createDrizzleAuthRepository } from './auth/repository.js';
+import { createProviders } from './providers/factory.js';
 
 export const start = async () => {
   const config = loadConfig(process.env);
   const database = createDatabase(config.databaseUrl);
   const cache = createCache(config.redisUrl);
+  const providers = createProviders(config);
+  const auth = createAuthService({
+    repository: createDrizzleAuthRepository(database.db),
+    email: providers.email,
+    appOrigin: config.appOrigin,
+  });
   const app = createApp(
-    { database, cache },
+    {
+      database,
+      cache,
+      auth: {
+        service: auth,
+        appOrigin: config.appOrigin,
+        secureCookies: config.nodeEnvironment === 'production',
+      },
+    },
     { logger: { level: config.logLevel, redact: ['req.headers.cookie', 'req.headers.authorization'] } },
   );
 

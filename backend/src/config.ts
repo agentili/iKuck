@@ -16,6 +16,7 @@ export interface AppConfig {
   appOrigin: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   providers: ProviderConfig;
+  nodeEnvironment: 'development' | 'test' | 'production';
 }
 
 const developmentDefaults = {
@@ -72,5 +73,6 @@ export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
       usdaApiKey: parsed.USDA_API_KEY,
       openAiApiKey: parsed.OPENAI_API_KEY,
     },
+    nodeEnvironment: parsed.NODE_ENV,
   };
 };
