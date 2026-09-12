@@ -6,6 +6,8 @@ import { loadConfig } from './config.js';
 import { createDatabase } from './db/client.js';
 import { createDrizzleAuthRepository } from './auth/repository.js';
 import { createProviders } from './providers/factory.js';
+import { createDrizzleProfileRepository } from './profile/repository.js';
+import { createDrizzleSyncRepository } from './sync/repository.js';
 
 export const start = async () => {
   const config = loadConfig(process.env);
@@ -17,6 +19,8 @@ export const start = async () => {
     email: providers.email,
     appOrigin: config.appOrigin,
   });
+  const sync = createDrizzleSyncRepository(database.db);
+  const profile = createDrizzleProfileRepository(database.db, sync);
   const app = createApp(
     {
       database,
@@ -26,6 +30,13 @@ export const start = async () => {
         appOrigin: config.appOrigin,
         secureCookies: config.nodeEnvironment === 'production',
       },
+      profile: {
+        repository: profile,
+        authService: auth,
+        appOrigin: config.appOrigin,
+        secureCookies: config.nodeEnvironment === 'production',
+      },
+      sync: { repository: sync, authService: auth, appOrigin: config.appOrigin },
     },
     { logger: { level: config.logLevel, redact: ['req.headers.cookie', 'req.headers.authorization'] } },
   );

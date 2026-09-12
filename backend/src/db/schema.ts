@@ -78,6 +78,7 @@ export const syncItems = pgTable('sync_items', {
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   entityType: text('entity_type').notNull(),
   entityId: text('entity_id').notNull(),
+  deviceId: text('device_id').notNull(),
   payload: jsonb('payload'),
   deleted: boolean('deleted').notNull().default(false),
   clientUpdatedAt: timestamp('client_updated_at', { withTimezone: true }).notNull(),

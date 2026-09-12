@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { AuthServiceError, type AuthService } from '../auth/service.js';
+import { AuthServiceError, type AuthenticatedSession, type AuthService } from '../auth/service.js';
 import { hashOpaqueToken } from '../auth/tokens.js';
 
 export const SESSION_COOKIE_NAME = 'ikuck_session';
@@ -41,7 +41,7 @@ const sessionCookie = (token: string, secure: boolean): string => [
   ...(secure ? ['Secure'] : []),
 ].join('; ');
 
-const clearSessionCookie = (secure: boolean): string => [
+export const clearSessionCookie = (secure: boolean): string => [
   `${SESSION_COOKIE_NAME}=`,
   'Path=/',
   'HttpOnly',
@@ -50,7 +50,7 @@ const clearSessionCookie = (secure: boolean): string => [
   ...(secure ? ['Secure'] : []),
 ].join('; ');
 
-const ensureSameOrigin = (request: FastifyRequest, appOrigin: string): void => {
+export const ensureSameOrigin = (request: FastifyRequest, appOrigin: string): void => {
   if (request.headers.origin !== appOrigin) {
     throw new AuthServiceError('csrf_failed', 403, 'Request origin is not allowed');
   }
@@ -62,17 +62,17 @@ const getSessionToken = (request: FastifyRequest): string => {
   return token;
 };
 
-const requireSession = async (
+export const requireSession = async (
   request: FastifyRequest,
   service: AuthService,
-): Promise<{ token: string; csrfTokenHash: string }> => {
+): Promise<{ token: string; session: AuthenticatedSession }> => {
   const token = getSessionToken(request);
   const session = await service.authenticate(token);
   if (session === null) throw new AuthServiceError('session_required', 401, 'Authentication is required');
-  return { token, csrfTokenHash: session.csrfTokenHash };
+  return { token, session };
 };
 
-const ensureCsrf = (request: FastifyRequest, csrfTokenHash: string): void => {
+export const ensureCsrf = (request: FastifyRequest, csrfTokenHash: string): void => {
   const csrfToken = request.headers['x-csrf-token'];
   if (typeof csrfToken !== 'string' || hashOpaqueToken(csrfToken) !== csrfTokenHash) {
     throw new AuthServiceError('csrf_failed', 403, 'CSRF token is invalid');
@@ -119,7 +119,7 @@ export const registerAuthRoutes = ({ service, appOrigin, secureCookies }: AuthRo
   app.post('/v1/auth/logout', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
     const session = await requireSession(request, service);
-    ensureCsrf(request, session.csrfTokenHash);
+    ensureCsrf(request, session.session.csrfTokenHash);
     await service.logout(session.token);
     reply.header('set-cookie', clearSessionCookie(secureCookies));
     return reply.code(204).send();

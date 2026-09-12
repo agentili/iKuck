@@ -3,11 +3,15 @@ import { AuthServiceError } from './auth/service.js';
 import type { PlatformDependencies } from './platform.js';
 import { type AuthRouteDependencies, registerAuthRoutes } from './routes/auth.js';
 import { registerHealthRoute } from './routes/health.js';
+import { type ProfileRouteDependencies, registerProfileRoutes } from './routes/profile.js';
+import { type SyncRouteDependencies, registerSyncRoutes } from './routes/sync.js';
 
 export type { PlatformDependencies } from './platform.js';
 
 export interface ExtendedPlatformDependencies extends PlatformDependencies {
   auth?: AuthRouteDependencies;
+  profile?: ProfileRouteDependencies;
+  sync?: SyncRouteDependencies;
 }
 
 export const createApp = (
@@ -24,5 +28,7 @@ export const createApp = (
   });
   app.register(registerHealthRoute(dependencies));
   if (dependencies.auth !== undefined) app.register(registerAuthRoutes(dependencies.auth));
+  if (dependencies.profile !== undefined) app.register(registerProfileRoutes(dependencies.profile));
+  if (dependencies.sync !== undefined) app.register(registerSyncRoutes(dependencies.sync));
   return app;
 };
