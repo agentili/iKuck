@@ -17,6 +17,7 @@
     "db:migrate:dev": "tsx src/db/migrate.ts"
   },
   "dependencies": {
+    "@ikuck/shared": "file:../shared",
     "drizzle-orm": "^0.44.7",
     "fastify": "^5.5.0",
     "postgres": "^3.4.7",
