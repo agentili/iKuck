@@ -11,6 +11,7 @@
     "build": "tsc -p tsconfig.json",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "vitest run",
+    "test:integration": "vitest run src/integration",
     "test:coverage": "vitest run --coverage",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node dist/db/migrate.js",

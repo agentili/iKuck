@@ -1,6 +1,6 @@
 # iKuck
 
-iKuck suggerisce ricette semplici usando gli ingredienti presenti in dispensa. In questa prima fase continua a funzionare senza account, non richiede quantità e conserva i dati soltanto nel browser. Il backend è già predisposto per la futura sincronizzazione, ma non riceve dati dalla PWA finché non verrà completato il piano account e sync.
+iKuck suggerisce ricette semplici usando gli ingredienti presenti in dispensa. Puoi usarlo come ospite, senza account e anche offline: la dispensa resta sul dispositivo. Se registri un account, verifichi l’email e accedi, puoi importare esplicitamente la dispensa e sincronizzarla tra i tuoi dispositivi.
 
 ## Come funziona
 
@@ -48,7 +48,7 @@ npm run build
 npm run test:e2e
 ```
 
-I test end-to-end avviano la build di produzione e verificano il percorso principale con Chromium in formato mobile e desktop, compreso il funzionamento offline.
+I test end-to-end avviano la build di produzione e verificano il percorso principale con Chromium in formato mobile e desktop, compreso il funzionamento offline e il percorso account. I test d’integrazione API richiedono invece servizi dedicati configurati con `INTEGRATION_DATABASE_URL` e `INTEGRATION_REDIS_URL`; senza queste variabili vengono saltati intenzionalmente.
 
 ## Operazioni VPS
 
@@ -66,4 +66,4 @@ Le chiavi di provider esterni e i segreti di sessione non devono mai essere inse
 
 ## Dati
 
-La dispensa è salvata in `localStorage` con la chiave `ikuck-pantry-v1`. Le dispense salvate nelle versioni precedenti con la chiave `iricetto-pantry-v1` vengono migrate automaticamente. Disinstallare l'app o cancellare i dati del sito elimina la dispensa. Nessun dato viene inviato a un server.
+La dispensa ospite è salvata in IndexedDB nel database locale `ikuck-local-v2`; le versioni precedenti con le chiavi `ikuck-pantry-v1` o `iricetto-pantry-v1` vengono migrate automaticamente. Le modifiche dell’ospite possono restare in una coda locale, ma non vengono mai inviate senza un account verificato. L’importazione verso un account è sempre un’azione esplicita dalla pagina Profilo. Password, cookie di sessione e token non vengono salvati nel browser. Disinstallare l’app o cancellare i dati del sito elimina la dispensa locale.

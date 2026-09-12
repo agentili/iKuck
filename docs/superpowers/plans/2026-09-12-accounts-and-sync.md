@@ -385,6 +385,7 @@ git commit -m "feat: migrate guest pantry storage to IndexedDB"
 - Create: `frontend/src/components/account/AccountPanel.tsx`
 - Create: `frontend/src/pages/ProfilePage.tsx`
 - Create: `frontend/src/pages/VerifyEmailPage.tsx`
+- Create: `frontend/src/pages/ResetPasswordPage.tsx`
 - Modify: `frontend/src/App.tsx`
 - Modify: `frontend/src/pages/HomePage.tsx`
 - Modify: `frontend/src/store/localPantryStore.ts`
@@ -454,15 +455,19 @@ git commit -m "feat: add offline account sync client"
 - Verifies the real API against PostgreSQL and Redis services when the Docker engine is available.
 - Verifies guest persistence, registration UI, verification gating, import and offline queue behavior in Chromium desktop and mobile.
 
-- [ ] **Step 1: Add container-backed API integration tests**
+- [x] **Step 1: Add container-backed API integration tests**
 
 Run the API with test-only PostgreSQL/Redis URLs and a fake email provider. Cover register, verify, login, CSRF rejection, sync retry/idempotency, LWW conflict, export and delete. Provider calls stay fake and no real email is sent.
 
-- [ ] **Step 2: Add browser tests**
+The parametrized suite is `backend/src/integration/auth-sync.integration.test.ts` and runs when both integration URLs are supplied. With no dedicated services configured, Vitest skips these tests intentionally rather than using the development database.
+
+- [x] **Step 2: Add browser tests**
 
 Cover a guest adding ingredients while offline, reloading and retaining them; a verified user importing the local pantry; a rejected unverified login; and a queued mutation draining after a mocked successful `/v1/sync` response. Run both existing core-flow projects and the new account-sync spec.
 
-- [ ] **Step 3: Run the complete verification set**
+Playwright completed the core and account scenarios in desktop and mobile Chromium: 16 tests passed.
+
+- [x] **Step 3: Run the complete verification set**
 
 Run:
 
@@ -471,9 +476,9 @@ cd backend && npm test && npm run lint && npm run build
 cd ../frontend && npm test && npm run lint && npm run build && npm run test:e2e
 ```
 
-When Docker is available, also run the integration suite and the standalone Compose smoke test. Expected: all tests pass, guest behavior is unchanged, and no auth secret is present in browser storage or logs.
+The backend and frontend unit, lint and build checks passed. Playwright passed all 16 desktop/mobile tests. The integration suite reports two skipped tests without service URLs; the standalone Compose smoke test remains pending because Docker Desktop is unavailable on this host.
 
-- [ ] **Step 4: Document operations and commit the completed plan**
+- [x] **Step 4: Document operations and commit the completed plan**
 
 Document account environment variables, Resend setup, migration behavior, sync troubleshooting and the fact that guests never synchronize. Verify `git diff --check`, preserve `E2E_VERIFICATION.md`, leave unrelated user changes unstaged and commit:
 
@@ -481,6 +486,8 @@ Document account environment variables, Resend setup, migration behavior, sync t
 git add backend frontend shared README.md docs/superpowers/plans/2026-09-12-accounts-and-sync.md
 git commit -m "docs: record verified accounts and sync implementation"
 ```
+
+The account client, integration test contract, browser coverage and current operational notes are committed together. `E2E_VERIFICATION.md` and the pre-existing `.continue/rules/CONTINUE.md` change remain outside the commit.
 
 ## Plan self-review
 

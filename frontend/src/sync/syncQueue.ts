@@ -198,11 +198,11 @@ export async function syncNow({ fetch, request = apiRequest, session }: SyncRequ
       body: { deviceId, cursor, mutations: batch.map(toMutation) },
     });
 
+    await applyServerChanges(result.changes);
+    await writeMeta(CURSOR_META_KEY, Math.max(cursor, result.nextCursor));
     for (const mutation of batch) {
       await deleteQueueValue(mutation.mutationId);
     }
-    await applyServerChanges(result.changes);
-    await writeMeta(CURSOR_META_KEY, Math.max(cursor, result.nextCursor));
     return result;
   })().finally(() => {
     syncPromise = null;

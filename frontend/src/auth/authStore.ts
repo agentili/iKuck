@@ -39,8 +39,8 @@ const isVerifiedUser = (user: AuthUser | undefined): user is AuthUser => (
   user !== undefined && user.emailVerifiedAt.trim().length > 0
 );
 
-const assertAuthenticatedResponse = (response: SessionResponse): { user: AuthUser; csrfToken: string; expiresAt: string } => {
-  if (!response.authenticated || !isVerifiedUser(response.user) || !response.csrfToken || !response.expiresAt) {
+const assertAuthenticatedResponse = (response: SessionResponse | undefined): { user: AuthUser; csrfToken: string; expiresAt: string } => {
+  if (response === undefined || !response.authenticated || !isVerifiedUser(response.user) || !response.csrfToken || !response.expiresAt) {
     throw new ApiClientError(403, 'email_not_verified', 'Email verification is required');
   }
 
@@ -87,7 +87,7 @@ export const createAuthStore = (options: AuthStoreOptions | ApiRequest = {}): Au
         try {
           await run(async () => {
             const response = await request<SessionResponse>('/v1/auth/session');
-            if (!response.authenticated) {
+            if (response === undefined || !response.authenticated) {
               clearSession();
               return;
             }
