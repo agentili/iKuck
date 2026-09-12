@@ -70,6 +70,19 @@ describe('HomePage integration', () => {
     expect(within(screen.getByRole('list', { name: 'La tua dispensa' })).getByText('Pomodoro')).toBeInTheDocument();
   });
 
+  it('offers useful ingredients that can be added directly', async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    const suggestions = screen.getByRole('region', { name: 'Potresti aggiungere' });
+    expect(within(suggestions).getByRole('button', { name: 'Aggiungi Cipolla' })).toBeInTheDocument();
+
+    await user.click(within(suggestions).getByRole('button', { name: 'Aggiungi Cipolla' }));
+
+    expect(within(screen.getByRole('list', { name: 'La tua dispensa' })).getByText('Cipolla')).toBeInTheDocument();
+    expect(within(suggestions).queryByRole('button', { name: 'Aggiungi Cipolla' })).not.toBeInTheDocument();
+  });
+
   it('keeps an unknown ingredient and explains that it is not matched', async () => {
     const user = userEvent.setup();
     renderHome();

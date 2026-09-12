@@ -49,7 +49,7 @@ test('the core flow works at 320px using only the keyboard', async ({ page }) =>
   await expect(page.getByText('Passata di pomodoro', { exact: true })).toBeVisible();
 
   const searchButton = page.getByRole('button', { name: 'Trova ricette' });
-  for (let step = 0; step < 8; step += 1) {
+  for (let step = 0; step < 20; step += 1) {
     if (await searchButton.evaluate((element) => element === document.activeElement)) break;
     await page.keyboard.press('Tab');
   }
@@ -61,6 +61,19 @@ test('the core flow works at 320px using only the keyboard', async ({ page }) =>
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
   expect(hasHorizontalOverflow).toBe(false);
+});
+
+test('suggested ingredients can be added without typing', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
+
+  const suggestions = page.getByRole('region', { name: 'Potresti aggiungere' });
+  await expect(suggestions.getByRole('button', { name: 'Aggiungi Cipolla' })).toBeVisible();
+  await suggestions.getByRole('button', { name: 'Aggiungi Cipolla' }).click();
+
+  await expect(page.getByRole('list', { name: 'La tua dispensa' }).getByText('Cipolla')).toBeVisible();
+  await expect(suggestions.getByRole('button', { name: 'Aggiungi Cipolla' })).toHaveCount(0);
 });
 
 test('manifest is available and the application works offline after first load', async ({ page, context }) => {

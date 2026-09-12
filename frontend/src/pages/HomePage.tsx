@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import IngredientChip from '../components/pantry/IngredientChip';
 import IngredientInput from '../components/pantry/IngredientInput';
+import IngredientSuggestions from '../components/pantry/IngredientSuggestions';
 import StaplesPanel from '../components/pantry/StaplesPanel';
 import LocalRecipeCard from '../components/suggestions/LocalRecipeCard';
 import SuggestionControls from '../components/suggestions/SuggestionControls';
 import { findHelpfulIngredients, findRecipeSuggestions } from '../domain/suggestions';
-import type { ParsedIngredient, RecipeSuggestion } from '../domain/types';
+import type { IngredientDefinition, ParsedIngredient, RecipeSuggestion } from '../domain/types';
 import { usePantryStore } from '../store/localPantryStore';
 
 export default function HomePage() {
@@ -19,6 +20,7 @@ export default function HomePage() {
   const removeIngredient = usePantryStore((state) => state.removeIngredient);
   const toggleStaple = usePantryStore((state) => state.toggleStaple);
   const getAvailableIngredientIds = usePantryStore((state) => state.getAvailableIngredientIds);
+  const suggestedIngredients = findHelpfulIngredients(getAvailableIngredientIds(), 5);
 
   const clearResults = () => {
     setHasSearched(false);
@@ -27,6 +29,11 @@ export default function HomePage() {
 
   const handleAdd = (items: ParsedIngredient[]) => {
     addIngredients(items);
+    clearResults();
+  };
+
+  const handleSuggestedIngredient = (ingredient: IngredientDefinition) => {
+    addIngredients([{ id: ingredient.id, label: ingredient.label, known: true }]);
     clearResults();
   };
 
@@ -71,6 +78,7 @@ export default function HomePage() {
           <p className="mt-1 text-gray-600">Basta il nome: niente quantità o scadenze.</p>
         </div>
         <IngredientInput onAdd={handleAdd} />
+        <IngredientSuggestions ingredients={suggestedIngredients} onAdd={handleSuggestedIngredient} />
         {pantryItems.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-gray-300 bg-white p-4 text-gray-500">Aggiungi almeno un ingrediente per cercare una ricetta.</p>
         ) : (
