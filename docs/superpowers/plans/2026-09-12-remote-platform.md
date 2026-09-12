@@ -35,7 +35,7 @@
 - Produces `loadConfig(environment: NodeJS.ProcessEnv): AppConfig`.
 - `AppConfig` exposes `host`, `port`, `databaseUrl`, `redisUrl`, `sessionSecret`, `appOrigin`, `logLevel` and optional provider settings.
 
-- [ ] **Step 1: Write the failing configuration tests**
+- [x] **Step 1: Write the failing configuration tests**
 
 ```ts
 it('rejects a production configuration without a session secret', () => {
@@ -48,13 +48,13 @@ it('uses safe local defaults only in development', () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `npm test -- config.test.ts`
 
 Expected: FAIL because `loadConfig` does not exist.
 
-- [ ] **Step 3: Add the minimal package and configuration implementation**
+- [x] **Step 3: Add the minimal package and configuration implementation**
 
 ```ts
 export interface AppConfig {
@@ -74,13 +74,13 @@ export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
 
 Add scripts `dev`, `build`, `test`, `test:coverage`, `lint`, `db:generate` and `db:migrate`. Document every environment variable in `backend/.env.example` without a real secret.
 
-- [ ] **Step 4: Run the focused and complete backend checks**
+- [x] **Step 4: Run the focused and complete backend checks**
 
 Run: `npm test -- config.test.ts && npm run lint && npm run build`
 
 Expected: all commands exit with status 0.
 
-- [ ] **Step 5: Commit the task**
+- [x] **Step 5: Commit the task**
 
 ```bash
 git add backend/package.json backend/package-lock.json backend/tsconfig.json backend/vitest.config.ts backend/src/config.ts backend/src/config.test.ts backend/.env.example
