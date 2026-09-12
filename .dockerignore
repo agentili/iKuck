@@ -1,0 +1,9 @@
+.git
+.worktrees
+**/node_modules
+**/dist
+**/coverage
+**/.env
+**/playwright-report
+**/test-results
+E2E_VERIFICATION.md

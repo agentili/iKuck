@@ -259,7 +259,10 @@ git commit -m "feat: define external provider boundaries"
 
 **Files:**
 - Create: `backend/Dockerfile`
+- Create: `backend/.dockerignore`
+- Create: `.dockerignore`
 - Create: `compose.dev.yml`
+- Create: `deploy/Caddy.Dockerfile`
 - Create: `deploy/docker-compose.production.yml`
 - Create: `deploy/Caddyfile`
 - Create: `deploy/.env.example`
@@ -273,42 +276,55 @@ git commit -m "feat: define external provider boundaries"
 - Production Caddy serves frontend assets and proxies `/v1/*` only to `api:3000`.
 - Backup scripts require `COMPOSE_FILE`, `POSTGRES_DB`, `POSTGRES_USER` and `BACKUP_DIR`; they refuse an empty backup directory.
 
-- [ ] **Step 1: Write failing deployment contract tests**
+- [x] **Step 1: Write failing deployment contract tests**
 
 ```ts
-it('keeps PostgreSQL and Redis off the public network', () => {
-  expect(readFileSync('../../compose.dev.yml', 'utf8')).not.toMatch(/5432:5432|6379:6379/);
+it('keeps PostgreSQL and Redis off the public network in development', () => {
+  const compose = readComposeConfig('compose.dev.yml');
+  expect(compose.services.postgres.ports).toBeUndefined();
+  expect(compose.services.redis.ports).toBeUndefined();
+  expect(compose.services.api.ports).toEqual([
+    expect.objectContaining({ target: 3000, published: '3000' }),
+  ]);
 });
 
-it('proxies only versioned API traffic through Caddy', () => {
-  expect(readFileSync('../../deploy/Caddyfile', 'utf8')).toContain('handle /v1/*');
+it('exposes only HTTP and HTTPS from the production composition', () => {
+  const compose = readComposeConfig('deploy/docker-compose.production.yml');
+  expect(compose.services.postgres.ports).toBeUndefined();
+  expect(compose.services.redis.ports).toBeUndefined();
+  expect(compose.services.caddy.ports).toEqual([
+    expect.objectContaining({ target: 80, published: '80' }),
+    expect.objectContaining({ target: 443, published: '443' }),
+  ]);
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+`readComposeConfig` executes `docker compose config --format json` with test-only environment values. The test verifies the rendered configuration instead of matching source text.
+
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `npm test -- deployment-contract.test.ts`
 
 Expected: FAIL because Compose and Caddy files do not exist.
 
-- [ ] **Step 3: Implement container and operational files**
+- [x] **Step 3: Implement container and operational files**
 
 Use multi-stage Dockerfiles. Give Postgres and Redis persistent named volumes and health checks. Caddy must apply security headers, serve the built `frontend/dist` directory and use `try_files` SPA fallback. The backup script creates timestamped compressed `pg_dump` files; the restore script requires an explicit archive path and uses `pg_restore --clean --if-exists`.
 
 - [ ] **Step 4: Verify container configuration**
 
-Run: `npm test -- deployment-contract.test.ts && docker compose -f compose.dev.yml config && docker compose -f deploy/docker-compose.production.yml config`
+Run: `npm test -- deployment-contract.test.ts && docker compose -f compose.dev.yml config && docker compose -f deploy/docker-compose.production.yml config && docker run --rm --mount type=bind,source="$PWD/deploy/Caddyfile",target=/etc/caddy/Caddyfile,readonly caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`
 
 Expected: tests pass and both Compose files render without validation errors.
 
-- [ ] **Step 5: Document local and VPS operations**
+- [x] **Step 5: Document local and VPS operations**
 
 Document frontend and backend start commands, health URL, required secret provisioning, migration command, backup/restore command, and the rule that no provider key belongs in the frontend or repository.
 
 - [ ] **Step 6: Commit the completed platform**
 
 ```bash
-git add backend compose.dev.yml deploy README.md
+git add .dockerignore backend compose.dev.yml deploy README.md
 git commit -m "feat: package remote platform for deployment"
 ```
 

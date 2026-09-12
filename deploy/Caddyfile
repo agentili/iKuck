@@ -1,0 +1,19 @@
+{$APP_DOMAIN} {
+  encode zstd gzip
+
+  header {
+    -Server
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Permissions-Policy "camera=(), geolocation=(), microphone=()"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+
+  handle /v1/* {
+    reverse_proxy api:3000
+  }
+
+  root * /srv/frontend
+  try_files {path} /index.html
+  file_server
+}

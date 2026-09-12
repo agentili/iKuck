@@ -1,6 +1,6 @@
 # iKuck
 
-iKuck suggerisce ricette semplici usando gli ingredienti presenti in dispensa. Funziona senza account, non richiede quantità e conserva i dati soltanto nel browser.
+iKuck suggerisce ricette semplici usando gli ingredienti presenti in dispensa. In questa prima fase continua a funzionare senza account, non richiede quantità e conserva i dati soltanto nel browser. Il backend è già predisposto per la futura sincronizzazione, ma non riceve dati dalla PWA finché non verrà completato il piano account e sync.
 
 ## Come funziona
 
@@ -19,6 +19,24 @@ npm install
 npm run dev
 ```
 
+### Backend e servizi locali
+
+Per sviluppare la sola API, con PostgreSQL e Redis disponibili sulla macchina:
+
+```bash
+cd backend
+npm install
+npm run dev
+```
+
+Per avviare la piattaforma completa in container, incluse le migrazioni iniziali:
+
+```bash
+docker compose -f compose.dev.yml up --build
+```
+
+L’API risponde a [http://127.0.0.1:3000/healthz](http://127.0.0.1:3000/healthz). PostgreSQL e Redis restano accessibili esclusivamente agli altri container.
+
 ## Verifica
 
 ```bash
@@ -31,6 +49,18 @@ npm run test:e2e
 ```
 
 I test end-to-end avviano la build di produzione e verificano il percorso principale con Chromium in formato mobile e desktop, compreso il funzionamento offline.
+
+## Operazioni VPS
+
+La configurazione di produzione è in `deploy/docker-compose.production.yml` e usa Caddy per HTTPS, frontend statico e proxy esclusivamente verso `/v1/*`.
+
+1. Copia `deploy/.env.example` in un file `.env` nella directory `deploy` sul VPS e sostituisci tutti i valori di esempio con segreti univoci.
+2. Avvia la piattaforma da `deploy` con `docker compose -f docker-compose.production.yml up -d --build`.
+3. Le migrazioni vengono eseguite dall’API prima dell’avvio del server. Per eseguirle manualmente: `docker compose -f docker-compose.production.yml exec api node dist/db/migrate.js`.
+
+Per creare un backup PostgreSQL in formato compresso, imposta `COMPOSE_FILE`, `POSTGRES_DB`, `POSTGRES_USER` e `BACKUP_DIR`, poi esegui `sh deploy/backup-postgres.sh`. Per ripristinare un archivio, imposta anche `ARCHIVE_PATH` ed esegui `sh deploy/restore-postgres.sh`. Il ripristino è distruttivo: usa `pg_restore --clean --if-exists` e deve essere eseguito solo con un archivio verificato.
+
+Le chiavi di provider esterni e i segreti di sessione non devono mai essere inseriti nel frontend, nei file committati o nei log.
 
 ## Dati
 
