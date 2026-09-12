@@ -11,6 +11,6 @@
     "rootDir": "src",
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "drizzle.config.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules", "src/**/*.test.ts"]
 }

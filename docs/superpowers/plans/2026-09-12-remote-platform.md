@@ -167,7 +167,7 @@ git commit -m "feat: expose platform health endpoint"
 - Both adapters implement `ping(): Promise<void>` and `close(): Promise<void>`.
 - The first migration creates `service_metadata(key text primary key, value text not null, updated_at timestamptz not null default now())`.
 
-- [ ] **Step 1: Write failing adapter tests**
+- [x] **Step 1: Write failing adapter tests**
 
 ```ts
 it('uses SELECT 1 as the PostgreSQL readiness probe', async () => {
@@ -183,23 +183,23 @@ it('delegates Redis readiness to PING', async () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `npm test -- platform-adapters.test.ts`
 
 Expected: FAIL because the factories do not exist.
 
-- [ ] **Step 3: Implement adapters and migration configuration**
+- [x] **Step 3: Implement adapters and migration configuration**
 
 Use `postgres.js` behind Drizzle. Keep the raw probe wrapper injectable for tests. Use the Redis client only after `connect()` succeeds and ensure `close()` is idempotent. Add `drizzle-kit` configuration and the initial migration.
 
-- [ ] **Step 4: Verify adapters against unit tests and a disposable Compose stack**
+- [x] **Step 4: Verify adapter behavior before Compose packaging**
 
-Run: `npm test -- platform-adapters.test.ts && docker compose -f compose.dev.yml up --build --wait && curl --fail http://127.0.0.1:3000/healthz && docker compose -f compose.dev.yml down --volumes`
+Run: `npm test -- platform-adapters.test.ts && npm run lint && npm run build`
 
-Expected: adapter tests pass, health returns `{"status":"ok"}`, and cleanup exits with status 0.
+Expected: adapter tests, lint and build pass. The real PostgreSQL/Redis smoke test runs after Compose exists in Task 5.
 
-- [ ] **Step 5: Commit the task**
+- [x] **Step 5: Commit the task**
 
 ```bash
 git add backend/drizzle.config.ts backend/src/db backend/src/cache backend/src/platform-adapters.test.ts backend/package.json backend/package-lock.json
