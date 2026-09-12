@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1726147200000,
+      "tag": "0000_service_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1726147260000,
+      "tag": "0001_accounts_and_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1726147320000,
+      "tag": "0002_sync_device_id",
+      "breakpoints": true
+    }
+  ]
+}

@@ -321,6 +321,8 @@ Run: `npm test -- deployment-contract.test.ts && docker compose -f compose.dev.y
 
 Expected: tests pass and both Compose files render without validation errors.
 
+Deployment contract tests and Compose rendering passed. The Caddy container validation is still pending because Docker Desktop cannot start its Linux engine on this host.
+
 - [x] **Step 5: Document local and VPS operations**
 
 Document frontend and backend start commands, health URL, required secret provisioning, migration command, backup/restore command, and the rule that no provider key belongs in the frontend or repository.
@@ -342,6 +344,8 @@ git commit -m "feat: package remote platform for deployment"
 Run: `cd backend && npm test && npm run lint && npm run build && cd ../frontend && npm test && npm run lint && npm run build && npm run test:e2e`
 
 Expected: all checks pass.
+
+Backend and frontend unit tests, lint and builds passed; the frontend Playwright suite passed all 16 tests. The PostgreSQL/Redis integration suite is present but skipped unless dedicated service URLs are supplied.
 
 - [ ] **Step 2: Perform the real local platform smoke test**
 
@@ -365,6 +369,8 @@ The container smoke test remains pending because Docker Desktop cannot open its 
 git add docs/superpowers/plans/2026-09-12-remote-platform.md
 git commit -m "docs: record remote platform verification"
 ```
+
+The checklist update is kept pending until the platform-only migration metadata and this plan are committed after the account block is closed.
 
 ## Plan self-review
 
