@@ -54,6 +54,8 @@ I test end-to-end avviano la build di produzione e verificano il percorso princi
 
 La configurazione di produzione è in `deploy/docker-compose.production.yml` e usa Caddy per HTTPS, frontend statico e proxy esclusivamente verso `/v1/*`.
 
+Per una prova standalone su un mini PC Linux nella rete locale, usa la guida [deploy standalone su mini PC](docs/standalone-mini-pc.md) e la composizione `deploy/docker-compose.standalone.yml`. L’accesso avviene via HTTP su `http://IP_DEL_MINI_PC:8080`, senza esporre direttamente API, PostgreSQL o Redis.
+
 1. Copia `deploy/.env.example` in un file `.env` nella directory `deploy` sul VPS e sostituisci tutti i valori di esempio con segreti univoci.
 2. Avvia la piattaforma da `deploy` con `docker compose -f docker-compose.production.yml up -d --build`.
 3. Le migrazioni vengono eseguite dall’API prima dell’avvio del server. Per eseguirle manualmente: `docker compose -f docker-compose.production.yml exec api node dist/db/migrate.js`.

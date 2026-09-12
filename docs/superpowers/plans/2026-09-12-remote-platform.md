@@ -264,15 +264,19 @@ git commit -m "feat: define external provider boundaries"
 - Create: `compose.dev.yml`
 - Create: `deploy/Caddy.Dockerfile`
 - Create: `deploy/docker-compose.production.yml`
+- Create: `deploy/docker-compose.standalone.yml`
 - Create: `deploy/Caddyfile`
 - Create: `deploy/.env.example`
+- Create: `deploy/.env.standalone.example`
 - Create: `deploy/backup-postgres.sh`
 - Create: `deploy/restore-postgres.sh`
 - Modify: `README.md`
+- Create: `docs/standalone-mini-pc.md`
 - Test: `backend/src/deployment-contract.test.ts`
 
 **Interfaces:**
 - `compose.dev.yml` exposes API port `3000` and private `postgres`/`redis` services.
+- `deploy/docker-compose.standalone.yml` exposes only the LAN web port `8080` by default and keeps API, `postgres` and `redis` private.
 - Production Caddy serves frontend assets and proxies `/v1/*` only to `api:3000`.
 - Backup scripts require `COMPOSE_FILE`, `POSTGRES_DB`, `POSTGRES_USER` and `BACKUP_DIR`; they refuse an empty backup directory.
 
@@ -313,7 +317,7 @@ Use multi-stage Dockerfiles. Give Postgres and Redis persistent named volumes an
 
 - [ ] **Step 4: Verify container configuration**
 
-Run: `npm test -- deployment-contract.test.ts && docker compose -f compose.dev.yml config && docker compose -f deploy/docker-compose.production.yml config && docker run --rm --mount type=bind,source="$PWD/deploy/Caddyfile",target=/etc/caddy/Caddyfile,readonly caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`
+Run: `npm test -- deployment-contract.test.ts && docker compose -f compose.dev.yml config && docker compose -f deploy/docker-compose.standalone.yml config && docker compose -f deploy/docker-compose.production.yml config && docker run --rm --mount type=bind,source="$PWD/deploy/Caddyfile",target=/etc/caddy/Caddyfile,readonly caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`
 
 Expected: tests pass and both Compose files render without validation errors.
 
@@ -341,7 +345,7 @@ Expected: all checks pass.
 
 - [ ] **Step 2: Perform the real local platform smoke test**
 
-Run: `docker compose -f compose.dev.yml up --build --wait && curl --fail http://127.0.0.1:3000/healthz && docker compose -f compose.dev.yml down --volumes`
+Run: `docker compose -f deploy/docker-compose.standalone.yml --env-file deploy/.env.standalone up --build --wait && docker compose -f deploy/docker-compose.standalone.yml --env-file deploy/.env.standalone exec -T api node -e "fetch('http://127.0.0.1:3000/healthz').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))" && docker compose -f deploy/docker-compose.standalone.yml --env-file deploy/.env.standalone down --volumes`
 
 Expected: health returns `{"status":"ok"}` and no container remains running after cleanup.
 

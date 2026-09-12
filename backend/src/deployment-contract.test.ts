@@ -56,4 +56,15 @@ describe('deployment contracts', () => {
       expect.objectContaining({ target: 443, published: '443' }),
     ]);
   });
+
+  it('provides a LAN-only standalone composition with one web entrypoint', () => {
+    const compose = readComposeConfig('deploy/docker-compose.standalone.yml');
+
+    expect(compose.services.postgres.ports).toBeUndefined();
+    expect(compose.services.redis.ports).toBeUndefined();
+    expect(compose.services.api.ports).toBeUndefined();
+    expect(compose.services.caddy.ports).toEqual([
+      expect.objectContaining({ target: 8080, published: '8080' }),
+    ]);
+  });
 });
