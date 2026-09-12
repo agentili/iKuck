@@ -1,4 +1,5 @@
 import type { AppConfig, ProviderConfig } from '../config.js';
+import { createResendEmailProvider } from './resend.js';
 import {
   createUnavailableEmailProvider,
   createUnavailableNutritionProvider,
@@ -17,7 +18,9 @@ export const createProviders = (
   const providers: ProviderConfig = config.providers;
 
   return {
-    email: createUnavailableEmailProvider(reasonFor(providers.resendApiKey)),
+    email: providers.resendApiKey !== undefined && providers.resendFrom !== undefined
+      ? createResendEmailProvider({ apiKey: providers.resendApiKey, from: providers.resendFrom })
+      : createUnavailableEmailProvider(reasonFor(providers.resendApiKey)),
     nutrition: createUnavailableNutritionProvider(reasonFor(providers.usdaApiKey)),
     recipes: createUnavailableRecipeProvider(reasonFor(providers.openAiApiKey)),
   };

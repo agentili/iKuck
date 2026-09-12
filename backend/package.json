@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@ikuck/shared": "file:../shared",
+    "argon2": "^0.45.1",
     "drizzle-orm": "^0.44.7",
     "fastify": "^5.5.0",
     "postgres": "^3.4.7",
