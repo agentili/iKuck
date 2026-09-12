@@ -333,7 +333,7 @@ git commit -m "feat: package remote platform for deployment"
 **Files:**
 - Modify: `docs/superpowers/plans/2026-09-12-remote-platform.md`
 
-- [ ] **Step 1: Run all backend and frontend checks**
+- [x] **Step 1: Run all backend and frontend checks**
 
 Run: `cd backend && npm test && npm run lint && npm run build && cd ../frontend && npm test && npm run lint && npm run build && npm run test:e2e`
 
@@ -345,11 +345,15 @@ Run: `docker compose -f compose.dev.yml up --build --wait && curl --fail http://
 
 Expected: health returns `{"status":"ok"}` and no container remains running after cleanup.
 
-- [ ] **Step 3: Review repository scope**
+- [x] **Step 3: Review repository scope**
 
 Run: `git diff --check && git status --short`
 
 Expected: only platform files and this plan are staged; no `.env`, provider secret, build output or `E2E_VERIFICATION.md` is included.
+
+The scope review found one pre-existing unstaged deletion, `.continue/rules/CONTINUE.md`; it was preserved and excluded from every platform commit.
+
+The container smoke test remains pending because Docker Desktop cannot open its stopped `com.docker.service` on this host. No container or volume was created.
 
 - [ ] **Step 4: Commit the plan checklist update**
 
