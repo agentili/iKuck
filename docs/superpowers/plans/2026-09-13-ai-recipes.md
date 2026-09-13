@@ -190,11 +190,11 @@ git commit -m "feat: add private AI recipe routes"
 - Verified users can enable/revoke consent, generate from current pantry contents, see quota/provider errors in Italian, and view saved private recipes without adding them to `RECIPES`.
 - `fetchAiRecipes` and `generateAiRecipe` use `apiRequest` and never accept or store a provider key.
 
-- [ ] **Step 1: Write failing API and component tests**
+- [x] **Step 1: Write failing API and component tests**
 
 Cover guest no-network behavior, consent checkbox accessibility, revocation, generation request payload, five-attempt exhaustion message, private recipe rendering and no mutation of pantry lots.
 
-- [ ] **Step 2: Run focused tests and confirm they fail**
+- [x] **Step 2: Run focused tests and confirm they fail**
 
 Run:
 
@@ -204,15 +204,15 @@ cd frontend && npm test -- --run src/ai/aiRecipeApi.test.ts src/components/ai/Ai
 
 Expected: FAIL because the API wrapper and panel do not exist.
 
-- [ ] **Step 3: Implement the explicit consent flow**
+- [x] **Step 3: Implement the explicit consent flow**
 
 Keep consent server-side and show the current state after reload. Do not enable generation merely because a checkbox is clicked locally: save consent first and surface server errors. Revocation hides generation and leaves already saved private recipes readable until the user removes them.
 
-- [ ] **Step 4: Implement generation and private rendering**
+- [x] **Step 4: Implement generation and private rendering**
 
 Send stable ingredient labels and the current profile, show a bounded loading state, render title/ingredients/steps/allergen metadata and keep pantry state unchanged. Add a detail link only if the private recipe has a route-safe id; do not route it through the curated `getRecipeById` lookup.
 
-- [ ] **Step 5: Verify and commit the PWA unit**
+- [x] **Step 5: Verify and commit the PWA unit**
 
 Run all frontend tests, lint, typecheck and build, then commit:
 

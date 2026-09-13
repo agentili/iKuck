@@ -49,3 +49,8 @@ export interface RecipeSuggestion {
   missingIngredientIds: string[];
   quantityWarnings: string[];
 }
+
+export interface AiRecipeGenerationState {
+  consentEnabled: boolean;
+  recipes: import('@ikuck/shared/contracts').GeneratedRecipe[];
+}

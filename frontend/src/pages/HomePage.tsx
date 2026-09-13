@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Clock3, RefreshCw, ShoppingCart, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import AccountPanel from '../components/account/AccountPanel';
+import AiRecipePanel from '../components/ai/AiRecipePanel';
 import IngredientChip from '../components/pantry/IngredientChip';
 import IngredientInput from '../components/pantry/IngredientInput';
 import IngredientSuggestions from '../components/pantry/IngredientSuggestions';
@@ -14,6 +15,7 @@ import { findHelpfulIngredients, findRecipeSuggestions } from '../domain/suggest
 import type { IngredientDefinition, ParsedIngredient, RecipeSuggestion } from '../domain/types';
 import { hydratePantryStore, usePantryStore } from '../store/localPantryStore';
 import { useDietProfileStore } from '../store/dietProfileStore';
+import { useAuthStore } from '../auth/authStore';
 
 export default function HomePage() {
   const hasHydrated = usePantryStore((state) => state.hasHydrated);
@@ -34,6 +36,8 @@ export default function HomePage() {
   const dietProfile = useDietProfileStore((state) => state.profile);
   const setDietProfile = useDietProfileStore((state) => state.setDietProfile);
   const resetDietProfile = useDietProfileStore((state) => state.resetDietProfile);
+  const user = useAuthStore((state) => state.user);
+  const csrfToken = useAuthStore((state) => state.csrfToken);
 
   useEffect(() => {
     void hydratePantryStore();
@@ -148,6 +152,13 @@ export default function HomePage() {
       <div className="mt-6 max-w-3xl">
         <AccountPanel />
       </div>
+
+      <AiRecipePanel
+        ingredients={pantryItems.map((item) => item.label)}
+        dietProfile={dietProfile}
+        user={user}
+        csrfToken={csrfToken}
+      />
 
       <section aria-live="polite" aria-atomic="false" className="mt-10">
         {hasSearched && (

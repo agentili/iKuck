@@ -1,5 +1,5 @@
 export interface ApiRequestOptions<TBody = unknown> {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: TBody;
   csrfToken?: string;
   fetch?: typeof globalThis.fetch;
