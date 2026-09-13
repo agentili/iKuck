@@ -136,3 +136,99 @@ test('manifest is available and the application works offline after first load',
   await expect(page.getByRole('heading', { name: /Cosa c’è in dispensa/i })).toBeVisible();
   await context.setOffline(false);
 });
+
+test('verified users can consent to private AI recipes without changing pantry lots', async ({ page }) => {
+  let consentEnabled = false;
+  const recipes: Array<Record<string, unknown>> = [];
+  const generationBodies: unknown[] = [];
+
+  await page.route('**/v1/auth/session', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        authenticated: true,
+        user: { id: 'browser-user', email: 'browser@example.com', emailVerifiedAt: '2026-09-13T12:00:00.000Z' },
+        csrfToken: 'csrf-token',
+        expiresAt: '2026-10-13T12:00:00.000Z',
+      }),
+    });
+  });
+
+  await page.route('**/v1/ai-recipes**', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === '/v1/ai-recipes/consent' && request.method() === 'GET') {
+      await route.fulfill({ json: { consent: { enabled: consentEnabled, updatedAt: '2026-09-13T12:00:00.000Z' } } });
+      return;
+    }
+    if (url.pathname === '/v1/ai-recipes/consent' && request.method() === 'PUT') {
+      const body = request.postDataJSON() as { enabled: boolean };
+      consentEnabled = body.enabled;
+      await route.fulfill({ json: { consent: { enabled: consentEnabled, updatedAt: '2026-09-13T12:01:00.000Z' } } });
+      return;
+    }
+    if (url.pathname === '/v1/ai-recipes' && request.method() === 'GET') {
+      await route.fulfill({ json: { recipes } });
+      return;
+    }
+    if (url.pathname === '/v1/ai-recipes' && request.method() === 'POST') {
+      generationBodies.push(request.postDataJSON());
+      const recipe = {
+        id: 'browser-ai-recipe',
+        source: 'ai',
+        title: 'Ceci croccanti al pomodoro',
+        description: 'Una ricetta privata di prova.',
+        ingredients: [{ name: 'Ceci', amount: '240 g' }, { name: 'Pomodoro', amount: '200 g' }],
+        steps: ['Scola i ceci.', 'Cuoci tutto in padella.'],
+        diets: ['vegan'],
+        allergens: [],
+        createdAt: '2026-09-13T12:02:00.000Z',
+        updatedAt: '2026-09-13T12:02:00.000Z',
+      };
+      recipes.unshift(recipe);
+      await route.fulfill({ status: 201, json: { recipe, quota: { allowed: true, used: 1, remaining: 4 } } });
+      return;
+    }
+    if (url.pathname === '/v1/ai-recipes/browser-ai-recipe' && request.method() === 'DELETE') {
+      recipes.splice(0, recipes.length);
+      await route.fulfill({ status: 204, body: '' });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.goto('/');
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
+  await page.getByLabel('Ingredienti presenti').fill('ceci, pomodoro');
+  await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await page.getByRole('button', { name: 'Aggiungi lotto' }).first().click();
+  await page.getByLabel('Quantità del lotto').fill('500');
+  await page.getByLabel('Unità di misura').selectOption('g');
+  await page.getByRole('button', { name: 'Salva dettagli' }).click();
+
+  const pantry = page.getByRole('list', { name: 'La tua dispensa' });
+  const pantryBefore = await pantry.innerText();
+  const lots = page.getByRole('list', { name: 'Lotti di Ceci' });
+  const lotsBefore = await lots.innerText();
+  const aiPanel = page.getByRole('region', { name: 'Ricette AI private' });
+  const consent = aiPanel.getByRole('checkbox', { name: /acconsento all’uso degli ingredienti/i });
+  await expect(consent).toBeVisible();
+  await consent.check();
+  await aiPanel.getByRole('button', { name: 'Salva consenso' }).click();
+  await aiPanel.getByRole('button', { name: 'Genera ricetta AI' }).click();
+  await expect(aiPanel.getByRole('heading', { name: 'Ceci croccanti al pomodoro' })).toBeVisible();
+  expect(generationBodies).toHaveLength(1);
+  expect(generationBodies[0]).toMatchObject({ ingredients: ['Ceci', 'Pomodoro'] });
+  expect(await pantry.innerText()).toBe(pantryBefore);
+  expect(await lots.innerText()).toBe(lotsBefore);
+
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'Ricette AI private' }).getByRole('heading', { name: 'Ceci croccanti al pomodoro' })).toBeVisible();
+  const reloadedAiPanel = page.getByRole('region', { name: 'Ricette AI private' });
+  await reloadedAiPanel.getByRole('checkbox', { name: /acconsento all’uso degli ingredienti/i }).uncheck();
+  await reloadedAiPanel.getByRole('button', { name: 'Salva consenso' }).click();
+  await expect(reloadedAiPanel.getByRole('button', { name: 'Genera ricetta AI' })).toHaveCount(0);
+  await expect(reloadedAiPanel.getByRole('heading', { name: 'Ceci croccanti al pomodoro' })).toBeVisible();
+});

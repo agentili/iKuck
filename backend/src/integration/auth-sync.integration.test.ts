@@ -11,6 +11,8 @@ import { createDatabase } from '../db/client.js';
 import { createDrizzleProfileRepository } from '../profile/repository.js';
 import { createDrizzleSyncRepository } from '../sync/repository.js';
 import { hashOpaqueToken } from '../auth/tokens.js';
+import { createRedisGenerationRateLimiter } from '../ai/rateLimit.js';
+import type { RecipeGenerationProvider } from '../providers/types.js';
 
 const databaseUrl = process.env.INTEGRATION_DATABASE_URL;
 const redisUrl = process.env.INTEGRATION_REDIS_URL;
@@ -48,6 +50,16 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     });
     const sync = createDrizzleSyncRepository(database.db);
     const profile = createDrizzleProfileRepository(database.db, sync);
+    const recipeProvider: RecipeGenerationProvider = {
+      generate: async () => ({
+        title: 'Ricetta AI di integrazione',
+        description: 'Ricetta generata dal provider finto.',
+        ingredients: [{ name: 'Ceci', amount: '240 g' }],
+        steps: ['Scola i ceci.'],
+        diets: ['vegan'],
+        allergens: [],
+      }),
+    };
     app = createApp({
       database,
       cache,
@@ -59,6 +71,13 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       activity: { repository: sync, authService: auth, appOrigin },
       recipePreferences: { repository: sync, authService: auth, appOrigin },
       dietProfile: { repository: sync, authService: auth, appOrigin },
+      aiRecipes: {
+        provider: recipeProvider,
+        limiter: createRedisGenerationRateLimiter(cache),
+        repository: sync,
+        authService: auth,
+        appOrigin,
+      },
     });
     await app.ready();
   });
@@ -284,6 +303,29 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     const dietProfileRead = await app.inject({ method: 'GET', url: '/v1/profile/preferences', headers: { cookie } });
     expect(dietProfileRead.statusCode).toBe(200);
     expect(dietProfileRead.json<{ profile: { diet: string } }>().profile.diet).toBe('vegetarian');
+
+    const aiConsent = await app.inject({
+      method: 'PUT',
+      url: '/v1/ai-recipes/consent',
+      headers: { origin: appOrigin, cookie, 'x-csrf-token': loginBody.csrfToken },
+      payload: { enabled: true },
+    });
+    expect(aiConsent.statusCode).toBe(200);
+    const aiRecipe = await app.inject({
+      method: 'POST',
+      url: '/v1/ai-recipes',
+      headers: { origin: appOrigin, cookie, 'x-csrf-token': loginBody.csrfToken },
+      payload: {
+        ingredients: ['Ceci'],
+        constraints: [],
+        dietProfile: { diet: 'vegan', excludedAllergens: [], nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null } },
+      },
+    });
+    expect(aiRecipe.statusCode).toBe(201);
+    expect(aiRecipe.json<{ recipe: { source: string; title: string } }>().recipe).toMatchObject({ source: 'ai', title: 'Ricetta AI di integrazione' });
+    const aiRecipes = await app.inject({ method: 'GET', url: '/v1/ai-recipes', headers: { cookie } });
+    expect(aiRecipes.statusCode).toBe(200);
+    expect(aiRecipes.json<{ recipes: Array<{ title: string }> }>().recipes).toContainEqual(expect.objectContaining({ title: 'Ricetta AI di integrazione' }));
 
     const exported = await app.inject({ method: 'GET', url: '/v1/profile/export', headers: { cookie } });
     expect(exported.statusCode).toBe(200);

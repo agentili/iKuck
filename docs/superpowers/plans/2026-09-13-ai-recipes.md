@@ -230,23 +230,23 @@ git commit -m "feat: add private AI recipe experience"
 - Modify: `README.md`
 - Modify: `docs/superpowers/plans/2026-09-13-ai-recipes.md`
 
-- [ ] **Step 1: Add mocked desktop/mobile browser coverage**
+- [x] **Step 1: Add mocked desktop/mobile browser coverage**
 
 Mock the AI API and verify a verified user can consent, generate, reload and see the saved private recipe; revoke consent and confirm the generate control disappears. Assert the pantry list and lot data are unchanged.
 
-- [ ] **Step 2: Run the complete verification set**
+- [x] **Step 2: Run the complete verification set**
 
 Run backend and frontend suites, lint, typecheck, builds and Playwright. Run the real OpenAI smoke only when `OPENAI_API_KEY` is explicitly supplied; otherwise record the exact skip. Run PostgreSQL/Redis integration only with configured URLs and record the skip otherwise.
 
-- [ ] **Step 3: Review privacy and quota boundaries**
+- [x] **Step 3: Review privacy and quota boundaries**
 
 Run `git diff --check` and inspect that `store: false`, the provider key boundary, consent gate, Redis limit, private account filtering, compatible allergen metadata and no-pantry-mutation behavior are all covered by tests.
 
-- [ ] **Step 4: Update README and plan evidence**
+- [x] **Step 4: Update README and plan evidence**
 
 Document that AI is optional, verified-account-only, consent-based, limited to five generations per UTC day, private, compatible with the active diet/allergen filters and unavailable without a configured provider key.
 
-- [ ] **Step 5: Commit the completed AI feature**
+- [x] **Step 5: Commit the completed AI feature**
 
 ```bash
 git add README.md frontend/e2e backend/src/integration docs/superpowers/plans/2026-09-13-ai-recipes.md
