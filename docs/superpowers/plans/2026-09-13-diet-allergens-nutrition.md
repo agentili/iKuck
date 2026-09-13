@@ -135,11 +135,11 @@ git commit -m "feat: define dietary recipe compatibility"
 - Profile mutations use entity type `diet_profile`, entity id `profile` and the complete `DietProfile` payload.
 - `registerDietProfileSnapshotListener` updates the store without creating an outgoing mutation.
 
-- [ ] **Step 1: Write failing storage, store and sync tests**
+- [x] **Step 1: Write failing storage, store and sync tests**
 
 Cover malformed persisted data falling back to the safe default, round-trip of all 14 allergen selections and nutrition thresholds, immediate validated updates, rejection without state changes, `diet_profile` queue payloads, remote application without re-enqueueing and explicit account import including the profile.
 
-- [ ] **Step 2: Run focused tests and confirm they fail**
+- [x] **Step 2: Run focused tests and confirm they fail**
 
 Run:
 
@@ -149,7 +149,7 @@ cd frontend && npm test -- --run src/storage/dietProfileStorage.test.ts src/stor
 
 Expected: FAIL because the profile storage, store and sync entity handling do not exist.
 
-- [ ] **Step 3: Implement defaulted IndexedDB persistence and the Zustand store**
+- [x] **Step 3: Implement defaulted IndexedDB persistence and the Zustand store**
 
 Use this safe default and preserve the existing user decision that amounts are optional:
 
@@ -163,11 +163,11 @@ const DEFAULT_DIET_PROFILE: DietProfilePayload = {
 
 Normalize and sort allergen codes, trim no user-facing recipe names, timestamp successful writes with `new Date().toISOString()` and serialize consecutive writes. Keep the in-memory profile updated even if a local write fails, matching the existing pantry/shopping behavior.
 
-- [ ] **Step 4: Extend sync and import**
+- [x] **Step 4: Extend sync and import**
 
 Add profile listeners, include the current profile in `importLocalData`, apply `diet_profile` upserts/deletes to local storage and validate that remote payloads use entity id `profile`. Notify the profile store only after the persisted snapshot is written.
 
-- [ ] **Step 5: Verify and commit the local profile unit**
+- [x] **Step 5: Verify and commit the local profile unit**
 
 Run all frontend tests, lint, typecheck and build. Assert that applying a remote profile leaves pantry, shopping and activity storage untouched. Commit:
 

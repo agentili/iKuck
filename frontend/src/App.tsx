@@ -11,6 +11,7 @@ import ActivityPage from './pages/ActivityPage';
 import { syncOnReconnect, type SyncSession } from './sync/syncQueue';
 import { hydrateShoppingListStore } from './store/shoppingListStore';
 import { hydrateActivityStore } from './store/activityStore';
+import { hydrateDietProfileStore } from './store/dietProfileStore';
 
 export default function App() {
   const user = useAuthStore((state) => state.user);
@@ -24,6 +25,7 @@ export default function App() {
   useEffect(() => {
     void hydrateShoppingListStore();
     void hydrateActivityStore();
+    void hydrateDietProfileStore();
   }, []);
 
   useEffect(() => {

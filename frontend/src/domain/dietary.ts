@@ -43,6 +43,17 @@ const isAllergen = (value: unknown): value is EuAllergen => typeof value === 'st
 const isValidThreshold = (value: unknown): value is number | null => value === null
   || (typeof value === 'number' && Number.isFinite(value) && value >= 0);
 
+export const isDietProfile = (value: unknown): value is DietProfile => {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Partial<DietProfile>;
+  if (!Array.isArray(candidate.excludedAllergens)
+    || typeof candidate.nutrition !== 'object'
+    || candidate.nutrition === null
+    || typeof candidate.updatedAt !== 'string') return false;
+  return validateDietProfileDetails(candidate.diet, candidate.excludedAllergens, candidate.nutrition).length === 0
+    && !Number.isNaN(new Date(candidate.updatedAt).getTime());
+};
+
 export const validateDietProfileDetails = (
   diet: unknown,
   excludedAllergens: readonly unknown[],

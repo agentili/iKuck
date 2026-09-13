@@ -1,4 +1,4 @@
-export type SyncEntityType = 'pantry_item' | 'pantry_lot' | 'staple_preference' | 'shopping_list_item' | 'cook_event' | 'recipe_preference';
+export type SyncEntityType = 'pantry_item' | 'pantry_lot' | 'staple_preference' | 'shopping_list_item' | 'cook_event' | 'recipe_preference' | 'diet_profile';
 
 export type SyncOperation = 'upsert' | 'delete';
 

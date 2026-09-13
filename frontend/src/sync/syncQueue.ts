@@ -1,5 +1,6 @@
 import type {
   CookEvent,
+  DietProfile,
   RecipePreference,
   ShoppingListItem,
   SyncChange,
@@ -26,6 +27,7 @@ import {
   type PantrySnapshot,
 } from '../storage/pantryStorage';
 import { isCookEvent, isRecipePreference } from '../domain/activity';
+import { DEFAULT_DIET_PROFILE, isDietProfile, normalizeDietProfile } from '../domain/dietary';
 import { isShoppingListItem } from '../domain/shoppingList';
 import {
   readCookEvents,
@@ -34,6 +36,7 @@ import {
   writeRecipePreferences,
 } from '../storage/activityStorage';
 import { readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
+import { readDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
 
 const DEVICE_ID_META_KEY = 'deviceId';
 const CURSOR_META_KEY = 'cursor';
@@ -63,6 +66,7 @@ const activitySnapshotListeners = new Set<(snapshot: {
   events: CookEvent[];
   preferences: RecipePreference[];
 }) => void>();
+const dietProfileSnapshotListeners = new Set<(profile: DietProfile) => void>();
 
 const createRandomId = (): string => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -178,6 +182,7 @@ export async function importLocalData(session: SyncSession): Promise<SyncChangeS
   for (const preference of await readRecipePreferences()) {
     await enqueueMutation(await createPantryMutation('recipe_preference', preference.recipeId, 'upsert', preference));
   }
+  await enqueueMutation(await createPantryMutation('diet_profile', 'profile', 'upsert', await readDietProfile()));
 
   return syncNow({ session });
 }
@@ -278,6 +283,25 @@ const applyServerChanges = async (changes: SyncChange[]): Promise<void> => {
     const snapshot = { events, preferences };
     for (const listener of activitySnapshotListeners) listener(snapshot);
   }
+
+  const dietProfileChanges = changes.filter((change) => change.entityType === 'diet_profile');
+  if (dietProfileChanges.length > 0) {
+    let profile = await readDietProfile();
+    let hasProfileChange = false;
+    for (const change of dietProfileChanges) {
+      if (change.entityId !== 'profile') continue;
+      hasProfileChange = true;
+      if (change.operation === 'upsert' && isDietProfile(change.payload)) {
+        profile = change.payload;
+      } else if (change.operation === 'delete') {
+        profile = normalizeDietProfile({ ...DEFAULT_DIET_PROFILE, updatedAt: new Date().toISOString() });
+      }
+    }
+    if (hasProfileChange) {
+      await writeDietProfile(profile);
+      for (const listener of dietProfileSnapshotListeners) listener(profile);
+    }
+  }
 };
 
 export function registerPantrySnapshotListener(listener: (snapshot: PantrySnapshot) => void): () => void {
@@ -296,6 +320,11 @@ export function registerActivitySnapshotListener(listener: (snapshot: {
 }) => void): () => void {
   activitySnapshotListeners.add(listener);
   return () => activitySnapshotListeners.delete(listener);
+}
+
+export function registerDietProfileSnapshotListener(listener: (profile: DietProfile) => void): () => void {
+  dietProfileSnapshotListeners.add(listener);
+  return () => dietProfileSnapshotListeners.delete(listener);
 }
 
 export async function syncNow({ fetch, request = apiRequest, session }: SyncRequestOptions): Promise<SyncChangeSet> {

@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CookEvent, PantryLot, RecipePreference, ShoppingListItem, SyncChangeSet, SyncMutation } from '@ikuck/shared/contracts';
+import type { CookEvent, DietProfile, PantryLot, RecipePreference, ShoppingListItem, SyncChangeSet, SyncMutation } from '@ikuck/shared/contracts';
 import { deleteLocalDatabase, readMeta } from '../storage/indexedDb';
 import { readCookEvents, readRecipePreferences, writeCookEvents, writeRecipePreferences } from '../storage/activityStorage';
 import { readPantrySnapshot } from '../storage/pantryStorage';
 import { readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
+import { readDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
 import {
   enqueueMutation,
   getDeviceId,
@@ -252,5 +253,43 @@ describe('sync queue', () => {
     await expect(readCookEvents()).resolves.toEqual([event]);
     await expect(readRecipePreferences()).resolves.toEqual([preference]);
     await expect(readQueuedMutations()).resolves.toEqual([]);
+  });
+
+  it('applies a remote diet profile without re-enqueueing it', async () => {
+    const profile: DietProfile = {
+      diet: 'pescatarian',
+      excludedAllergens: ['milk', 'peanuts'],
+      nutrition: { maxCaloriesPerServing: 700, minProteinGramsPerServing: 25 },
+      updatedAt: '2026-09-13T12:00:00.000Z',
+    };
+    const fetch = vi.fn().mockResolvedValue(responseFor({
+      changes: [{
+        mutationId: 'profile-change', deviceId: 'device-remote', entityType: 'diet_profile', entityId: 'profile',
+        operation: 'upsert', payload: profile, clientUpdatedAt: profile.updatedAt, serverSequence: 9,
+      }],
+      nextCursor: 9,
+    }));
+
+    await syncNow({ fetch, session });
+
+    await expect(readDietProfile()).resolves.toEqual(profile);
+    await expect(readQueuedMutations()).resolves.toEqual([]);
+  });
+
+  it('includes the local diet profile in the explicit account import', async () => {
+    const profile: DietProfile = {
+      diet: 'vegetarian',
+      excludedAllergens: ['fish'],
+      nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: 20 },
+      updatedAt: '2026-09-13T12:00:00.000Z',
+    };
+    await writeDietProfile(profile);
+    const fetch = vi.fn().mockResolvedValue(responseFor({ changes: [], nextCursor: 0 }));
+    vi.stubGlobal('fetch', fetch);
+
+    await importLocalData(session);
+
+    expect(fetch).toHaveBeenCalledWith('/v1/sync', expect.objectContaining({ body: expect.stringContaining('diet_profile') }));
+    vi.unstubAllGlobals();
   });
 });
