@@ -233,4 +233,92 @@ describe('sync routes', () => {
     expect(response.json()).toMatchObject({ code: 'invalid_payload' });
     await app.close();
   });
+
+  it('accepts AI consent and generated recipe entities while validating private recipe deletes', async () => {
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository: createMemorySyncRepository(), authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+    });
+    const headers = {
+      cookie: 'ikuck_session=session-token',
+      origin: 'http://127.0.0.1:5173',
+      'x-csrf-token': 'csrf-token',
+    };
+    const consent = {
+      enabled: true,
+      updatedAt: '2026-09-13T12:00:00.000Z',
+    };
+    const recipe = {
+      id: 'generated-1',
+      source: 'ai' as const,
+      title: 'Ceci croccanti',
+      description: 'Una ricetta semplice.',
+      ingredients: [{ name: 'Ceci', amount: '240 g' }],
+      steps: ['Scola i ceci.'],
+      diets: ['vegan' as const],
+      allergens: [],
+      createdAt: '2026-09-13T12:00:00.000Z',
+      updatedAt: '2026-09-13T12:00:00.000Z',
+    };
+
+    const valid = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers,
+      payload: {
+        deviceId: 'device-1',
+        cursor: 0,
+        mutations: [
+          {
+            mutationId: 'ai-consent-1', deviceId: 'device-1', entityType: 'ai_consent', entityId: 'profile',
+            operation: 'upsert', payload: consent, clientUpdatedAt: consent.updatedAt,
+          },
+          {
+            mutationId: 'generated-1', deviceId: 'device-1', entityType: 'generated_recipe', entityId: recipe.id,
+            operation: 'upsert', payload: recipe, clientUpdatedAt: recipe.updatedAt,
+          },
+        ],
+      },
+    });
+    expect(valid.statusCode).toBe(200);
+    expect(valid.json()).toMatchObject({ changes: [
+      { entityType: 'ai_consent', entityId: 'profile' },
+      { entityType: 'generated_recipe', entityId: recipe.id },
+    ] });
+
+    const removed = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers,
+      payload: {
+        deviceId: 'device-1',
+        cursor: valid.json().nextCursor,
+        mutations: [{
+          mutationId: 'generated-delete-1', deviceId: 'device-1', entityType: 'generated_recipe', entityId: recipe.id,
+          operation: 'delete', payload: null, clientUpdatedAt: '2026-09-13T12:01:00.000Z',
+        }],
+      },
+    });
+    expect(removed.statusCode).toBe(200);
+    expect(removed.json()).toMatchObject({ changes: [{ entityType: 'generated_recipe', operation: 'delete', payload: null }] });
+
+    const invalid = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers,
+      payload: {
+        deviceId: 'device-1',
+        cursor: removed.json().nextCursor,
+        mutations: [{
+          mutationId: 'generated-invalid-1', deviceId: 'device-1', entityType: 'generated_recipe', entityId: 'generated-2',
+          operation: 'upsert', payload: { ...recipe, id: 'generated-2', title: '' }, clientUpdatedAt: recipe.updatedAt,
+        }],
+      },
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toMatchObject({ code: 'invalid_payload' });
+    await app.close();
+  });
 });

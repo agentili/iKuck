@@ -8,6 +8,7 @@ import { createDrizzleAuthRepository } from './auth/repository.js';
 import { createProviders } from './providers/factory.js';
 import { createDrizzleProfileRepository } from './profile/repository.js';
 import { createDrizzleSyncRepository } from './sync/repository.js';
+import { createRedisGenerationRateLimiter } from './ai/rateLimit.js';
 
 export const start = async () => {
   const config = loadConfig(process.env);
@@ -43,6 +44,13 @@ export const start = async () => {
       recipePreferences: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       dietProfile: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       recipeNutrition: { provider: providers.nutrition, authService: auth, appOrigin: config.appOrigin },
+      aiRecipes: {
+        provider: providers.recipes,
+        limiter: createRedisGenerationRateLimiter(cache),
+        repository: sync,
+        authService: auth,
+        appOrigin: config.appOrigin,
+      },
     },
     { logger: { level: config.logLevel, redact: ['req.headers.cookie', 'req.headers.authorization'] } },
   );

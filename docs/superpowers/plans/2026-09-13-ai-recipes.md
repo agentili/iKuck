@@ -140,11 +140,11 @@ git commit -m "feat: add bounded OpenAI recipe provider"
 - `POST /v1/ai-recipes` requires verified session, active consent, same-origin and CSRF; it validates pantry/profile input, consumes one Redis attempt, calls only the injected provider, validates compatibility and stores one private recipe.
 - Provider unavailable, invalid model output and exhausted quota map to stable 503/429 errors without exposing provider details.
 
-- [ ] **Step 1: Write failing route and sync tests**
+- [x] **Step 1: Write failing route and sync tests**
 
 Cover consent default/update/revocation, origin and CSRF rejection, unauthenticated and unverified access, five successful generations with the sixth rejected, private account scoping, incompatible model output rejection, generated-recipe deletion sync validation and provider-unavailable handling.
 
-- [ ] **Step 2: Run focused tests and confirm they fail**
+- [x] **Step 2: Run focused tests and confirm they fail**
 
 Run:
 
@@ -154,15 +154,15 @@ cd backend && npm test -- --run src/routes/aiRecipes.test.ts src/routes/sync.tes
 
 Expected: FAIL because the routes and entity validation do not exist.
 
-- [ ] **Step 3: Implement consent and private resource routes**
+- [x] **Step 3: Implement consent and private resource routes**
 
 Store consent and recipes through the existing last-write-wins sync repository with ids `profile` and generated recipe UUIDs. Filter every read by `session.userId`; do not reuse catalog ids or return the provider request. Require active consent immediately before the provider call.
 
-- [ ] **Step 4: Wire production dependencies**
+- [x] **Step 4: Wire production dependencies**
 
 Select the OpenAI provider only when `OPENAI_API_KEY` exists, pass `OPENAI_MODEL` with a stable development default, construct the Redis limiter from the cache adapter and register the routes in `createApp` and `server.ts`.
 
-- [ ] **Step 5: Verify and commit the authenticated backend unit**
+- [x] **Step 5: Verify and commit the authenticated backend unit**
 
 Run the complete backend suite, lint and build; run the PostgreSQL/Redis integration suite only when its URLs are configured. Commit:
 

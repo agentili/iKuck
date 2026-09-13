@@ -13,7 +13,10 @@ export type AuthErrorCode =
   | 'provider_unavailable'
   | 'session_required'
   | 'csrf_failed'
-  | 'invalid_payload';
+  | 'invalid_payload'
+  | 'ai_consent_required'
+  | 'ai_daily_limit_reached'
+  | 'ai_recipe_incompatible';
 
 export class AuthServiceError extends Error {
   constructor(

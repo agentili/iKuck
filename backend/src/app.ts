@@ -11,6 +11,7 @@ import { type ActivityRouteDependencies, registerActivityRoutes } from './routes
 import { type RecipePreferenceRouteDependencies, registerRecipePreferenceRoutes } from './routes/recipePreferences.js';
 import { type DietProfileRouteDependencies, registerDietProfileRoutes } from './routes/dietProfile.js';
 import { type RecipeNutritionRouteDependencies, registerRecipeNutritionRoutes } from './routes/recipeNutrition.js';
+import { type AiRecipeRouteDependencies, registerAiRecipeRoutes } from './routes/aiRecipes.js';
 
 export type { PlatformDependencies } from './platform.js';
 
@@ -24,6 +25,7 @@ export interface ExtendedPlatformDependencies extends PlatformDependencies {
   recipePreferences?: RecipePreferenceRouteDependencies;
   dietProfile?: DietProfileRouteDependencies;
   recipeNutrition?: RecipeNutritionRouteDependencies;
+  aiRecipes?: AiRecipeRouteDependencies;
 }
 
 export const createApp = (
@@ -48,5 +50,6 @@ export const createApp = (
   if (dependencies.recipePreferences !== undefined) app.register(registerRecipePreferenceRoutes(dependencies.recipePreferences));
   if (dependencies.dietProfile !== undefined) app.register(registerDietProfileRoutes(dependencies.dietProfile));
   if (dependencies.recipeNutrition !== undefined) app.register(registerRecipeNutritionRoutes(dependencies.recipeNutrition));
+  if (dependencies.aiRecipes !== undefined) app.register(registerAiRecipeRoutes(dependencies.aiRecipes));
   return app;
 };
