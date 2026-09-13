@@ -121,7 +121,7 @@ git commit -m "feat: personalize local recipe suggestions"
 - Derive signatures from the current ingredient ids, lot summaries, staple ids, diet profile, activity events and preferences so a `useEffect` can observe value changes without calling state setters during render.
 - The refresh action increments `varietySeed`; it must call the same local calculation with `createSeededRandom(varietySeed)` and retain `hasSearched`.
 
-- [ ] **Step 1: Write failing Home integration tests**
+- [x] **Step 1: Write failing Home integration tests**
 
 Extend `HomePage.test.tsx` with these cases:
 
@@ -133,7 +133,7 @@ Extend `HomePage.test.tsx` with these cases:
 
 Reset `useActivityStore` in the test setup for deterministic cases and keep the existing pantry/storage cleanup intact.
 
-- [ ] **Step 2: Run the focused Home tests and confirm they fail**
+- [x] **Step 2: Run the focused Home tests and confirm they fail**
 
 Run:
 
@@ -143,7 +143,7 @@ cd frontend && npm test -- --run src/test/HomePage.test.tsx
 
 Expected: the new post-search mutation tests fail because current handlers clear results and no reactive recalculation exists.
 
-- [ ] **Step 3: Implement reactive local recalculation**
+- [x] **Step 3: Implement reactive local recalculation**
 
 Extract one calculation path in `HomePage` that calls `findRecipeSuggestions` with:
 
@@ -161,7 +161,7 @@ Extract one calculation path in `HomePage` that calls `findRecipeSuggestions` wi
 
 Keep the initial `search()` action explicit. Replace result-clearing behavior in ingredient, lot, staple and diet handlers with state changes; the effect recalculates only when `hasSearched` is true. Do not reset `hasSearched` when a user edits the pantry or profile: an empty eligible result is the correct automatic state after a searched pantry becomes incompatible. Ensure the extended one-missing flow still sets `allowOneMissing` and immediately calculates its result. Keep “Altre idee” as a visible button that increments `varietySeed` and recalculates locally.
 
-- [ ] **Step 4: Run focused and full frontend tests**
+- [x] **Step 4: Run focused and full frontend tests**
 
 Run:
 
@@ -174,7 +174,7 @@ cd frontend && npm run build
 
 Expected: all frontend tests, lint and production build pass; guests still use no network for suggestion refreshes.
 
-- [ ] **Step 5: Commit the reactive Home unit**
+- [x] **Step 5: Commit the reactive Home unit**
 
 ```bash
 git add frontend/src/pages/HomePage.tsx frontend/src/test/HomePage.test.tsx frontend/src/store/activityStore.ts
@@ -194,11 +194,11 @@ git commit -m "feat: refresh suggestions after local changes"
 - Browser coverage runs in the existing desktop and mobile Playwright projects.
 - The e2e test uses the real built/previewed page and only local catalog/state; it must not add a network API dependency.
 
-- [ ] **Step 1: Add desktop/mobile browser coverage**
+- [x] **Step 1: Add desktop/mobile browser coverage**
 
 Add a Playwright scenario that adds ingredients, requests recipes once, changes the pantry, verifies updated suggestions without a second search click, presses “Altre idee”, reloads and confirms the pantry still persists. Include a diet filter change that removes an incompatible recipe from the already-visible results.
 
-- [ ] **Step 2: Run the complete verification set**
+- [x] **Step 2: Run the complete verification set**
 
 Run:
 
@@ -210,15 +210,15 @@ cd backend && npm run lint && npm run build
 
 Expected: Playwright passes in desktop and mobile projects; the backend remains green with PostgreSQL/Redis integration skipped only when its URLs are absent.
 
-- [ ] **Step 3: Review the no-network and mutation boundaries**
+- [x] **Step 3: Review the no-network and mutation boundaries**
 
 Run `git diff --check` and inspect that automatic suggestions call only local domain functions, do not mutate `RECIPES`, do not alter pantry lots, and do not introduce any AI/provider request.
 
-- [ ] **Step 4: Update README and mark evidence**
+- [x] **Step 4: Update README and mark evidence**
 
 Document that the first search is explicit, then visible suggestions refresh locally after pantry/profile/activity changes; explain that “Altre idee” changes variety and that no account or network is needed for this behavior.
 
-- [ ] **Step 5: Commit and finish the automatic-suggestions plan**
+- [x] **Step 5: Commit and finish the automatic-suggestions plan**
 
 ```bash
 git add frontend/e2e/core-flow.spec.ts README.md docs/superpowers/plans/2026-09-13-automatic-suggestions.md

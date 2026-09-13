@@ -77,6 +77,42 @@ test('suggested ingredients can be added without typing', async ({ page }) => {
   await expect(suggestions.getByRole('button', { name: 'Aggiungi Cipolla' })).toHaveCount(0);
 });
 
+test('local suggestions refresh after pantry and diet changes', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
+
+  const pantry = page.getByRole('list', { name: 'La tua dispensa' });
+  const ingredientInput = page.getByLabel('Ingredienti presenti');
+  await ingredientInput.fill('pasta');
+  await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await page.getByRole('button', { name: 'Trova ricette' }).click();
+  await expect(page.getByRole('heading', { name: 'Ricette per te' })).toBeVisible();
+  await expect(page.getByText('Pasta tonno e pomodoro')).toHaveCount(0);
+
+  await ingredientInput.fill('tonno, passata, ceci, aglio, melanzane, basilico, uova');
+  await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
+
+  const pantryAfterUpdate = await pantry.innerText();
+  const initialOrder = await page.getByRole('link', { name: /^Apri / }).evaluateAll(
+    (links) => links.map((link) => link.getAttribute('href')),
+  );
+  await page.getByRole('button', { name: 'Altre idee' }).click();
+  await expect.poll(async () => page.getByRole('link', { name: /^Apri / }).evaluateAll(
+    (links) => links.map((link) => link.getAttribute('href')),
+  )).not.toEqual(initialOrder);
+  expect(await pantry.innerText()).toBe(pantryAfterUpdate);
+
+  await page.getByLabel('Dieta').selectOption('vegan');
+  await expect(page.getByText('Pasta tonno e pomodoro')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Ricette per te' })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole('list', { name: 'La tua dispensa' }).getByText('Pasta', { exact: true })).toBeVisible();
+  await expect(page.getByText('Tonno', { exact: true })).toBeVisible();
+});
+
 test('shopping list accepts manual and recipe-derived items offline', async ({ page }) => {
   await page.goto('/shopping-list');
   await expect(page.getByRole('heading', { name: 'Lista della spesa' })).toBeVisible();

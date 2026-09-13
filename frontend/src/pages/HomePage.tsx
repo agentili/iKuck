@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Clock3, RefreshCw, ShoppingCart, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import AccountPanel from '../components/account/AccountPanel';
@@ -11,16 +11,20 @@ import PantryLotsPanel from '../components/pantry/PantryLotsPanel';
 import StaplesPanel from '../components/pantry/StaplesPanel';
 import LocalRecipeCard from '../components/suggestions/LocalRecipeCard';
 import SuggestionControls from '../components/suggestions/SuggestionControls';
-import { findHelpfulIngredients, findRecipeSuggestions } from '../domain/suggestions';
+import { createSeededRandom, findHelpfulIngredients, findRecipeSuggestions } from '../domain/suggestions';
+import { aggregatePantryLots } from '../domain/pantryLots';
 import type { IngredientDefinition, ParsedIngredient, RecipeSuggestion } from '../domain/types';
 import { hydratePantryStore, usePantryStore } from '../store/localPantryStore';
 import { useDietProfileStore } from '../store/dietProfileStore';
 import { useAuthStore } from '../auth/authStore';
+import { useActivityStore } from '../store/activityStore';
 
 export default function HomePage() {
   const hasHydrated = usePantryStore((state) => state.hasHydrated);
   const [hasSearched, setHasSearched] = useState(false);
   const [allowOneMissing, setAllowOneMissing] = useState(false);
+  const [searchedAllowOneMissing, setSearchedAllowOneMissing] = useState(false);
+  const [varietySeed, setVarietySeed] = useState(0);
   const [suggestions, setSuggestions] = useState<RecipeSuggestion[]>([]);
   const pantryItems = usePantryStore((state) => state.pantryItems);
   const pantryLots = usePantryStore((state) => state.pantryLots);
@@ -31,17 +35,42 @@ export default function HomePage() {
   const removePantryLot = usePantryStore((state) => state.removePantryLot);
   const removeIngredient = usePantryStore((state) => state.removeIngredient);
   const toggleStaple = usePantryStore((state) => state.toggleStaple);
-  const getAvailableIngredientIds = usePantryStore((state) => state.getAvailableIngredientIds);
-  const getPantryQuantitySummary = usePantryStore((state) => state.getPantryQuantitySummary);
   const dietProfile = useDietProfileStore((state) => state.profile);
   const setDietProfile = useDietProfileStore((state) => state.setDietProfile);
   const resetDietProfile = useDietProfileStore((state) => state.resetDietProfile);
+  const events = useActivityStore((state) => state.events);
+  const preferences = useActivityStore((state) => state.preferences);
   const user = useAuthStore((state) => state.user);
   const csrfToken = useAuthStore((state) => state.csrfToken);
+
+  const availableIngredientIds = useMemo(
+    () => [...pantryItems.filter((item) => item.known).map((item) => item.id), ...stapleIds],
+    [pantryItems, stapleIds],
+  );
+  const quantitySummaries = useMemo(
+    () => aggregatePantryLots(pantryLots),
+    [pantryLots],
+  );
+  const calculatedSuggestions = useMemo(() => {
+    if (!hasSearched) return [];
+    return findRecipeSuggestions({
+      availableIds: availableIngredientIds,
+      allowOneMissing: searchedAllowOneMissing,
+      quantitySummaries,
+      dietProfile,
+      events,
+      preferences,
+      random: createSeededRandom(varietySeed),
+    });
+  }, [availableIngredientIds, dietProfile, events, hasSearched, preferences, quantitySummaries, searchedAllowOneMissing, varietySeed]);
 
   useEffect(() => {
     void hydratePantryStore();
   }, []);
+
+  useEffect(() => {
+    if (hasSearched) setSuggestions(calculatedSuggestions);
+  }, [calculatedSuggestions, hasSearched]);
 
   if (!hasHydrated) {
     return (
@@ -53,49 +82,45 @@ export default function HomePage() {
     );
   }
 
-  const suggestedIngredients = findHelpfulIngredients(getAvailableIngredientIds(), 5);
-
-  const clearResults = () => {
-    setHasSearched(false);
-    setSuggestions([]);
-  };
+  const suggestedIngredients = findHelpfulIngredients(availableIngredientIds, 5);
 
   const handleAdd = (items: ParsedIngredient[]) => {
     addIngredients(items);
-    clearResults();
   };
 
   const handleSuggestedIngredient = (ingredient: IngredientDefinition) => {
     addIngredients([{ id: ingredient.id, label: ingredient.label, known: true }]);
-    clearResults();
   };
 
   const handleRemove = (id: string) => {
     removeIngredient(id);
-    clearResults();
   };
 
   const handleToggleStaple = (id: string) => {
     toggleStaple(id);
-    clearResults();
   };
 
   const handleDietProfileChange = (profile: Parameters<typeof setDietProfile>[0]) => {
-    if (setDietProfile(profile)) clearResults();
+    setDietProfile(profile);
   };
 
   const handleDietProfileReset = () => {
     resetDietProfile();
-    clearResults();
   };
 
+  const calculateSuggestions = (seed: number, extended: boolean): RecipeSuggestion[] => findRecipeSuggestions({
+    availableIds: availableIngredientIds,
+    allowOneMissing: extended,
+    quantitySummaries,
+    dietProfile,
+    events,
+    preferences,
+    random: createSeededRandom(seed),
+  });
+
   const search = (extended = allowOneMissing) => {
-    setSuggestions(findRecipeSuggestions({
-      availableIds: getAvailableIngredientIds(),
-      allowOneMissing: extended,
-      quantitySummaries: getPantryQuantitySummary(),
-      dietProfile,
-    }));
+    setSearchedAllowOneMissing(extended);
+    setSuggestions(calculateSuggestions(varietySeed, extended));
     setHasSearched(true);
   };
 
@@ -104,8 +129,14 @@ export default function HomePage() {
     search(true);
   };
 
+  const refreshSuggestions = () => {
+    const nextSeed = varietySeed + 1;
+    setVarietySeed(nextSeed);
+    setSuggestions(calculateSuggestions(nextSeed, searchedAllowOneMissing));
+  };
+
   const helpfulIngredients = hasSearched && suggestions.length === 0
-    ? findHelpfulIngredients(getAvailableIngredientIds(), 3)
+    ? findHelpfulIngredients(availableIngredientIds, 3)
     : [];
 
   return (
@@ -168,7 +199,7 @@ export default function HomePage() {
               <p className="mt-1 text-gray-600">Scelte usando quello che hai indicato.</p>
             </div>
             {suggestions.length > 0 && (
-              <button type="button" onClick={() => search()} className="inline-flex min-h-11 items-center gap-2 rounded-xl border-2 border-gray-300 bg-white px-4 py-2 font-semibold text-gray-800 hover:border-gray-900">
+              <button type="button" onClick={refreshSuggestions} className="inline-flex min-h-11 items-center gap-2 rounded-xl border-2 border-gray-300 bg-white px-4 py-2 font-semibold text-gray-800 hover:border-gray-900">
                 <RefreshCw size={17} aria-hidden="true" />
                 Altre idee
               </button>

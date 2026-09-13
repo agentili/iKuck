@@ -24,10 +24,11 @@ export interface SuggestionOptions {
 }
 
 export const createSeededRandom = (seed: number): (() => number) => {
-  let state = (Math.abs(Math.trunc(seed)) % 2147483646) + 1;
+  let index = 0;
   return () => {
-    state = (state * 48271) % 2147483647;
-    return state / 2147483647;
+    const value = Math.sin((Math.trunc(seed) + 1) * 12989.8 + index * 7823.3) * 43758.5453;
+    index += 1;
+    return value - Math.floor(value);
   };
 };
 

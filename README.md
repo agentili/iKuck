@@ -8,9 +8,10 @@ iKuck suggerisce ricette semplici usando gli ingredienti presenti in dispensa. P
 2. Conferma gli ingredienti base che tieni normalmente in casa.
 3. Richiedi fino a sei proposte dal catalogo incluso di 20 ricette.
 4. Se vuoi, includi anche ricette per cui manca un solo ingrediente facile da reperire.
-5. Apri la lista della spesa per aggiungere elementi manualmente o i mancanti di una ricetta.
-6. Dalla ricetta puoi segnare la preparazione, salvarla tra i preferiti, assegnare da 1 a 5 stelle e aggiungere una nota privata.
-7. Se hai un account verificato, puoi attivare il consenso e chiedere una ricetta AI privata usando la dispensa e i filtri alimentari correnti.
+5. Dopo la prima ricerca, le modifiche alla dispensa e alle preferenze aggiornano automaticamente le proposte locali; `Altre idee` cambia la varietà senza una nuova richiesta.
+6. Apri la lista della spesa per aggiungere elementi manualmente o i mancanti di una ricetta.
+7. Dalla ricetta puoi segnare la preparazione, salvarla tra i preferiti, assegnare da 1 a 5 stelle e aggiungere una nota privata.
+8. Se hai un account verificato, puoi attivare il consenso e chiedere una ricetta AI privata usando la dispensa e i filtri alimentari correnti.
 
 Il catalogo copre carne, pesce, uova, legumi e verdure. Ogni proposta indica chiaramente se è già realizzabile o quale unico ingrediente manca.
 
@@ -76,6 +77,8 @@ Ogni ingrediente può avere più lotti. Per ogni lotto puoi indicare opzionalmen
 La lista della spesa è salvata nello stesso database locale, funziona anche senza rete e distingue gli elementi da acquistare da quelli già acquistati. Puoi inserire un alimento o un prodotto libero, aggiungere quantità, unità e una nota, oppure usare il pulsante della pagina ricetta per inserire solo gli ingredienti non presenti. L’aggiunta è sempre esplicita e non consuma automaticamente la dispensa.
 
 La sezione Attività conserva la cronologia delle ricette segnate come cucinate, senza sottrarre ingredienti dalla dispensa. Preferiti, valutazioni da una a cinque stelle e note private sono salvati localmente per gli ospiti e inclusi nell’importazione esplicita per gli account verificati; non vengono pubblicati nel catalogo delle ricette.
+
+Dopo la prima richiesta esplicita, le proposte del catalogo vengono ricalcolate direttamente nel browser quando cambiano dispensa, lotti, ingredienti di base, dieta, cronologia o preferenze. Il comportamento resta disponibile offline e non invia dati a un servizio esterno; `Altre idee` modifica solo l’ordine delle proposte compatibili.
 
 Le ricette AI sono opzionali, richiedono un account con email verificata e un consenso esplicito salvato sul server. Sono limitate a cinque generazioni per giorno UTC, restano private dell’account e rispettano i filtri dieta/allergeni attivi; la revoca del consenso nasconde la generazione ma non elimina le ricette già salvate. Senza `OPENAI_API_KEY` il provider AI resta disabilitato. La chiave OpenAI resta esclusivamente nel backend e non viene mai salvata nel browser o nei log.
 
