@@ -315,19 +315,19 @@ Expected: FAIL because Compose and Caddy files do not exist.
 
 Use multi-stage Dockerfiles. Give Postgres and Redis persistent named volumes and health checks. Caddy must apply security headers, serve the built `frontend/dist` directory and use `try_files` SPA fallback. The backup script creates timestamped compressed `pg_dump` files; the restore script requires an explicit archive path and uses `pg_restore --clean --if-exists`.
 
-- [ ] **Step 4: Verify container configuration**
+- [x] **Step 4: Verify container configuration**
 
-Run: `npm test -- deployment-contract.test.ts && docker compose -f compose.dev.yml config && docker compose -f deploy/docker-compose.standalone.yml config && docker compose -f deploy/docker-compose.production.yml config && docker run --rm --mount type=bind,source="$PWD/deploy/Caddyfile",target=/etc/caddy/Caddyfile,readonly caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`
+Run: `npm test -- deployment-contract.test.ts && docker compose -f compose.dev.yml config && docker compose -f deploy/docker-compose.standalone.yml config && docker compose -f deploy/docker-compose.production.yml config && docker run --rm -e APP_DOMAIN=:8080 --mount type=bind,source="$PWD/deploy/Caddyfile",target=/etc/caddy/Caddyfile,readonly caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`
 
 Expected: tests pass and both Compose files render without validation errors.
 
-Deployment contract tests and Compose rendering passed. The Caddy container validation is still pending because Docker Desktop cannot start its Linux engine on this host.
+Deployment contract tests, all three Compose renderings and Caddy validation passed. The API and Caddy Dockerfiles include the repository root as build context so the shared package is available during both image builds.
 
 - [x] **Step 5: Document local and VPS operations**
 
 Document frontend and backend start commands, health URL, required secret provisioning, migration command, backup/restore command, and the rule that no provider key belongs in the frontend or repository.
 
-- [ ] **Step 6: Commit the completed platform**
+- [x] **Step 6: Commit the completed platform**
 
 ```bash
 git add .dockerignore backend compose.dev.yml deploy README.md
@@ -345,13 +345,15 @@ Run: `cd backend && npm test && npm run lint && npm run build && cd ../frontend 
 
 Expected: all checks pass.
 
-Backend and frontend unit tests, lint and builds passed; the frontend Playwright suite passed all 16 tests. The PostgreSQL/Redis integration suite is present but skipped unless dedicated service URLs are supplied.
+Backend and frontend unit tests, lint and builds passed; the frontend Playwright suite passed all 30 tests across mobile and desktop Chromium. The PostgreSQL/Redis integration suite is present but skipped unless dedicated service URLs are supplied.
 
-- [ ] **Step 2: Perform the real local platform smoke test**
+- [x] **Step 2: Perform the real local platform smoke test**
 
 Run: `docker compose -f deploy/docker-compose.standalone.yml --env-file deploy/.env.standalone up --build --wait && docker compose -f deploy/docker-compose.standalone.yml --env-file deploy/.env.standalone exec -T api node -e "fetch('http://127.0.0.1:3000/healthz').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))" && docker compose -f deploy/docker-compose.standalone.yml --env-file deploy/.env.standalone down --volumes`
 
 Expected: health returns `{"status":"ok"}` and no container remains running after cleanup.
+
+The smoke test built API and frontend images, started PostgreSQL, Redis, API and Caddy, returned `200 {"status":"ok"}` from the API container, and removed the verification containers, network and volumes.
 
 - [x] **Step 3: Review repository scope**
 
@@ -361,16 +363,16 @@ Expected: only platform files and this plan are staged; no `.env`, provider secr
 
 The scope review found one pre-existing unstaged deletion, `.continue/rules/CONTINUE.md`; it was preserved and excluded from every platform commit.
 
-The container smoke test remains pending because Docker Desktop cannot open its stopped `com.docker.service` on this host. No container or volume was created.
+The container smoke test completed with the temporary `ikuck-verification` project and all of its containers, network and volumes were removed afterward.
 
-- [ ] **Step 4: Commit the plan checklist update**
+- [x] **Step 4: Commit the plan checklist update**
 
 ```bash
 git add docs/superpowers/plans/2026-09-12-remote-platform.md
 git commit -m "docs: record remote platform verification"
 ```
 
-The checklist update is kept pending until the platform-only migration metadata and this plan are committed after the account block is closed.
+The checklist update is committed after the account, dietary, AI and automatic-suggestions blocks were completed. The later Docker context regression fix and its test are included in the final platform verification history.
 
 ## Plan self-review
 
