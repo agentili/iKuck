@@ -8,7 +8,7 @@ describe('loadConfig', () => {
       port: 3000,
       databaseUrl: 'postgres://ikuck:ikuck@127.0.0.1:5432/ikuck',
       redisUrl: 'redis://127.0.0.1:6379',
-      appOrigin: 'http://127.0.0.1:5173',
+      appOrigin: 'http://localhost:5173',
       logLevel: 'debug',
       providers: { openAiModel: 'gpt-5.5' },
     });

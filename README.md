@@ -33,11 +33,28 @@ npm install
 npm run dev
 ```
 
+In sviluppo locale `NODE_ENV=development` verifica automaticamente i nuovi account, così il login email/password funziona anche senza configurare un provider email o un dominio. In produzione la verifica email resta obbligatoria e richiede `RESEND_API_KEY` e `RESEND_FROM`.
+
+Il frontend inoltra automaticamente le richieste `/v1/*` al backend locale su `http://127.0.0.1:3000`; apri quindi l'app all'origine mostrata da Vite, normalmente `http://localhost:5173`.
+
 Per avviare la piattaforma completa in container, incluse le migrazioni iniziali:
 
 ```bash
 docker compose -f compose.dev.yml up --build
 ```
+
+### Accesso con Google
+
+Il login Google usa Google Identity Services solo per autenticare l'utente; la sessione iKuck resta un cookie HttpOnly gestito dal backend. Il backend verifica l'ID token Google e non salva token Google o credenziali nel browser.
+
+Per abilitarlo in locale:
+
+1. Crea un OAuth Client ID di tipo Web application in Google Cloud.
+2. Aggiungi `http://localhost:5173` e l'origine usata dall'app tra le origini JavaScript autorizzate.
+3. Copia il client ID in `backend/.env` come `GOOGLE_CLIENT_ID` e in `frontend/.env` come `VITE_GOOGLE_CLIENT_ID`.
+4. Riavvia backend e frontend.
+
+In produzione usa il client ID del progetto production, il dominio HTTPS reale e una homepage pubblica con privacy policy. Un account email/password già esistente può collegare Google dal profilo, usando lo stesso indirizzo email verificato.
 
 L’API risponde a [http://127.0.0.1:3000/healthz](http://127.0.0.1:3000/healthz). PostgreSQL e Redis restano accessibili esclusivamente agli altri container.
 

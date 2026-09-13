@@ -22,6 +22,13 @@
       "when": 1726147320000,
       "tag": "0002_sync_device_id",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1726147380000,
+      "tag": "0003_google_identities",
+      "breakpoints": true
     }
   ]
 }

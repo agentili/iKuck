@@ -150,6 +150,10 @@ export default function HomePage() {
         <p className="mt-4 max-w-2xl text-lg leading-relaxed text-gray-600">Scrivi gli ingredienti che hai. Alle ricette pensiamo noi.</p>
       </header>
 
+      <div className="mb-6 max-w-3xl">
+        <AccountPanel />
+      </div>
+
       <section aria-labelledby="pantry-title" className="space-y-5 rounded-3xl border-2 border-gray-200 bg-gray-50 p-4 sm:p-6">
         <div>
           <h2 id="pantry-title" className="text-2xl font-bold text-gray-950">La tua dispensa</h2>
@@ -179,10 +183,6 @@ export default function HomePage() {
         <StaplesPanel stapleIds={stapleIds} onToggle={handleToggleStaple} />
         <SuggestionControls allowOneMissing={allowOneMissing} disabled={pantryItems.length === 0} onAllowOneMissingChange={setAllowOneMissing} onSearch={() => search()} />
       </section>
-
-      <div className="mt-6 max-w-3xl">
-        <AccountPanel />
-      </div>
 
       <AiRecipePanel
         ingredients={pantryItems.map((item) => item.label)}

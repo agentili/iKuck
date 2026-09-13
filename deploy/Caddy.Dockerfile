@@ -1,5 +1,8 @@
 FROM node:24-alpine AS frontend-build
 
+ARG VITE_GOOGLE_CLIENT_ID
+ENV VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
+
 WORKDIR /app
 
 COPY frontend/package.json frontend/package-lock.json ./

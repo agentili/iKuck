@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { LogIn, UserRound } from 'lucide-react';
 import { ApiClientError } from '../../api/apiClient';
 import { useAuthStore } from '../../auth/authStore';
+import GoogleSignInButton from './GoogleSignInButton';
 
 type AccountMode = 'closed' | 'login' | 'register' | 'reset';
 
@@ -28,6 +29,18 @@ const errorMessage = (error: unknown): string => {
   if (code === 'network_error') {
     return 'Servizio non raggiungibile: puoi continuare a usare la dispensa offline.';
   }
+  if (code === 'invalid_google_credential') {
+    return 'Non è stato possibile verificare l’account Google.';
+  }
+  if (code === 'google_account_link_required') {
+    return 'Questa email esiste già: accedi con la password e collega Google dal profilo.';
+  }
+  if (code === 'provider_unavailable') {
+    return 'Accesso Google temporaneamente non disponibile.';
+  }
+  if (code === 'google_email_mismatch') {
+    return 'L’email Google deve corrispondere a quella dell’account.';
+  }
   return 'Non è stato possibile completare l’operazione. Riprova.';
 };
 
@@ -37,6 +50,7 @@ export default function AccountPanel() {
   const connection = useAuthStore((state) => state.connection);
   const isLoading = useAuthStore((state) => state.isLoading);
   const login = useAuthStore((state) => state.login);
+  const loginWithGoogle = useAuthStore((state) => state.loginWithGoogle);
   const register = useAuthStore((state) => state.register);
   const resendVerification = useAuthStore((state) => state.resendVerification);
   const requestPasswordReset = useAuthStore((state) => state.requestPasswordReset);
@@ -63,8 +77,10 @@ export default function AccountPanel() {
         await login(email, password);
         navigate('/profile');
       } else if (mode === 'register') {
-        await register(email, password);
-        setMessage('Controlla la tua email per verificare l’account.');
+        const result = await register(email, password);
+        setMessage(result.verificationRequired
+          ? 'Controlla la tua email per verificare l’account.'
+          : 'Account creato. Ora puoi accedere.');
       } else if (mode === 'reset') {
         await requestPasswordReset(email);
         setMessage('Se l’email è registrata, riceverai le istruzioni per recuperare l’account.');
@@ -82,6 +98,17 @@ export default function AccountPanel() {
       setMessage('Se l’email è registrata e non ancora verificata, riceverai un nuovo link.');
     } catch (resendError) {
       setError(errorMessage(resendError));
+    }
+  };
+
+  const handleGoogleCredential = async (credential: string) => {
+    setMessage(null);
+    setError(null);
+    try {
+      await loginWithGoogle(credential);
+      navigate('/profile');
+    } catch (googleError) {
+      setError(errorMessage(googleError));
     }
   };
 
@@ -112,10 +139,14 @@ export default function AccountPanel() {
           <p className="mt-1 text-sm text-gray-600">I tuoi dati restano su questo dispositivo.</p>
           {connection === 'offline' && <p className="mt-2 text-sm font-semibold text-amber-800">Sei offline: la dispensa continua a funzionare.</p>}
         </div>
-        <button type="button" onClick={() => openMode('login')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800">
-          <LogIn size={17} aria-hidden="true" />
-          Accedi o registrati
-        </button>
+        <div className="grid w-full max-w-sm gap-2 sm:w-auto">
+          <button type="button" onClick={() => openMode('login')} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800">
+            <LogIn size={17} aria-hidden="true" />
+            Accedi o registrati
+          </button>
+          <GoogleSignInButton onCredential={(credential) => void handleGoogleCredential(credential)} onUnavailable={() => setError('Accesso Google non ancora configurato per questo ambiente.')} />
+        </div>
+        {error !== null && <p role="alert" className="basis-full rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-900">{error}</p>}
       </section>
     );
   }
@@ -138,6 +169,10 @@ export default function AccountPanel() {
 
       {message !== null && <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-900">{message}</p>}
       {error !== null && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-900">{error}</p>}
+
+      <div className="mt-4 border-b border-gray-200 pb-4">
+        <GoogleSignInButton onCredential={(credential) => void handleGoogleCredential(credential)} onUnavailable={() => setError('Accesso Google non ancora configurato per questo ambiente.')} />
+      </div>
 
       <form className="mt-4 grid gap-3" onSubmit={handleSubmit}>
         <label className="grid gap-1 text-sm font-semibold text-gray-800">

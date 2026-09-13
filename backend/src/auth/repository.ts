@@ -2,6 +2,7 @@ import { and, eq, gt, isNull } from 'drizzle-orm';
 import type { ApplicationDatabase } from '../db/client.js';
 import {
   authSessions,
+  accountIdentities,
   emailVerificationTokens,
   passwordResetTokens,
   userProfiles,
@@ -11,7 +12,7 @@ import {
 export interface UserRecord {
   id: string;
   email: string;
-  passwordHash: string;
+  passwordHash: string | null;
   emailVerifiedAt: Date | null;
 }
 
@@ -24,7 +25,8 @@ export interface SessionRecord {
 }
 
 export interface AuthRepository {
-  createUser: (input: { email: string; passwordHash: string }) => Promise<UserRecord>;
+  createUser: (input: { email: string; passwordHash: string | null; emailVerifiedAt?: Date | null }) => Promise<UserRecord>;
+  markEmailVerified: (userId: string, now: Date) => Promise<void>;
   findUserByEmail: (email: string) => Promise<UserRecord | null>;
   findUserById: (id: string) => Promise<UserRecord | null>;
   createVerificationToken: (input: { userId: string; tokenHash: string; expiresAt: Date }) => Promise<void>;
@@ -38,6 +40,8 @@ export interface AuthRepository {
   createPasswordResetToken: (input: { userId: string; tokenHash: string; expiresAt: Date }) => Promise<void>;
   consumePasswordResetToken: (tokenHash: string, now: Date) => Promise<string | null>;
   updatePassword: (userId: string, passwordHash: string, now: Date) => Promise<void>;
+  findExternalIdentity: (provider: string, providerSubject: string) => Promise<{ userId: string } | null>;
+  createExternalIdentity: (input: { userId: string; provider: string; providerSubject: string; providerEmail: string }) => Promise<void>;
 }
 
 const toUserRecord = (user: typeof users.$inferSelect): UserRecord => ({
@@ -48,10 +52,16 @@ const toUserRecord = (user: typeof users.$inferSelect): UserRecord => ({
 });
 
 export const createDrizzleAuthRepository = (database: ApplicationDatabase['db']): AuthRepository => ({
-  createUser: async ({ email, passwordHash }) => {
-    const [user] = await database.insert(users).values({ email, passwordHash }).returning();
+  createUser: async ({ email, passwordHash, emailVerifiedAt = null }) => {
+    const [user] = await database.insert(users).values({ email, passwordHash, emailVerifiedAt }).returning();
     await database.insert(userProfiles).values({ userId: user.id });
     return toUserRecord(user);
+  },
+
+  markEmailVerified: async (userId, now) => {
+    await database.update(users)
+      .set({ emailVerifiedAt: now, updatedAt: now })
+      .where(eq(users.id, userId));
   },
 
   findUserByEmail: async (email) => {
@@ -147,5 +157,20 @@ export const createDrizzleAuthRepository = (database: ApplicationDatabase['db'])
     await database.update(users)
       .set({ passwordHash, updatedAt: now })
       .where(eq(users.id, userId));
+  },
+
+  findExternalIdentity: async (provider, providerSubject) => {
+    const [identity] = await database.select({ userId: accountIdentities.userId })
+      .from(accountIdentities)
+      .where(and(
+        eq(accountIdentities.provider, provider),
+        eq(accountIdentities.providerSubject, providerSubject),
+      ))
+      .limit(1);
+    return identity ?? null;
+  },
+
+  createExternalIdentity: async ({ userId, provider, providerSubject, providerEmail }) => {
+    await database.insert(accountIdentities).values({ userId, provider, providerSubject, providerEmail });
   },
 });

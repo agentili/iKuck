@@ -2,11 +2,13 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { AuthServiceError, type AuthenticatedSession, type AuthService } from '../auth/service.js';
 import { hashOpaqueToken } from '../auth/tokens.js';
+import { GoogleIdentityError, type GoogleIdentityProvider } from '../auth/google.js';
 
 export const SESSION_COOKIE_NAME = 'ikuck_session';
 
 export interface AuthRouteDependencies {
   service: AuthService;
+  google?: GoogleIdentityProvider;
   appOrigin: string;
   secureCookies: boolean;
 }
@@ -19,6 +21,7 @@ const credentialsSchema = z.object({
 const emailSchema = z.object({ email: z.string().trim().email().max(254) });
 const resetSchema = credentialsSchema.extend({ token: z.string().min(32).max(256) });
 const verifySchema = z.object({ token: z.string().min(32).max(256) });
+const googleSchema = z.object({ credential: z.string().min(1).max(8192) });
 
 const parseBody = <T>(schema: z.ZodType<T>, body: unknown): T => {
   const result = schema.safeParse(body);
@@ -79,11 +82,14 @@ export const ensureCsrf = (request: FastifyRequest, csrfTokenHash: string): void
   }
 };
 
-export const registerAuthRoutes = ({ service, appOrigin, secureCookies }: AuthRouteDependencies): FastifyPluginAsync => async (app) => {
+export const registerAuthRoutes = ({ service, google, appOrigin, secureCookies }: AuthRouteDependencies): FastifyPluginAsync => async (app) => {
   app.post('/v1/auth/register', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
-    await service.register(parseBody(credentialsSchema, request.body));
-    return reply.code(202).send({ status: 'verification_required' });
+    const result = await service.register(parseBody(credentialsSchema, request.body));
+    return reply.code(202).send({
+      status: result.verificationRequired ? 'verification_required' : 'registered',
+      verificationRequired: result.verificationRequired,
+    });
   });
 
   app.post('/v1/auth/resend-verification', async (request, reply) => {
@@ -103,6 +109,45 @@ export const registerAuthRoutes = ({ service, appOrigin, secureCookies }: AuthRo
     const result = await service.login(parseBody(credentialsSchema, request.body));
     reply.header('set-cookie', sessionCookie(result.sessionToken, secureCookies));
     return { authenticated: true, user: result.user, csrfToken: result.csrfToken, expiresAt: result.expiresAt.toISOString() };
+  });
+
+  app.post('/v1/auth/google', async (request, reply) => {
+    ensureSameOrigin(request, appOrigin);
+    if (google === undefined) throw new AuthServiceError('provider_unavailable', 503, 'Google sign-in is unavailable');
+
+    let identity;
+    try {
+      identity = await google.verifyCredential(parseBody(googleSchema, request.body).credential);
+    } catch (error) {
+      if (error instanceof GoogleIdentityError) {
+        throw new AuthServiceError('invalid_google_credential', 401, 'Google credential is invalid');
+      }
+      throw new AuthServiceError('provider_unavailable', 503, 'Google sign-in is unavailable');
+    }
+
+    const result = await service.loginWithGoogle(identity);
+    reply.header('set-cookie', sessionCookie(result.sessionToken, secureCookies));
+    return { authenticated: true, user: result.user, csrfToken: result.csrfToken, expiresAt: result.expiresAt.toISOString() };
+  });
+
+  app.post('/v1/auth/google/link', async (request, reply) => {
+    ensureSameOrigin(request, appOrigin);
+    if (google === undefined) throw new AuthServiceError('provider_unavailable', 503, 'Google sign-in is unavailable');
+    const session = await requireSession(request, service);
+    ensureCsrf(request, session.session.csrfTokenHash);
+
+    let identity;
+    try {
+      identity = await google.verifyCredential(parseBody(googleSchema, request.body).credential);
+    } catch (error) {
+      if (error instanceof GoogleIdentityError) {
+        throw new AuthServiceError('invalid_google_credential', 401, 'Google credential is invalid');
+      }
+      throw new AuthServiceError('provider_unavailable', 503, 'Google sign-in is unavailable');
+    }
+
+    await service.linkGoogle(session.session.userId, identity);
+    return reply.code(204).send();
   });
 
   app.get('/v1/auth/session', async (request, reply) => {

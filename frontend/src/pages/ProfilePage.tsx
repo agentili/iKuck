@@ -4,6 +4,7 @@ import { ApiClientError, apiRequest } from '../api/apiClient';
 import AccountPanel from '../components/account/AccountPanel';
 import { useAuthStore } from '../auth/authStore';
 import { importLocalData } from '../sync/syncQueue';
+import GoogleSignInButton from '../components/account/GoogleSignInButton';
 
 interface ProfileResponse {
   profile: {
@@ -23,11 +24,13 @@ export default function ProfilePage() {
   const user = useAuthStore((state) => state.user);
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const logout = useAuthStore((state) => state.logout);
+  const linkGoogle = useAuthStore((state) => state.linkGoogle);
   const clearSession = useAuthStore((state) => state.clearSession);
   const [displayName, setDisplayName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -134,6 +137,20 @@ export default function ProfilePage() {
     }
   };
 
+  const handleGoogleLink = async (credential: string) => {
+    setIsLinkingGoogle(true);
+    setMessage(null);
+    setError(null);
+    try {
+      await linkGoogle(credential);
+      setMessage('Account Google collegato. D’ora in poi potrai accedere con Google.');
+    } catch (linkError) {
+      setError(operationError(linkError));
+    } finally {
+      setIsLinkingGoogle(false);
+    }
+  };
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="mb-5"><Link to="/" className="font-semibold text-gray-700 underline underline-offset-2">← Torna alla dispensa</Link></div>
@@ -166,6 +183,15 @@ export default function ProfilePage() {
             <button type="button" onClick={() => void handleImport()} disabled={isImporting || csrfToken === null} className="min-h-11 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800 disabled:opacity-60">{isImporting ? 'Sincronizzazione…' : 'Importa la dispensa'}</button>
             <button type="button" onClick={() => void handleExport()} className="min-h-11 rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900">Esporta i miei dati</button>
           </div>
+        </div>
+
+        <div className="mt-7 grid gap-3 border-t border-gray-200 pt-6">
+          <h2 className="text-xl font-black text-gray-950">Accesso con Google</h2>
+          <p className="text-gray-600">Collega lo stesso indirizzo Google verificato per usare il pulsante di accesso rapido.</p>
+          <div className="max-w-sm">
+            <GoogleSignInButton onCredential={(credential) => void handleGoogleLink(credential)} onUnavailable={() => setError('Accesso Google non ancora configurato per questo ambiente.')} />
+          </div>
+          {isLinkingGoogle && <p className="text-sm font-semibold text-gray-600">Collegamento in corso…</p>}
         </div>
 
         <div className="mt-7 border-t border-rose-200 pt-6">

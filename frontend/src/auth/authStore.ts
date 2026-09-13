@@ -14,7 +14,9 @@ export interface AuthState {
   isLoading: boolean;
   restoreSession: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: (credential: string) => Promise<void>;
+  linkGoogle: (credential: string) => Promise<void>;
+  register: (email: string, password: string) => Promise<{ verificationRequired: boolean }>;
   resendVerification: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
@@ -27,6 +29,10 @@ interface SessionResponse {
   user?: AuthUser;
   csrfToken?: string;
   expiresAt?: string;
+}
+
+interface RegistrationResponse {
+  verificationRequired: boolean;
 }
 
 export interface AuthStoreOptions {
@@ -108,13 +114,35 @@ export const createAuthStore = (options: AuthStoreOptions | ApiRequest = {}): Au
           set(assertAuthenticatedResponse(response));
         });
       },
-      register: async (email, password) => {
+      loginWithGoogle: async (credential) => {
         await run(async () => {
-          await request('/v1/auth/register', {
+          const response = await request<SessionResponse>('/v1/auth/google', {
+            method: 'POST',
+            body: { credential },
+          });
+          set(assertAuthenticatedResponse(response));
+        });
+      },
+      linkGoogle: async (credential) => {
+        const csrfToken = get().csrfToken;
+        if (csrfToken === null) throw new ApiClientError(401, 'session_required', 'Authentication is required');
+        await run(async () => {
+          await request('/v1/auth/google/link', {
+            method: 'POST',
+            body: { credential },
+            csrfToken,
+          });
+        });
+      },
+      register: async (email, password) => {
+        let result: RegistrationResponse | undefined;
+        await run(async () => {
+          result = await request<RegistrationResponse>('/v1/auth/register', {
             method: 'POST',
             body: { email, password },
           });
         });
+        return result ?? { verificationRequired: true };
       },
       resendVerification: async (email) => {
         await run(async () => {

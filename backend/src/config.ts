@@ -17,6 +17,7 @@ export interface AppConfig {
   appOrigin: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   providers: ProviderConfig;
+  googleClientId?: string;
   nodeEnvironment: 'development' | 'test' | 'production';
 }
 
@@ -24,7 +25,7 @@ const developmentDefaults = {
   DATABASE_URL: 'postgres://ikuck:ikuck@127.0.0.1:5432/ikuck',
   REDIS_URL: 'redis://127.0.0.1:6379',
   SESSION_SECRET: 'development-session-secret-not-for-production',
-  APP_ORIGIN: 'http://127.0.0.1:5173',
+  APP_ORIGIN: 'http://localhost:5173',
   HOST: '127.0.0.1',
   PORT: '3000',
   LOG_LEVEL: 'debug',
@@ -48,6 +49,7 @@ const environmentSchema = z.object({
   USDA_API_KEY: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
   OPENAI_MODEL: z.string().min(1).default('gpt-5.5'),
+  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
 });
 
 export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
@@ -76,6 +78,7 @@ export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
       openAiApiKey: parsed.OPENAI_API_KEY,
       openAiModel: parsed.OPENAI_MODEL,
     },
+    googleClientId: parsed.GOOGLE_CLIENT_ID,
     nodeEnvironment: parsed.NODE_ENV,
   };
 };

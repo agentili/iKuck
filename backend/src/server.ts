@@ -9,6 +9,7 @@ import { createProviders } from './providers/factory.js';
 import { createDrizzleProfileRepository } from './profile/repository.js';
 import { createDrizzleSyncRepository } from './sync/repository.js';
 import { createRedisGenerationRateLimiter } from './ai/rateLimit.js';
+import { createGoogleIdentityProvider } from './auth/google.js';
 
 export const start = async () => {
   const config = loadConfig(process.env);
@@ -19,6 +20,7 @@ export const start = async () => {
     repository: createDrizzleAuthRepository(database.db),
     email: providers.email,
     appOrigin: config.appOrigin,
+    autoVerifyEmail: config.nodeEnvironment === 'development',
   });
   const sync = createDrizzleSyncRepository(database.db);
   const profile = createDrizzleProfileRepository(database.db, sync);
@@ -28,6 +30,7 @@ export const start = async () => {
       cache,
       auth: {
         service: auth,
+        google: config.googleClientId === undefined ? undefined : createGoogleIdentityProvider({ clientId: config.googleClientId }),
         appOrigin: config.appOrigin,
         secureCookies: config.nodeEnvironment === 'production',
       },

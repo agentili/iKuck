@@ -87,6 +87,20 @@ describe('auth store', () => {
     expect(store.getState().user).toBeNull();
   });
 
+  it('logs in with a Google credential and stores only the application session metadata', async () => {
+    const request = vi.fn().mockResolvedValue(verifiedSession) as ApiRequest;
+    const store = createAuthStore(request);
+
+    await store.getState().loginWithGoogle('google-id-token');
+
+    expect(request).toHaveBeenCalledWith('/v1/auth/google', expect.objectContaining({
+      method: 'POST',
+      body: { credential: 'google-id-token' },
+    }));
+    expect(store.getState().user).toEqual(verifiedUser);
+    expect(window.localStorage.getItem('google-id-token')).toBeNull();
+  });
+
   it('clears in-memory session state on logout', async () => {
     const request = vi.fn()
       .mockResolvedValueOnce(verifiedSession)

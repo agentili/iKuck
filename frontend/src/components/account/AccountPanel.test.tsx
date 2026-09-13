@@ -36,7 +36,7 @@ describe('AccountPanel', () => {
   });
 
   it('submits a registration and explains that email verification is required', async () => {
-    const register = vi.fn().mockResolvedValue(undefined);
+    const register = vi.fn().mockResolvedValue({ verificationRequired: true });
     useAuthStore.setState({ register });
     const user = userEvent.setup();
     render(<MemoryRouter><AccountPanel /></MemoryRouter>);

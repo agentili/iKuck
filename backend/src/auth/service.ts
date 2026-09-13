@@ -1,5 +1,6 @@
 import type { AccountSummary } from '@ikuck/shared/contracts';
 import type { EmailProvider } from '../providers/types.js';
+import type { GoogleIdentity } from './google.js';
 import { hashPassword, verifyPassword } from './crypto.js';
 import type { AuthRepository, SessionRecord, UserRecord } from './repository.js';
 import { createOpaqueToken, hashOpaqueToken, type OpaqueToken } from './tokens.js';
@@ -16,7 +17,11 @@ export type AuthErrorCode =
   | 'invalid_payload'
   | 'ai_consent_required'
   | 'ai_daily_limit_reached'
-  | 'ai_recipe_incompatible';
+  | 'ai_recipe_incompatible'
+  | 'invalid_google_credential'
+  | 'google_account_link_required'
+  | 'google_account_already_linked'
+  | 'google_email_mismatch';
 
 export class AuthServiceError extends Error {
   constructor(
@@ -38,7 +43,7 @@ export interface AuthenticatedSession {
 }
 
 export interface AuthService {
-  register: (input: { email: string; password: string }) => Promise<void>;
+  register: (input: { email: string; password: string }) => Promise<{ verificationRequired: boolean }>;
   resendVerification: (email: string) => Promise<void>;
   verifyEmail: (token: string) => Promise<AccountSummary>;
   login: (input: { email: string; password: string }) => Promise<{
@@ -47,6 +52,13 @@ export interface AuthService {
     csrfToken: string;
     expiresAt: Date;
   }>;
+  loginWithGoogle: (identity: GoogleIdentity) => Promise<{
+    user: AccountSummary;
+    sessionToken: string;
+    csrfToken: string;
+    expiresAt: Date;
+  }>;
+  linkGoogle: (userId: string, identity: GoogleIdentity) => Promise<void>;
   restoreSession: (sessionToken: string) => Promise<{
     user: AccountSummary;
     csrfToken: string;
@@ -67,6 +79,7 @@ interface AuthServiceOptions {
   repository: AuthRepository;
   email: EmailProvider;
   appOrigin: string;
+  autoVerifyEmail?: boolean;
   clock?: () => Date;
   password?: PasswordOperations;
   tokenFactory?: () => OpaqueToken;
@@ -92,6 +105,29 @@ const toSession = (session: SessionRecord): AuthenticatedSession => ({
   csrfTokenHash: session.csrfTokenHash,
   expiresAt: session.expiresAt,
 });
+
+const createSessionForUser = async (input: {
+  repository: AuthRepository;
+  user: UserRecord;
+  clock: () => Date;
+  tokenFactory: () => OpaqueToken;
+}): Promise<{ user: AccountSummary; sessionToken: string; csrfToken: string; expiresAt: Date }> => {
+  const sessionToken = input.tokenFactory();
+  const csrfToken = input.tokenFactory();
+  const expiresAt = new Date(input.clock().getTime() + SESSION_TTL_MS);
+  await input.repository.createSession({
+    userId: input.user.id,
+    tokenHash: sessionToken.hash,
+    csrfTokenHash: csrfToken.hash,
+    expiresAt,
+  });
+  return {
+    user: toAccountSummary(input.user),
+    sessionToken: sessionToken.raw,
+    csrfToken: csrfToken.raw,
+    expiresAt,
+  };
+};
 
 const ensurePasswordLength = (password: string): void => {
   if (password.length < MIN_PASSWORD_LENGTH) {
@@ -127,6 +163,7 @@ export const createAuthService = ({
   repository,
   email,
   appOrigin,
+  autoVerifyEmail = false,
   clock = () => new Date(),
   password = { hash: hashPassword, verify: verifyPassword },
   tokenFactory = createOpaqueToken,
@@ -138,18 +175,22 @@ export const createAuthService = ({
       throw new AuthServiceError('email_already_registered', 409, 'Email is already registered');
     }
 
+    const now = clock();
     const user = await repository.createUser({
       email: emailAddress,
       passwordHash: await password.hash(rawPassword),
+      emailVerifiedAt: autoVerifyEmail ? now : undefined,
     });
+    if (autoVerifyEmail) return { verificationRequired: false };
+
     const verificationToken = tokenFactory();
-    const now = clock();
     await repository.createVerificationToken({
       userId: user.id,
       tokenHash: verificationToken.hash,
       expiresAt: new Date(now.getTime() + VERIFICATION_TTL_MS),
     });
     await sendVerificationEmail(email, appOrigin, emailAddress, verificationToken.raw);
+    return { verificationRequired: true };
   },
 
   resendVerification: async (rawEmail) => {
@@ -173,28 +214,79 @@ export const createAuthService = ({
 
   login: async ({ email: rawEmail, password: rawPassword }) => {
     const user = await repository.findUserByEmail(normalizeEmail(rawEmail));
-    if (user === null || !(await password.verify(user.passwordHash, rawPassword))) {
+    if (user === null || user.passwordHash === null || !(await password.verify(user.passwordHash, rawPassword))) {
       throw new AuthServiceError('invalid_credentials', 401, 'Invalid email or password');
     }
+    let authenticatedUser = user;
+    if (authenticatedUser.emailVerifiedAt === null) {
+      if (!autoVerifyEmail) {
+        throw new AuthServiceError('email_not_verified', 403, 'Email verification is required');
+      }
+      const now = clock();
+      await repository.markEmailVerified(authenticatedUser.id, now);
+      authenticatedUser = { ...authenticatedUser, emailVerifiedAt: now };
+    }
+
+    return createSessionForUser({ repository, user: authenticatedUser, clock, tokenFactory });
+  },
+
+  loginWithGoogle: async (identity) => {
+    if (!identity.emailVerified) {
+      throw new AuthServiceError('invalid_google_credential', 401, 'Google email is not verified');
+    }
+
+    const linkedIdentity = await repository.findExternalIdentity('google', identity.subject);
+    let user = linkedIdentity === null
+      ? await repository.findUserByEmail(normalizeEmail(identity.email))
+      : await repository.findUserById(linkedIdentity.userId);
+
+    if (user === null && linkedIdentity === null) {
+      user = await repository.createUser({
+        email: normalizeEmail(identity.email),
+        passwordHash: null,
+        emailVerifiedAt: clock(),
+      });
+      await repository.createExternalIdentity({
+        userId: user.id,
+        provider: 'google',
+        providerSubject: identity.subject,
+        providerEmail: normalizeEmail(identity.email),
+      });
+    } else if (user === null) {
+      throw new AuthServiceError('invalid_credentials', 401, 'Google account is not available');
+    } else if (linkedIdentity === null) {
+      throw new AuthServiceError('google_account_link_required', 409, 'Google account must be linked explicitly');
+    }
+
     if (user.emailVerifiedAt === null) {
       throw new AuthServiceError('email_not_verified', 403, 'Email verification is required');
     }
 
-    const sessionToken = tokenFactory();
-    const csrfToken = tokenFactory();
-    const expiresAt = new Date(clock().getTime() + SESSION_TTL_MS);
-    await repository.createSession({
-      userId: user.id,
-      tokenHash: sessionToken.hash,
-      csrfTokenHash: csrfToken.hash,
-      expiresAt,
-    });
-    return {
-      user: toAccountSummary(user),
-      sessionToken: sessionToken.raw,
-      csrfToken: csrfToken.raw,
-      expiresAt,
-    };
+    return createSessionForUser({ repository, user, clock, tokenFactory });
+  },
+
+  linkGoogle: async (userId, identity) => {
+    if (!identity.emailVerified) {
+      throw new AuthServiceError('invalid_google_credential', 401, 'Google email is not verified');
+    }
+    const user = await repository.findUserById(userId);
+    if (user === null) throw new AuthServiceError('session_required', 401, 'Authentication is required');
+    if (normalizeEmail(user.email) !== normalizeEmail(identity.email)) {
+      throw new AuthServiceError('google_email_mismatch', 409, 'Google email does not match the account');
+    }
+
+    const linkedIdentity = await repository.findExternalIdentity('google', identity.subject);
+    if (linkedIdentity !== null && linkedIdentity.userId !== userId) {
+      throw new AuthServiceError('google_account_already_linked', 409, 'Google account is already linked');
+    }
+    if (linkedIdentity === null) {
+      await repository.createExternalIdentity({
+        userId,
+        provider: 'google',
+        providerSubject: identity.subject,
+        providerEmail: normalizeEmail(identity.email),
+      });
+    }
   },
 
   restoreSession: async (sessionToken) => {

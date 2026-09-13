@@ -20,7 +20,7 @@ export const serviceMetadata = pgTable('service_metadata', {
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
   email: text('email').notNull(),
-  passwordHash: text('password_hash').notNull(),
+  passwordHash: text('password_hash'),
   emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -34,6 +34,19 @@ export const userProfiles = pgTable('user_profiles', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const accountIdentities = pgTable('account_identities', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  provider: text('provider').notNull(),
+  providerSubject: text('provider_subject').notNull(),
+  providerEmail: text('provider_email').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  providerSubjectUnique: uniqueIndex('account_identities_provider_subject_unique').on(table.provider, table.providerSubject),
+  userProviderUnique: uniqueIndex('account_identities_user_provider_unique').on(table.userId, table.provider),
+  userIndex: index('account_identities_user_id_index').on(table.userId),
+}));
 
 export const authSessions = pgTable('auth_sessions', {
   id: uuid('id').defaultRandom().primaryKey(),

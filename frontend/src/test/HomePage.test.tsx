@@ -43,6 +43,18 @@ describe('HomePage integration', () => {
     });
   });
 
+  it('keeps account access before the pantry content', async () => {
+    await renderHome();
+
+    const main = screen.getByRole('main');
+    const account = screen.getByRole('region', { name: 'Account' });
+    const pantry = screen.getByRole('region', { name: 'La tua dispensa' });
+
+    expect(Array.from(main.querySelectorAll('section')).indexOf(account)).toBeLessThan(
+      Array.from(main.querySelectorAll('section')).indexOf(pantry),
+    );
+  });
+
   it('adds comma-separated ingredients and searches only on request', async () => {
     const user = userEvent.setup();
     const input = await renderHome();
