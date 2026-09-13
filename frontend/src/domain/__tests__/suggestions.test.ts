@@ -1,8 +1,8 @@
-import type { DietProfilePayload } from '@ikuck/shared/contracts';
+import type { CookEvent, DietProfilePayload, RecipePreference } from '@ikuck/shared/contracts';
 import { getIngredient } from '../ingredients';
 import { getRecipeById, RECIPES } from '../recipes';
-import { findHelpfulIngredients, findRecipeSuggestions } from '../suggestions';
-import type { PantryRecipe } from '../types';
+import { createSeededRandom, findHelpfulIngredients, findRecipeSuggestions, rankRecipeSuggestions } from '../suggestions';
+import type { PantryRecipe, RecipeSuggestion } from '../types';
 
 const createRecipe = (id: string, ingredientIds: string[], optionalIds: string[] = []): PantryRecipe => ({
   id,
@@ -21,6 +21,7 @@ const createRecipe = (id: string, ingredientIds: string[], optionalIds: string[]
 });
 
 describe('recipe suggestions', () => {
+  const now = '2026-09-13T12:00:00.000Z';
   const recipes = [
     createRecipe('exact', ['pasta', 'tomato', 'salt']),
     createRecipe('one-easy-missing', ['pasta', 'tomato', 'basil']),
@@ -155,5 +156,58 @@ describe('recipe suggestions', () => {
     const result = findRecipeSuggestions({ recipes, availableIds, allowOneMissing: false, dietProfile: profile });
 
     expect(result.map(({ recipe }) => recipe.id)).toEqual(['tacchino-peperoni']);
+  });
+
+  it('ranks a favorite before a neutral compatible recipe', () => {
+    const candidates: RecipeSuggestion[] = [
+      { recipe: createRecipe('neutral', ['salt']), missingIngredientIds: [], quantityWarnings: [] },
+      { recipe: createRecipe('favorite', ['salt']), missingIngredientIds: [], quantityWarnings: [] },
+    ];
+    const preference: RecipePreference = {
+      recipeId: 'favorite', favorite: true, rating: null, note: null, createdAt: now, updatedAt: now,
+    };
+
+    expect(rankRecipeSuggestions(candidates, { preferences: [preference], random: () => 0.5 }).map(({ recipe }) => recipe.id))
+      .toEqual(['favorite', 'neutral']);
+  });
+
+  it('uses high ratings as a smaller positive ranking signal', () => {
+    const candidates: RecipeSuggestion[] = [
+      { recipe: createRecipe('neutral', ['salt']), missingIngredientIds: [], quantityWarnings: [] },
+      { recipe: createRecipe('rated', ['salt']), missingIngredientIds: [], quantityWarnings: [] },
+    ];
+    const preference: RecipePreference = {
+      recipeId: 'rated', favorite: false, rating: 5, note: null, createdAt: now, updatedAt: now,
+    };
+
+    expect(rankRecipeSuggestions(candidates, { preferences: [preference], random: () => 0.5 }).map(({ recipe }) => recipe.id))
+      .toEqual(['rated', 'neutral']);
+  });
+
+  it('moves a recently cooked recipe behind an otherwise equal neutral recipe', () => {
+    const candidates: RecipeSuggestion[] = [
+      { recipe: createRecipe('cooked', ['salt']), missingIngredientIds: [], quantityWarnings: [] },
+      { recipe: createRecipe('fresh', ['salt']), missingIngredientIds: [], quantityWarnings: [] },
+    ];
+    const event: CookEvent = {
+      id: 'event-1', recipeId: 'cooked', recipeTitle: 'cooked', servings: 2, cookedAt: now, note: null, createdAt: now, updatedAt: now,
+    };
+
+    expect(rankRecipeSuggestions(candidates, { events: [event], random: () => 0.5 }).map(({ recipe }) => recipe.id))
+      .toEqual(['fresh', 'cooked']);
+  });
+
+  it('produces repeatable but seed-dependent variety without mutating candidates', () => {
+    const candidates: RecipeSuggestion[] = ['one', 'two', 'three', 'four'].map((id) => ({
+      recipe: createRecipe(id, ['salt']), missingIngredientIds: [], quantityWarnings: [],
+    }));
+    const originalOrder = candidates.map(({ recipe }) => recipe.id);
+    const first = rankRecipeSuggestions(candidates, { random: createSeededRandom(1) }).map(({ recipe }) => recipe.id);
+    const repeat = rankRecipeSuggestions(candidates, { random: createSeededRandom(1) }).map(({ recipe }) => recipe.id);
+    const otherSeed = rankRecipeSuggestions(candidates, { random: createSeededRandom(7) }).map(({ recipe }) => recipe.id);
+
+    expect(repeat).toEqual(first);
+    expect(otherSeed).not.toEqual(first);
+    expect(candidates.map(({ recipe }) => recipe.id)).toEqual(originalOrder);
   });
 });

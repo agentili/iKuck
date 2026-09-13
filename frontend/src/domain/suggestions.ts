@@ -2,8 +2,14 @@ import { getIngredient } from './ingredients';
 import { isRecipeCompatible } from './dietary';
 import { getQuantityWarning, type PantryQuantityAggregate } from './pantryLots';
 import { RECIPES } from './recipes';
-import type { DietProfilePayload } from '@ikuck/shared/contracts';
+import type { CookEvent, DietProfilePayload, RecipePreference } from '@ikuck/shared/contracts';
 import type { IngredientDefinition, PantryRecipe, RecipeSuggestion } from './types';
+
+export interface SuggestionPersonalization {
+  events?: readonly CookEvent[];
+  preferences?: readonly RecipePreference[];
+  random?: () => number;
+}
 
 export interface SuggestionOptions {
   recipes?: readonly PantryRecipe[];
@@ -13,7 +19,44 @@ export interface SuggestionOptions {
   random?: () => number;
   quantitySummaries?: readonly PantryQuantityAggregate[];
   dietProfile?: DietProfilePayload;
+  events?: readonly CookEvent[];
+  preferences?: readonly RecipePreference[];
 }
+
+export const createSeededRandom = (seed: number): (() => number) => {
+  let state = (Math.abs(Math.trunc(seed)) % 2147483646) + 1;
+  return () => {
+    state = (state * 48271) % 2147483647;
+    return state / 2147483647;
+  };
+};
+
+export const rankRecipeSuggestions = (
+  suggestions: readonly RecipeSuggestion[],
+  { events = [], preferences = [], random = Math.random }: SuggestionPersonalization = {},
+): RecipeSuggestion[] => {
+  const preferenceByRecipeId = new Map(preferences.map((preference) => [preference.recipeId, preference]));
+  const cookedRecipeIds = new Set(events.map((event) => event.recipeId));
+  const randomByRecipeId = new Map(suggestions.map((suggestion) => [suggestion.recipe.id, random()]));
+  const score = (suggestion: RecipeSuggestion): number => {
+    const preference = preferenceByRecipeId.get(suggestion.recipe.id);
+    const completeness = suggestion.missingIngredientIds.length === 0 ? 1000 : 0;
+    const favorite = preference?.favorite === true ? 300 : 0;
+    const rating = preference?.rating !== null && preference?.rating !== undefined && preference.rating >= 4
+      ? preference.rating * 20
+      : 0;
+    const variety = cookedRecipeIds.has(suggestion.recipe.id) ? -10 : 0;
+    return completeness + favorite + rating + variety;
+  };
+
+  return [...suggestions].sort((left, right) => {
+    const scoreDifference = score(right) - score(left);
+    if (scoreDifference !== 0) return scoreDifference;
+    const randomDifference = (randomByRecipeId.get(right.recipe.id) ?? 0) - (randomByRecipeId.get(left.recipe.id) ?? 0);
+    if (randomDifference !== 0) return randomDifference;
+    return left.recipe.id.localeCompare(right.recipe.id);
+  });
+};
 
 const shuffle = <T>(items: readonly T[], random: () => number): T[] => {
   const copy = [...items];
@@ -34,6 +77,8 @@ export const findRecipeSuggestions = ({
   random = Math.random,
   quantitySummaries = [],
   dietProfile,
+  events = [],
+  preferences = [],
 }: SuggestionOptions): RecipeSuggestion[] => {
   const available = new Set(availableIds);
   const summariesById = new Map(quantitySummaries.map((summary) => [summary.ingredientId, summary]));
@@ -79,7 +124,10 @@ export const findRecipeSuggestions = ({
     random,
   );
 
-  return [...complete, ...extended].slice(0, Math.max(0, limit));
+  return rankRecipeSuggestions(
+    [...complete, ...extended].slice(0, Math.max(0, limit)),
+    { events, preferences, random },
+  );
 };
 
 export const findHelpfulIngredients = (

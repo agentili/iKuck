@@ -47,7 +47,7 @@ export interface SuggestionPersonalization {
 - Extend `SuggestionOptions` with `events?: readonly CookEvent[]` and `preferences?: readonly RecipePreference[]`; `findRecipeSuggestions` will pass eligible results through `rankRecipeSuggestions` after the existing complete-before-extended limit.
 - A favorite receives the strongest positive score, a rating of 4 or 5 a smaller positive score, and a recipe present in cooking history a small negative score to encourage variety. Ties use the supplied random value and then the recipe id for deterministic ordering.
 
-- [ ] **Step 1: Write failing ranking and variety tests**
+- [x] **Step 1: Write failing ranking and variety tests**
 
 Cover these exact cases in `suggestions.test.ts`:
 
@@ -64,7 +64,7 @@ const personalization = {
 - `createSeededRandom(1)` produces the same order on repeated calls and a different seed can produce a different tie order;
 - all recipes remain present and the original suggestion array/catalog are not mutated.
 
-- [ ] **Step 2: Run the focused tests and confirm they fail**
+- [x] **Step 2: Run the focused tests and confirm they fail**
 
 Run:
 
@@ -74,7 +74,7 @@ cd frontend && npm test -- --run src/domain/__tests__/suggestions.test.ts
 
 Expected: FAIL because the personalization interfaces and functions do not exist.
 
-- [ ] **Step 3: Implement the pure ranking boundary**
+- [x] **Step 3: Implement the pure ranking boundary**
 
 Keep `findRecipeSuggestions` responsible for eligibility and its existing six-item cap. After the cap, call:
 
@@ -88,7 +88,7 @@ return rankRecipeSuggestions([...complete, ...extended].slice(0, Math.max(0, lim
 
 The ranking score must not inspect recipe prose or invent nutrition data. It may only use `RecipePreference.recipeId`, `favorite`, `rating` and `CookEvent.recipeId`; all unmatched signals have score zero. Use a local seeded generator for the Home refresh action instead of mutating or shuffling `RECIPES`.
 
-- [ ] **Step 4: Run focused and full domain tests**
+- [x] **Step 4: Run focused and full domain tests**
 
 Run:
 
@@ -99,7 +99,7 @@ cd frontend && npm test -- --run src/domain
 
 Expected: all suggestion and domain tests pass, including existing complete-before-extended and diet/nutrition assertions.
 
-- [ ] **Step 5: Commit the ranking unit**
+- [x] **Step 5: Commit the ranking unit**
 
 ```bash
 git add frontend/src/domain/suggestions.ts frontend/src/domain/__tests__/suggestions.test.ts
