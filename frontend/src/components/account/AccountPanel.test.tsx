@@ -1,4 +1,4 @@
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -64,5 +64,27 @@ describe('AccountPanel', () => {
 
     expect(await screen.findByText('Devi verificare la tua email prima di accedere.')).toBeInTheDocument();
     expect(screen.queryByText('a long enough password')).not.toBeInTheDocument();
+  });
+
+  it('navigates to the profile after a verified login succeeds', async () => {
+    const login = vi.fn().mockResolvedValue(undefined);
+    useAuthStore.setState({ login });
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<AccountPanel />} />
+          <Route path="/profile" element={<h1>Profilo account</h1>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Accedi o registrati' }));
+    await user.type(screen.getByLabelText('Email'), 'ale@example.com');
+    await user.type(screen.getByLabelText('Password'), 'a long enough password');
+    await user.click(screen.getByRole('button', { name: 'Accedi al profilo' }));
+
+    expect(login).toHaveBeenCalledWith('ale@example.com', 'a long enough password');
+    expect(await screen.findByRole('heading', { name: 'Profilo account' })).toBeInTheDocument();
   });
 });
