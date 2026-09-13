@@ -5,6 +5,7 @@ export interface ProviderConfig {
   resendFrom?: string;
   usdaApiKey?: string;
   openAiApiKey?: string;
+  openAiModel?: string;
 }
 
 export interface AppConfig {
@@ -46,6 +47,7 @@ const environmentSchema = z.object({
   RESEND_FROM: z.string().email().optional(),
   USDA_API_KEY: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
+  OPENAI_MODEL: z.string().min(1).default('gpt-5.5'),
 });
 
 export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
@@ -72,6 +74,7 @@ export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
       resendFrom: parsed.RESEND_FROM,
       usdaApiKey: parsed.USDA_API_KEY,
       openAiApiKey: parsed.OPENAI_API_KEY,
+      openAiModel: parsed.OPENAI_MODEL,
     },
     nodeEnvironment: parsed.NODE_ENV,
   };

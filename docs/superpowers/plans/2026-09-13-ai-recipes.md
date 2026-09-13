@@ -44,11 +44,11 @@
 - `parseGeneratedRecipeDraft(value: unknown)` returns a validated draft or `null`; empty titles, steps, ingredients, unsupported diets/allergens and duplicate allergen codes are invalid.
 - `isGeneratedRecipeCompatible(recipe, profile)` blocks a recipe when the selected diet is absent or an excluded allergen is declared.
 
-- [ ] **Step 1: Write failing contract and validation tests**
+- [x] **Step 1: Write failing contract and validation tests**
 
 Cover the private recipe shape, all 14 allergen codes, malformed titles and steps, duplicate allergen rejection, compatible vegan output, incompatible fish output and preservation of `source: 'ai'`.
 
-- [ ] **Step 2: Run focused tests and confirm they fail**
+- [x] **Step 2: Run focused tests and confirm they fail**
 
 Run:
 
@@ -58,11 +58,11 @@ cd backend && npm test -- --run src/ai/validation.test.ts src/contracts/contract
 
 Expected: FAIL because the AI contracts and parser do not exist.
 
-- [ ] **Step 3: Implement shared types and Zod validation**
+- [x] **Step 3: Implement shared types and Zod validation**
 
 Keep the provider draft free of database ids, then convert it to a `GeneratedRecipe` only after the route has authenticated the user and assigned timestamps. Reject unknown fields in the API schema and preserve the submitted diet/allergen profile as server-side compatibility context rather than trusting model prose.
 
-- [ ] **Step 4: Verify and commit the contract unit**
+- [x] **Step 4: Verify and commit the contract unit**
 
 Run backend focused tests, lint and build, then commit:
 

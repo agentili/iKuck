@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { CookEvent, DietProfile, PantryLot, RecipePreference, ShoppingListItem, SyncMutation } from '@ikuck/shared/contracts';
+import type { AiConsent, CookEvent, DietProfile, GeneratedRecipe, PantryLot, RecipePreference, ShoppingListItem, SyncMutation } from '@ikuck/shared/contracts';
 import { describe, expect, it } from 'vitest';
 
 const migrationPath = join(
@@ -92,6 +92,24 @@ describe('shared contracts and account migration', () => {
     };
 
     expect(JSON.parse(JSON.stringify(profile))).toEqual(profile);
+  });
+
+  it('keeps consent and private generated recipes serializable', () => {
+    const consent: AiConsent = { enabled: true, updatedAt: '2026-09-13T12:00:00.000Z' };
+    const recipe: GeneratedRecipe = {
+      id: 'generated-1',
+      title: 'Ceci croccanti',
+      description: 'Una ricetta rapida con i ceci della dispensa.',
+      ingredients: [{ name: 'Ceci', amount: '240 g' }],
+      steps: ['Scola i ceci.', 'Cuocili in padella.'],
+      diets: ['vegan'],
+      allergens: [],
+      source: 'ai',
+      createdAt: '2026-09-13T12:00:00.000Z',
+      updatedAt: '2026-09-13T12:00:00.000Z',
+    };
+
+    expect(JSON.parse(JSON.stringify({ consent, recipe }))).toEqual({ consent, recipe });
   });
 
   it('contains the account and sync tables in the first feature migration', () => {

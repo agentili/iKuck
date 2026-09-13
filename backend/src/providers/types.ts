@@ -1,3 +1,5 @@
+import type { DietProfilePayload, GeneratedRecipeDraft as SharedGeneratedRecipeDraft } from '@ikuck/shared/contracts';
+
 export type ProviderName = 'email' | 'nutrition' | 'recipes';
 
 export class ProviderUnavailableError extends Error {
@@ -57,14 +59,10 @@ export interface NutritionProvider {
 export interface RecipeGenerationRequest {
   ingredients: string[];
   constraints: string[];
+  dietProfile?: DietProfilePayload;
 }
 
-export interface GeneratedRecipeDraft {
-  title: string;
-  description: string;
-  ingredients: Array<{ name: string; amount: string }>;
-  steps: string[];
-}
+export type GeneratedRecipeDraft = SharedGeneratedRecipeDraft;
 
 export interface RecipeGenerationProvider {
   generate: (request: RecipeGenerationRequest) => Promise<GeneratedRecipeDraft>;

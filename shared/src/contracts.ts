@@ -1,4 +1,4 @@
-export type SyncEntityType = 'pantry_item' | 'pantry_lot' | 'staple_preference' | 'shopping_list_item' | 'cook_event' | 'recipe_preference' | 'diet_profile';
+export type SyncEntityType = 'pantry_item' | 'pantry_lot' | 'staple_preference' | 'shopping_list_item' | 'cook_event' | 'recipe_preference' | 'diet_profile' | 'ai_consent' | 'generated_recipe';
 
 export type SyncOperation = 'upsert' | 'delete';
 
@@ -57,6 +57,32 @@ export interface DietProfilePayload {
 }
 
 export interface DietProfile extends DietProfilePayload {
+  updatedAt: string;
+}
+
+export interface AiConsent {
+  enabled: boolean;
+  updatedAt: string;
+}
+
+export interface GeneratedRecipeIngredient {
+  name: string;
+  amount: string;
+}
+
+export interface GeneratedRecipeDraft {
+  title: string;
+  description: string;
+  ingredients: GeneratedRecipeIngredient[];
+  steps: string[];
+  diets: DietType[];
+  allergens: EuAllergen[];
+}
+
+export interface GeneratedRecipe extends GeneratedRecipeDraft {
+  id: string;
+  source: 'ai';
+  createdAt: string;
   updatedAt: string;
 }
 
