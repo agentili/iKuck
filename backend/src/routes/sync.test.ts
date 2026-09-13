@@ -49,4 +49,43 @@ describe('sync routes', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({ nextCursor: 1, changes: [{ entityId: 'tomato' }] });
   });
+
+  it('rejects an invalid pantry lot payload before writing it', async () => {
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository: createMemorySyncRepository(), authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers: {
+        cookie: 'ikuck_session=session-token',
+        origin: 'http://127.0.0.1:5173',
+        'x-csrf-token': 'csrf-token',
+      },
+      payload: {
+        deviceId: 'device-1',
+        cursor: 0,
+        mutations: [{
+          mutationId: 'invalid-lot',
+          deviceId: 'device-1',
+          entityType: 'pantry_lot',
+          entityId: 'lot-1',
+          operation: 'upsert',
+          payload: {
+            id: 'lot-1', ingredientId: 'pasta', label: 'Pasta', known: true,
+            quantity: 0, unit: 'g', expiresAt: null,
+            createdAt: '2026-09-13T10:00:00.000Z', updatedAt: '2026-09-13T10:00:00.000Z',
+          },
+          clientUpdatedAt: '2026-09-13T10:00:00.000Z',
+        }],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: 'invalid_payload' });
+  });
 });

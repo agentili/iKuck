@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SyncChangeSet, SyncMutation } from '@ikuck/shared/contracts';
+import type { PantryLot, SyncChangeSet, SyncMutation } from '@ikuck/shared/contracts';
 import { deleteLocalDatabase, readMeta } from '../storage/indexedDb';
+import { readPantrySnapshot } from '../storage/pantryStorage';
 import {
   enqueueMutation,
   getDeviceId,
@@ -85,5 +86,39 @@ describe('sync queue', () => {
     }));
     await expect(readQueuedMutations()).resolves.toEqual([]);
     await expect(readSyncCursor()).resolves.toBe(4);
+  });
+
+  it('applies a remote pantry lot and keeps its quantity and expiry details', async () => {
+    const lot: PantryLot = {
+      id: 'lot-pasta',
+      ingredientId: 'pasta',
+      label: 'Pasta',
+      known: true,
+      quantity: 320,
+      unit: 'g',
+      expiresAt: '2026-09-20',
+      createdAt: '2026-09-13T10:00:00.000Z',
+      updatedAt: '2026-09-13T10:00:00.000Z',
+    };
+    const fetch = vi.fn().mockResolvedValue(responseFor({
+      changes: [{
+        mutationId: 'lot-change',
+        deviceId: 'device-remote',
+        entityType: 'pantry_lot',
+        entityId: lot.id,
+        operation: 'upsert',
+        payload: lot,
+        clientUpdatedAt: lot.updatedAt,
+        serverSequence: 5,
+      }],
+      nextCursor: 5,
+    }));
+
+    await syncNow({ fetch, session });
+
+    await expect(readPantrySnapshot()).resolves.toMatchObject({
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+      pantryLots: [expect.objectContaining({ id: lot.id, quantity: 320, unit: 'g', expiresAt: '2026-09-20' })],
+    });
   });
 });

@@ -12,6 +12,7 @@ describe('pantry store', () => {
       hasHydrated: false,
       pantryItems: [],
       stapleIds: [...DEFAULT_STAPLE_IDS],
+      pantryLots: [],
     });
     await readKeyValue('pantry');
     await deleteLocalDatabase();
@@ -84,6 +85,77 @@ describe('pantry store', () => {
     ]);
   });
 
+  it('creates a presence-only lot when adding an ingredient without details', () => {
+    usePantryStore.getState().addIngredients([{ id: 'pasta', label: 'Pasta', known: true }]);
+
+    expect(usePantryStore.getState().pantryLots).toEqual([
+      expect.objectContaining({
+        id: 'pasta',
+        ingredientId: 'pasta',
+        quantity: null,
+        unit: null,
+        expiresAt: null,
+      }),
+    ]);
+  });
+
+  it('keeps two lots for one ingredient and aggregates recipe-facing presence', () => {
+    usePantryStore.getState().addPantryLot({
+      ingredientId: 'pasta',
+      label: 'Pasta',
+      known: true,
+      quantity: 500,
+      unit: 'g',
+      expiresAt: '2026-10-01',
+    });
+    usePantryStore.getState().addPantryLot({
+      ingredientId: 'pasta',
+      label: 'Pasta',
+      known: true,
+      quantity: 1,
+      unit: 'kg',
+      expiresAt: null,
+    });
+
+    expect(usePantryStore.getState().pantryLots).toHaveLength(2);
+    expect(usePantryStore.getState().pantryItems).toEqual([
+      { id: 'pasta', label: 'Pasta', known: true },
+    ]);
+    expect(usePantryStore.getState().getPantryQuantitySummary()[0]).toMatchObject({
+      totalQuantity: 1500,
+      totalUnit: 'g',
+      lotCount: 2,
+      earliestExpiresAt: '2026-10-01',
+    });
+  });
+
+  it('removes one lot without removing sibling lots', () => {
+    const firstId = usePantryStore.getState().addPantryLot({
+      ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 500, unit: 'g', expiresAt: null,
+    });
+    usePantryStore.getState().addPantryLot({
+      ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 1, unit: 'kg', expiresAt: null,
+    });
+
+    usePantryStore.getState().removePantryLot(firstId!);
+
+    expect(usePantryStore.getState().pantryLots).toHaveLength(1);
+    expect(usePantryStore.getState().pantryItems).toHaveLength(1);
+  });
+
+  it('updates quantity and expiry details without losing the lot id', () => {
+    usePantryStore.getState().addIngredients([{ id: 'pasta', label: 'Pasta', known: true }]);
+    const id = usePantryStore.getState().pantryLots[0].id;
+    const updated = usePantryStore.getState().updatePantryLot(id, {
+      quantity: 320,
+      unit: 'g',
+      expiresAt: '2026-09-20',
+    });
+
+    expect(updated).toBe(true);
+    expect(usePantryStore.getState().pantryLots[0]).toMatchObject({ id, quantity: 320, unit: 'g', expiresAt: '2026-09-20' });
+  });
+
   it('queues pantry and staple changes without delaying the local state update', async () => {
     usePantryStore.getState().addIngredients([{ id: 'pasta', label: 'Pasta', known: true }]);
     usePantryStore.getState().toggleStaple('salt');
@@ -95,7 +167,7 @@ describe('pantry store', () => {
     ]);
     expect(mutations).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        entityType: 'pantry_item',
+        entityType: 'pantry_lot',
         entityId: 'pasta',
         operation: 'upsert',
       }),
@@ -187,6 +259,6 @@ describe('pantry store', () => {
       { id: 'pasta', label: 'Pasta', known: true },
     ]);
     expect(window.localStorage.getItem('iricetto-pantry-v1')).toBeNull();
-    await expect(readKeyValue('pantry')).resolves.toBe(legacyPersisted);
+    await expect(readKeyValue<string>('pantry')).resolves.toMatch(/"pantryLots":\[\{"id":"pasta"/);
   });
 });

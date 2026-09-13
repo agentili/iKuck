@@ -4,6 +4,7 @@ import AccountPanel from '../components/account/AccountPanel';
 import IngredientChip from '../components/pantry/IngredientChip';
 import IngredientInput from '../components/pantry/IngredientInput';
 import IngredientSuggestions from '../components/pantry/IngredientSuggestions';
+import PantryLotsPanel from '../components/pantry/PantryLotsPanel';
 import StaplesPanel from '../components/pantry/StaplesPanel';
 import LocalRecipeCard from '../components/suggestions/LocalRecipeCard';
 import SuggestionControls from '../components/suggestions/SuggestionControls';
@@ -17,11 +18,16 @@ export default function HomePage() {
   const [allowOneMissing, setAllowOneMissing] = useState(false);
   const [suggestions, setSuggestions] = useState<RecipeSuggestion[]>([]);
   const pantryItems = usePantryStore((state) => state.pantryItems);
+  const pantryLots = usePantryStore((state) => state.pantryLots);
   const stapleIds = usePantryStore((state) => state.stapleIds);
   const addIngredients = usePantryStore((state) => state.addIngredients);
+  const addPantryLot = usePantryStore((state) => state.addPantryLot);
+  const updatePantryLot = usePantryStore((state) => state.updatePantryLot);
+  const removePantryLot = usePantryStore((state) => state.removePantryLot);
   const removeIngredient = usePantryStore((state) => state.removeIngredient);
   const toggleStaple = usePantryStore((state) => state.toggleStaple);
   const getAvailableIngredientIds = usePantryStore((state) => state.getAvailableIngredientIds);
+  const getPantryQuantitySummary = usePantryStore((state) => state.getPantryQuantitySummary);
 
   useEffect(() => {
     void hydratePantryStore();
@@ -65,7 +71,11 @@ export default function HomePage() {
   };
 
   const search = (extended = allowOneMissing) => {
-    setSuggestions(findRecipeSuggestions({ availableIds: getAvailableIngredientIds(), allowOneMissing: extended }));
+    setSuggestions(findRecipeSuggestions({
+      availableIds: getAvailableIngredientIds(),
+      allowOneMissing: extended,
+      quantitySummaries: getPantryQuantitySummary(),
+    }));
     setHasSearched(true);
   };
 
@@ -92,7 +102,7 @@ export default function HomePage() {
       <section aria-labelledby="pantry-title" className="space-y-5 rounded-3xl border-2 border-gray-200 bg-gray-50 p-4 sm:p-6">
         <div>
           <h2 id="pantry-title" className="text-2xl font-bold text-gray-950">La tua dispensa</h2>
-          <p className="mt-1 text-gray-600">Basta il nome: niente quantità o scadenze.</p>
+          <p className="mt-1 text-gray-600">Basta il nome: quantità e scadenze sono opzionali.</p>
         </div>
         <IngredientInput onAdd={handleAdd} />
         <IngredientSuggestions ingredients={suggestedIngredients} onAdd={handleSuggestedIngredient} />
@@ -102,6 +112,9 @@ export default function HomePage() {
           <ul aria-label="La tua dispensa" className="flex flex-wrap gap-2">
             {pantryItems.map((item) => <IngredientChip key={item.id} item={item} onRemove={handleRemove} />)}
           </ul>
+        )}
+        {pantryItems.length > 0 && (
+          <PantryLotsPanel ingredients={pantryItems} lots={pantryLots} onAddLot={addPantryLot} onRemoveLot={removePantryLot} onUpdateLot={updatePantryLot} />
         )}
         <StaplesPanel stapleIds={stapleIds} onToggle={handleToggleStaple} />
         <SuggestionControls allowOneMissing={allowOneMissing} disabled={pantryItems.length === 0} onAllowOneMissingChange={setAllowOneMissing} onSearch={() => search()} />

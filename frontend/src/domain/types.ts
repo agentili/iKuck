@@ -47,4 +47,5 @@ export interface PantryRecipe {
 export interface RecipeSuggestion {
   recipe: PantryRecipe;
   missingIngredientIds: string[];
+  quantityWarnings: string[];
 }

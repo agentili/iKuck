@@ -54,6 +54,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       auth: { service: auth, appOrigin, secureCookies: false },
       profile: { repository: profile, authService: auth, appOrigin, secureCookies: false },
       sync: { repository: sync, authService: auth, appOrigin },
+      pantryLots: { repository: sync, authService: auth, appOrigin },
     });
     await app.ready();
   });
@@ -139,6 +140,45 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       },
     });
     expect(older.statusCode).toBe(200);
+
+    const lot = {
+      id: 'integration-lot-pasta',
+      ingredientId: 'pasta',
+      label: 'Pasta',
+      known: true,
+      quantity: 500,
+      unit: 'g' as const,
+      expiresAt: '2026-10-01',
+      createdAt: '2026-09-13T12:00:00.000Z',
+      updatedAt: '2026-09-13T12:00:00.000Z',
+    };
+    const lotSync = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers: { origin: appOrigin, cookie, 'x-csrf-token': loginBody.csrfToken },
+      payload: {
+        deviceId: 'device-1',
+        cursor: 1,
+        mutations: [{
+          mutationId: 'integration-lot-mutation',
+          deviceId: 'device-1',
+          entityType: 'pantry_lot',
+          entityId: lot.id,
+          operation: 'upsert',
+          payload: lot,
+          clientUpdatedAt: lot.updatedAt,
+        }],
+      },
+    });
+    expect(lotSync.statusCode).toBe(200);
+
+    const lots = await app.inject({
+      method: 'GET',
+      url: '/v1/pantry-lots',
+      headers: { cookie },
+    });
+    expect(lots.statusCode).toBe(200);
+    expect(lots.json<{ lots: Array<{ id: string; quantity: number }> }>().lots).toContainEqual(expect.objectContaining({ id: lot.id, quantity: 500 }));
 
     const exported = await app.inject({ method: 'GET', url: '/v1/profile/export', headers: { cookie } });
     expect(exported.statusCode).toBe(200);

@@ -1,4 +1,5 @@
 import type { StateStorage } from 'zustand/middleware';
+import type { PantryLot, PantryUnit } from '@ikuck/shared/contracts';
 import type { ParsedIngredient } from '../domain/types';
 import {
   deleteKeyValue,
@@ -14,6 +15,7 @@ export const PANTRY_DATABASE_KEY = 'pantry';
 export interface PantrySnapshot {
   pantryItems: ParsedIngredient[];
   stapleIds: string[];
+  pantryLots?: PantryLot[];
 }
 
 interface PersistedPantryState {
@@ -35,6 +37,75 @@ function isParsedIngredient(value: unknown): value is ParsedIngredient {
     && typeof candidate.known === 'boolean';
 }
 
+const PANTRY_UNITS: readonly PantryUnit[] = ['g', 'kg', 'ml', 'l', 'piece', 'pack'];
+
+export function isPantryLot(value: unknown): value is PantryLot {
+  if (typeof value !== 'object' || value === null) return false;
+
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.id === 'string'
+    && typeof candidate.ingredientId === 'string'
+    && typeof candidate.label === 'string'
+    && typeof candidate.known === 'boolean'
+    && (candidate.quantity === null || (typeof candidate.quantity === 'number' && Number.isFinite(candidate.quantity) && candidate.quantity > 0))
+    && (candidate.unit === null || (typeof candidate.unit === 'string' && PANTRY_UNITS.includes(candidate.unit as PantryUnit)))
+    && (candidate.quantity === null ? candidate.unit === null : candidate.unit !== null)
+    && (candidate.expiresAt === null || (typeof candidate.expiresAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(candidate.expiresAt)))
+    && typeof candidate.createdAt === 'string'
+    && typeof candidate.updatedAt === 'string';
+}
+
+export const createPresencePantryLot = (item: ParsedIngredient, id = item.id, now = new Date().toISOString()): PantryLot => ({
+  id,
+  ingredientId: item.id,
+  label: item.label,
+  known: item.known,
+  quantity: null,
+  unit: null,
+  expiresAt: null,
+  createdAt: now,
+  updatedAt: now,
+});
+
+export const derivePantryItems = (lots: readonly PantryLot[]): ParsedIngredient[] => {
+  const items = new Map<string, ParsedIngredient>();
+  for (const lot of lots) {
+    if (!items.has(lot.ingredientId)) {
+      items.set(lot.ingredientId, {
+        id: lot.ingredientId,
+        label: lot.label,
+        known: lot.known,
+      });
+    }
+  }
+  return [...items.values()];
+};
+
+export const normalizePantrySnapshot = (snapshot: PantrySnapshot): PantrySnapshot => {
+  const validLots = (snapshot.pantryLots ?? []).filter(isPantryLot);
+  const representedIngredients = new Set(validLots.map((lot) => lot.ingredientId));
+  const legacyItems = snapshot.pantryItems.filter(isParsedIngredient);
+  const lots = [...validLots];
+
+  for (const item of legacyItems) {
+    if (!representedIngredients.has(item.id)) {
+      lots.push(createPresencePantryLot(item));
+      representedIngredients.add(item.id);
+    }
+  }
+
+  return {
+    pantryItems: derivePantryItems(lots),
+    stapleIds: [...new Set(snapshot.stapleIds.filter((id) => typeof id === 'string'))],
+    pantryLots: lots,
+  };
+};
+
+const serializeSnapshot = (snapshot: PantrySnapshot): string => JSON.stringify({
+  state: normalizePantrySnapshot(snapshot),
+  version: 1,
+});
+
 function parsePantrySnapshot(raw: string): PantrySnapshot | null {
   try {
     const parsed = JSON.parse(raw) as Partial<PersistedPantryState>;
@@ -51,10 +122,11 @@ function parsePantrySnapshot(raw: string): PantrySnapshot | null {
       return null;
     }
 
-    return {
+    return normalizePantrySnapshot({
       pantryItems: state.pantryItems,
       stapleIds: state.stapleIds,
-    };
+      pantryLots: Array.isArray(state.pantryLots) ? state.pantryLots : undefined,
+    });
   } catch {
     return null;
   }
@@ -103,7 +175,9 @@ export async function migrateLegacyPantry(): Promise<boolean> {
   const source = readLocalStorageSource();
   if (source === null) return false;
 
-  await writeKeyValue(PANTRY_DATABASE_KEY, source.raw);
+  const snapshot = parsePantrySnapshot(source.raw);
+  if (snapshot === null) return false;
+  await writeKeyValue(PANTRY_DATABASE_KEY, serializeSnapshot(snapshot));
   window.localStorage.removeItem(source.key);
   return true;
 }
@@ -125,7 +199,7 @@ export async function readPantrySnapshot(): Promise<PantrySnapshot | null> {
 }
 
 export async function writePantrySnapshot(snapshot: PantrySnapshot): Promise<void> {
-  const persisted: PersistedPantryState = { state: snapshot, version: 1 };
+  const persisted: PersistedPantryState = { state: normalizePantrySnapshot(snapshot), version: 1 };
 
   if (!isIndexedDbAvailable()) {
     window.localStorage.setItem(PANTRY_STORAGE_KEY, JSON.stringify(persisted));
@@ -153,7 +227,8 @@ export const pantryStorage: StateStorage = {
         await deleteKeyValue(PANTRY_DATABASE_KEY);
         return null;
       }
-      return raw;
+      const parsed = raw === null ? null : parsePantrySnapshot(raw);
+      return parsed === null ? null : serializeSnapshot(parsed);
     } catch {
       return readLocalStorageFallback(name);
     }
@@ -165,7 +240,8 @@ export const pantryStorage: StateStorage = {
     }
 
     try {
-      await writeKeyValue(PANTRY_DATABASE_KEY, value);
+      const parsed = parsePantrySnapshot(value);
+      await writeKeyValue(PANTRY_DATABASE_KEY, parsed === null ? value : serializeSnapshot(parsed));
     } catch {
       window.localStorage.setItem(name, value);
     }

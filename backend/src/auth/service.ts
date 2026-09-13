@@ -12,7 +12,8 @@ export type AuthErrorCode =
   | 'password_too_short'
   | 'provider_unavailable'
   | 'session_required'
-  | 'csrf_failed';
+  | 'csrf_failed'
+  | 'invalid_payload';
 
 export class AuthServiceError extends Error {
   constructor(

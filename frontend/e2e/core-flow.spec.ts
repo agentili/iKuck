@@ -42,6 +42,7 @@ test('the core flow works at 320px using only the keyboard', async ({ page }) =>
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
 
+  await expect(page.getByLabel('Ingredienti presenti')).toBeVisible();
   await page.keyboard.press('Tab');
   await expect(page.getByLabel('Ingredienti presenti')).toBeFocused();
   await page.keyboard.type('pasta, tonno, passata');
@@ -49,7 +50,7 @@ test('the core flow works at 320px using only the keyboard', async ({ page }) =>
   await expect(page.getByText('Passata di pomodoro', { exact: true })).toBeVisible();
 
   const searchButton = page.getByRole('button', { name: 'Trova ricette' });
-  for (let step = 0; step < 20; step += 1) {
+  for (let step = 0; step < 60; step += 1) {
     if (await searchButton.evaluate((element) => element === document.activeElement)) break;
     await page.keyboard.press('Tab');
   }

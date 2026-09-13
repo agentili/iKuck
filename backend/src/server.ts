@@ -37,6 +37,7 @@ export const start = async () => {
         secureCookies: config.nodeEnvironment === 'production',
       },
       sync: { repository: sync, authService: auth, appOrigin: config.appOrigin },
+      pantryLots: { repository: sync, authService: auth, appOrigin: config.appOrigin },
     },
     { logger: { level: config.logLevel, redact: ['req.headers.cookie', 'req.headers.authorization'] } },
   );

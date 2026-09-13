@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { DEFAULT_STAPLE_IDS } from '../domain/ingredients';
+import { aggregatePantryLots, validatePantryLotDetails, type PantryQuantityAggregate } from '../domain/pantryLots';
 import type { ParsedIngredient } from '../domain/types';
+import type { PantryLot, PantryLotPayload } from '@ikuck/shared/contracts';
 import {
   enqueuePantryMutation,
   registerPantrySnapshotListener,
@@ -9,6 +11,9 @@ import {
 import {
   PANTRY_STORAGE_KEY,
   pantryStorage,
+  createPresencePantryLot,
+  derivePantryItems,
+  normalizePantrySnapshot,
 } from '../storage/pantryStorage';
 import type { PantrySnapshot } from '../storage/pantryStorage';
 
@@ -18,29 +23,36 @@ export interface PantryState {
   hasHydrated: boolean;
   pantryItems: ParsedIngredient[];
   stapleIds: string[];
+  pantryLots: PantryLot[];
   addIngredients: (items: ParsedIngredient[]) => void;
+  addPantryLot: (input: PantryLotPayload) => string | null;
+  updatePantryLot: (id: string, details: Pick<PantryLotPayload, 'quantity' | 'unit' | 'expiresAt'>) => boolean;
+  removePantryLot: (id: string) => void;
+  getLotsForIngredient: (ingredientId: string) => PantryLot[];
+  getPantryQuantitySummary: () => PantryQuantityAggregate[];
   removeIngredient: (id: string) => void;
   toggleStaple: (id: string) => void;
   resetPantry: () => void;
   getAvailableIngredientIds: () => string[];
 }
 
-const mergeUniqueIngredients = (
-  existing: ParsedIngredient[],
-  incoming: ParsedIngredient[],
-): ParsedIngredient[] => {
-  const unique = new Map(existing.map((item) => [item.id, item]));
-
-  for (const item of incoming) {
-    if (!unique.has(item.id)) unique.set(item.id, item);
-  }
-
-  return [...unique.values()];
-};
-
 let markHydrated: (() => void) | null = null;
 let hydrationPromise: Promise<void> | null = null;
 let applyRemoteSnapshot: ((snapshot: PantrySnapshot) => void) | null = null;
+
+const createLotId = (ingredientId: string, existingLots: readonly PantryLot[]): string => {
+  if (!existingLots.some((lot) => lot.ingredientId === ingredientId)) return ingredientId;
+  const randomId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `${ingredientId}:${randomId}`;
+};
+
+const normalizeStateSnapshot = (state: Pick<PantryState, 'pantryItems' | 'stapleIds' | 'pantryLots'>): PantrySnapshot => normalizePantrySnapshot({
+  pantryItems: state.pantryItems,
+  stapleIds: state.stapleIds,
+  pantryLots: state.pantryLots,
+});
 
 export const usePantryStore = create<PantryState>()(
   persist(
@@ -51,24 +63,73 @@ export const usePantryStore = create<PantryState>()(
         hasHydrated: false,
         pantryItems: [],
         stapleIds: [...DEFAULT_STAPLE_IDS],
+        pantryLots: [],
         addIngredients: (items) => {
-          const existingIds = new Set(get().pantryItems.map((item) => item.id));
+          const current = normalizeStateSnapshot(get());
+          const existingIds = new Set(current.pantryItems.map((item) => item.id));
           const additions = items.filter((item) => !existingIds.has(item.id));
           if (additions.length === 0) return;
 
-          set((state) => ({
-            pantryItems: mergeUniqueIngredients(state.pantryItems, additions),
+          const newLots = additions.map((item) => ({
+            ...createPresencePantryLot(item),
+            id: createLotId(item.id, current.pantryLots ?? []),
           }));
-          for (const item of additions) {
-            void enqueuePantryMutation('pantry_item', item.id, 'upsert', item).catch(() => undefined);
+          const nextLots = [...(current.pantryLots ?? []), ...newLots];
+          set({
+            pantryItems: derivePantryItems(nextLots),
+            pantryLots: nextLots,
+          });
+          for (const lot of newLots) {
+            void enqueuePantryMutation('pantry_lot', lot.id, 'upsert', lot).catch(() => undefined);
           }
         },
+        addPantryLot: (input) => {
+          const errors = validatePantryLotDetails(input.quantity, input.unit, input.expiresAt);
+          if (errors.length > 0) return null;
+
+          const current = normalizeStateSnapshot(get());
+          const now = new Date().toISOString();
+          const lot: PantryLot = {
+            ...input,
+            id: createLotId(input.ingredientId, current.pantryLots ?? []),
+            createdAt: now,
+            updatedAt: now,
+          };
+          const nextLots = [...(current.pantryLots ?? []), lot];
+          set({ pantryItems: derivePantryItems(nextLots), pantryLots: nextLots });
+          void enqueuePantryMutation('pantry_lot', lot.id, 'upsert', lot).catch(() => undefined);
+          return lot.id;
+        },
+        updatePantryLot: (id, details) => {
+          const current = normalizeStateSnapshot(get());
+          const existing = current.pantryLots?.find((lot) => lot.id === id);
+          if (existing === undefined) return false;
+          if (validatePantryLotDetails(details.quantity, details.unit, details.expiresAt).length > 0) return false;
+
+          const updated: PantryLot = { ...existing, ...details, updatedAt: new Date().toISOString() };
+          const nextLots = (current.pantryLots ?? []).map((lot) => lot.id === id ? updated : lot);
+          set({ pantryItems: derivePantryItems(nextLots), pantryLots: nextLots });
+          void enqueuePantryMutation('pantry_lot', updated.id, 'upsert', updated).catch(() => undefined);
+          return true;
+        },
+        removePantryLot: (id) => {
+          const current = normalizeStateSnapshot(get());
+          if (!current.pantryLots?.some((lot) => lot.id === id)) return;
+          const nextLots = (current.pantryLots ?? []).filter((lot) => lot.id !== id);
+          set({ pantryItems: derivePantryItems(nextLots), pantryLots: nextLots });
+          void enqueuePantryMutation('pantry_lot', id, 'delete', null).catch(() => undefined);
+        },
+        getLotsForIngredient: (ingredientId) => normalizeStateSnapshot(get()).pantryLots?.filter((lot) => lot.ingredientId === ingredientId) ?? [],
+        getPantryQuantitySummary: () => aggregatePantryLots(normalizeStateSnapshot(get()).pantryLots ?? []),
         removeIngredient: (id) => {
-          if (!get().pantryItems.some((item) => item.id === id)) return;
-          set((state) => ({
-            pantryItems: state.pantryItems.filter((item) => item.id !== id),
-          }));
-          void enqueuePantryMutation('pantry_item', id, 'delete', null).catch(() => undefined);
+          const current = normalizeStateSnapshot(get());
+          const removedLots = (current.pantryLots ?? []).filter((lot) => lot.ingredientId === id);
+          if (removedLots.length === 0) return;
+          const nextLots = (current.pantryLots ?? []).filter((lot) => lot.ingredientId !== id);
+          set({ pantryItems: derivePantryItems(nextLots), pantryLots: nextLots });
+          for (const lot of removedLots) {
+            void enqueuePantryMutation('pantry_lot', lot.id, 'delete', null).catch(() => undefined);
+          }
         },
         toggleStaple: (id) => {
           const enabled = !get().stapleIds.includes(id);
@@ -80,17 +141,17 @@ export const usePantryStore = create<PantryState>()(
           void enqueuePantryMutation('staple_preference', id, 'upsert', { enabled }).catch(() => undefined);
         },
         resetPantry: () => {
-          const current = get();
-          const removedItems = current.pantryItems.map((item) => item.id);
+          const current = normalizeStateSnapshot(get());
           const defaultStapleIds = new Set<string>(DEFAULT_STAPLE_IDS);
           const changedStaples = new Set<string>([...current.stapleIds, ...DEFAULT_STAPLE_IDS]);
 
           set({
             pantryItems: [],
             stapleIds: [...DEFAULT_STAPLE_IDS],
+            pantryLots: [],
           });
-          for (const itemId of removedItems) {
-            void enqueuePantryMutation('pantry_item', itemId, 'delete', null).catch(() => undefined);
+          for (const lot of current.pantryLots ?? []) {
+            void enqueuePantryMutation('pantry_lot', lot.id, 'delete', null).catch(() => undefined);
           }
           for (const stapleId of changedStaples) {
             const enabled = defaultStapleIds.has(stapleId);
@@ -100,7 +161,7 @@ export const usePantryStore = create<PantryState>()(
           }
         },
         getAvailableIngredientIds: () => [
-          ...get().pantryItems.filter((item) => item.known).map((item) => item.id),
+          ...normalizeStateSnapshot(get()).pantryItems.filter((item) => item.known).map((item) => item.id),
           ...get().stapleIds,
         ],
       };
@@ -116,6 +177,9 @@ export const usePantryStore = create<PantryState>()(
         return persistedState;
       },
       onRehydrateStorage: () => () => {
+        const current = usePantryStore.getState();
+        const normalized = normalizeStateSnapshot(current);
+        usePantryStore.setState({ pantryItems: normalized.pantryItems, pantryLots: normalized.pantryLots ?? [] });
         markHydrated?.();
       },
     },
@@ -123,9 +187,11 @@ export const usePantryStore = create<PantryState>()(
 );
 
 applyRemoteSnapshot = (snapshot) => {
+  const normalized = normalizePantrySnapshot(snapshot);
   usePantryStore.setState({
-    pantryItems: snapshot.pantryItems,
-    stapleIds: snapshot.stapleIds,
+    pantryItems: normalized.pantryItems,
+    stapleIds: normalized.stapleIds,
+    pantryLots: normalized.pantryLots ?? [],
   });
 };
 
@@ -140,6 +206,9 @@ export async function hydratePantryStore(): Promise<void> {
     hydrationPromise = Promise.resolve(usePantryStore.persist.rehydrate())
       .catch(() => undefined)
       .then(() => {
+        const current = usePantryStore.getState();
+        const normalized = normalizeStateSnapshot(current);
+        usePantryStore.setState({ pantryItems: normalized.pantryItems, pantryLots: normalized.pantryLots ?? [] });
         if (!usePantryStore.getState().hasHydrated) {
           usePantryStore.setState({ hasHydrated: true });
         }

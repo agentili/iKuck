@@ -1,4 +1,5 @@
 import { getIngredient } from './ingredients';
+import { getQuantityWarning, type PantryQuantityAggregate } from './pantryLots';
 import { RECIPES } from './recipes';
 import type { IngredientDefinition, PantryRecipe, RecipeSuggestion } from './types';
 
@@ -8,6 +9,7 @@ export interface SuggestionOptions {
   allowOneMissing: boolean;
   limit?: number;
   random?: () => number;
+  quantitySummaries?: readonly PantryQuantityAggregate[];
 }
 
 const shuffle = <T>(items: readonly T[], random: () => number): T[] => {
@@ -27,15 +29,24 @@ export const findRecipeSuggestions = ({
   allowOneMissing,
   limit = 6,
   random = Math.random,
+  quantitySummaries = [],
 }: SuggestionOptions): RecipeSuggestion[] => {
   const available = new Set(availableIds);
+  const summariesById = new Map(quantitySummaries.map((summary) => [summary.ingredientId, summary]));
   const eligible = recipes.flatMap((recipe): RecipeSuggestion[] => {
     const missingIngredientIds = recipe.ingredients
       .filter((item) => !item.optional && !available.has(item.ingredientId))
       .map((item) => item.ingredientId);
 
     if (missingIngredientIds.length === 0) {
-      return [{ recipe, missingIngredientIds }];
+      return [{
+        recipe,
+        missingIngredientIds,
+        quantityWarnings: recipe.ingredients
+          .filter((item) => !item.optional && available.has(item.ingredientId))
+          .filter((item) => getQuantityWarning(item, summariesById.get(item.ingredientId)))
+          .map((item) => item.ingredientId),
+      }];
     }
 
     const missingIngredient = getIngredient(missingIngredientIds[0]);
@@ -44,7 +55,11 @@ export const findRecipeSuggestions = ({
       missingIngredientIds.length === 1 &&
       missingIngredient?.easyToFind === true
     ) {
-      return [{ recipe, missingIngredientIds }];
+      return [{
+        recipe,
+        missingIngredientIds,
+        quantityWarnings: [],
+      }];
     }
 
     return [];

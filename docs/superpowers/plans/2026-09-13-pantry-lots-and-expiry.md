@@ -42,7 +42,7 @@
 - Extend `SyncEntityType` with `pantry_lot` while retaining `pantry_item` and `staple_preference` for old synchronized accounts.
 - Add `aggregatePantryLots`, `getExpiryStatus` and `getQuantityWarning` to the frontend domain boundary.
 
-- [ ] **Step 1: Write failing contract and domain tests**
+- [x] **Step 1: Write failing contract and domain tests**
 
 Cover:
 
@@ -53,7 +53,7 @@ Cover:
 - dates are classified as expired, expiring soon and okay using an injected current date;
 - a recipe amount larger than the known aggregate quantity produces a warning but never makes the ingredient unavailable.
 
-- [ ] **Step 2: Run focused tests and verify they fail**
+- [x] **Step 2: Run focused tests and verify they fail**
 
 Run:
 
@@ -64,11 +64,11 @@ cd ../backend && npm test -- contracts.test.ts
 
 Expected: FAIL because the shared lot contract and domain helpers do not exist.
 
-- [ ] **Step 3: Implement the smallest typed contracts and pure helpers**
+- [x] **Step 3: Implement the smallest typed contracts and pure helpers**
 
 Use explicit units (`g`, `kg`, `ml`, `l`, `piece`, `pack`) and nullable fields. Keep the domain conversion table small and deterministic. Parse only the leading numeric value and recognized unit from existing recipe amount strings; if parsing is uncertain, return no warning rather than inventing a conversion.
 
-- [ ] **Step 4: Verify Task 1**
+- [x] **Step 4: Verify Task 1**
 
 Run the focused tests, backend lint/build and frontend lint/typecheck. Confirm the sync schema accepts `pantry_lot` but does not remove support for legacy entity types.
 
@@ -88,7 +88,7 @@ Run the focused tests, backend lint/build and frontend lint/typecheck. Confirm t
 - `PantrySnapshot` gains `pantryLots` while retaining a normalized `pantryItems` aggregate for the current recipe UI.
 - `usePantryStore` exposes `pantryLots`, `addPantryLot`, `updatePantryLot`, `removePantryLot`, `getLotsForIngredient` and `getPantryQuantitySummary` without removing existing actions.
 
-- [ ] **Step 1: Add failing migration and store tests**
+- [x] **Step 1: Add failing migration and store tests**
 
 Cover:
 
@@ -100,7 +100,7 @@ Cover:
 - removing one lot leaves sibling lots; removing the ingredient removes all lots;
 - a failed IndexedDB write leaves the current in-memory lot state usable.
 
-- [ ] **Step 2: Run the focused tests and verify they fail**
+- [x] **Step 2: Run the focused tests and verify they fail**
 
 Run:
 
@@ -110,15 +110,15 @@ cd frontend && npm test -- pantryStorage.test.ts pantryStore.test.ts
 
 Expected: FAIL because the store has no lot state or lot actions.
 
-- [ ] **Step 3: Implement version-tolerant snapshot normalization**
+- [x] **Step 3: Implement version-tolerant snapshot normalization**
 
 Normalize on read and before persistence. Preserve the current storage key and IndexedDB database. Generate a stable first-lot id from the ingredient id and independent ids for later lots. Do not migrate or remove legacy data until the normalized snapshot is successfully written.
 
-- [ ] **Step 4: Implement lot actions with immediate local updates**
+- [x] **Step 4: Implement lot actions with immediate local updates**
 
 Keep recipe-facing `pantryItems` derived from lots. Queueing is introduced in Task 3, so this task may expose an injectable mutation callback or a no-op boundary to keep storage tests independent. Make aggregate order deterministic and deduplicate only at the ingredient aggregate level.
 
-- [ ] **Step 5: Verify Task 2**
+- [x] **Step 5: Verify Task 2**
 
 Run all frontend unit/component tests, lint and build. Check that the original no-quantity add flow still works with keyboard and screen-reader labels.
 
@@ -141,11 +141,11 @@ Run all frontend unit/component tests, lint and build. Check that the original n
 - Reuse the existing per-entity sync repository as the durable source of truth; resource routes validate `PantryLot` payloads and map them to `pantry_lot` mutations.
 - The browser queue sends `pantry_lot` mutations, applies remote lot changes, and keeps legacy `pantry_item` changes compatible.
 
-- [ ] **Step 1: Write failing API and queue tests**
+- [x] **Step 1: Write failing API and queue tests**
 
 Cover authenticated CRUD with CSRF and origin checks, invalid quantities and dates, account isolation, offline lot mutations, server changes without re-enqueueing and a retry after a failed request. Include a regression that a lot with a missing quantity is accepted.
 
-- [ ] **Step 2: Run focused tests and verify they fail**
+- [x] **Step 2: Run focused tests and verify they fail**
 
 Run:
 
@@ -156,19 +156,19 @@ cd ../frontend && npm test -- syncQueue.test.ts pantryStore.test.ts
 
 Expected: FAIL because the route and `pantry_lot` queue handling do not exist.
 
-- [ ] **Step 3: Implement validated resource routes**
+- [x] **Step 3: Implement validated resource routes**
 
 Use the authenticated user id only; never accept ownership fields from the client. Require CSRF for POST/PATCH/DELETE and same-origin checks for state-changing requests. Return stable validation errors without leaking database details. Keep `GET` data scoped to the current account.
 
-- [ ] **Step 4: Extend the queue and store integration**
+- [x] **Step 4: Extend the queue and store integration**
 
 Queue lot upserts/deletes after the local transition. Apply remote lots through the existing snapshot listener. Preserve the safer sync ordering: apply server changes and cursor first, then delete acknowledged queue records. Keep mutations idempotent and do not silently import local data after login.
 
-- [ ] **Step 5: Extend the real-service integration contract**
+- [x] **Step 5: Extend the real-service integration contract**
 
 When `INTEGRATION_DATABASE_URL` and `INTEGRATION_REDIS_URL` are present, create, update and delete a lot through sync/resource boundaries and verify it is isolated to the authenticated account. Keep ordinary runs skipped without those dedicated services.
 
-- [ ] **Step 6: Verify Task 3**
+- [x] **Step 6: Verify Task 3**
 
 Run backend/frontend focused suites, full unit suites, lint and builds. Run the parametrized integration suite if services are available; otherwise record the exact skip. Confirm no provider or notification call is introduced.
 
@@ -190,11 +190,11 @@ Run backend/frontend focused suites, full unit suites, lint and builds. Run the 
 - The panel shows total quantity only for compatible units, the number of lots and the earliest expiry.
 - Expiry labels are Italian (`Scaduto`, `Scade presto`, `Disponibile`) with accessible text and no color-only meaning.
 
-- [ ] **Step 1: Write failing component tests**
+- [x] **Step 1: Write failing component tests**
 
 Cover the simple name-only flow, quantity/unit validation, date editing, multiple lots for one ingredient, removing a single lot, keyboard operation and the visible expiry warning text. Ensure the original ingredient input remains the first useful keyboard target on Home.
 
-- [ ] **Step 2: Run focused component tests and verify they fail**
+- [x] **Step 2: Run focused component tests and verify they fail**
 
 Run:
 
@@ -202,11 +202,11 @@ Run:
 cd frontend && npm test -- PantryLotsPanel.test.tsx PantryLotEditor.test.tsx HomePage.test.tsx
 ```
 
-- [ ] **Step 3: Implement the compact progressive-disclosure UI**
+- [x] **Step 3: Implement the compact progressive-disclosure UI**
 
 Keep the base pantry card visually simple. Use a native number input, a native unit select and a native date input. Make quantity and expiry details optional, explain that an empty quantity means only “presente”, and avoid exposing raw ISO dates in the UI.
 
-- [ ] **Step 4: Verify Task 4**
+- [x] **Step 4: Verify Task 4**
 
 Run component tests and the desktop/mobile Playwright flow. Confirm the layout remains usable at 320px and the lot editor does not interfere with recipe search.
 
@@ -226,15 +226,15 @@ Run component tests and the desktop/mobile Playwright flow. Confirm the layout r
 - Ingredient presence and the “one missing ingredient” rule remain unchanged.
 - A warning such as “La quantità potrebbe non bastare” is advisory and never filters a recipe.
 
-- [ ] **Step 1: Write failing suggestion tests**
+- [x] **Step 1: Write failing suggestion tests**
 
 Cover enough quantity, insufficient compatible quantity, unknown quantity, mixed units and recipes whose amount string cannot be parsed. All cases must still return the recipe when the ingredient is present.
 
-- [ ] **Step 2: Implement warning-only suggestion metadata**
+- [x] **Step 2: Implement warning-only suggestion metadata**
 
 Pass the store’s aggregate summaries into the suggestion calculation. Keep the existing catalog deterministic and do not add automatic ingredient consumption.
 
-- [ ] **Step 3: Verify Task 5**
+- [x] **Step 3: Verify Task 5**
 
 Run all domain, component and browser tests. Inspect that cards distinguish “ingredient missing” from “quantity may be insufficient”.
 
@@ -246,7 +246,7 @@ Run all domain, component and browser tests. Inspect that cards distinguish “i
 - Modify: `docs/superpowers/plans/2026-09-13-pantry-lots-and-expiry.md`
 - Modify: `docs/superpowers/plans/2026-09-12-accounts-and-sync.md` only if a shared contract change needs a cross-reference
 
-- [ ] **Step 1: Run the complete verification set**
+- [x] **Step 1: Run the complete verification set**
 
 Run:
 
@@ -257,15 +257,15 @@ cd ../frontend && npm test && npm run lint && npm run build && npm run test:e2e
 
 Run the PostgreSQL/Redis integration suite and standalone Compose smoke test only when dedicated services and Docker are available. Otherwise preserve the explicit pending status from the platform plan.
 
-- [ ] **Step 2: Review data and security boundaries**
+- [x] **Step 2: Review data and security boundaries**
 
 Run `git diff --check` and inspect that expiry dates stay in the app data model, no notification provider is called, quantities are validated on both client and server, and account sync never accepts a foreign `userId`.
 
-- [ ] **Step 3: Update user documentation and checklist**
+- [x] **Step 3: Update user documentation and checklist**
 
 Document presence-only use, optional lot details, aggregation rules, expiry labels, soft quantity warnings, legacy migration and the fact that no external expiry notification is sent.
 
-- [ ] **Step 4: Commit the completed feature block**
+- [x] **Step 4: Commit the completed feature block**
 
 ```bash
 git add shared backend frontend README.md docs/superpowers/plans/2026-09-13-pantry-lots-and-expiry.md
@@ -279,3 +279,10 @@ git commit -m "feat: add pantry lots quantities and expiry"
 - Expiry is useful in the UI without creating notification or privacy scope.
 - The same LWW and offline queue semantics are reused instead of creating a second sync system.
 - Unit conversion is deliberately conservative: uncertain quantities produce no warning rather than a false claim.
+
+## Verification record
+
+- Frontend: 19 Vitest files and 91 tests passed; lint, TypeScript checking and production build passed.
+- Backend: 14 Vitest files and 27 tests passed; the 2-service integration tests were skipped because `INTEGRATION_DATABASE_URL` and `INTEGRATION_REDIS_URL` were not configured; lint and production build passed.
+- Browser: 18 Playwright tests passed on desktop and mobile Chromium, including reload persistence, offline guest mode, account import, keyboard navigation and lot details.
+- Docker Compose validation passed statically. Runtime PostgreSQL/Redis and standalone-container smoke tests remain pending because Docker Desktop was unavailable on the workstation.

@@ -63,6 +63,51 @@ describe('pantry storage', () => {
     await expect(readPantrySnapshot()).resolves.toEqual({
       pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
       stapleIds: ['salt'],
+      pantryLots: [expect.objectContaining({
+        id: 'pasta',
+        ingredientId: 'pasta',
+        quantity: null,
+        unit: null,
+        expiresAt: null,
+      })],
+    });
+  });
+
+  it('round-trips multiple lots without losing nullable details', async () => {
+    await writePantrySnapshot({
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+      stapleIds: [],
+      pantryLots: [
+        {
+          id: 'lot-1',
+          ingredientId: 'pasta',
+          label: 'Pasta',
+          known: true,
+          quantity: 500,
+          unit: 'g',
+          expiresAt: '2026-10-01',
+          createdAt: '2026-09-13T10:00:00.000Z',
+          updatedAt: '2026-09-13T10:00:00.000Z',
+        },
+        {
+          id: 'lot-2',
+          ingredientId: 'pasta',
+          label: 'Pasta',
+          known: true,
+          quantity: null,
+          unit: null,
+          expiresAt: null,
+          createdAt: '2026-09-13T11:00:00.000Z',
+          updatedAt: '2026-09-13T11:00:00.000Z',
+        },
+      ],
+    });
+
+    await expect(readPantrySnapshot()).resolves.toMatchObject({
+      pantryLots: [
+        expect.objectContaining({ id: 'lot-1', quantity: 500, unit: 'g', expiresAt: '2026-10-01' }),
+        expect.objectContaining({ id: 'lot-2', quantity: null, unit: null, expiresAt: null }),
+      ],
     });
   });
 });

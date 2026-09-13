@@ -1,9 +1,10 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { SyncMutation } from '@ikuck/shared/contracts';
-import type { AuthService } from '../auth/service.js';
+import { AuthServiceError, type AuthService } from '../auth/service.js';
 import { ensureCsrf, ensureSameOrigin, requireSession } from './auth.js';
 import type { SyncRepository } from '../sync/repository.js';
+import { isPantryLot } from '../pantry/validation.js';
 
 export interface SyncRouteDependencies {
   repository: SyncRepository;
@@ -14,7 +15,7 @@ export interface SyncRouteDependencies {
 const mutationSchema = z.object({
   mutationId: z.string().min(1).max(128),
   deviceId: z.string().min(1).max(128),
-  entityType: z.enum(['pantry_item', 'staple_preference']),
+  entityType: z.enum(['pantry_item', 'pantry_lot', 'staple_preference']),
   entityId: z.string().min(1).max(128),
   operation: z.enum(['upsert', 'delete']),
   payload: z.unknown().nullable(),
@@ -39,6 +40,13 @@ export const registerSyncRoutes = ({ repository, authService, appOrigin }: SyncR
     };
     if (body.mutations.some((mutation) => mutation.deviceId !== body.deviceId)) {
       throw new Error('Mutation device does not match request device');
+    }
+
+    for (const mutation of body.mutations) {
+      if (mutation.entityType === 'pantry_lot' && mutation.operation === 'upsert'
+        && (!isPantryLot(mutation.payload) || mutation.payload.id !== mutation.entityId)) {
+        throw new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');
+      }
     }
 
     for (const mutation of body.mutations) {

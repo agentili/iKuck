@@ -27,6 +27,11 @@ export default function LocalRecipeCard({ suggestion }: LocalRecipeCardProps) {
       </p>
       <h3 className="text-xl font-bold leading-tight text-gray-950">{suggestion.recipe.title}</h3>
       <p className="mt-2 flex-1 leading-relaxed text-gray-600">{suggestion.recipe.description}</p>
+      {suggestion.quantityWarnings.length > 0 && (
+        <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
+          La quantità potrebbe non bastare per: {suggestion.quantityWarnings.map((id) => getIngredient(id)?.label ?? id).join(', ')}.
+        </p>
+      )}
       <dl className="mt-5 flex items-center gap-4 text-sm text-gray-600">
         <div className="flex items-center gap-1.5">
           <dt className="sr-only">Tempo</dt>
