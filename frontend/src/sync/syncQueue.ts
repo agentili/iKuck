@@ -1,4 +1,4 @@
-import type { SyncChange, SyncChangeSet, SyncEntityType, SyncMutation, SyncOperation } from '@ikuck/shared/contracts';
+import type { ShoppingListItem, SyncChange, SyncChangeSet, SyncEntityType, SyncMutation, SyncOperation } from '@ikuck/shared/contracts';
 import { ApiClientError, apiRequest, type ApiRequest } from '../api/apiClient';
 import {
   deleteQueueValue,
@@ -16,6 +16,8 @@ import {
   writePantrySnapshot,
   type PantrySnapshot,
 } from '../storage/pantryStorage';
+import { isShoppingListItem } from '../domain/shoppingList';
+import { readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
 
 const DEVICE_ID_META_KEY = 'deviceId';
 const CURSOR_META_KEY = 'cursor';
@@ -40,6 +42,7 @@ interface SyncRequestOptions {
 let syncPromise: Promise<SyncChangeSet> | null = null;
 let pendingQueueWrites = Promise.resolve();
 const pantrySnapshotListeners = new Set<(snapshot: PantrySnapshot) => void>();
+const shoppingListListeners = new Set<(items: ShoppingListItem[]) => void>();
 
 const createRandomId = (): string => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -118,6 +121,15 @@ export function enqueuePantryMutation(
   return operationPromise;
 }
 
+export function enqueueEntityMutation(
+  entityType: SyncEntityType,
+  entityId: string,
+  operation: SyncOperation,
+  payload: unknown | null,
+): Promise<void> {
+  return enqueuePantryMutation(entityType, entityId, operation, payload);
+}
+
 export async function waitForPendingQueueWrites(): Promise<void> {
   await pendingQueueWrites;
 }
@@ -136,6 +148,9 @@ export async function importLocalData(session: SyncSession): Promise<SyncChangeS
       'upsert',
       { enabled: true },
     ));
+  }
+  for (const item of await readShoppingList()) {
+    await enqueueMutation(await createPantryMutation('shopping_list_item', item.id, 'upsert', item));
   }
 
   return syncNow({ session });
@@ -191,17 +206,38 @@ const applyChangeToSnapshot = (snapshot: PantrySnapshot, change: SyncChange): Pa
 const applyServerChanges = async (changes: SyncChange[]): Promise<void> => {
   if (changes.length === 0) return;
 
-  let snapshot = await readPantrySnapshot() ?? { pantryItems: [], stapleIds: [] };
-  for (const change of changes) {
-    snapshot = applyChangeToSnapshot(snapshot, change);
+  const pantryChanges = changes.filter((change) => change.entityType === 'pantry_item'
+    || change.entityType === 'pantry_lot'
+    || change.entityType === 'staple_preference');
+  if (pantryChanges.length > 0) {
+    let snapshot = await readPantrySnapshot() ?? { pantryItems: [], stapleIds: [] };
+    for (const change of pantryChanges) {
+      snapshot = applyChangeToSnapshot(snapshot, change);
+    }
+    await writePantrySnapshot(snapshot);
+    for (const listener of pantrySnapshotListeners) listener(snapshot);
   }
-  await writePantrySnapshot(snapshot);
-  for (const listener of pantrySnapshotListeners) listener(snapshot);
+
+  const shoppingChanges = changes.filter((change) => change.entityType === 'shopping_list_item');
+  if (shoppingChanges.length > 0) {
+    let items = await readShoppingList();
+    for (const change of shoppingChanges) {
+      items = items.filter((item) => item.id !== change.entityId);
+      if (change.operation === 'upsert' && isShoppingListItem(change.payload)) items.push(change.payload);
+    }
+    await writeShoppingList(items);
+    for (const listener of shoppingListListeners) listener(items);
+  }
 };
 
 export function registerPantrySnapshotListener(listener: (snapshot: PantrySnapshot) => void): () => void {
   pantrySnapshotListeners.add(listener);
   return () => pantrySnapshotListeners.delete(listener);
+}
+
+export function registerShoppingListSnapshotListener(listener: (items: ShoppingListItem[]) => void): () => void {
+  shoppingListListeners.add(listener);
+  return () => shoppingListListeners.delete(listener);
 }
 
 export async function syncNow({ fetch, request = apiRequest, session }: SyncRequestOptions): Promise<SyncChangeSet> {

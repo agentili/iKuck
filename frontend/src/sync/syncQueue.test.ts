@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PantryLot, SyncChangeSet, SyncMutation } from '@ikuck/shared/contracts';
+import type { PantryLot, ShoppingListItem, SyncChangeSet, SyncMutation } from '@ikuck/shared/contracts';
 import { deleteLocalDatabase, readMeta } from '../storage/indexedDb';
 import { readPantrySnapshot } from '../storage/pantryStorage';
+import { readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
 import {
   enqueueMutation,
   getDeviceId,
+  importLocalData,
   readQueuedMutations,
   readSyncCursor,
   syncNow,
@@ -120,5 +122,63 @@ describe('sync queue', () => {
       pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
       pantryLots: [expect.objectContaining({ id: lot.id, quantity: 320, unit: 'g', expiresAt: '2026-09-20' })],
     });
+  });
+
+  it('applies a remote shopping item without re-enqueueing it', async () => {
+    const item: ShoppingListItem = {
+      id: 'shopping-tomato',
+      ingredientId: 'tomato',
+      label: 'Pomodori',
+      quantity: 4,
+      unit: 'piece',
+      note: null,
+      purchased: false,
+      sourceRecipeId: 'recipe-1',
+      createdAt: '2026-09-13T10:00:00.000Z',
+      updatedAt: '2026-09-13T10:00:00.000Z',
+    };
+    const fetch = vi.fn().mockResolvedValue(responseFor({
+      changes: [{
+        mutationId: 'shopping-change',
+        deviceId: 'device-remote',
+        entityType: 'shopping_list_item',
+        entityId: item.id,
+        operation: 'upsert',
+        payload: item,
+        clientUpdatedAt: item.updatedAt,
+        serverSequence: 6,
+      }],
+      nextCursor: 6,
+    }));
+
+    await syncNow({ fetch, session });
+
+    await expect(readShoppingList()).resolves.toEqual([item]);
+    await expect(readQueuedMutations()).resolves.toEqual([]);
+  });
+
+  it('includes local shopping items in the explicit account import', async () => {
+    const item: ShoppingListItem = {
+      id: 'shopping-import',
+      ingredientId: 'pasta',
+      label: 'Pasta',
+      quantity: null,
+      unit: null,
+      note: null,
+      purchased: false,
+      sourceRecipeId: null,
+      createdAt: '2026-09-13T10:00:00.000Z',
+      updatedAt: '2026-09-13T10:00:00.000Z',
+    };
+    await writeShoppingList([item]);
+    const fetch = vi.fn().mockResolvedValue(responseFor({ changes: [], nextCursor: 0 }));
+    vi.stubGlobal('fetch', fetch);
+
+    await importLocalData(session);
+
+    expect(fetch).toHaveBeenCalledWith('/v1/sync', expect.objectContaining({
+      body: expect.stringContaining('shopping_list_item'),
+    }));
+    vi.unstubAllGlobals();
   });
 });

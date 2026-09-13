@@ -88,4 +88,43 @@ describe('sync routes', () => {
     expect(response.statusCode).toBe(400);
     expect(response.json()).toMatchObject({ code: 'invalid_payload' });
   });
+
+  it('rejects an invalid shopping list payload before writing it', async () => {
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository: createMemorySyncRepository(), authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers: {
+        cookie: 'ikuck_session=session-token',
+        origin: 'http://127.0.0.1:5173',
+        'x-csrf-token': 'csrf-token',
+      },
+      payload: {
+        deviceId: 'device-1',
+        cursor: 0,
+        mutations: [{
+          mutationId: 'invalid-shopping',
+          deviceId: 'device-1',
+          entityType: 'shopping_list_item',
+          entityId: 'shopping-1',
+          operation: 'upsert',
+          payload: {
+            id: 'shopping-1', ingredientId: 'pasta', label: 'Pasta', quantity: 10, unit: null,
+            note: null, purchased: false, sourceRecipeId: null,
+            createdAt: '2026-09-13T10:00:00.000Z', updatedAt: '2026-09-13T10:00:00.000Z',
+          },
+          clientUpdatedAt: '2026-09-13T10:00:00.000Z',
+        }],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: 'invalid_payload' });
+  });
 });

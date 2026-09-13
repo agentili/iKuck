@@ -8,6 +8,7 @@ iKuck suggerisce ricette semplici usando gli ingredienti presenti in dispensa. P
 2. Conferma gli ingredienti base che tieni normalmente in casa.
 3. Richiedi fino a sei proposte dal catalogo incluso di 20 ricette.
 4. Se vuoi, includi anche ricette per cui manca un solo ingrediente facile da reperire.
+5. Apri la lista della spesa per aggiungere elementi manualmente o i mancanti di una ricetta.
 
 Il catalogo copre carne, pesce, uova, legumi e verdure. Ogni proposta indica chiaramente se è già realizzabile o quale unico ingrediente manca.
 
@@ -69,3 +70,5 @@ Le chiavi di provider esterni e i segreti di sessione non devono mai essere inse
 La dispensa ospite è salvata in IndexedDB nel database locale `ikuck-local-v2`; le versioni precedenti con le chiavi `ikuck-pantry-v1` o `iricetto-pantry-v1` vengono migrate automaticamente. Le modifiche dell’ospite possono restare in una coda locale, ma non vengono mai inviate senza un account verificato. L’importazione verso un account è sempre un’azione esplicita dalla pagina Profilo. Password, cookie di sessione e token non vengono salvati nel browser. Disinstallare l’app o cancellare i dati del sito elimina la dispensa locale.
 
 Ogni ingrediente può avere più lotti. Per ogni lotto puoi indicare opzionalmente quantità, unità (`g`, `kg`, `ml`, `l`, `piece` o `pack`) e data di scadenza; se lasci vuota la quantità, il lotto significa semplicemente “presente”. Le unità compatibili vengono aggregate nella dispensa, mentre quantità non confrontabili restano separate. Le ricette continuano a basarsi sulla presenza dell’ingrediente: quando la quantità nota potrebbe non bastare viene mostrato solo un avviso, senza escludere la ricetta. Le scadenze sono mostrate nell’app e non generano notifiche esterne.
+
+La lista della spesa è salvata nello stesso database locale, funziona anche senza rete e distingue gli elementi da acquistare da quelli già acquistati. Puoi inserire un alimento o un prodotto libero, aggiungere quantità, unità e una nota, oppure usare il pulsante della pagina ricetta per inserire solo gli ingredienti non presenti. L’aggiunta è sempre esplicita e non consuma automaticamente la dispensa.

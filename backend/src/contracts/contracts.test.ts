@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { PantryLot, SyncMutation } from '@ikuck/shared/contracts';
+import type { PantryLot, ShoppingListItem, SyncMutation } from '@ikuck/shared/contracts';
 import { describe, expect, it } from 'vitest';
 
 const migrationPath = join(
@@ -41,6 +41,23 @@ describe('shared contracts and account migration', () => {
     };
 
     expect(JSON.parse(JSON.stringify(lot))).toEqual(lot);
+  });
+
+  it('keeps a shopping list item serializable', () => {
+    const item: ShoppingListItem = {
+      id: 'shopping-pasta',
+      ingredientId: 'pasta',
+      label: 'Pasta',
+      quantity: 500,
+      unit: 'g',
+      note: null,
+      purchased: false,
+      sourceRecipeId: 'pasta-tonno-pomodoro',
+      createdAt: '2026-09-13T10:00:00.000Z',
+      updatedAt: '2026-09-13T10:00:00.000Z',
+    };
+
+    expect(JSON.parse(JSON.stringify(item))).toEqual(item);
   });
 
   it('contains the account and sync tables in the first feature migration', () => {

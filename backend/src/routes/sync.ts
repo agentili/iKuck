@@ -5,6 +5,7 @@ import { AuthServiceError, type AuthService } from '../auth/service.js';
 import { ensureCsrf, ensureSameOrigin, requireSession } from './auth.js';
 import type { SyncRepository } from '../sync/repository.js';
 import { isPantryLot } from '../pantry/validation.js';
+import { isShoppingListItem } from '../shopping/validation.js';
 
 export interface SyncRouteDependencies {
   repository: SyncRepository;
@@ -15,7 +16,7 @@ export interface SyncRouteDependencies {
 const mutationSchema = z.object({
   mutationId: z.string().min(1).max(128),
   deviceId: z.string().min(1).max(128),
-  entityType: z.enum(['pantry_item', 'pantry_lot', 'staple_preference']),
+  entityType: z.enum(['pantry_item', 'pantry_lot', 'staple_preference', 'shopping_list_item']),
   entityId: z.string().min(1).max(128),
   operation: z.enum(['upsert', 'delete']),
   payload: z.unknown().nullable(),
@@ -45,6 +46,10 @@ export const registerSyncRoutes = ({ repository, authService, appOrigin }: SyncR
     for (const mutation of body.mutations) {
       if (mutation.entityType === 'pantry_lot' && mutation.operation === 'upsert'
         && (!isPantryLot(mutation.payload) || mutation.payload.id !== mutation.entityId)) {
+        throw new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');
+      }
+      if (mutation.entityType === 'shopping_list_item' && mutation.operation === 'upsert'
+        && (!isShoppingListItem(mutation.payload) || mutation.payload.id !== mutation.entityId)) {
         throw new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');
       }
     }

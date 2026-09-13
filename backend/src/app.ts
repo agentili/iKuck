@@ -6,6 +6,7 @@ import { registerHealthRoute } from './routes/health.js';
 import { type ProfileRouteDependencies, registerProfileRoutes } from './routes/profile.js';
 import { type SyncRouteDependencies, registerSyncRoutes } from './routes/sync.js';
 import { type PantryLotRouteDependencies, registerPantryLotRoutes } from './routes/pantryLots.js';
+import { type ShoppingListRouteDependencies, registerShoppingListRoutes } from './routes/shoppingList.js';
 
 export type { PlatformDependencies } from './platform.js';
 
@@ -14,6 +15,7 @@ export interface ExtendedPlatformDependencies extends PlatformDependencies {
   profile?: ProfileRouteDependencies;
   sync?: SyncRouteDependencies;
   pantryLots?: PantryLotRouteDependencies;
+  shoppingList?: ShoppingListRouteDependencies;
 }
 
 export const createApp = (
@@ -33,5 +35,6 @@ export const createApp = (
   if (dependencies.profile !== undefined) app.register(registerProfileRoutes(dependencies.profile));
   if (dependencies.sync !== undefined) app.register(registerSyncRoutes(dependencies.sync));
   if (dependencies.pantryLots !== undefined) app.register(registerPantryLotRoutes(dependencies.pantryLots));
+  if (dependencies.shoppingList !== undefined) app.register(registerShoppingListRoutes(dependencies.shoppingList));
   return app;
 };

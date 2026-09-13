@@ -6,7 +6,9 @@ import RecipeDetailPage from './pages/RecipeDetailPage';
 import ProfilePage from './pages/ProfilePage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
+import ShoppingListPage from './pages/ShoppingListPage';
 import { syncOnReconnect, type SyncSession } from './sync/syncQueue';
+import { hydrateShoppingListStore } from './store/shoppingListStore';
 
 export default function App() {
   const user = useAuthStore((state) => state.user);
@@ -16,6 +18,10 @@ export default function App() {
   useEffect(() => {
     void restoreSession();
   }, [restoreSession]);
+
+  useEffect(() => {
+    void hydrateShoppingListStore();
+  }, []);
 
   useEffect(() => {
     if (user === null || csrfToken === null || user.emailVerifiedAt === '') return undefined;
@@ -34,6 +40,7 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/recipes/:recipeId" element={<RecipeDetailPage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/shopping-list" element={<ShoppingListPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

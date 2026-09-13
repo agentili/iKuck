@@ -77,6 +77,28 @@ test('suggested ingredients can be added without typing', async ({ page }) => {
   await expect(suggestions.getByRole('button', { name: 'Aggiungi Cipolla' })).toHaveCount(0);
 });
 
+test('shopping list accepts manual and recipe-derived items offline', async ({ page }) => {
+  await page.goto('/shopping-list');
+  await expect(page.getByRole('heading', { name: 'Lista della spesa' })).toBeVisible();
+  await page.getByLabel('Cosa ti serve?').fill('latte');
+  await page.getByText('Aggiungi dettagli (facoltativi)').click();
+  await page.getByLabel('Quantità da acquistare').fill('1');
+  await page.getByLabel('Unità di misura della spesa').selectOption('l');
+  await page.getByRole('button', { name: 'Aggiungi alla lista' }).click();
+  await expect(page.getByText('Latte', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Segna Latte come acquistato' }).click();
+  await expect(page.getByRole('heading', { name: /Acquistati/ })).toBeVisible();
+
+  await page.goto('/recipes/pasta-tonno-pomodoro');
+  await page.getByRole('button', { name: 'Aggiungi mancanti alla spesa' }).click();
+  await expect(page.getByRole('link', { name: 'Apri la lista della spesa' })).toBeVisible();
+  await page.getByRole('link', { name: 'Apri la lista della spesa' }).click();
+  await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
+});
+
 test('manifest is available and the application works offline after first load', async ({ page, context }) => {
   await page.goto('/');
   await expect(page).toHaveTitle(/iKuck/);

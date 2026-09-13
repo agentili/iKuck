@@ -55,6 +55,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       profile: { repository: profile, authService: auth, appOrigin, secureCookies: false },
       sync: { repository: sync, authService: auth, appOrigin },
       pantryLots: { repository: sync, authService: auth, appOrigin },
+      shoppingList: { repository: sync, authService: auth, appOrigin },
     });
     await app.ready();
   });
@@ -179,6 +180,42 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     });
     expect(lots.statusCode).toBe(200);
     expect(lots.json<{ lots: Array<{ id: string; quantity: number }> }>().lots).toContainEqual(expect.objectContaining({ id: lot.id, quantity: 500 }));
+
+    const shoppingItem = {
+      id: 'integration-shopping-pasta',
+      ingredientId: 'pasta',
+      label: 'Pasta',
+      quantity: 500,
+      unit: 'g' as const,
+      note: null,
+      purchased: false,
+      sourceRecipeId: 'pasta-tonno-pomodoro',
+      createdAt: '2026-09-13T12:00:00.000Z',
+      updatedAt: '2026-09-13T12:00:00.000Z',
+    };
+    const shoppingSync = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers: { origin: appOrigin, cookie, 'x-csrf-token': loginBody.csrfToken },
+      payload: {
+        deviceId: 'device-1',
+        cursor: 2,
+        mutations: [{
+          mutationId: 'integration-shopping-mutation',
+          deviceId: 'device-1',
+          entityType: 'shopping_list_item',
+          entityId: shoppingItem.id,
+          operation: 'upsert',
+          payload: shoppingItem,
+          clientUpdatedAt: shoppingItem.updatedAt,
+        }],
+      },
+    });
+    expect(shoppingSync.statusCode).toBe(200);
+
+    const shoppingList = await app.inject({ method: 'GET', url: '/v1/shopping-list', headers: { cookie } });
+    expect(shoppingList.statusCode).toBe(200);
+    expect(shoppingList.json<{ items: Array<{ id: string; quantity: number }> }>().items).toContainEqual(expect.objectContaining({ id: shoppingItem.id, quantity: 500 }));
 
     const exported = await app.inject({ method: 'GET', url: '/v1/profile/export', headers: { cookie } });
     expect(exported.statusCode).toBe(200);

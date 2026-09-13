@@ -1,4 +1,4 @@
-export type SyncEntityType = 'pantry_item' | 'pantry_lot' | 'staple_preference';
+export type SyncEntityType = 'pantry_item' | 'pantry_lot' | 'staple_preference' | 'shopping_list_item';
 
 export type SyncOperation = 'upsert' | 'delete';
 
@@ -39,6 +39,22 @@ export interface PantryLotPayload {
 }
 
 export interface PantryLot extends PantryLotPayload {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShoppingListItemPayload {
+  ingredientId: string;
+  label: string;
+  quantity: number | null;
+  unit: PantryUnit | null;
+  note: string | null;
+  purchased: boolean;
+  sourceRecipeId: string | null;
+}
+
+export interface ShoppingListItem extends ShoppingListItemPayload {
   id: string;
   createdAt: string;
   updatedAt: string;

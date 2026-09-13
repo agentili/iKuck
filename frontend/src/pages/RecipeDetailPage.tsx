@@ -1,8 +1,11 @@
-import { ArrowLeft, ChefHat, Clock, Users } from 'lucide-react';
+import { ArrowLeft, ChefHat, Clock, ShoppingCart, Users } from 'lucide-react';
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { getIngredient } from '../domain/ingredients';
 import { getRecipeById } from '../domain/recipes';
 import type { RecipeCategory } from '../domain/types';
+import { usePantryStore } from '../store/localPantryStore';
+import { useShoppingListStore } from '../store/shoppingListStore';
 import NotFoundPage from './NotFoundPage';
 
 const CATEGORY_LABELS: Record<RecipeCategory, string> = {
@@ -16,8 +19,18 @@ const CATEGORY_LABELS: Record<RecipeCategory, string> = {
 export default function RecipeDetailPage() {
   const { recipeId = '' } = useParams();
   const recipe = getRecipeById(recipeId);
+  const [shoppingMessage, setShoppingMessage] = useState<string | null>(null);
+  const availableIds = usePantryStore((state) => state.getAvailableIngredientIds());
+  const addMissingRecipeIngredients = useShoppingListStore((state) => state.addMissingRecipeIngredients);
 
   if (!recipe) return <NotFoundPage />;
+
+  const addMissingToShoppingList = () => {
+    const added = addMissingRecipeIngredients(recipe, availableIds);
+    setShoppingMessage(added > 0
+      ? `${added} ${added === 1 ? 'ingrediente aggiunto' : 'ingredienti aggiunti'} alla lista.`
+      : 'Non ci sono nuovi ingredienti mancanti da aggiungere.');
+  };
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
@@ -51,7 +64,18 @@ export default function RecipeDetailPage() {
 
       <div className="grid gap-8 py-10 lg:grid-cols-[0.9fr_1.1fr]">
         <section aria-labelledby="ingredients-title">
-          <h2 id="ingredients-title" className="text-3xl font-black text-gray-950">Ingredienti</h2>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <h2 id="ingredients-title" className="text-3xl font-black text-gray-950">Ingredienti</h2>
+            <button type="button" onClick={addMissingToShoppingList} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800">
+              <ShoppingCart size={17} aria-hidden="true" /> Aggiungi mancanti alla spesa
+            </button>
+          </div>
+          {shoppingMessage !== null && (
+            <div className="mt-3 rounded-2xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-900">
+              <p role="status">{shoppingMessage}</p>
+              <Link to="/shopping-list" className="mt-2 inline-flex min-h-10 items-center rounded-lg font-bold underline underline-offset-2">Apri la lista della spesa</Link>
+            </div>
+          )}
           <ul className="mt-5 divide-y divide-gray-200 rounded-3xl border-2 border-gray-200 bg-white px-5">
             {recipe.ingredients.map((item) => (
               <li key={item.ingredientId} className="flex items-start justify-between gap-4 py-4">

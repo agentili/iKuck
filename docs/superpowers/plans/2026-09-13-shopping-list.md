@@ -42,7 +42,7 @@
 - Add `ShoppingListItemPayload` and `ShoppingListItem` using the existing `PantryUnit` union.
 - Add pure helpers to validate item details, parse recognized recipe amounts and build a list payload from a recipe ingredient.
 
-- [ ] **Step 1: Write failing contract and domain tests**
+- [x] **Step 1: Write failing contract and domain tests**
 
 Cover:
 
@@ -53,7 +53,7 @@ Cover:
 - uncertain amounts such as `q.b.` or `1 spicchio` preserved as notes;
 - recipe mapping excludes optional ingredients only at the caller boundary and preserves the source recipe id.
 
-- [ ] **Step 2: Run focused tests and verify they fail**
+- [x] **Step 2: Run focused tests and verify they fail**
 
 Run:
 
@@ -64,11 +64,11 @@ cd ../backend && npm test -- contracts.test.ts
 
 Expected: FAIL because the shared shopping-list contract and domain helpers do not exist.
 
-- [ ] **Step 3: Implement the smallest shared types and pure helpers**
+- [x] **Step 3: Implement the smallest shared types and pure helpers**
 
 Keep the item payload explicit and JSON-safe. Reuse `PantryUnit`, trim labels, retain nullable fields and use deterministic parsing. Do not make recipe matching or pantry quantities depend on the shopping list.
 
-- [ ] **Step 4: Verify Task 1**
+- [x] **Step 4: Verify Task 1**
 
 Run the focused suites, frontend lint/typecheck and backend lint/build. Confirm the shared contract retains all existing sync entity types.
 
@@ -90,7 +90,7 @@ Run the focused suites, frontend lint/typecheck and backend lint/build. Confirm 
 - Expose `useShoppingListStore` with hydration, add, recipe-add, edit, toggle-purchased, remove and clear-purchased actions.
 - Register a shopping-list snapshot listener beside the existing pantry listener.
 
-- [ ] **Step 1: Write failing storage, store and queue tests**
+- [x] **Step 1: Write failing storage, store and queue tests**
 
 Cover:
 
@@ -103,7 +103,7 @@ Cover:
 - server changes update the list without being re-enqueued;
 - importing local data includes list items.
 
-- [ ] **Step 2: Run focused tests and verify they fail**
+- [x] **Step 2: Run focused tests and verify they fail**
 
 Run:
 
@@ -113,15 +113,15 @@ cd frontend && npm test -- shoppingListStorage.test.ts shoppingListStore.test.ts
 
 Expected: FAIL because no shopping-list storage, store or queue handling exists.
 
-- [ ] **Step 3: Implement version-tolerant IndexedDB persistence**
+- [x] **Step 3: Implement version-tolerant IndexedDB persistence**
 
 Use the existing `ikuck-local-v2` database and a separate key-value entry. Normalize each item before reading, writing or applying a remote change. Preserve nullable fields and do not delete a legacy value before a successful replacement.
 
-- [ ] **Step 4: Implement immediate local actions and sync boundaries**
+- [x] **Step 4: Implement immediate local actions and sync boundaries**
 
 Keep actions responsive, enqueue idempotent mutations after each local transition and apply remote snapshots without enqueueing. Extend explicit account import while preserving the existing pantry import behavior and safe sync ordering.
 
-- [ ] **Step 5: Verify Task 2**
+- [x] **Step 5: Verify Task 2**
 
 Run all frontend unit/component tests, lint, typecheck and build. Confirm the list still works when the API is unreachable and no guest mutation is sent automatically.
 
@@ -142,11 +142,11 @@ Run all frontend unit/component tests, lint, typecheck and build. Confirm the li
 - Add authenticated `GET /v1/shopping-list`, `POST /v1/shopping-list`, `PATCH /v1/shopping-list/:itemId` and `DELETE /v1/shopping-list/:itemId`.
 - Reuse the sync repository as the durable source of truth and map resource mutations to `shopping_list_item` changes.
 
-- [ ] **Step 1: Write failing API and integration-contract tests**
+- [x] **Step 1: Write failing API and integration-contract tests**
 
 Cover authenticated CRUD, validation errors, CSRF/origin rejection, account isolation, purchased toggling and a list item with no quantity. Extend the dedicated-service integration contract to create and read a shopping item.
 
-- [ ] **Step 2: Run focused tests and verify they fail**
+- [x] **Step 2: Run focused tests and verify they fail**
 
 Run:
 
@@ -156,11 +156,11 @@ cd backend && npm test -- shoppingList.test.ts sync.test.ts
 
 Expected: FAIL because the routes and sync entity validation do not exist.
 
-- [ ] **Step 3: Implement validated resource routes**
+- [x] **Step 3: Implement validated resource routes**
 
 Use the authenticated session user id only. Never accept ownership fields from the client. Require same-origin and CSRF validation for POST/PATCH/DELETE, return stable validation errors and filter deleted or malformed sync records from GET responses.
 
-- [ ] **Step 4: Verify Task 3**
+- [x] **Step 4: Verify Task 3**
 
 Run backend focused/full unit tests, lint and build. Run the PostgreSQL/Redis integration test when dedicated URLs are available; otherwise record the exact skip without claiming a live integration pass.
 
@@ -180,11 +180,11 @@ Run backend focused/full unit tests, lint and build. Run the PostgreSQL/Redis in
 - Provide a compact form for a label, optional quantity/unit and optional note.
 - Render pending and purchased items with explicit Italian text, keyboard-accessible toggle and remove controls.
 
-- [ ] **Step 1: Write failing component tests**
+- [x] **Step 1: Write failing component tests**
 
 Cover manual insertion, quantity/unit validation, empty-list guidance, purchased toggling, removal, clearing purchased entries, source-recipe metadata and usable layout at 320px.
 
-- [ ] **Step 2: Run focused component tests and verify they fail**
+- [x] **Step 2: Run focused component tests and verify they fail**
 
 Run:
 
@@ -192,11 +192,11 @@ Run:
 cd frontend && npm test -- ShoppingListPanel.test.tsx HomePage.test.tsx
 ```
 
-- [ ] **Step 3: Implement the simple progressive-disclosure UI**
+- [x] **Step 3: Implement the simple progressive-disclosure UI**
 
 Keep the list readable at a glance. Make purchased state clear without relying on color alone, expose labels for every form control and keep optional detail fields collapsed or secondary.
 
-- [ ] **Step 4: Verify Task 4**
+- [x] **Step 4: Verify Task 4**
 
 Run component tests and add desktop/mobile Playwright coverage for manual add, reload persistence and purchased toggling. Confirm the Home-to-Spesa navigation works at 320px.
 
@@ -214,15 +214,15 @@ Run component tests and add desktop/mobile Playwright coverage for manual add, r
 - Offer an explicit action on a recipe detail to add non-optional ingredients absent from the current pantry to the shopping list.
 - Show a concise confirmation and link to the list; never consume pantry lots or add already-present ingredients.
 
-- [ ] **Step 1: Write failing recipe-integration tests**
+- [x] **Step 1: Write failing recipe-integration tests**
 
 Cover missing-only selection, optional ingredient exclusion, parsed and unparsed amounts, repeat action behavior and navigation to the list.
 
-- [ ] **Step 2: Implement the explicit recipe action**
+- [x] **Step 2: Implement the explicit recipe action**
 
 Use current pantry presence and staple ids as the only availability source. Keep adding to the list user-triggered and preserve source recipe metadata.
 
-- [ ] **Step 3: Verify Task 5**
+- [x] **Step 3: Verify Task 5**
 
 Run recipe detail tests, full frontend tests and the browser suite on desktop/mobile.
 
@@ -234,7 +234,7 @@ Run recipe detail tests, full frontend tests and the browser suite on desktop/mo
 - Modify: `docs/superpowers/plans/2026-09-13-shopping-list.md`
 - Modify: `docs/superpowers/plans/2026-09-12-accounts-and-sync.md` only if the explicit import cross-reference needs updating
 
-- [ ] **Step 1: Run the complete verification set**
+- [x] **Step 1: Run the complete verification set**
 
 Run:
 
@@ -245,15 +245,15 @@ cd ../frontend && npm test && npm run lint && npx tsc --noEmit && npm run build 
 
 Run the dedicated PostgreSQL/Redis integration suite only when the service URLs are available. Run container smoke only when Docker is available.
 
-- [ ] **Step 2: Review data and security boundaries**
+- [x] **Step 2: Review data and security boundaries**
 
 Run `git diff --check` and inspect that guest list data stays local, all writes use CSRF and same-origin checks, resource routes scope by session user, recipe actions do not consume pantry lots and sync changes do not re-enqueue.
 
-- [ ] **Step 3: Update user documentation and checklist**
+- [x] **Step 3: Update user documentation and checklist**
 
 Document the offline guest list, explicit account import, manual and recipe-derived entries, optional quantity/unit, purchased state and the absence of automatic pantry consumption.
 
-- [ ] **Step 4: Commit the completed feature block**
+- [x] **Step 4: Commit the completed feature block**
 
 ```bash
 git add shared backend frontend README.md docs/superpowers/plans/2026-09-13-shopping-list.md
@@ -266,3 +266,10 @@ git commit -m "feat: add synchronized shopping list"
 - Offline-first behavior is preserved for guests, while synchronization remains an explicit verified-account capability.
 - Recipe-derived quantities are conservative and transparent when parsing is uncertain.
 - Purchased state is reversible and visible until the user explicitly removes it.
+
+## Verification record
+
+- Frontend: 23 Vitest files and 114 tests passed; lint, TypeScript checking and production build passed.
+- Backend: 15 Vitest files and 32 tests passed; the 2-service integration tests were skipped because `INTEGRATION_DATABASE_URL` and `INTEGRATION_REDIS_URL` were not configured; lint and production build passed.
+- Browser: 20 Playwright tests passed on desktop and mobile Chromium, including manual list entry, reload persistence, purchased state, recipe-derived items and the existing pantry/account/offline flows.
+- Docker Compose validation remains static; runtime PostgreSQL/Redis and standalone-container smoke tests remain pending because Docker Desktop was unavailable on the workstation.

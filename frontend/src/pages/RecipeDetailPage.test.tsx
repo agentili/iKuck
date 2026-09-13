@@ -1,6 +1,10 @@
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach } from 'vitest';
 import RecipeDetailPage from './RecipeDetailPage';
+import { useShoppingListStore } from '../store/shoppingListStore';
+import { usePantryStore } from '../store/localPantryStore';
 
 const renderRoute = (path: string) => render(
   <MemoryRouter initialEntries={[path]}>
@@ -10,7 +14,16 @@ const renderRoute = (path: string) => render(
   </MemoryRouter>,
 );
 
+const resetFeatureState = () => {
+  usePantryStore.setState({ pantryItems: [], pantryLots: [], stapleIds: [] });
+  useShoppingListStore.setState({ hasHydrated: true, items: [] });
+};
+
 describe('RecipeDetailPage integration', () => {
+  beforeEach(() => {
+    resetFeatureState();
+  });
+
   it('loads a recipe directly from its stable url', () => {
     renderRoute('/recipes/pollo-al-limone');
 
@@ -33,5 +46,44 @@ describe('RecipeDetailPage integration', () => {
 
     expect(screen.getByRole('heading', { name: 'Ricetta non trovata' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Torna alla dispensa' })).toHaveAttribute('href', '/');
+  });
+
+  it('adds only missing non-optional ingredients to the shopping list', async () => {
+    const user = userEvent.setup();
+    usePantryStore.setState({
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+      pantryLots: [],
+      stapleIds: ['salt', 'olive_oil'],
+    });
+    renderRoute('/recipes/pasta-tonno-pomodoro');
+
+    await user.click(screen.getByRole('button', { name: 'Aggiungi mancanti alla spesa' }));
+
+    expect(useShoppingListStore.getState().items).toEqual([
+      expect.objectContaining({ ingredientId: 'tuna', quantity: 120, unit: 'g', sourceRecipeId: 'pasta-tonno-pomodoro' }),
+      expect.objectContaining({ ingredientId: 'tomato_sauce', quantity: 250, unit: 'ml', sourceRecipeId: 'pasta-tonno-pomodoro' }),
+    ]);
+    expect(useShoppingListStore.getState().items.some((item) => item.ingredientId === 'garlic')).toBe(false);
+  });
+
+  it('does not duplicate pending items when the recipe action is repeated', async () => {
+    const user = userEvent.setup();
+    renderRoute('/recipes/pasta-tonno-pomodoro');
+
+    const action = screen.getByRole('button', { name: 'Aggiungi mancanti alla spesa' });
+    await user.click(action);
+    await user.click(action);
+
+    expect(useShoppingListStore.getState().items.filter((item) => item.sourceRecipeId === 'pasta-tonno-pomodoro')).toHaveLength(5);
+  });
+
+  it('preserves an uncertain recipe amount as a note and links to the list', async () => {
+    const user = userEvent.setup();
+    renderRoute('/recipes/pollo-al-limone');
+
+    await user.click(screen.getByRole('button', { name: 'Aggiungi mancanti alla spesa' }));
+
+    expect(useShoppingListStore.getState().items).toContainEqual(expect.objectContaining({ ingredientId: 'garlic', quantity: null, unit: null, note: '1 spicchio' }));
+    expect(screen.getByRole('link', { name: 'Apri la lista della spesa' })).toHaveAttribute('href', '/shopping-list');
   });
 });
