@@ -42,7 +42,7 @@
 - Add `CookEventPayload`, `CookEvent`, `RecipePreferencePayload` and `RecipePreference`.
 - Add pure helpers for rating/note/servings validation and preference emptiness.
 
-- [ ] **Step 1: Write failing contract and domain tests**
+- [x] **Step 1: Write failing contract and domain tests**
 
 Cover:
 
@@ -53,7 +53,7 @@ Cover:
 - detection of an empty preference that can be deleted;
 - JSON serialization of private notes without exposing unrelated fields.
 
-- [ ] **Step 2: Run focused tests and verify they fail**
+- [x] **Step 2: Run focused tests and verify they fail**
 
 Run:
 
@@ -64,11 +64,11 @@ cd ../backend && npm test -- contracts.test.ts
 
 Expected: FAIL because the new contracts and domain helpers do not exist.
 
-- [ ] **Step 3: Implement the smallest typed contracts and helpers**
+- [x] **Step 3: Implement the smallest typed contracts and helpers**
 
 Use nullable fields rather than sentinel strings, enforce a 1–5 integer rating and keep event/preference validation independent from pantry quantity logic. Keep recipe title snapshots for resilient history display.
 
-- [ ] **Step 4: Verify Task 1**
+- [x] **Step 4: Verify Task 1**
 
 Run the focused suites, frontend lint/typecheck and backend lint/build. Confirm all existing entity types remain supported.
 
@@ -90,7 +90,7 @@ Run the focused suites, frontend lint/typecheck and backend lint/build. Confirm 
 - Expose `useActivityStore` with hydration, `recordCookEvent`, event removal/clear, preference read/write and preference removal actions.
 - Register activity/preference snapshot listeners beside pantry and shopping-list listeners.
 
-- [ ] **Step 1: Write failing storage, store and queue tests**
+- [x] **Step 1: Write failing storage, store and queue tests**
 
 Cover:
 
@@ -103,7 +103,7 @@ Cover:
 - remote changes update local state without re-enqueueing;
 - explicit import includes both collections.
 
-- [ ] **Step 2: Run focused tests and verify they fail**
+- [x] **Step 2: Run focused tests and verify they fail**
 
 Run:
 
@@ -113,15 +113,15 @@ cd frontend && npm test -- activityStorage.test.ts activityStore.test.ts syncQue
 
 Expected: FAIL because no local activity store or sync handling exists.
 
-- [ ] **Step 3: Implement version-tolerant local persistence**
+- [x] **Step 3: Implement version-tolerant local persistence**
 
 Use the existing local database and separate key-value entries. Normalize and deduplicate by stable id or recipe id. Keep write failures non-destructive to in-memory state and serialize writes in order.
 
-- [ ] **Step 4: Extend sync and explicit import**
+- [x] **Step 4: Extend sync and explicit import**
 
 Apply event/preference changes to their local snapshots, notify the store and never enqueue while applying server changes. Queue activity and preferences during explicit account import only.
 
-- [ ] **Step 5: Verify Task 2**
+- [x] **Step 5: Verify Task 2**
 
 Run all frontend unit tests, lint, typecheck and build. Confirm a cook action leaves the pantry lot snapshot byte-for-byte unchanged.
 
@@ -145,11 +145,11 @@ Run all frontend unit tests, lint, typecheck and build. Confirm a cook action le
 - Add authenticated `GET /v1/recipes/preferences`, `PUT /v1/recipes/preferences/:recipeId` and `DELETE /v1/recipes/preferences/:recipeId`.
 - Reuse the sync repository as the durable source of truth, with resource mutations mapped to `cook_event` and `recipe_preference`.
 
-- [ ] **Step 1: Write failing API and integration-contract tests**
+- [x] **Step 1: Write failing API and integration-contract tests**
 
 Cover authenticated event CRUD, preference replacement and deletion, invalid ratings, CSRF/origin rejection, account isolation and private-note response behavior. Extend the dedicated-service integration contract to create/read an event and preference.
 
-- [ ] **Step 2: Run focused tests and verify they fail**
+- [x] **Step 2: Run focused tests and verify they fail**
 
 Run:
 
@@ -159,11 +159,11 @@ cd backend && npm test -- activity.test.ts recipePreferences.test.ts sync.test.t
 
 Expected: FAIL because the routes and sync entity validation do not exist.
 
-- [ ] **Step 3: Implement scoped resource routes**
+- [x] **Step 3: Implement scoped resource routes**
 
 Use only the authenticated session user id. Require same-origin and CSRF validation for all writes, reject malformed payloads with stable errors and exclude deleted/malformed records from reads. Never expose private notes through a public route.
 
-- [ ] **Step 4: Verify Task 3**
+- [x] **Step 4: Verify Task 3**
 
 Run backend focused/full tests, lint and build. Run the PostgreSQL/Redis integration suite when dedicated URLs are available; otherwise record the exact skip.
 
@@ -185,7 +185,7 @@ Run backend focused/full tests, lint and build. Run the PostgreSQL/Redis integra
 - Add explicit “Segna come cucinata”, favorite, 1–5 star rating and private note controls to recipe detail.
 - Show activity items with recipe title, date and optional note, with explicit removal/clear actions.
 
-- [ ] **Step 1: Write failing component tests**
+- [x] **Step 1: Write failing component tests**
 
 Cover:
 
@@ -196,7 +196,7 @@ Cover:
 - confirmation that cooking leaves the pantry store unchanged;
 - usable layout and controls at 320px.
 
-- [ ] **Step 2: Run focused component tests and verify they fail**
+- [x] **Step 2: Run focused component tests and verify they fail**
 
 Run:
 
@@ -204,11 +204,11 @@ Run:
 cd frontend && npm test -- ActivityPanel.test.tsx RecipeDetailPage.test.tsx
 ```
 
-- [ ] **Step 3: Implement the accessible UI**
+- [x] **Step 3: Implement the accessible UI**
 
 Use buttons with explicit labels rather than color-only state. Make the note visibly private, keep the star controls keyboard-operable, and keep activity actions separate from pantry actions.
 
-- [ ] **Step 4: Verify Task 4**
+- [x] **Step 4: Verify Task 4**
 
 Run component tests and add desktop/mobile Playwright coverage for cooking, preference editing, reload persistence and activity navigation. Confirm the main pantry keyboard flow remains intact.
 
@@ -220,7 +220,7 @@ Run component tests and add desktop/mobile Playwright coverage for cooking, pref
 - Modify: `docs/superpowers/plans/2026-09-13-activity-favorites-ratings.md`
 - Modify: `docs/superpowers/plans/2026-09-12-accounts-and-sync.md` only if the explicit import cross-reference needs updating
 
-- [ ] **Step 1: Run the complete verification set**
+- [x] **Step 1: Run the complete verification set**
 
 Run:
 
@@ -231,15 +231,15 @@ cd ../frontend && npm test && npm run lint && npx tsc --noEmit && npm run build 
 
 Run dedicated PostgreSQL/Redis integration only when the service URLs are available, and container smoke only when Docker is available.
 
-- [ ] **Step 2: Review data and security boundaries**
+- [x] **Step 2: Review data and security boundaries**
 
 Run `git diff --check` and inspect that cooking never mutates pantry lots, notes remain account-scoped, all writes use CSRF and same-origin checks, and server changes do not re-enqueue.
 
-- [ ] **Step 3: Update user documentation and checklist**
+- [x] **Step 3: Update user documentation and checklist**
 
 Document activity, favorites, 1–5 ratings, private notes, explicit cooking semantics and the fact that the pantry is not consumed automatically.
 
-- [ ] **Step 4: Commit the completed feature block**
+- [x] **Step 4: Commit the completed feature block**
 
 ```bash
 git add shared backend frontend README.md docs/superpowers/plans/2026-09-13-activity-favorites-ratings.md
@@ -252,3 +252,14 @@ git commit -m "feat: add activity favorites and ratings"
 - Preference data is private and replaceable per recipe.
 - Guests retain offline functionality, while account sync remains explicit and verified.
 - Future private AI recipe ids can reuse the same preference and activity boundaries.
+
+## Verification record
+
+- Frontend focused activity tests: 19 tests passed.
+- Frontend full Vitest suite: 27 files and 133 tests passed.
+- Frontend lint and production build: passed.
+- Backend focused activity/sync tests: 10 tests passed.
+- Backend full Vitest suite: 17 files and 40 tests passed; 2 PostgreSQL/Redis integration tests skipped because dedicated service URLs were not configured.
+- Backend lint and TypeScript build: passed.
+- Playwright desktop/mobile suite: 22 tests passed, including activity persistence and the 320px keyboard flow.
+- Docker runtime smoke test: not executed because the local Docker Linux engine was unavailable; deployment contract tests remain covered by the backend suite.

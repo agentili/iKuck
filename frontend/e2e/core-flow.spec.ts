@@ -99,6 +99,27 @@ test('shopping list accepts manual and recipe-derived items offline', async ({ p
   await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
 });
 
+test('activity records cooking, preferences and private notes offline', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => window.localStorage.clear());
+  await page.goto('/recipes/pasta-tonno-pomodoro');
+
+  await page.getByRole('button', { name: 'Segna come cucinata' }).click();
+  await expect(page.getByRole('status')).toHaveText('Ricetta aggiunta alla cronologia.');
+  await page.getByRole('button', { name: 'Aggiungi ai preferiti' }).click();
+  await page.getByRole('button', { name: 'Valuta Pasta tonno e pomodoro: 5 stelle' }).click();
+  await page.getByLabel('Nota privata sulla ricetta').fill('Da rifare presto');
+  await page.getByRole('button', { name: 'Salva preferenza' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Preferenza salvata.' })).toHaveText('Preferenza salvata.');
+
+  await page.goto('/activity');
+  await expect(page.getByRole('heading', { name: 'La tua attività' })).toBeVisible();
+  await expect(page.getByText('Pasta tonno e pomodoro', { exact: true })).toHaveCount(2);
+  await expect(page.getByText(/Da rifare presto/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(/Da rifare presto/)).toBeVisible();
+});
+
 test('manifest is available and the application works offline after first load', async ({ page, context }) => {
   await page.goto('/');
   await expect(page).toHaveTitle(/iKuck/);

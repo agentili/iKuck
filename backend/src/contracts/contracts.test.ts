@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { PantryLot, ShoppingListItem, SyncMutation } from '@ikuck/shared/contracts';
+import type { CookEvent, PantryLot, RecipePreference, ShoppingListItem, SyncMutation } from '@ikuck/shared/contracts';
 import { describe, expect, it } from 'vitest';
 
 const migrationPath = join(
@@ -58,6 +58,29 @@ describe('shared contracts and account migration', () => {
     };
 
     expect(JSON.parse(JSON.stringify(item))).toEqual(item);
+  });
+
+  it('keeps activity and private recipe preferences serializable', () => {
+    const event: CookEvent = {
+      id: 'event-1',
+      recipeId: 'pasta-tonno-pomodoro',
+      recipeTitle: 'Pasta tonno e pomodoro',
+      servings: 2,
+      cookedAt: '2026-09-13T12:00:00.000Z',
+      note: 'Aggiunto basilico',
+      createdAt: '2026-09-13T12:00:00.000Z',
+      updatedAt: '2026-09-13T12:00:00.000Z',
+    };
+    const preference: RecipePreference = {
+      recipeId: event.recipeId,
+      favorite: true,
+      rating: 5,
+      note: 'Da rifare',
+      createdAt: event.createdAt,
+      updatedAt: event.updatedAt,
+    };
+
+    expect(JSON.parse(JSON.stringify({ event, preference }))).toEqual({ event, preference });
   });
 
   it('contains the account and sync tables in the first feature migration', () => {

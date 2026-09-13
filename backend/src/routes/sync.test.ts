@@ -127,4 +127,69 @@ describe('sync routes', () => {
     expect(response.statusCode).toBe(400);
     expect(response.json()).toMatchObject({ code: 'invalid_payload' });
   });
+
+  it('accepts valid activity and preference mutations and rejects invalid payloads', async () => {
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository: createMemorySyncRepository(), authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+    });
+    const headers = {
+      cookie: 'ikuck_session=session-token',
+      origin: 'http://127.0.0.1:5173',
+      'x-csrf-token': 'csrf-token',
+    };
+    const event = {
+      id: 'event-1', recipeId: 'recipe-1', recipeTitle: 'Pasta', servings: 2,
+      cookedAt: '2026-09-13T12:00:00.000Z', note: null,
+      createdAt: '2026-09-13T12:00:00.000Z', updatedAt: '2026-09-13T12:00:00.000Z',
+    };
+    const preference = {
+      recipeId: 'recipe-1', favorite: true, rating: 5, note: 'Da rifare',
+      createdAt: '2026-09-13T12:00:00.000Z', updatedAt: '2026-09-13T12:00:00.000Z',
+    };
+
+    const valid = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers,
+      payload: {
+        deviceId: 'device-1',
+        cursor: 0,
+        mutations: [
+          {
+            mutationId: 'event-1', deviceId: 'device-1', entityType: 'cook_event', entityId: event.id,
+            operation: 'upsert', payload: event, clientUpdatedAt: event.updatedAt,
+          },
+          {
+            mutationId: 'preference-1', deviceId: 'device-1', entityType: 'recipe_preference', entityId: preference.recipeId,
+            operation: 'upsert', payload: preference, clientUpdatedAt: preference.updatedAt,
+          },
+        ],
+      },
+    });
+    expect(valid.statusCode).toBe(200);
+    expect(valid.json()).toMatchObject({ changes: [
+      { entityType: 'cook_event', entityId: event.id },
+      { entityType: 'recipe_preference', entityId: preference.recipeId },
+    ] });
+
+    const invalid = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers,
+      payload: {
+        deviceId: 'device-1',
+        cursor: 2,
+        mutations: [{
+          mutationId: 'event-invalid', deviceId: 'device-1', entityType: 'cook_event', entityId: 'event-2',
+          operation: 'upsert', payload: { ...event, id: 'event-2', servings: 0 }, clientUpdatedAt: event.updatedAt,
+        }],
+      },
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toMatchObject({ code: 'invalid_payload' });
+    await app.close();
+  });
 });

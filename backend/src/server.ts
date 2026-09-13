@@ -39,6 +39,8 @@ export const start = async () => {
       sync: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       pantryLots: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       shoppingList: { repository: sync, authService: auth, appOrigin: config.appOrigin },
+      activity: { repository: sync, authService: auth, appOrigin: config.appOrigin },
+      recipePreferences: { repository: sync, authService: auth, appOrigin: config.appOrigin },
     },
     { logger: { level: config.logLevel, redact: ['req.headers.cookie', 'req.headers.authorization'] } },
   );

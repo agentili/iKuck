@@ -1,4 +1,13 @@
-import type { ShoppingListItem, SyncChange, SyncChangeSet, SyncEntityType, SyncMutation, SyncOperation } from '@ikuck/shared/contracts';
+import type {
+  CookEvent,
+  RecipePreference,
+  ShoppingListItem,
+  SyncChange,
+  SyncChangeSet,
+  SyncEntityType,
+  SyncMutation,
+  SyncOperation,
+} from '@ikuck/shared/contracts';
 import { ApiClientError, apiRequest, type ApiRequest } from '../api/apiClient';
 import {
   deleteQueueValue,
@@ -16,7 +25,14 @@ import {
   writePantrySnapshot,
   type PantrySnapshot,
 } from '../storage/pantryStorage';
+import { isCookEvent, isRecipePreference } from '../domain/activity';
 import { isShoppingListItem } from '../domain/shoppingList';
+import {
+  readCookEvents,
+  readRecipePreferences,
+  writeCookEvents,
+  writeRecipePreferences,
+} from '../storage/activityStorage';
 import { readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
 
 const DEVICE_ID_META_KEY = 'deviceId';
@@ -43,6 +59,10 @@ let syncPromise: Promise<SyncChangeSet> | null = null;
 let pendingQueueWrites = Promise.resolve();
 const pantrySnapshotListeners = new Set<(snapshot: PantrySnapshot) => void>();
 const shoppingListListeners = new Set<(items: ShoppingListItem[]) => void>();
+const activitySnapshotListeners = new Set<(snapshot: {
+  events: CookEvent[];
+  preferences: RecipePreference[];
+}) => void>();
 
 const createRandomId = (): string => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -152,6 +172,12 @@ export async function importLocalData(session: SyncSession): Promise<SyncChangeS
   for (const item of await readShoppingList()) {
     await enqueueMutation(await createPantryMutation('shopping_list_item', item.id, 'upsert', item));
   }
+  for (const event of await readCookEvents()) {
+    await enqueueMutation(await createPantryMutation('cook_event', event.id, 'upsert', event));
+  }
+  for (const preference of await readRecipePreferences()) {
+    await enqueueMutation(await createPantryMutation('recipe_preference', preference.recipeId, 'upsert', preference));
+  }
 
   return syncNow({ session });
 }
@@ -228,6 +254,30 @@ const applyServerChanges = async (changes: SyncChange[]): Promise<void> => {
     await writeShoppingList(items);
     for (const listener of shoppingListListeners) listener(items);
   }
+
+  const activityChanges = changes.filter((change) => change.entityType === 'cook_event'
+    || change.entityType === 'recipe_preference');
+  if (activityChanges.length > 0) {
+    let events = await readCookEvents();
+    let preferences = await readRecipePreferences();
+    let hasEventChanges = false;
+    let hasPreferenceChanges = false;
+    for (const change of activityChanges) {
+      if (change.entityType === 'cook_event') {
+        hasEventChanges = true;
+        events = events.filter((event) => event.id !== change.entityId);
+        if (change.operation === 'upsert' && isCookEvent(change.payload)) events.push(change.payload);
+      } else {
+        hasPreferenceChanges = true;
+        preferences = preferences.filter((preference) => preference.recipeId !== change.entityId);
+        if (change.operation === 'upsert' && isRecipePreference(change.payload)) preferences.push(change.payload);
+      }
+    }
+    if (hasEventChanges) await writeCookEvents(events);
+    if (hasPreferenceChanges) await writeRecipePreferences(preferences);
+    const snapshot = { events, preferences };
+    for (const listener of activitySnapshotListeners) listener(snapshot);
+  }
 };
 
 export function registerPantrySnapshotListener(listener: (snapshot: PantrySnapshot) => void): () => void {
@@ -238,6 +288,14 @@ export function registerPantrySnapshotListener(listener: (snapshot: PantrySnapsh
 export function registerShoppingListSnapshotListener(listener: (items: ShoppingListItem[]) => void): () => void {
   shoppingListListeners.add(listener);
   return () => shoppingListListeners.delete(listener);
+}
+
+export function registerActivitySnapshotListener(listener: (snapshot: {
+  events: CookEvent[];
+  preferences: RecipePreference[];
+}) => void): () => void {
+  activitySnapshotListeners.add(listener);
+  return () => activitySnapshotListeners.delete(listener);
 }
 
 export async function syncNow({ fetch, request = apiRequest, session }: SyncRequestOptions): Promise<SyncChangeSet> {

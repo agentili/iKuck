@@ -56,6 +56,8 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       sync: { repository: sync, authService: auth, appOrigin },
       pantryLots: { repository: sync, authService: auth, appOrigin },
       shoppingList: { repository: sync, authService: auth, appOrigin },
+      activity: { repository: sync, authService: auth, appOrigin },
+      recipePreferences: { repository: sync, authService: auth, appOrigin },
     });
     await app.ready();
   });
@@ -216,6 +218,53 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     const shoppingList = await app.inject({ method: 'GET', url: '/v1/shopping-list', headers: { cookie } });
     expect(shoppingList.statusCode).toBe(200);
     expect(shoppingList.json<{ items: Array<{ id: string; quantity: number }> }>().items).toContainEqual(expect.objectContaining({ id: shoppingItem.id, quantity: 500 }));
+
+    const cookedEvent = {
+      id: 'integration-event-pasta',
+      recipeId: 'pasta-tonno-pomodoro',
+      recipeTitle: 'Pasta al tonno e pomodoro',
+      servings: 2,
+      cookedAt: '2026-09-13T13:00:00.000Z',
+      note: 'Con basilico',
+      createdAt: '2026-09-13T13:00:00.000Z',
+      updatedAt: '2026-09-13T13:00:00.000Z',
+    };
+    const preference = {
+      recipeId: cookedEvent.recipeId,
+      favorite: true,
+      rating: 5,
+      note: 'Da rifare',
+      createdAt: cookedEvent.createdAt,
+      updatedAt: cookedEvent.updatedAt,
+    };
+    const activitySync = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers: { origin: appOrigin, cookie, 'x-csrf-token': loginBody.csrfToken },
+      payload: {
+        deviceId: 'device-1',
+        cursor: 3,
+        mutations: [
+          {
+            mutationId: 'integration-event-mutation', deviceId: 'device-1', entityType: 'cook_event',
+            entityId: cookedEvent.id, operation: 'upsert', payload: cookedEvent, clientUpdatedAt: cookedEvent.updatedAt,
+          },
+          {
+            mutationId: 'integration-preference-mutation', deviceId: 'device-1', entityType: 'recipe_preference',
+            entityId: preference.recipeId, operation: 'upsert', payload: preference, clientUpdatedAt: preference.updatedAt,
+          },
+        ],
+      },
+    });
+    expect(activitySync.statusCode).toBe(200);
+
+    const activity = await app.inject({ method: 'GET', url: '/v1/activity', headers: { cookie } });
+    expect(activity.statusCode).toBe(200);
+    expect(activity.json<{ events: Array<{ id: string }> }>().events).toContainEqual(expect.objectContaining({ id: cookedEvent.id }));
+    const preferences = await app.inject({ method: 'GET', url: '/v1/recipes/preferences', headers: { cookie } });
+    expect(preferences.statusCode).toBe(200);
+    expect(preferences.json<{ preferences: Array<{ recipeId: string; note: string }> }>().preferences)
+      .toContainEqual(expect.objectContaining({ recipeId: preference.recipeId, note: 'Da rifare' }));
 
     const exported = await app.inject({ method: 'GET', url: '/v1/profile/export', headers: { cookie } });
     expect(exported.statusCode).toBe(200);

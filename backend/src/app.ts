@@ -7,6 +7,8 @@ import { type ProfileRouteDependencies, registerProfileRoutes } from './routes/p
 import { type SyncRouteDependencies, registerSyncRoutes } from './routes/sync.js';
 import { type PantryLotRouteDependencies, registerPantryLotRoutes } from './routes/pantryLots.js';
 import { type ShoppingListRouteDependencies, registerShoppingListRoutes } from './routes/shoppingList.js';
+import { type ActivityRouteDependencies, registerActivityRoutes } from './routes/activity.js';
+import { type RecipePreferenceRouteDependencies, registerRecipePreferenceRoutes } from './routes/recipePreferences.js';
 
 export type { PlatformDependencies } from './platform.js';
 
@@ -16,6 +18,8 @@ export interface ExtendedPlatformDependencies extends PlatformDependencies {
   sync?: SyncRouteDependencies;
   pantryLots?: PantryLotRouteDependencies;
   shoppingList?: ShoppingListRouteDependencies;
+  activity?: ActivityRouteDependencies;
+  recipePreferences?: RecipePreferenceRouteDependencies;
 }
 
 export const createApp = (
@@ -36,5 +40,7 @@ export const createApp = (
   if (dependencies.sync !== undefined) app.register(registerSyncRoutes(dependencies.sync));
   if (dependencies.pantryLots !== undefined) app.register(registerPantryLotRoutes(dependencies.pantryLots));
   if (dependencies.shoppingList !== undefined) app.register(registerShoppingListRoutes(dependencies.shoppingList));
+  if (dependencies.activity !== undefined) app.register(registerActivityRoutes(dependencies.activity));
+  if (dependencies.recipePreferences !== undefined) app.register(registerRecipePreferenceRoutes(dependencies.recipePreferences));
   return app;
 };

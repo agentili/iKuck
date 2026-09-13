@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { RefreshCw, ShoppingCart, Sparkles } from 'lucide-react';
+import { Clock3, RefreshCw, ShoppingCart, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import AccountPanel from '../components/account/AccountPanel';
 import IngredientChip from '../components/pantry/IngredientChip';
@@ -107,9 +107,14 @@ export default function HomePage() {
         </div>
         <IngredientInput onAdd={handleAdd} />
         <IngredientSuggestions ingredients={suggestedIngredients} onAdd={handleSuggestedIngredient} />
-        <Link to="/shopping-list" className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border-2 border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-800 hover:border-gray-900">
-          <ShoppingCart size={17} aria-hidden="true" /> Lista della spesa
-        </Link>
+        <div className="flex flex-wrap gap-3">
+          <Link to="/shopping-list" className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border-2 border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-800 hover:border-gray-900">
+            <ShoppingCart size={17} aria-hidden="true" /> Lista della spesa
+          </Link>
+          <Link to="/activity" className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border-2 border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-800 hover:border-gray-900">
+            <Clock3 size={17} aria-hidden="true" /> Attività
+          </Link>
+        </div>
         {pantryItems.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-gray-300 bg-white p-4 text-gray-500">Aggiungi almeno un ingrediente per cercare una ricetta.</p>
         ) : (

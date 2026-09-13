@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PantryLot, ShoppingListItem, SyncChangeSet, SyncMutation } from '@ikuck/shared/contracts';
+import type { CookEvent, PantryLot, RecipePreference, ShoppingListItem, SyncChangeSet, SyncMutation } from '@ikuck/shared/contracts';
 import { deleteLocalDatabase, readMeta } from '../storage/indexedDb';
+import { readCookEvents, readRecipePreferences, writeCookEvents, writeRecipePreferences } from '../storage/activityStorage';
 import { readPantrySnapshot } from '../storage/pantryStorage';
 import { readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
 import {
@@ -180,5 +181,76 @@ describe('sync queue', () => {
       body: expect.stringContaining('shopping_list_item'),
     }));
     vi.unstubAllGlobals();
+  });
+
+  it('includes local activity and preferences in the explicit account import', async () => {
+    const event: CookEvent = {
+      id: 'event-import',
+      recipeId: 'recipe-1',
+      recipeTitle: 'Pasta',
+      servings: 2,
+      cookedAt: '2026-09-13T12:00:00.000Z',
+      note: 'Con basilico',
+      createdAt: '2026-09-13T12:00:00.000Z',
+      updatedAt: '2026-09-13T12:00:00.000Z',
+    };
+    const preference: RecipePreference = {
+      recipeId: event.recipeId,
+      favorite: true,
+      rating: 5,
+      note: 'Da rifare',
+      createdAt: event.createdAt,
+      updatedAt: event.updatedAt,
+    };
+    await writeCookEvents([event]);
+    await writeRecipePreferences([preference]);
+    const fetch = vi.fn().mockResolvedValue(responseFor({ changes: [], nextCursor: 0 }));
+    vi.stubGlobal('fetch', fetch);
+
+    await importLocalData(session);
+
+    expect(fetch).toHaveBeenCalledWith('/v1/sync', expect.objectContaining({
+      body: expect.stringContaining('cook_event'),
+    }));
+    expect(fetch).toHaveBeenCalledWith('/v1/sync', expect.objectContaining({
+      body: expect.stringContaining('recipe_preference'),
+    }));
+    vi.unstubAllGlobals();
+  });
+
+  it('applies remote activity and preference changes without re-enqueueing them', async () => {
+    const event: CookEvent = {
+      id: 'event-remote',
+      recipeId: 'recipe-1',
+      recipeTitle: 'Pasta',
+      servings: 2,
+      cookedAt: '2026-09-13T12:00:00.000Z',
+      note: 'Buona',
+      createdAt: '2026-09-13T12:00:00.000Z',
+      updatedAt: '2026-09-13T12:00:00.000Z',
+    };
+    const preference: RecipePreference = {
+      recipeId: 'recipe-1',
+      favorite: true,
+      rating: 4,
+      note: 'Da rifare',
+      createdAt: '2026-09-13T12:00:00.000Z',
+      updatedAt: '2026-09-13T12:00:00.000Z',
+    };
+    await writeCookEvents([]);
+    await writeRecipePreferences([]);
+    const fetch = vi.fn().mockResolvedValue(responseFor({
+      changes: [
+        { mutationId: 'event-change', deviceId: 'device-remote', entityType: 'cook_event', entityId: event.id, operation: 'upsert', payload: event, clientUpdatedAt: event.updatedAt, serverSequence: 7 },
+        { mutationId: 'preference-change', deviceId: 'device-remote', entityType: 'recipe_preference', entityId: preference.recipeId, operation: 'upsert', payload: preference, clientUpdatedAt: preference.updatedAt, serverSequence: 8 },
+      ],
+      nextCursor: 8,
+    }));
+
+    await syncNow({ fetch, session });
+
+    await expect(readCookEvents()).resolves.toEqual([event]);
+    await expect(readRecipePreferences()).resolves.toEqual([preference]);
+    await expect(readQueuedMutations()).resolves.toEqual([]);
   });
 });

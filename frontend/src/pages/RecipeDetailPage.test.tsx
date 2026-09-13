@@ -5,6 +5,7 @@ import { beforeEach } from 'vitest';
 import RecipeDetailPage from './RecipeDetailPage';
 import { useShoppingListStore } from '../store/shoppingListStore';
 import { usePantryStore } from '../store/localPantryStore';
+import { useActivityStore } from '../store/activityStore';
 
 const renderRoute = (path: string) => render(
   <MemoryRouter initialEntries={[path]}>
@@ -17,6 +18,7 @@ const renderRoute = (path: string) => render(
 const resetFeatureState = () => {
   usePantryStore.setState({ pantryItems: [], pantryLots: [], stapleIds: [] });
   useShoppingListStore.setState({ hasHydrated: true, items: [] });
+  useActivityStore.setState({ hasHydrated: true, events: [], preferences: [] });
 };
 
 describe('RecipeDetailPage integration', () => {
@@ -85,5 +87,42 @@ describe('RecipeDetailPage integration', () => {
 
     expect(useShoppingListStore.getState().items).toContainEqual(expect.objectContaining({ ingredientId: 'garlic', quantity: null, unit: null, note: '1 spicchio' }));
     expect(screen.getByRole('link', { name: 'Apri la lista della spesa' })).toHaveAttribute('href', '/shopping-list');
+  });
+
+  it('records a cooking event without changing the pantry', async () => {
+    const user = userEvent.setup();
+    usePantryStore.setState({
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+      pantryLots: [],
+      stapleIds: ['salt'],
+    });
+    const before = JSON.stringify(usePantryStore.getState());
+    renderRoute('/recipes/pasta-tonno-pomodoro');
+
+    await user.click(screen.getByRole('button', { name: 'Segna come cucinata' }));
+
+    expect(useActivityStore.getState().events).toEqual([expect.objectContaining({
+      recipeId: 'pasta-tonno-pomodoro',
+      recipeTitle: 'Pasta tonno e pomodoro',
+    })]);
+    expect(JSON.stringify(usePantryStore.getState())).toBe(before);
+    expect(screen.getByRole('status')).toHaveTextContent('Ricetta aggiunta alla cronologia.');
+  });
+
+  it('saves a favorite, rating and private note', async () => {
+    const user = userEvent.setup();
+    renderRoute('/recipes/pollo-al-limone');
+
+    await user.click(screen.getByRole('button', { name: 'Aggiungi ai preferiti' }));
+    await user.click(screen.getByRole('button', { name: 'Valuta Pollo al limone: 4 stelle' }));
+    await user.type(screen.getByLabelText('Nota privata sulla ricetta'), 'Da rifare nel weekend');
+    await user.click(screen.getByRole('button', { name: 'Salva preferenza' }));
+
+    expect(useActivityStore.getState().getRecipePreference('pollo-al-limone')).toMatchObject({
+      favorite: true,
+      rating: 4,
+      note: 'Da rifare nel weekend',
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('Preferenza salvata.');
   });
 });
