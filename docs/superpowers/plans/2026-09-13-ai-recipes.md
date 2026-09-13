@@ -90,11 +90,11 @@ git commit -m "feat: define private AI recipe contracts"
 - `createOpenAiRecipeProvider({ apiKey, model, fetch })` implements `RecipeGenerationProvider.generate(request)`.
 - The OpenAI body contains `store: false`, `text.format.type: 'json_schema'`, a strict recipe schema, a system instruction for diet/allergen compatibility and a user JSON payload; API keys are sent only in the Authorization header.
 
-- [ ] **Step 1: Write failing limiter and provider tests**
+- [x] **Step 1: Write failing limiter and provider tests**
 
 Cover counts 1–5, rejection at 6, UTC key rollover, an OpenAI request with `store: false`, strict schema fields, extraction of structured output, non-2xx errors and malformed output. Assert that test request bodies do not contain the API key.
 
-- [ ] **Step 2: Run focused tests and confirm they fail**
+- [x] **Step 2: Run focused tests and confirm they fail**
 
 Run:
 
@@ -104,15 +104,15 @@ cd backend && npm test -- --run src/ai/rateLimit.test.ts src/providers/openaiRec
 
 Expected: FAIL because the Redis counter and Responses adapter do not exist.
 
-- [ ] **Step 3: Implement the bounded Redis counter**
+- [x] **Step 3: Implement the bounded Redis counter**
 
 Expose only an atomic increment-with-expiry operation from the cache adapter. Use `ikuck:ai-generations:<userId>:<YYYY-MM-DD>` and expire the key after the seconds remaining until the next UTC day plus a small safety margin. Treat Redis or provider errors as unavailable; never silently grant extra attempts.
 
-- [ ] **Step 4: Implement Structured Outputs with `store: false`**
+- [x] **Step 4: Implement Structured Outputs with `store: false`**
 
 Use the Responses endpoint and parse `output_text` or the first `output_text` message content. Throw a typed provider error for non-success responses, invalid JSON and missing structured output. The adapter must not log request or response data.
 
-- [ ] **Step 5: Verify and commit the provider unit**
+- [x] **Step 5: Verify and commit the provider unit**
 
 Run backend focused tests, lint and build, then commit:
 

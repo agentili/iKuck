@@ -1,6 +1,7 @@
 import type { AppConfig, ProviderConfig } from '../config.js';
 import { createResendEmailProvider } from './resend.js';
 import { createUsdaNutritionProvider } from './usda.js';
+import { createOpenAiRecipeProvider } from './openaiRecipes.js';
 import {
   createUnavailableEmailProvider,
   createUnavailableNutritionProvider,
@@ -30,6 +31,8 @@ export const createProviders = (
     nutrition: providers.usdaApiKey !== undefined
       ? createUsdaNutritionProvider({ apiKey: providers.usdaApiKey, fetch: options.fetch })
       : createUnavailableNutritionProvider(reasonFor(providers.usdaApiKey)),
-    recipes: createUnavailableRecipeProvider(reasonFor(providers.openAiApiKey)),
+    recipes: providers.openAiApiKey !== undefined
+      ? createOpenAiRecipeProvider({ apiKey: providers.openAiApiKey, model: providers.openAiModel ?? 'gpt-5.5', fetch: options.fetch })
+      : createUnavailableRecipeProvider(reasonFor(providers.openAiApiKey)),
   };
 };

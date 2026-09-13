@@ -34,4 +34,15 @@ describe('createProviders', () => {
     await expect(providers.nutrition.lookup({ query: 'tomato' })).resolves.toMatchObject({ source: 'usda', calories: 18 });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
+
+  it('selects the OpenAI recipe adapter only when its API key is configured', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ output_text: JSON.stringify({
+      title: 'Ceci croccanti', description: 'Ricetta semplice.', ingredients: [{ name: 'Ceci', amount: '240 g' }],
+      steps: ['Scola i ceci.'], diets: ['vegan'], allergens: [],
+    }) })));
+    const providers = createProviders({ providers: { openAiApiKey: 'test-key', openAiModel: 'gpt-5.5' } }, { fetch });
+
+    await expect(providers.recipes.generate({ ingredients: ['Ceci'], constraints: [] })).resolves.toMatchObject({ title: 'Ceci croccanti' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
 });

@@ -10,6 +10,7 @@ describe('loadConfig', () => {
       redisUrl: 'redis://127.0.0.1:6379',
       appOrigin: 'http://127.0.0.1:5173',
       logLevel: 'debug',
+      providers: { openAiModel: 'gpt-5.5' },
     });
   });
 

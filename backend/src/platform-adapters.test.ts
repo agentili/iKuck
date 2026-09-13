@@ -24,16 +24,21 @@ describe('platform adapters', () => {
       },
       connect: vi.fn().mockImplementation(async () => { isOpen = true; }),
       ping: vi.fn().mockResolvedValue('PONG'),
+      incr: vi.fn().mockResolvedValue(1),
+      expire: vi.fn().mockResolvedValue(1),
       quit: vi.fn().mockImplementation(async () => { isOpen = false; }),
     };
     const cache = createCacheWithClient(client);
 
     await cache.ping();
+    await expect(cache.incrementWithExpiry('ikuck:test', 120)).resolves.toBe(1);
     await cache.close();
     await cache.close();
 
     expect(client.connect).toHaveBeenCalledTimes(1);
     expect(client.ping).toHaveBeenCalledTimes(1);
+    expect(client.incr).toHaveBeenCalledWith('ikuck:test');
+    expect(client.expire).toHaveBeenCalledWith('ikuck:test', 120);
     expect(client.quit).toHaveBeenCalledTimes(1);
   });
 });
