@@ -2,12 +2,15 @@ import { ArrowLeft, ChefHat, Clock, Heart, ShoppingCart, Star, Users } from 'luc
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { getIngredient } from '../domain/ingredients';
+import { ALLERGEN_LABELS } from '../domain/dietary';
+import { getRecipeMetadata } from '../domain/recipeMetadata';
 import { getRecipeById } from '../domain/recipes';
 import type { RecipeCategory } from '../domain/types';
 import { usePantryStore } from '../store/localPantryStore';
 import { useShoppingListStore } from '../store/shoppingListStore';
 import { useActivityStore } from '../store/activityStore';
 import NotFoundPage from './NotFoundPage';
+import RecipeNutritionSummary from '../components/diet/RecipeNutritionSummary';
 
 const CATEGORY_LABELS: Record<RecipeCategory, string> = {
   meat: 'Carne',
@@ -40,6 +43,7 @@ export default function RecipeDetailPage() {
   }, [currentPreference]);
 
   if (!recipe) return <NotFoundPage />;
+  const metadata = getRecipeMetadata(recipe.id);
 
   const addMissingToShoppingList = () => {
     const added = addMissingRecipeIngredients(recipe, availableIds);
@@ -89,6 +93,16 @@ export default function RecipeDetailPage() {
           </div>
         </dl>
       </header>
+
+      {metadata !== undefined && (
+        <section aria-labelledby="nutrition-title" className="mt-6 rounded-3xl border-2 border-gray-200 bg-white p-5 sm:p-6">
+          <h2 id="nutrition-title" className="text-2xl font-black text-gray-950">Nutrizione stimata per porzione</h2>
+          <RecipeNutritionSummary nutrition={metadata.nutrition} />
+          <p className="mt-3 text-sm font-semibold text-gray-700">
+            Allergeni dichiarati: {metadata.allergens.length === 0 ? 'nessuno' : metadata.allergens.map((allergen) => ALLERGEN_LABELS[allergen]).join(', ')}
+          </p>
+        </section>
+      )}
 
       <div className="grid gap-8 py-10 lg:grid-cols-[0.9fr_1.1fr]">
         <section aria-labelledby="ingredients-title">

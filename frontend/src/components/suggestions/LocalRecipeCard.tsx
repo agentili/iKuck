@@ -1,7 +1,9 @@
 import { Clock, ShoppingBasket } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getIngredient } from '../../domain/ingredients';
+import { getRecipeMetadata } from '../../domain/recipeMetadata';
 import type { RecipeCategory, RecipeSuggestion } from '../../domain/types';
+import RecipeNutritionSummary from '../diet/RecipeNutritionSummary';
 
 const CATEGORY_LABELS: Record<RecipeCategory, string> = {
   meat: 'Carne',
@@ -18,6 +20,7 @@ interface LocalRecipeCardProps {
 export default function LocalRecipeCard({ suggestion }: LocalRecipeCardProps) {
   const missingId = suggestion.missingIngredientIds[0];
   const missingLabel = missingId ? getIngredient(missingId)?.label ?? missingId : null;
+  const metadata = getRecipeMetadata(suggestion.recipe.id);
 
   return (
     <article className="flex h-full flex-col rounded-3xl border-2 border-gray-200 bg-white p-5">
@@ -27,6 +30,7 @@ export default function LocalRecipeCard({ suggestion }: LocalRecipeCardProps) {
       </p>
       <h3 className="text-xl font-bold leading-tight text-gray-950">{suggestion.recipe.title}</h3>
       <p className="mt-2 flex-1 leading-relaxed text-gray-600">{suggestion.recipe.description}</p>
+      {metadata !== undefined && <RecipeNutritionSummary nutrition={metadata.nutrition} />}
       {suggestion.quantityWarnings.length > 0 && (
         <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
           La quantità potrebbe non bastare per: {suggestion.quantityWarnings.map((id) => getIngredient(id)?.label ?? id).join(', ')}.

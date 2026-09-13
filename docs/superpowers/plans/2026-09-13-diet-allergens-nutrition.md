@@ -252,11 +252,11 @@ git commit -m "feat: add dietary profile and USDA nutrition boundaries"
 - `findRecipeSuggestions` filters by `isRecipeCompatible` before calculating missing pantry ingredients and then applies `maxCaloriesPerServing` and `minProteinGramsPerServing` to catalog estimates.
 - `DietFiltersPanel` consumes `profile`, `onChange` and `onReset`; changes are explicit and do not run a recipe search until the existing `Trova ricette` action is pressed.
 
-- [ ] **Step 1: Write failing suggestion and component tests**
+- [x] **Step 1: Write failing suggestion and component tests**
 
 Cover vegetarian/pescatarian/vegan filtering, every excluded allergen blocking at least one declared recipe, nutrition threshold filtering, incomplete nutrition copy, explicit reset, accessible labels for the diet select and allergen checkboxes, and a recipe detail nutrition summary that says `Stima indicativa` rather than implying precision.
 
-- [ ] **Step 2: Run focused tests and confirm they fail**
+- [x] **Step 2: Run focused tests and confirm they fail**
 
 Run:
 
@@ -266,19 +266,19 @@ cd frontend && npm test -- --run src/domain/__tests__/suggestions.test.ts src/co
 
 Expected: FAIL because suggestions do not consume a diet profile and no controls exist.
 
-- [ ] **Step 3: Implement blocking compatibility and nutrition filtering**
+- [x] **Step 3: Implement blocking compatibility and nutrition filtering**
 
 Keep the current recipe availability behavior unchanged after compatibility filtering: optional ingredients remain optional, one easy missing ingredient remains opt-in, and quantity warnings remain warnings. A profile with no nutrition thresholds must not alter results. A profile with a threshold must exclude recipes whose catalog estimate violates it; show incomplete status only on the recipe card/detail and do not silently treat missing nutrition as zero.
 
-- [ ] **Step 4: Implement the Italian accessible filter panel**
+- [x] **Step 4: Implement the Italian accessible filter panel**
 
 Place it below the ingredient input and ingredient suggestions, before the recipe search controls. Use a native `select` for `Dieta`, one checkbox per the 14 named allergens, numeric inputs for `Calorie massime per porzione` and `Proteine minime per porzione`, and a `Ripristina filtri` button. Use `aria-describedby` to explain that allergen exclusions are blocking and nutrition values are estimates. Keep the existing Home keyboard order intact by leaving the ingredient field as the first focusable control.
 
-- [ ] **Step 5: Display metadata without changing pantry semantics**
+- [x] **Step 5: Display metadata without changing pantry semantics**
 
 Add a compact nutrition line to cards and recipe detail with calories, protein and the `Stima indicativa` label. Display declared allergen labels on the detail page. Do not remove ingredients, change lots or mark food as consumed when filters or detail pages are used.
 
-- [ ] **Step 6: Verify Task 4**
+- [x] **Step 6: Verify Task 4**
 
 Run all frontend unit/component tests, lint, typecheck and build. Confirm the existing 320px keyboard flow still reaches `Trova ricette` and no horizontal overflow is introduced by the 14 checkboxes.
 

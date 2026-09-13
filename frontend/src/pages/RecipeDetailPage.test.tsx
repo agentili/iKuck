@@ -43,6 +43,13 @@ describe('RecipeDetailPage integration', () => {
     expect(screen.getByText('1 spicchio · facoltativo')).toBeInTheDocument();
   });
 
+  it('shows estimated nutrition and declared allergens without implying precision', () => {
+    renderRoute('/recipes/pasta-tonno-pomodoro');
+
+    expect(screen.getByText('Stima indicativa')).toBeVisible();
+    expect(screen.getByText(/Allergeni dichiarati: glutine, pesce/)).toBeVisible();
+  });
+
   it('shows a recoverable state for an unknown recipe id', () => {
     renderRoute('/recipes/not-real');
 

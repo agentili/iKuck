@@ -25,6 +25,30 @@ export const EU_ALLERGENS: readonly EuAllergen[] = [
   'molluscs',
 ];
 
+export const DIET_LABELS: Record<DietType, string> = {
+  omnivore: 'Onnivora',
+  vegetarian: 'Vegetariana',
+  pescatarian: 'Pescetariana',
+  vegan: 'Vegana',
+};
+
+export const ALLERGEN_LABELS: Record<EuAllergen, string> = {
+  gluten: 'glutine',
+  crustaceans: 'crostacei',
+  eggs: 'uova',
+  fish: 'pesce',
+  peanuts: 'arachidi',
+  soybeans: 'soia',
+  milk: 'latte',
+  nuts: 'frutta a guscio',
+  celery: 'sedano',
+  mustard: 'senape',
+  sesame: 'sesamo',
+  sulphites: 'anidride solforosa e solfiti',
+  lupin: 'lupini',
+  molluscs: 'molluschi',
+};
+
 export const DEFAULT_DIET_PROFILE: DietProfilePayload = {
   diet: 'omnivore',
   excludedAllergens: [],

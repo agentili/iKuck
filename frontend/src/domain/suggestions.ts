@@ -1,6 +1,8 @@
 import { getIngredient } from './ingredients';
+import { isRecipeCompatible } from './dietary';
 import { getQuantityWarning, type PantryQuantityAggregate } from './pantryLots';
 import { RECIPES } from './recipes';
+import type { DietProfilePayload } from '@ikuck/shared/contracts';
 import type { IngredientDefinition, PantryRecipe, RecipeSuggestion } from './types';
 
 export interface SuggestionOptions {
@@ -10,6 +12,7 @@ export interface SuggestionOptions {
   limit?: number;
   random?: () => number;
   quantitySummaries?: readonly PantryQuantityAggregate[];
+  dietProfile?: DietProfilePayload;
 }
 
 const shuffle = <T>(items: readonly T[], random: () => number): T[] => {
@@ -30,10 +33,12 @@ export const findRecipeSuggestions = ({
   limit = 6,
   random = Math.random,
   quantitySummaries = [],
+  dietProfile,
 }: SuggestionOptions): RecipeSuggestion[] => {
   const available = new Set(availableIds);
   const summariesById = new Map(quantitySummaries.map((summary) => [summary.ingredientId, summary]));
   const eligible = recipes.flatMap((recipe): RecipeSuggestion[] => {
+    if (dietProfile !== undefined && !isRecipeCompatible(recipe.id, dietProfile)) return [];
     const missingIngredientIds = recipe.ingredients
       .filter((item) => !item.optional && !available.has(item.ingredientId))
       .map((item) => item.ingredientId);

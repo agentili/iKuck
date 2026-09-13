@@ -1,4 +1,6 @@
+import type { DietProfilePayload } from '@ikuck/shared/contracts';
 import { getIngredient } from '../ingredients';
+import { getRecipeById, RECIPES } from '../recipes';
 import { findHelpfulIngredients, findRecipeSuggestions } from '../suggestions';
 import type { PantryRecipe } from '../types';
 
@@ -123,5 +125,35 @@ describe('recipe suggestions', () => {
     expect(new Set(result.map((ingredient) => ingredient.id)).size).toBe(3);
     expect(result.every((ingredient) => ingredient.easyToFind)).toBe(true);
     expect(result.every((ingredient) => getIngredient(ingredient.id) === ingredient)).toBe(true);
+  });
+
+  it('filters recipes by diet and excluded allergens before pantry availability', () => {
+    const availableIds = [...new Set(RECIPES.flatMap((recipe) => recipe.ingredients.map((item) => item.ingredientId)))];
+    const profile: DietProfilePayload = {
+      diet: 'vegetarian',
+      excludedAllergens: ['fish'],
+      nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null },
+    };
+
+    const result = findRecipeSuggestions({ recipes: RECIPES, availableIds, allowOneMissing: false, dietProfile: profile, limit: 20 });
+
+    expect(result.map(({ recipe }) => recipe.id)).not.toContain('pollo-al-limone');
+    expect(result.map(({ recipe }) => recipe.id)).not.toContain('pasta-tonno-pomodoro');
+    expect(result.map(({ recipe }) => recipe.id)).not.toContain('insalata-ceci-tonno');
+    expect(result.map(({ recipe }) => recipe.id)).toContain('pasta-e-ceci');
+  });
+
+  it('applies catalog nutrition thresholds without changing pantry matching', () => {
+    const recipes = [getRecipeById('pollo-al-limone')!, getRecipeById('tacchino-peperoni')!];
+    const availableIds = [...new Set(recipes.flatMap((recipe) => recipe.ingredients.map((item) => item.ingredientId)))];
+    const profile: DietProfilePayload = {
+      diet: 'omnivore',
+      excludedAllergens: [],
+      nutrition: { maxCaloriesPerServing: 350, minProteinGramsPerServing: 40 },
+    };
+
+    const result = findRecipeSuggestions({ recipes, availableIds, allowOneMissing: false, dietProfile: profile });
+
+    expect(result.map(({ recipe }) => recipe.id)).toEqual(['tacchino-peperoni']);
   });
 });

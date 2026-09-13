@@ -5,6 +5,7 @@ import AccountPanel from '../components/account/AccountPanel';
 import IngredientChip from '../components/pantry/IngredientChip';
 import IngredientInput from '../components/pantry/IngredientInput';
 import IngredientSuggestions from '../components/pantry/IngredientSuggestions';
+import DietFiltersPanel from '../components/diet/DietFiltersPanel';
 import PantryLotsPanel from '../components/pantry/PantryLotsPanel';
 import StaplesPanel from '../components/pantry/StaplesPanel';
 import LocalRecipeCard from '../components/suggestions/LocalRecipeCard';
@@ -12,6 +13,7 @@ import SuggestionControls from '../components/suggestions/SuggestionControls';
 import { findHelpfulIngredients, findRecipeSuggestions } from '../domain/suggestions';
 import type { IngredientDefinition, ParsedIngredient, RecipeSuggestion } from '../domain/types';
 import { hydratePantryStore, usePantryStore } from '../store/localPantryStore';
+import { useDietProfileStore } from '../store/dietProfileStore';
 
 export default function HomePage() {
   const hasHydrated = usePantryStore((state) => state.hasHydrated);
@@ -29,6 +31,9 @@ export default function HomePage() {
   const toggleStaple = usePantryStore((state) => state.toggleStaple);
   const getAvailableIngredientIds = usePantryStore((state) => state.getAvailableIngredientIds);
   const getPantryQuantitySummary = usePantryStore((state) => state.getPantryQuantitySummary);
+  const dietProfile = useDietProfileStore((state) => state.profile);
+  const setDietProfile = useDietProfileStore((state) => state.setDietProfile);
+  const resetDietProfile = useDietProfileStore((state) => state.resetDietProfile);
 
   useEffect(() => {
     void hydratePantryStore();
@@ -71,11 +76,21 @@ export default function HomePage() {
     clearResults();
   };
 
+  const handleDietProfileChange = (profile: Parameters<typeof setDietProfile>[0]) => {
+    if (setDietProfile(profile)) clearResults();
+  };
+
+  const handleDietProfileReset = () => {
+    resetDietProfile();
+    clearResults();
+  };
+
   const search = (extended = allowOneMissing) => {
     setSuggestions(findRecipeSuggestions({
       availableIds: getAvailableIngredientIds(),
       allowOneMissing: extended,
       quantitySummaries: getPantryQuantitySummary(),
+      dietProfile,
     }));
     setHasSearched(true);
   };
@@ -107,6 +122,7 @@ export default function HomePage() {
         </div>
         <IngredientInput onAdd={handleAdd} />
         <IngredientSuggestions ingredients={suggestedIngredients} onAdd={handleSuggestedIngredient} />
+        <DietFiltersPanel profile={dietProfile} onChange={handleDietProfileChange} onReset={handleDietProfileReset} />
         <div className="flex flex-wrap gap-3">
           <Link to="/shopping-list" className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border-2 border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-800 hover:border-gray-900">
             <ShoppingCart size={17} aria-hidden="true" /> Lista della spesa
