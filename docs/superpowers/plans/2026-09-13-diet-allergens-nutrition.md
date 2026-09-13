@@ -343,11 +343,13 @@ git commit -m "feat: add USDA recipe nutrition estimates"
 - Modify: `docs/superpowers/plans/2026-09-13-diet-allergens-nutrition.md`
 - Modify: `frontend/e2e/core-flow.spec.ts`
 
-- [ ] **Step 1: Add desktop/mobile browser coverage**
+- [x] **Step 1: Add desktop/mobile browser coverage**
 
 Add scenarios that set vegetarian and exclude fish, verify fish recipes are absent after an explicit search, select a nutrition threshold and see only matching recipes, open detail to see the estimate disclaimer, reload, and confirm the filters persist. Run one filter panel scenario at 320px and assert no horizontal overflow.
 
-- [ ] **Step 2: Run the complete verification set**
+The browser coverage includes desktop/mobile scenarios that switch to a vegetarian diet, block fish recipes through the fish-allergen exclusion, restore compatible results, apply and persist a calorie threshold, check the estimated-nutrition and declared-allergen labels on the recipe detail page, and assert no horizontal overflow at 320px.
+
+- [x] **Step 2: Run the complete verification set**
 
 Run:
 
@@ -358,15 +360,17 @@ cd ../frontend && npm test && npm run lint && npm exec tsc -- --noEmit && npm ru
 
 Run PostgreSQL/Redis integration only when dedicated URLs are configured. Run the real USDA smoke test only when `USDA_API_KEY` is explicitly available. Run `docker compose -f deploy/docker-compose.standalone.yml config` and the deployment contract tests; run container smoke only when the Docker Linux engine is available.
 
-- [ ] **Step 3: Review safety and data boundaries**
+Completed: backend 25 test files passed with 72 tests passed and 2 integration tests skipped without dedicated URLs; frontend 34 test files passed with 167 tests passed; frontend lint, explicit TypeScript check and production build passed; Playwright passed 30 tests across mobile and desktop Chromium. The real USDA smoke test remains intentionally skipped because no explicit `USDA_API_KEY` was provided; the standalone container smoke test passed.
+
+- [x] **Step 3: Review safety and data boundaries**
 
 Run `git diff --check` and inspect that allergen filtering is blocking, unknown metadata is not considered safe, nutrition disclaimers remain visible, guest requests do not expose credentials, profile writes use CSRF/same-origin checks and remote profile changes do not mutate pantry/activity/shopping data.
 
-- [ ] **Step 4: Update README and plan evidence**
+- [x] **Step 4: Update README and plan evidence**
 
 Document the four diets, the 14 allergen exclusions, the two nutrition thresholds, the estimate/incomplete labels, the optional USDA enrichment and the fact that filters never consume pantry lots. Mark each completed checkbox and record exact test counts plus any intentionally skipped external/container checks.
 
-- [ ] **Step 5: Commit the completed feature block**
+- [x] **Step 5: Commit the completed feature block**
 
 ```bash
 git add README.md frontend/e2e docs/superpowers/plans/2026-09-13-diet-allergens-nutrition.md

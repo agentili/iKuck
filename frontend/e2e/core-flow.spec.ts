@@ -113,6 +113,57 @@ test('local suggestions refresh after pantry and diet changes', async ({ page })
   await expect(page.getByText('Tonno', { exact: true })).toBeVisible();
 });
 
+test('diet and allergen filters block recipes and explain nutrition estimates', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
+
+  await page.getByLabel('Ingredienti presenti').fill('pasta, tonno, passata');
+  await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await page.getByRole('button', { name: 'Trova ricette' }).click();
+  await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
+
+  await page.getByLabel('Dieta').selectOption('vegetarian');
+  await expect(page.getByText('Pasta tonno e pomodoro')).toHaveCount(0);
+  await page.getByLabel('Dieta').selectOption('omnivore');
+  await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
+
+  const fishExclusion = page.getByLabel('Escludi pesce');
+  await fishExclusion.check();
+  await expect(page.getByText('Pasta tonno e pomodoro')).toHaveCount(0);
+  await fishExclusion.uncheck();
+  await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
+
+  await page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' }).click();
+  await expect(page.getByRole('heading', { name: 'Nutrizione stimata per porzione' })).toBeVisible();
+  await expect(page.getByText('Stima indicativa')).toBeVisible();
+  await expect(page.getByText(/Allergeni dichiarati: glutine, pesce/)).toBeVisible();
+});
+
+test('nutrition filters persist and keep the narrow layout without overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto('/');
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
+
+  await page.getByLabel('Ingredienti presenti').fill('pasta, tonno, passata');
+  await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await page.getByRole('button', { name: 'Trova ricette' }).click();
+  await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
+
+  await page.getByLabel('Calorie massime per porzione').fill('400');
+  await expect(page.getByText('Pasta tonno e pomodoro')).toHaveCount(0);
+  await page.getByLabel('Escludi pesce').check();
+  await page.reload();
+  await expect(page.getByLabel('Calorie massime per porzione')).toHaveValue('400');
+  await expect(page.getByLabel('Escludi pesce')).toBeChecked();
+
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
+});
+
 test('shopping list accepts manual and recipe-derived items offline', async ({ page }) => {
   await page.goto('/shopping-list');
   await expect(page.getByRole('heading', { name: 'Lista della spesa' })).toBeVisible();
