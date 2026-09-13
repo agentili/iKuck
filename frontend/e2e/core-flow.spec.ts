@@ -43,7 +43,12 @@ test('the core flow works at 320px using only the keyboard', async ({ page }) =>
   await page.reload();
 
   await expect(page.getByLabel('Ingredienti presenti')).toBeVisible();
-  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Accedi o registrati' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Accedi con Google' })).toBeVisible();
+  for (let step = 0; step < 12; step += 1) {
+    if (await page.getByLabel('Ingredienti presenti').evaluate((element) => element === document.activeElement)) break;
+    await page.keyboard.press('Tab');
+  }
   await expect(page.getByLabel('Ingredienti presenti')).toBeFocused();
   await page.keyboard.type('pasta, tonno, passata');
   await page.keyboard.press('Enter');

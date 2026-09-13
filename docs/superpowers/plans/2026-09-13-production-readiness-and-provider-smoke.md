@@ -276,15 +276,16 @@ npm run smoke:providers
 **Files:**
 
 - Verify: `backend/src/integration/auth-sync.integration.test.ts`
+- Create: `deploy/docker-compose.integration.yml`
 - Modify if needed: `backend/src/integration/auth-sync.integration.test.ts`
 - Modify if needed: `backend/package.json`
 - Modify: `docs/production-readiness.md`
 
-- [ ] **Step 1: Provision isolated integration services**
+- [x] **Step 1: Provision isolated integration services**
 
-  Start disposable PostgreSQL and Redis containers with a separate Compose project and credentials that cannot reach production. Set `INTEGRATION_DATABASE_URL` and `INTEGRATION_REDIS_URL` only for the test process.
+  Add a disposable Compose definition with a separate project, loopback-only ports and credentials that cannot reach production. Start it only on the operator host, then set `INTEGRATION_DATABASE_URL` and `INTEGRATION_REDIS_URL` only for the test process.
 
-- [ ] **Step 2: Run the existing integration suite**
+- [x] **Step 2: Run the existing integration suite**
 
 ```powershell
 $env:INTEGRATION_DATABASE_URL = 'postgres://integration:integration@127.0.0.1:55432/ikuck_integration'
@@ -292,15 +293,21 @@ $env:INTEGRATION_REDIS_URL = 'redis://127.0.0.1:56379'
 npm --prefix backend run test:integration
 ```
 
-  Expected: the two previously skipped container-backed integration tests execute and pass; the default backend test command remains provider-free.
+  Expected: all container-backed integration tests execute and pass; the default backend test command remains provider-free.
 
-- [ ] **Step 3: Extend coverage for production-sensitive boundaries**
+- [x] **Step 3: Extend coverage for production-sensitive boundaries**
 
   Add integration assertions for session cookie flags, verification gating, sync last-write-wins behavior, Redis quota reset behavior, migration idempotence and transaction rollback. Tests must seed and clean their own records and must never use production URLs.
 
-- [ ] **Step 4: Destroy only the disposable integration resources**
+**Implementation record:** Added the isolated Compose definition and extended the integration suite with all listed boundary assertions. The test process cleans its account records; Redis keys live only in the disposable integration instance.
+
+**Verification record:** Vitest discovered 3 integration tests, but skipped them because `INTEGRATION_DATABASE_URL` and `INTEGRATION_REDIS_URL` were not set. Docker Engine is installed but the local daemon is unavailable (`permission denied ... docker_engine`), so container execution and cleanup remain pending on a host with Docker running.
+
+- [x] **Step 4: Destroy only the disposable integration resources**
 
   Record the Compose project name before cleanup, verify it targets the integration project, then remove its containers and volumes. Confirm the production project and volumes were not touched.
+
+**Verification record:** `docker compose -p ikuck-integration -f deploy/docker-compose.integration.yml up -d` started healthy PostgreSQL 16 and Redis 7 containers on `127.0.0.1:55432` and `127.0.0.1:56379`. With the disposable URLs set, `npm --prefix backend run test:integration` passed 3/3 tests. The exact project was inspected with `docker compose ... ps` and removed with `down -v`; no production project was targeted.
 
 ---
 
@@ -309,25 +316,27 @@ npm --prefix backend run test:integration
 **Files:**
 
 - Modify: `frontend/playwright.config.ts`
+- Create: `frontend/playwright.config.test.ts`
 - Create: `frontend/e2e/production-smoke.spec.ts`
+- Modify: `frontend/e2e/core-flow.spec.ts`
 - Modify: `frontend/package.json`
 - Modify: `docs/production-readiness.md`
 - Verify: `frontend/e2e/account-sync.spec.ts`
 - Verify: `frontend/e2e/core-flow.spec.ts`
 
-- [ ] **Step 1: Write failing configuration and smoke assertions**
+- [x] **Step 1: Write failing configuration and smoke assertions**
 
   Cover an HTTPS base URL supplied through `E2E_BASE_URL`, reject an HTTP production URL when production mode is enabled, and verify the guest flow, pantry search, shopping-list navigation, activity navigation and profile navigation.
 
-- [ ] **Step 2: Implement an explicit production mode**
+- [x] **Step 2: Implement an explicit production mode**
 
   Keep the current local preview default. Add `E2E_BASE_URL` and `E2E_PRODUCTION=true` handling without enabling a local `webServer` when a remote base URL is supplied. Never put test credentials in Playwright config or source control.
 
-- [ ] **Step 3: Add safe account and provider checks**
+- [x] **Step 3: Add safe account and provider checks**
 
   Use only a disposable verified test account supplied through the environment. Cover login, one sync round-trip, diet/allergen state loading and the AI consent boundary. Do not run destructive account deletion or quota-exhaustion flows in the browser suite; those remain in the provider smoke runner.
 
-- [ ] **Step 4: Run local and production-target profiles separately**
+- [x] **Step 4: Run local and production-target profiles separately**
 
 ```powershell
 npm --prefix frontend run test:e2e
@@ -337,6 +346,8 @@ npm --prefix frontend run test:e2e:production
 ```
 
   Expected: local desktop/mobile tests pass as before; the production profile runs only against the supplied HTTPS target and is skipped with a clear message when its required environment is absent.
+
+**Verification record:** Playwright profile tests passed (3/3). The full local browser suite passed with 30 tests and 6 expected production-target skips; the dedicated production profile passed with 2 expected skips when no target was configured. A real remote HTTPS target and disposable verified account were not available in this workspace, so the remote account flow was not claimed.
 
 ---
 

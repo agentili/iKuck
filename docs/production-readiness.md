@@ -81,6 +81,33 @@ Gli smoke test reali di Resend, USDA e OpenAI sono opt-in e non fanno parte di `
 
 Questa guida documenta il contratto e il deployment; il runner degli smoke test e la verifica contro servizi PostgreSQL/Redis usa-e-getta restano attività successive del piano production readiness.
 
+## Verifica browser production
+
+Il profilo locale resta quello predefinito di `npm --prefix frontend run test:e2e`. Per un target remoto usare esclusivamente un URL HTTPS e selezionare il profilo production:
+
+```powershell
+$env:E2E_BASE_URL = 'https://app.example.test'
+$env:E2E_PRODUCTION = 'true'
+npm --prefix frontend run test:e2e:production
+```
+
+Il profilo remoto non avvia il server Vite locale. Senza `E2E_BASE_URL` e `E2E_PRODUCTION=true` i test production vengono saltati con un messaggio esplicito; non inserire mai credenziali nei file di configurazione. Per il controllo facoltativo dell'account verificato usa soltanto un account usa-e-getta tramite `E2E_TEST_EMAIL` e `E2E_TEST_PASSWORD`.
+
+## Verifica PostgreSQL e Redis
+
+I test di integrazione usano solo servizi usa-e-getta indicati da `INTEGRATION_DATABASE_URL` e `INTEGRATION_REDIS_URL`. Senza entrambe le variabili restano saltati e non toccano il database locale o production:
+
+```powershell
+$env:COMPOSE_PROJECT_NAME = 'ikuck-integration'
+docker compose -f deploy/docker-compose.integration.yml up -d
+$env:INTEGRATION_DATABASE_URL = 'postgres://integration:integration@127.0.0.1:55432/ikuck_integration'
+$env:INTEGRATION_REDIS_URL = 'redis://127.0.0.1:56379'
+npm --prefix backend run test:integration
+docker compose -p ikuck-integration -f deploy/docker-compose.integration.yml down -v
+```
+
+La suite verifica migrazioni ripetibili, cookie di sessione, blocco prima della verifica email, sincronizzazione last-write-wins, rollback della transazione e reset della quota Redis al cambio di giorno UTC. Avviare e rimuovere i container con un nome di progetto dedicato e non riutilizzare mai le URL production.
+
 ## Stato e criteri di rilascio
 
 Una release pubblica non è pronta finché non sono verificati DNS, HTTPS, health API, migrazioni, persistenza dopo riavvio, backup e ripristino, sincronizzazione account, fallback dei provider disabilitati e smoke test dei provider esplicitamente abilitati. I risultati devono riportare commit/tag, timestamp UTC, digest immagini, checksum backup e motivi degli eventuali test saltati, senza dati sensibili.

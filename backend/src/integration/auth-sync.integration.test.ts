@@ -31,6 +31,9 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     await migrate(database.db, {
       migrationsFolder: join(dirname(fileURLToPath(import.meta.url)), '..', 'db', 'migrations'),
     });
+    await migrate(database.db, {
+      migrationsFolder: join(dirname(fileURLToPath(import.meta.url)), '..', 'db', 'migrations'),
+    });
     await database.ping();
     await cache.ping();
 
@@ -117,6 +120,9 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     const loginBody = login.json<{ csrfToken: string; user: { id: string } }>();
     const cookieHeader = login.headers['set-cookie'];
     const cookie = Array.isArray(cookieHeader) ? cookieHeader[0].split(';')[0] : cookieHeader!.split(';')[0];
+    expect(cookieHeader).toContain('HttpOnly');
+    expect(cookieHeader).toContain('SameSite=Lax');
+    expect(cookieHeader).not.toContain('Secure');
 
     const rejected = await app.inject({
       method: 'POST',
@@ -163,6 +169,8 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       },
     });
     expect(older.statusCode).toBe(200);
+    expect(await createDrizzleSyncRepository(database!.db).readEntity(loginBody.user.id, 'pantry_item', 'pasta'))
+      .toMatchObject({ payload: { id: 'pasta', label: 'Pasta' } });
 
     const lot = {
       id: 'integration-lot-pasta',
@@ -333,12 +341,100 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     expect(exported.body).not.toContain(loginBody.csrfToken);
     expect(exported.json<{ account: { id: string } }>().account.id).toBe(loginBody.user.id);
 
+    const rollbackRepository = createDrizzleSyncRepository(database!.db);
+    const rollbackMutationId = `integration-rollback-${Date.now()}`;
+    await expect(rollbackRepository.applyMutation(loginBody.user.id, {
+      mutationId: rollbackMutationId,
+      deviceId: 'device-rollback',
+      entityType: 'pantry_item',
+      entityId: 'rollback-item',
+      operation: 'upsert',
+      payload: { id: 'rollback-item', label: 'Rollback' },
+      clientUpdatedAt: 'not-a-date',
+    })).rejects.toThrow();
+    await expect(rollbackRepository.applyMutation(loginBody.user.id, {
+      mutationId: rollbackMutationId,
+      deviceId: 'device-rollback',
+      entityType: 'pantry_item',
+      entityId: 'rollback-item',
+      operation: 'upsert',
+      payload: { id: 'rollback-item', label: 'Recovered' },
+      clientUpdatedAt: '2026-09-13T14:00:00.000Z',
+    })).resolves.toMatchObject({ applied: true });
+
     const deleted = await app.inject({
       method: 'DELETE',
       url: '/v1/profile',
       headers: { origin: appOrigin, cookie, 'x-csrf-token': loginBody.csrfToken },
     });
     expect(deleted.statusCode).toBe(204);
+  });
+
+  it('blocks an unverified account before verification and supports migration and quota boundaries', async () => {
+    if (database === null || cache === null) throw new Error('Integration services are not configured');
+
+    const email = `integration-unverified-${Date.now()}@example.com`;
+    const register = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/register',
+      headers: { origin: appOrigin },
+      payload: { email, password: 'integration password 123' },
+    });
+    expect(register.statusCode).toBe(202);
+
+    const blockedLogin = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/login',
+      headers: { origin: appOrigin },
+      payload: { email, password: 'integration password 123' },
+    });
+    expect(blockedLogin.statusCode).toBe(403);
+    expect(blockedLogin.json()).toMatchObject({ code: 'email_not_verified' });
+
+    const emailMessage = sentEmails.at(-1);
+    expect(emailMessage).toBeDefined();
+    const tokenMatch = emailMessage!.html.match(/token=([^"&]+)/);
+    expect(tokenMatch).not.toBeNull();
+    const verification = await app.inject({
+      method: 'GET',
+      url: `/v1/auth/verify-email?token=${decodeURIComponent(tokenMatch![1])}`,
+    });
+    expect(verification.statusCode).toBe(200);
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/login',
+      headers: { origin: appOrigin },
+      payload: { email, password: 'integration password 123' },
+    });
+    expect(login.statusCode).toBe(200);
+    const loginBody = login.json<{ csrfToken: string }>();
+    const cookieHeader = login.headers['set-cookie'];
+    const cookie = Array.isArray(cookieHeader) ? cookieHeader[0].split(';')[0] : cookieHeader!.split(';')[0];
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: '/v1/profile',
+      headers: { origin: appOrigin, cookie, 'x-csrf-token': loginBody.csrfToken },
+    });
+    expect(deleted.statusCode).toBe(204);
+
+    const quotaUser = `quota-boundary-${Date.now()}`;
+    const limiter = createRedisGenerationRateLimiter({
+      incrementWithExpiry: cache.incrementWithExpiry,
+      clock: () => new Date('2026-09-13T23:59:00.000Z'),
+    });
+    const beforeMidnight = await limiter.consume(quotaUser);
+    expect(beforeMidnight).toMatchObject({ used: 1, remaining: 4, allowed: true });
+    const nextDayLimiter = createRedisGenerationRateLimiter({
+      incrementWithExpiry: cache.incrementWithExpiry,
+      clock: () => new Date('2026-09-14T00:01:00.000Z'),
+    });
+    const afterMidnight = await nextDayLimiter.consume(quotaUser);
+    expect(afterMidnight).toMatchObject({ used: 1, remaining: 4, allowed: true });
+
+    await migrate(database.db, {
+      migrationsFolder: join(dirname(fileURLToPath(import.meta.url)), '..', 'db', 'migrations'),
+    });
   });
 
   it('does not depend on migration source files at runtime', async () => {
