@@ -200,11 +200,11 @@ git commit -m "feat: persist synchronized diet profiles"
 - `createUsdaNutritionProvider({ apiKey, fetch })` implements `NutritionProvider.lookup({ query, quantityGrams })` without logging request data or credentials.
 - The provider returns numeric calories, protein, carbohydrate and fat values, a matched food name, `source: 'usda'`, `isComplete` and `missingNutrients`; no result or malformed USDA data is a provider failure.
 
-- [ ] **Step 1: Write failing route, provider and sync tests**
+- [x] **Step 1: Write failing route, provider and sync tests**
 
 Cover profile validation, account scoping, CSRF/origin rejection, last-write-wins-compatible replacement, no provider call when no USDA key is configured, a fake successful USDA response, a missing nutrient marked incomplete and invalid `diet_profile` sync payload rejection. The fake USDA response must include one food and nutrient ids `1008`, `1003`, `1005` and `1004` so the parser contract is deterministic.
 
-- [ ] **Step 2: Run focused tests and confirm they fail**
+- [x] **Step 2: Run focused tests and confirm they fail**
 
 Run:
 
@@ -214,19 +214,19 @@ cd backend && npm test -- --run src/routes/dietProfile.test.ts src/providers/fac
 
 Expected: FAIL because the route, USDA adapter and sync validation do not exist.
 
-- [ ] **Step 3: Implement validated profile routes**
+- [x] **Step 3: Implement validated profile routes**
 
 Parse the shared profile shape with Zod, read only the authenticated session user id and map a successful update to a `diet_profile/profile` upsert with a fresh `updatedAt`. All writes require same-origin and CSRF checks; reads return only the current account profile or the shared default when no profile exists. Never return provider credentials.
 
-- [ ] **Step 4: Implement the USDA adapter and factory selection**
+- [x] **Step 4: Implement the USDA adapter and factory selection**
 
 Call the official FoodData Central search endpoint server-side with `api_key`, `query` and `pageSize=1`. Convert nutrient values to the requested quantity in grams when supplied, retain a matched description, mark absent required nutrients in `missingNutrients` and throw a typed provider error for non-2xx or invalid responses. `createProviders` selects this adapter only when `USDA_API_KEY` exists and keeps the unavailable provider otherwise.
 
-- [ ] **Step 5: Verify Task 3**
+- [x] **Step 5: Verify Task 3**
 
 Run the complete backend suite, lint and build. Run the dedicated PostgreSQL/Redis integration test when both URLs exist; otherwise record the exact skip. If `USDA_API_KEY` is explicitly present, run the opt-in provider smoke test against a single harmless query and do not include its output in standard tests.
 
-- [ ] **Step 6: Commit the backend boundary**
+- [x] **Step 6: Commit the backend boundary**
 
 ```bash
 git add backend shared/src/contracts.ts

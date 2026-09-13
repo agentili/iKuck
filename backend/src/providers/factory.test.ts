@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createProviders } from './factory.js';
 
 describe('createProviders', () => {
@@ -23,5 +23,15 @@ describe('createProviders', () => {
       ingredients: ['tomato'],
       constraints: [],
     })).rejects.toMatchObject({ provider: 'recipes' });
+  });
+
+  it('selects the USDA adapter only when an API key is configured', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(JSON.stringify({
+      foods: [{ description: 'Tomato', foodNutrients: [{ nutrientId: 1008, value: 18 }] }],
+    })));
+    const providers = createProviders({ providers: { usdaApiKey: 'test-key' } }, { fetch });
+
+    await expect(providers.nutrition.lookup({ query: 'tomato' })).resolves.toMatchObject({ source: 'usda', calories: 18 });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

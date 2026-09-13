@@ -1,5 +1,6 @@
 import type { AppConfig, ProviderConfig } from '../config.js';
 import { createResendEmailProvider } from './resend.js';
+import { createUsdaNutritionProvider } from './usda.js';
 import {
   createUnavailableEmailProvider,
   createUnavailableNutritionProvider,
@@ -8,12 +9,17 @@ import {
 } from './unavailable.js';
 import type { ProviderBundle } from './types.js';
 
+export interface ProviderFactoryOptions {
+  fetch?: typeof globalThis.fetch;
+}
+
 const reasonFor = (configured: string | undefined): ProviderUnavailableReason => (
   configured === undefined ? 'missing_configuration' : 'adapter_not_enabled'
 );
 
 export const createProviders = (
   config: Pick<AppConfig, 'providers'>,
+  options: ProviderFactoryOptions = {},
 ): ProviderBundle => {
   const providers: ProviderConfig = config.providers;
 
@@ -21,7 +27,9 @@ export const createProviders = (
     email: providers.resendApiKey !== undefined && providers.resendFrom !== undefined
       ? createResendEmailProvider({ apiKey: providers.resendApiKey, from: providers.resendFrom })
       : createUnavailableEmailProvider(reasonFor(providers.resendApiKey)),
-    nutrition: createUnavailableNutritionProvider(reasonFor(providers.usdaApiKey)),
+    nutrition: providers.usdaApiKey !== undefined
+      ? createUsdaNutritionProvider({ apiKey: providers.usdaApiKey, fetch: options.fetch })
+      : createUnavailableNutritionProvider(reasonFor(providers.usdaApiKey)),
     recipes: createUnavailableRecipeProvider(reasonFor(providers.openAiApiKey)),
   };
 };

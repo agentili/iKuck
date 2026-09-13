@@ -192,4 +192,45 @@ describe('sync routes', () => {
     expect(invalid.json()).toMatchObject({ code: 'invalid_payload' });
     await app.close();
   });
+
+  it('rejects an invalid diet profile mutation before writing it', async () => {
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository: createMemorySyncRepository(), authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers: {
+        cookie: 'ikuck_session=session-token',
+        origin: 'http://127.0.0.1:5173',
+        'x-csrf-token': 'csrf-token',
+      },
+      payload: {
+        deviceId: 'device-1',
+        cursor: 0,
+        mutations: [{
+          mutationId: 'invalid-profile',
+          deviceId: 'device-1',
+          entityType: 'diet_profile',
+          entityId: 'profile',
+          operation: 'upsert',
+          payload: {
+            diet: 'unknown',
+            excludedAllergens: [],
+            nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null },
+            updatedAt: '2026-09-13T12:00:00.000Z',
+          },
+          clientUpdatedAt: '2026-09-13T12:00:00.000Z',
+        }],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: 'invalid_payload' });
+    await app.close();
+  });
 });

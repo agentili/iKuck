@@ -58,6 +58,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       shoppingList: { repository: sync, authService: auth, appOrigin },
       activity: { repository: sync, authService: auth, appOrigin },
       recipePreferences: { repository: sync, authService: auth, appOrigin },
+      dietProfile: { repository: sync, authService: auth, appOrigin },
     });
     await app.ready();
   });
@@ -265,6 +266,24 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     expect(preferences.statusCode).toBe(200);
     expect(preferences.json<{ preferences: Array<{ recipeId: string; note: string }> }>().preferences)
       .toContainEqual(expect.objectContaining({ recipeId: preference.recipeId, note: 'Da rifare' }));
+
+    const dietProfile = await app.inject({
+      method: 'PUT',
+      url: '/v1/profile/preferences',
+      headers: { origin: appOrigin, cookie, 'x-csrf-token': loginBody.csrfToken },
+      payload: {
+        diet: 'vegetarian',
+        excludedAllergens: ['fish'],
+        nutrition: { maxCaloriesPerServing: 800, minProteinGramsPerServing: null },
+      },
+    });
+    expect(dietProfile.statusCode).toBe(200);
+    expect(dietProfile.json<{ profile: { diet: string; excludedAllergens: string[] } }>().profile)
+      .toMatchObject({ diet: 'vegetarian', excludedAllergens: ['fish'] });
+
+    const dietProfileRead = await app.inject({ method: 'GET', url: '/v1/profile/preferences', headers: { cookie } });
+    expect(dietProfileRead.statusCode).toBe(200);
+    expect(dietProfileRead.json<{ profile: { diet: string } }>().profile.diet).toBe('vegetarian');
 
     const exported = await app.inject({ method: 'GET', url: '/v1/profile/export', headers: { cookie } });
     expect(exported.statusCode).toBe(200);

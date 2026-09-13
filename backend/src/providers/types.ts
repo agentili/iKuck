@@ -12,6 +12,18 @@ export class ProviderUnavailableError extends Error {
   }
 }
 
+export class ProviderRequestError extends Error {
+  readonly code = 'provider_error' as const;
+
+  constructor(
+    readonly provider: ProviderName,
+    message = `${provider} provider request failed`,
+  ) {
+    super(message);
+    this.name = 'ProviderRequestError';
+  }
+}
+
 export interface EmailMessage {
   to: string;
   subject: string;
@@ -29,10 +41,10 @@ export interface NutritionLookup {
 
 export interface NutritionEstimate {
   source: 'usda';
-  calories: number;
-  proteinGrams: number;
-  carbohydrateGrams: number;
-  fatGrams: number;
+  calories: number | null;
+  proteinGrams: number | null;
+  carbohydrateGrams: number | null;
+  fatGrams: number | null;
   matchedFood: string;
   isComplete: boolean;
   missingNutrients: string[];

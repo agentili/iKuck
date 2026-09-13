@@ -7,6 +7,7 @@ import type { SyncRepository } from '../sync/repository.js';
 import { isPantryLot } from '../pantry/validation.js';
 import { isShoppingListItem } from '../shopping/validation.js';
 import { isCookEvent, isRecipePreference } from '../activity/validation.js';
+import { isDietProfile } from '../diet/validation.js';
 
 export interface SyncRouteDependencies {
   repository: SyncRepository;
@@ -24,6 +25,7 @@ const mutationSchema = z.object({
     'shopping_list_item',
     'cook_event',
     'recipe_preference',
+    'diet_profile',
   ]),
   entityId: z.string().min(1).max(128),
   operation: z.enum(['upsert', 'delete']),
@@ -66,6 +68,11 @@ export const registerSyncRoutes = ({ repository, authService, appOrigin }: SyncR
       }
       if (mutation.entityType === 'recipe_preference' && mutation.operation === 'upsert'
         && (!isRecipePreference(mutation.payload) || mutation.payload.recipeId !== mutation.entityId)) {
+        throw new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');
+      }
+      if (mutation.entityType === 'diet_profile'
+        && (mutation.entityId !== 'profile'
+          || (mutation.operation === 'upsert' && !isDietProfile(mutation.payload)))) {
         throw new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');
       }
     }
