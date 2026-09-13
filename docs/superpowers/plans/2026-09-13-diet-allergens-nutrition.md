@@ -46,7 +46,7 @@
 - `getRecipeMetadata(recipeId: string)` returns the catalog metadata or `undefined`.
 - `isRecipeCompatible(recipeId: string, profile: DietProfilePayload): boolean` returns `false` for unknown metadata, an incompatible diet or an allergen intersection.
 
-- [ ] **Step 1: Write the failing contract and compatibility tests**
+- [x] **Step 1: Write the failing contract and compatibility tests**
 
 Cover a default omnivore profile, each of the four diets, all 14 allergen codes, duplicate/unknown allergen rejection, negative/NaN nutrition threshold rejection, blocking of a fish recipe for a vegetarian profile, blocking of an egg recipe when `eggs` is excluded, allowance of a vegan legume recipe and rejection when recipe metadata is missing. Assert that nutrition JSON retains `source`, `isComplete` and `missingNutrients`.
 
@@ -56,7 +56,7 @@ expect(isRecipeCompatible('frittata-zucchine', profile({ excludedAllergens: ['eg
 expect(isRecipeCompatible('lenticchie-in-umido', profile({ diet: 'vegan' }))).toBe(true);
 ```
 
-- [ ] **Step 2: Run focused tests and confirm they fail**
+- [x] **Step 2: Run focused tests and confirm they fail**
 
 Run:
 
@@ -67,7 +67,7 @@ cd ../backend && npm test -- --run src/contracts/contracts.test.ts
 
 Expected: FAIL because the shared types, metadata registry and compatibility helpers do not exist.
 
-- [ ] **Step 3: Implement the typed contracts and deterministic metadata registry**
+- [x] **Step 3: Implement the typed contracts and deterministic metadata registry**
 
 Use these shared shapes:
 
@@ -105,11 +105,11 @@ export interface RecipeNutrition {
 
 Register all 20 curated ids with conservative data. Use the existing recipe categories and ingredients to assign diets and allergens: meat recipes are omnivore-only, fish recipes are omnivore/pescatarian, egg recipes are omnivore/vegetarian/pescatarian, legume recipes follow their actual egg/gluten ingredients, and vegetable recipes are vegetarian/vegan when their written ingredients permit it. Declare `gluten` for pasta, couscous and breadcrumbs, `eggs` for egg and burger/polpette recipes, `fish` for fish recipes, `milk` for milk/parmigiano recipes and `celery` for the two celery recipes. Every entry has four numeric catalog values and `source: 'catalog_estimate'`, `isComplete: false`, `missingNutrients: ['sodium']` until a USDA enrichment response replaces it. Do not infer that a missing metadata entry is safe.
 
-- [ ] **Step 4: Run Task 1 tests and static checks**
+- [x] **Step 4: Run Task 1 tests and static checks**
 
 Run the focused suites again, then `cd frontend && npm run lint && npm exec tsc -- --noEmit` and `cd ../backend && npm run lint && npm run build`. Confirm the 20 registry entries match the 20 `RECIPES` ids exactly.
 
-- [ ] **Step 5: Commit the contract unit**
+- [x] **Step 5: Commit the contract unit**
 
 ```bash
 git add shared frontend/src/domain backend/src/providers/types.ts backend/src/contracts/contracts.test.ts

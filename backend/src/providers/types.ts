@@ -24,6 +24,7 @@ export interface EmailProvider {
 
 export interface NutritionLookup {
   query: string;
+  quantityGrams?: number;
 }
 
 export interface NutritionEstimate {
@@ -32,6 +33,9 @@ export interface NutritionEstimate {
   proteinGrams: number;
   carbohydrateGrams: number;
   fatGrams: number;
+  matchedFood: string;
+  isComplete: boolean;
+  missingNutrients: string[];
 }
 
 export interface NutritionProvider {

@@ -27,6 +27,49 @@ export interface AccountSummary {
   emailVerifiedAt: string;
 }
 
+export type DietType = 'omnivore' | 'vegetarian' | 'pescatarian' | 'vegan';
+
+export type EuAllergen =
+  | 'gluten'
+  | 'crustaceans'
+  | 'eggs'
+  | 'fish'
+  | 'peanuts'
+  | 'soybeans'
+  | 'milk'
+  | 'nuts'
+  | 'celery'
+  | 'mustard'
+  | 'sesame'
+  | 'sulphites'
+  | 'lupin'
+  | 'molluscs';
+
+export interface NutritionFilter {
+  maxCaloriesPerServing: number | null;
+  minProteinGramsPerServing: number | null;
+}
+
+export interface DietProfilePayload {
+  diet: DietType;
+  excludedAllergens: EuAllergen[];
+  nutrition: NutritionFilter;
+}
+
+export interface DietProfile extends DietProfilePayload {
+  updatedAt: string;
+}
+
+export interface RecipeNutrition {
+  caloriesPerServing: number | null;
+  proteinGramsPerServing: number | null;
+  carbohydrateGramsPerServing: number | null;
+  fatGramsPerServing: number | null;
+  source: 'catalog_estimate' | 'usda';
+  isComplete: boolean;
+  missingNutrients: string[];
+}
+
 export type PantryUnit = 'g' | 'kg' | 'ml' | 'l' | 'piece' | 'pack';
 
 export interface PantryLotPayload {

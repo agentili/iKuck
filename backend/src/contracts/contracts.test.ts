@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { CookEvent, PantryLot, RecipePreference, ShoppingListItem, SyncMutation } from '@ikuck/shared/contracts';
+import type { CookEvent, DietProfile, PantryLot, RecipePreference, ShoppingListItem, SyncMutation } from '@ikuck/shared/contracts';
 import { describe, expect, it } from 'vitest';
 
 const migrationPath = join(
@@ -81,6 +81,17 @@ describe('shared contracts and account migration', () => {
     };
 
     expect(JSON.parse(JSON.stringify({ event, preference }))).toEqual({ event, preference });
+  });
+
+  it('keeps a diet profile and its nutrition filters serializable', () => {
+    const profile: DietProfile = {
+      diet: 'vegetarian',
+      excludedAllergens: ['fish', 'peanuts'],
+      nutrition: { maxCaloriesPerServing: 650, minProteinGramsPerServing: 20 },
+      updatedAt: '2026-09-13T12:00:00.000Z',
+    };
+
+    expect(JSON.parse(JSON.stringify(profile))).toEqual(profile);
   });
 
   it('contains the account and sync tables in the first feature migration', () => {
