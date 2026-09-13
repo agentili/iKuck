@@ -27,7 +27,8 @@ services:
 
   api:
     build:
-      context: ../backend
+      context: ..
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     command: ["sh", "-c", "node dist/db/migrate.js && node dist/server.js"]
     depends_on:

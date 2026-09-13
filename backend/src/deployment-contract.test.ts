@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -27,7 +27,10 @@ const readComposeConfig = (relativePath: string) => {
   );
 
   return JSON.parse(output) as {
-    services: Record<string, { ports?: Array<{ target: number; published?: string }> }>;
+    services: Record<string, {
+      ports?: Array<{ target: number; published?: string }>;
+      build?: { context?: string; dockerfile?: string };
+    }>;
   };
 };
 
@@ -66,5 +69,21 @@ describe('deployment contracts', () => {
     expect(compose.services.caddy.ports).toEqual([
       expect.objectContaining({ target: 8080, published: '8080' }),
     ]);
+  });
+
+  it('builds API and frontend images with the shared package in context', () => {
+    const repositoryRoot = resolve(process.cwd(), '..');
+    const composeFiles = ['compose.dev.yml', 'deploy/docker-compose.production.yml', 'deploy/docker-compose.standalone.yml'];
+
+    for (const relativePath of composeFiles) {
+      const compose = readComposeConfig(relativePath);
+      expect(compose.services.api.build).toEqual({
+        context: repositoryRoot,
+        dockerfile: 'backend/Dockerfile',
+      });
+    }
+
+    expect(readFileSync(resolve(repositoryRoot, 'backend/Dockerfile'), 'utf8')).toContain('COPY shared /app/shared');
+    expect(readFileSync(resolve(repositoryRoot, 'deploy/Caddy.Dockerfile'), 'utf8')).toContain('COPY shared /shared');
   });
 });
