@@ -75,6 +75,15 @@ I test end-to-end avviano la build di produzione e verificano il percorso princi
 
 La configurazione di produzione è in `deploy/docker-compose.production.yml` e usa Caddy per HTTPS, frontend statico e proxy esclusivamente verso `/v1/*`.
 
+Il contratto delle variabili, la procedura di validazione, il deploy, il backup, il ripristino e il rollback sono raccolti nella guida [production readiness](docs/production-readiness.md). Prima di avviare una release esegui:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/validate-production-config.ps1 -EnvFile deploy/.env
+docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml config
+```
+
+Le variabili `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `USDA_API_KEY` e `OPENAI_API_KEY` sono opzionali: ogni provider resta disabilitato finché non sono configurate le credenziali richieste. `GOOGLE_CLIENT_ID` è un identificativo pubblico ma deve comunque essere valorizzato solo nell'env locale del deployment o nel secret manager, mai insieme a chiavi provider o password nel repository.
+
 Per una prova standalone su un mini PC Linux nella rete locale, usa la guida [deploy standalone su mini PC](docs/standalone-mini-pc.md) e la composizione `deploy/docker-compose.standalone.yml`. L’accesso avviene via HTTP su `http://IP_DEL_MINI_PC:8080`, senza esporre direttamente API, PostgreSQL o Redis.
 
 1. Copia `deploy/.env.example` in un file `.env` nella directory `deploy` sul VPS e sostituisci tutti i valori di esempio con segreti univoci.

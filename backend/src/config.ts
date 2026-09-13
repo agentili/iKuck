@@ -45,6 +45,7 @@ const environmentSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   RESEND_API_KEY: z.string().min(1).optional(),
+  RESEND_FROM_EMAIL: z.string().email().optional(),
   RESEND_FROM: z.string().email().optional(),
   USDA_API_KEY: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
@@ -73,7 +74,7 @@ export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
     logLevel: parsed.LOG_LEVEL,
     providers: {
       resendApiKey: parsed.RESEND_API_KEY,
-      resendFrom: parsed.RESEND_FROM,
+      resendFrom: parsed.RESEND_FROM_EMAIL ?? parsed.RESEND_FROM,
       usdaApiKey: parsed.USDA_API_KEY,
       openAiApiKey: parsed.OPENAI_API_KEY,
       openAiModel: parsed.OPENAI_MODEL,

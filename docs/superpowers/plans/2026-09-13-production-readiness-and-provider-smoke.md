@@ -68,11 +68,11 @@ Expected result: only the known `.continue/rules/CONTINUE.md` deletion is report
 - `scripts/validate-production-config.ps1` accepts an env-file path and returns a non-zero exit code for missing values, example placeholders, weak session secrets, invalid domains or exposed database/Redis URLs.
 - `docs/production-readiness.md` becomes the single operator runbook for staging, production deploy, backup, restore, rollback and smoke checks.
 
-- [ ] **Step 1: Write failing configuration-validation tests**
+- [x] **Step 1: Write failing configuration-validation tests**
 
   Cover a valid HTTPS domain, a missing `SESSION_SECRET`, an unchanged example password, a session secret shorter than 32 characters, a provider key accidentally placed in a committed sample file, and a database URL that points outside the private Compose network.
 
-- [ ] **Step 2: Run the focused validation tests and confirm they fail**
+- [x] **Step 2: Run the focused validation tests and confirm they fail**
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/validate-production-config.test.ps1
@@ -80,25 +80,27 @@ powershell -ExecutionPolicy Bypass -File scripts/validate-production-config.test
 
   Expected: failures because the validator and the complete production configuration contract do not yet exist.
 
-- [ ] **Step 3: Implement the validator and document the environment contract**
+- [x] **Step 3: Implement the validator and document the environment contract**
 
   Include `APP_DOMAIN`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` and `SESSION_SECRET` as required values. Document optional `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `USDA_API_KEY`, `OPENAI_API_KEY`, `OPENAI_MODEL` and the provider enablement rules. Keep provider variables absent or empty by default so a local deployment remains usable without external services.
 
-- [ ] **Step 4: Re-run the validator and Compose rendering**
+- [x] **Step 4: Re-run the validator and Compose rendering**
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/validate-production-config.ps1 -EnvFile deploy/.env
 docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml config
 ```
 
-  Expected: validation passes, the Compose render succeeds, and a host-local `.env` passes the deployability checks.
+  Expected: validation passes, the Compose render succeeds, and a host-local `.env` passes the deployability checks. The repository verification used disposable valid fixtures because the real `deploy/.env` is intentionally absent and must only exist on the operator host.
 
-- [ ] **Step 5: Commit the configuration contract**
+- [x] **Step 5: Commit the configuration contract**
 
 ```powershell
 git add deploy/.env.example README.md docs/production-readiness.md scripts/validate-production-config.ps1 scripts/validate-production-config.test.ps1 .gitignore
 git commit -m "docs: define production configuration contract"
 ```
+
+**Verification record:** The validator test covers valid HTTPS domains, missing and weak session secrets, unchanged placeholders, provider keys in committed samples and external database URLs. Backend verification passed with 26 test files and 79 tests; 2 integration tests remain intentionally skipped without dedicated PostgreSQL/Redis URLs. Frontend verification passed with 34 test files and 170 tests, lint, typecheck and build. Compose production rendering passed with `deploy/.env.example`; Docker runtime and real provider smoke tests require the operator environment and are not claimed here.
 
 ---
 

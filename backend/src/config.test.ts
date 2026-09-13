@@ -22,4 +22,21 @@ describe('loadConfig', () => {
       APP_ORIGIN: 'https://ikuck.example',
     })).toThrow('SESSION_SECRET is required');
   });
+
+  it('maps the production sender variable to the existing email provider contract', () => {
+    expect(loadConfig({
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://ikuck:secret@postgres:5432/ikuck',
+      REDIS_URL: 'redis://redis:6379',
+      SESSION_SECRET: 'production-session-secret-that-is-longer-than-thirty-two-characters',
+      APP_ORIGIN: 'https://app.ikuck.it',
+      RESEND_API_KEY: 're_test_key',
+      RESEND_FROM_EMAIL: 'noreply@app.ikuck.it',
+    })).toMatchObject({
+      providers: {
+        resendApiKey: 're_test_key',
+        resendFrom: 'noreply@app.ikuck.it',
+      },
+    });
+  });
 });
