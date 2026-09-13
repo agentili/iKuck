@@ -1,11 +1,12 @@
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach } from 'vitest';
+import { beforeEach, vi } from 'vitest';
 import RecipeDetailPage from './RecipeDetailPage';
 import { useShoppingListStore } from '../store/shoppingListStore';
 import { usePantryStore } from '../store/localPantryStore';
 import { useActivityStore } from '../store/activityStore';
+import { useAuthStore } from '../auth/authStore';
 
 const renderRoute = (path: string) => render(
   <MemoryRouter initialEntries={[path]}>
@@ -19,6 +20,7 @@ const resetFeatureState = () => {
   usePantryStore.setState({ pantryItems: [], pantryLots: [], stapleIds: [] });
   useShoppingListStore.setState({ hasHydrated: true, items: [] });
   useActivityStore.setState({ hasHydrated: true, events: [], preferences: [] });
+  useAuthStore.setState({ user: null, csrfToken: null, expiresAt: null, connection: 'unknown', isLoading: false });
 };
 
 describe('RecipeDetailPage integration', () => {
@@ -131,5 +133,45 @@ describe('RecipeDetailPage integration', () => {
       note: 'Da rifare nel weekend',
     });
     expect(screen.getByRole('status')).toHaveTextContent('Preferenza salvata.');
+  });
+
+  it('lets a verified user replace the catalog estimate with a successful USDA response', async () => {
+    const user = userEvent.setup();
+    useAuthStore.setState({
+      user: { id: 'user-1', email: 'user@example.com', emailVerifiedAt: '2026-09-13T12:00:00.000Z' },
+      csrfToken: 'csrf-token',
+      expiresAt: '2026-10-13T12:00:00.000Z',
+      connection: 'online',
+      isLoading: false,
+    });
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ nutrition: {
+      caloriesPerServing: 410,
+      proteinGramsPerServing: 28,
+      carbohydrateGramsPerServing: 35,
+      fatGramsPerServing: 14,
+      source: 'usda',
+      isComplete: true,
+      missingNutrients: [],
+    } }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetch);
+
+    renderRoute('/recipes/pasta-tonno-pomodoro');
+    await user.click(screen.getByRole('button', { name: 'Aggiorna stima USDA' }));
+
+    expect(await screen.findByText('Valori USDA aggiornati')).toBeVisible();
+    expect(fetch).toHaveBeenCalledWith('/v1/recipes/nutrition', expect.objectContaining({ method: 'POST', credentials: 'include' }));
+    expect(JSON.parse(fetch.mock.calls[0]?.[1]?.body as string)).toMatchObject({ ingredients: expect.any(Array) });
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the guest detail page offline without a USDA action or network request', () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+
+    renderRoute('/recipes/pasta-tonno-pomodoro');
+
+    expect(screen.queryByRole('button', { name: 'Aggiorna stima USDA' })).not.toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });

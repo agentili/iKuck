@@ -42,6 +42,7 @@ export const start = async () => {
       activity: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       recipePreferences: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       dietProfile: { repository: sync, authService: auth, appOrigin: config.appOrigin },
+      recipeNutrition: { provider: providers.nutrition, authService: auth, appOrigin: config.appOrigin },
     },
     { logger: { level: config.logLevel, redact: ['req.headers.cookie', 'req.headers.authorization'] } },
   );

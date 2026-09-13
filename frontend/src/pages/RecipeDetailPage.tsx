@@ -1,6 +1,8 @@
 import { ArrowLeft, ChefHat, Clock, Heart, ShoppingCart, Star, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import type { RecipeNutrition } from '@ikuck/shared/contracts';
+import { ApiClientError, apiRequest } from '../api/apiClient';
 import { getIngredient } from '../domain/ingredients';
 import { ALLERGEN_LABELS } from '../domain/dietary';
 import { getRecipeMetadata } from '../domain/recipeMetadata';
@@ -9,6 +11,7 @@ import type { RecipeCategory } from '../domain/types';
 import { usePantryStore } from '../store/localPantryStore';
 import { useShoppingListStore } from '../store/shoppingListStore';
 import { useActivityStore } from '../store/activityStore';
+import { useAuthStore } from '../auth/authStore';
 import NotFoundPage from './NotFoundPage';
 import RecipeNutritionSummary from '../components/diet/RecipeNutritionSummary';
 
@@ -20,12 +23,34 @@ const CATEGORY_LABELS: Record<RecipeCategory, string> = {
   vegetables: 'Verdure',
 };
 
+const isRecipeNutrition = (value: unknown): value is RecipeNutrition => {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Partial<RecipeNutrition>;
+  return (candidate.source === 'catalog_estimate' || candidate.source === 'usda')
+    && typeof candidate.isComplete === 'boolean'
+    && Array.isArray(candidate.missingNutrients)
+    && candidate.missingNutrients.every((item) => typeof item === 'string')
+    && ['caloriesPerServing', 'proteinGramsPerServing', 'carbohydrateGramsPerServing', 'fatGramsPerServing']
+      .every((key) => candidate[key as keyof RecipeNutrition] === null || typeof candidate[key as keyof RecipeNutrition] === 'number');
+};
+
+const gramsPerServingFromAmount = (amount: string, servings: number): number | null => {
+  const match = amount.trim().match(/^(\d+(?:[.,]\d+)?)\s*(kg|g)\b/i);
+  if (match === null || servings <= 0) return null;
+  const grams = Number(match[1].replace(',', '.')) * (match[2].toLowerCase() === 'kg' ? 1000 : 1);
+  return Number.isFinite(grams) && grams > 0 ? grams / servings : null;
+};
+
 export default function RecipeDetailPage() {
   const { recipeId = '' } = useParams();
   const recipe = getRecipeById(recipeId);
+  const metadata = recipe === undefined ? undefined : getRecipeMetadata(recipe.id);
   const [shoppingMessage, setShoppingMessage] = useState<string | null>(null);
   const [activityMessage, setActivityMessage] = useState<string | null>(null);
   const [preferenceMessage, setPreferenceMessage] = useState<string | null>(null);
+  const [nutritionMessage, setNutritionMessage] = useState<string | null>(null);
+  const [nutrition, setNutrition] = useState<RecipeNutrition | null>(metadata?.nutrition ?? null);
+  const [isRefreshingNutrition, setIsRefreshingNutrition] = useState(false);
   const [favorite, setFavorite] = useState(false);
   const [rating, setRating] = useState<number | null>(null);
   const [privateNote, setPrivateNote] = useState('');
@@ -34,7 +59,10 @@ export default function RecipeDetailPage() {
   const preferences = useActivityStore((state) => state.preferences);
   const recordCookEvent = useActivityStore((state) => state.recordCookEvent);
   const setRecipePreference = useActivityStore((state) => state.setRecipePreference);
+  const user = useAuthStore((state) => state.user);
+  const csrfToken = useAuthStore((state) => state.csrfToken);
   const currentPreference = recipe === undefined ? undefined : preferences.find((item) => item.recipeId === recipe.id);
+  const canRefreshNutrition = user !== null && user.emailVerifiedAt.trim() !== '' && csrfToken !== null;
 
   useEffect(() => {
     setFavorite(currentPreference?.favorite ?? false);
@@ -42,8 +70,12 @@ export default function RecipeDetailPage() {
     setPrivateNote(currentPreference?.note ?? '');
   }, [currentPreference]);
 
+  useEffect(() => {
+    setNutrition(metadata?.nutrition ?? null);
+    setNutritionMessage(null);
+  }, [metadata, recipeId]);
+
   if (!recipe) return <NotFoundPage />;
-  const metadata = getRecipeMetadata(recipe.id);
 
   const addMissingToShoppingList = () => {
     const added = addMissingRecipeIngredients(recipe, availableIds);
@@ -62,6 +94,36 @@ export default function RecipeDetailPage() {
     if (recipe === undefined) return;
     const saved = setRecipePreference(recipe.id, favorite, rating, privateNote);
     setPreferenceMessage(saved ? 'Preferenza salvata.' : 'Controlla la valutazione inserita.');
+  };
+
+  const refreshNutrition = async () => {
+    if (!canRefreshNutrition || csrfToken === null || isRefreshingNutrition) return;
+    setIsRefreshingNutrition(true);
+    setNutritionMessage(null);
+    try {
+      const response = await apiRequest<{ nutrition?: unknown }>('/v1/recipes/nutrition', {
+        method: 'POST',
+        csrfToken,
+        body: {
+          ingredients: recipe.ingredients
+            .filter((item) => !item.optional)
+            .map((item) => ({
+              query: getIngredient(item.ingredientId)?.label ?? item.ingredientId,
+              grams: gramsPerServingFromAmount(item.amount, recipe.servings),
+            })),
+        },
+      });
+      if (!isRecipeNutrition(response?.nutrition)) throw new Error('Invalid nutrition response');
+      setNutrition(response.nutrition);
+      setNutritionMessage('Valori USDA aggiornati.');
+    } catch (error) {
+      setNutrition(metadata?.nutrition ?? null);
+      setNutritionMessage(error instanceof ApiClientError && error.status === 503
+        ? 'La stima USDA non è disponibile in questo momento: resta visibile la stima indicativa.'
+        : 'Non è stato possibile aggiornare i valori: resta visibile la stima indicativa.');
+    } finally {
+      setIsRefreshingNutrition(false);
+    }
   };
 
   return (
@@ -94,13 +156,21 @@ export default function RecipeDetailPage() {
         </dl>
       </header>
 
-      {metadata !== undefined && (
+      {metadata !== undefined && nutrition !== null && (
         <section aria-labelledby="nutrition-title" className="mt-6 rounded-3xl border-2 border-gray-200 bg-white p-5 sm:p-6">
           <h2 id="nutrition-title" className="text-2xl font-black text-gray-950">Nutrizione stimata per porzione</h2>
-          <RecipeNutritionSummary nutrition={metadata.nutrition} />
+          <RecipeNutritionSummary nutrition={nutrition} />
           <p className="mt-3 text-sm font-semibold text-gray-700">
             Allergeni dichiarati: {metadata.allergens.length === 0 ? 'nessuno' : metadata.allergens.map((allergen) => ALLERGEN_LABELS[allergen]).join(', ')}
           </p>
+          {canRefreshNutrition && (
+            <div className="mt-4">
+              <button type="button" onClick={() => { void refreshNutrition(); }} disabled={isRefreshingNutrition} className="min-h-11 rounded-xl bg-gray-950 px-4 py-2 text-sm font-bold text-white hover:bg-gray-800 disabled:cursor-wait disabled:opacity-60">
+                {isRefreshingNutrition ? 'Aggiornamento in corso…' : 'Aggiorna stima USDA'}
+              </button>
+              {nutritionMessage !== null && <p role="status" className="mt-2 text-sm font-semibold text-gray-700">{nutritionMessage}</p>}
+            </div>
+          )}
         </section>
       )}
 

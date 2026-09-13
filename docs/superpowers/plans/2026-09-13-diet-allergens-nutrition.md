@@ -301,11 +301,11 @@ Run all frontend unit/component tests, lint, typecheck and build. Confirm the ex
 - `estimateRecipeNutrition(lookups, provider)` calls the provider once per ingredient, sums available nutrients, preserves the union of missing nutrient names and marks the result incomplete when any required field is missing.
 - The recipe detail page offers `Aggiorna stima USDA` only when a verified session exists; guests continue to see the offline catalog estimate.
 
-- [ ] **Step 1: Write failing aggregation, API and UI tests**
+- [x] **Step 1: Write failing aggregation, API and UI tests**
 
 Cover sum/scaling of two fake ingredient responses, incomplete aggregation, provider failure mapped to a stable 503 response, authenticated/CSRF route behavior, and replacing the displayed catalog estimate only after a successful response. Assert that the frontend never sends an API key and that the offline guest path never calls the network.
 
-- [ ] **Step 2: Run focused tests and confirm they fail**
+- [x] **Step 2: Run focused tests and confirm they fail**
 
 Run:
 
@@ -316,19 +316,19 @@ cd ../frontend && npm test -- --run src/pages/RecipeDetailPage.test.tsx
 
 Expected: FAIL because the aggregation, route and enrichment control do not exist.
 
-- [ ] **Step 3: Implement the server-side aggregation and route**
+- [x] **Step 3: Implement the server-side aggregation and route**
 
 Validate at most 30 ingredient lookups, require a positive gram value when provided, require a verified session and CSRF for the state-free but provider-consuming request, call only the injected provider, and return a stable error when USDA is unavailable. Do not persist raw provider responses or user recipe notes in logs.
 
-- [ ] **Step 4: Implement the guarded UI refresh**
+- [x] **Step 4: Implement the guarded UI refresh**
 
 Derive deterministic ingredient lookup quantities from the curated recipe amount strings and the existing ingredient definitions. Keep the catalog estimate visible while loading, show `Valori USDA aggiornati` only after success, and fall back to `Stima indicativa` with an actionable offline/provider-unavailable message on failure.
 
-- [ ] **Step 5: Verify Task 5**
+- [x] **Step 5: Verify Task 5**
 
 Run backend and frontend full suites, lint, typecheck and builds. Run Playwright with a mocked `/v1/recipes/nutrition` response for the verified flow and with network disabled for the guest flow.
 
-- [ ] **Step 6: Commit the USDA enrichment unit**
+- [x] **Step 6: Commit the USDA enrichment unit**
 
 ```bash
 git add backend frontend shared
