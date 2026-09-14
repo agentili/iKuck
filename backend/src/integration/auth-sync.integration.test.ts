@@ -154,6 +154,29 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     }
   });
 
+  it('consumes one password reset token only once under concurrent requests', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+
+    const email = `integration-reset-race-${Date.now()}@example.com`;
+    const now = new Date('2026-09-13T12:00:00.000Z');
+    const tokenHash = `integration-reset-hash-${Date.now()}`;
+    const repository = createDrizzleAuthRepository(database.db);
+    const user = await repository.createUser({ email, passwordHash: 'old-password-hash', emailVerifiedAt: now });
+    await repository.createPasswordResetToken({
+      userId: user.id,
+      tokenHash,
+      expiresAt: new Date('2026-10-13T12:00:00.000Z'),
+    });
+
+    const results = await Promise.all([
+      repository.resetPassword(tokenHash, 'new-password-hash-a', now),
+      repository.resetPassword(tokenHash, 'new-password-hash-b', now),
+    ]);
+
+    expect(results.sort()).toEqual([false, true]);
+    await expect(repository.findUserByEmail(email)).resolves.toMatchObject({ passwordHash: expect.stringMatching(/^new-password-hash-[ab]$/) });
+  });
+
   it('registers, verifies, logs in, synchronizes idempotently and exports without secrets', async () => {
     const email = `integration-${Date.now()}@example.com`;
     const register = await app.inject({

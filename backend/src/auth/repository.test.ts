@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ApplicationDatabase } from '../db/client.js';
-import { accountIdentities, userProfiles, users } from '../db/schema.js';
+import { accountIdentities, emailVerificationTokens, userProfiles, users } from '../db/schema.js';
 import { createDrizzleAuthRepository } from './repository.js';
 
 describe('Drizzle auth repository', () => {
@@ -74,5 +74,22 @@ describe('Drizzle auth repository', () => {
     expect(database.transaction).toHaveBeenCalledOnce();
     expect(insert).toHaveBeenCalledWith(users);
     expect(insert).toHaveBeenCalledWith(accountIdentities);
+  });
+
+  it('consumes an email verification token with one conditional update', async () => {
+    const returning = vi.fn().mockResolvedValue([]);
+    const where = vi.fn(() => ({ returning }));
+    const set = vi.fn(() => ({ where }));
+    const update = vi.fn(() => ({ set }));
+    const transaction = { select: vi.fn(), update };
+    const database = {
+      transaction: vi.fn(async (callback: (value: typeof transaction) => Promise<unknown>) => callback(transaction)),
+    } as unknown as ApplicationDatabase['db'];
+    const repository = createDrizzleAuthRepository(database);
+
+    await expect(repository.consumeVerificationToken('token-hash', new Date('2026-09-13T12:00:00.000Z')))
+      .resolves.toBeNull();
+    expect(update).toHaveBeenCalledWith(emailVerificationTokens);
+    expect(transaction.select).not.toHaveBeenCalled();
   });
 });

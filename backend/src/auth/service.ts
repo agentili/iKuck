@@ -330,9 +330,7 @@ export const createAuthService = ({
   resetPassword: async ({ token, password: rawPassword }) => {
     ensurePasswordLength(rawPassword);
     const now = clock();
-    const userId = await repository.consumePasswordResetToken(hashOpaqueToken(token), now);
-    if (userId === null) throw new AuthServiceError('invalid_token', 400, 'Reset token is invalid or expired');
-    await repository.updatePassword(userId, await password.hash(rawPassword), now);
-    await repository.revokeAllSessions(userId);
+    const reset = await repository.resetPassword(hashOpaqueToken(token), await password.hash(rawPassword), now);
+    if (!reset) throw new AuthServiceError('invalid_token', 400, 'Reset token is invalid or expired');
   },
 });

@@ -43,8 +43,7 @@ export interface AuthRepository {
   revokeSession: (tokenHash: string) => Promise<void>;
   revokeAllSessions: (userId: string) => Promise<void>;
   createPasswordResetToken: (input: { userId: string; tokenHash: string; expiresAt: Date }) => Promise<void>;
-  consumePasswordResetToken: (tokenHash: string, now: Date) => Promise<string | null>;
-  updatePassword: (userId: string, passwordHash: string, now: Date) => Promise<void>;
+  resetPassword: (tokenHash: string, passwordHash: string, now: Date) => Promise<boolean>;
   findExternalIdentity: (provider: string, providerSubject: string) => Promise<{ userId: string } | null>;
   createExternalIdentity: (input: { userId: string; provider: string; providerSubject: string; providerEmail: string }) => Promise<void>;
 }
@@ -99,16 +98,16 @@ export const createDrizzleAuthRepository = (database: ApplicationDatabase['db'])
   },
 
   consumeVerificationToken: async (tokenHash, now) => database.transaction(async (transaction) => {
-    const [token] = await transaction.select().from(emailVerificationTokens).where(and(
+    const [token] = await transaction.update(emailVerificationTokens)
+      .set({ usedAt: now })
+      .where(and(
       eq(emailVerificationTokens.tokenHash, tokenHash),
       isNull(emailVerificationTokens.usedAt),
       gt(emailVerificationTokens.expiresAt, now),
-    )).limit(1);
+      ))
+      .returning({ userId: emailVerificationTokens.userId });
     if (token === undefined) return null;
 
-    await transaction.update(emailVerificationTokens)
-      .set({ usedAt: now })
-      .where(eq(emailVerificationTokens.id, token.id));
     const [user] = await transaction.update(users)
       .set({ emailVerifiedAt: now, updatedAt: now })
       .where(eq(users.id, token.userId))
@@ -155,25 +154,23 @@ export const createDrizzleAuthRepository = (database: ApplicationDatabase['db'])
     await database.insert(passwordResetTokens).values({ userId, tokenHash, expiresAt });
   },
 
-  consumePasswordResetToken: async (tokenHash, now) => database.transaction(async (transaction) => {
-    const [token] = await transaction.select().from(passwordResetTokens).where(and(
-      eq(passwordResetTokens.tokenHash, tokenHash),
-      isNull(passwordResetTokens.usedAt),
-      gt(passwordResetTokens.expiresAt, now),
-    )).limit(1);
-    if (token === undefined) return null;
-
-    await transaction.update(passwordResetTokens)
+  resetPassword: async (tokenHash, passwordHash, now) => database.transaction(async (transaction) => {
+    const [token] = await transaction.update(passwordResetTokens)
       .set({ usedAt: now })
-      .where(eq(passwordResetTokens.id, token.id));
-    return token.userId;
-  }),
+      .where(and(
+        eq(passwordResetTokens.tokenHash, tokenHash),
+        isNull(passwordResetTokens.usedAt),
+        gt(passwordResetTokens.expiresAt, now),
+      ))
+      .returning({ userId: passwordResetTokens.userId });
+    if (token === undefined) return false;
 
-  updatePassword: async (userId, passwordHash, now) => {
-    await database.update(users)
+    await transaction.update(users)
       .set({ passwordHash, updatedAt: now })
-      .where(eq(users.id, userId));
-  },
+      .where(eq(users.id, token.userId));
+    await transaction.delete(authSessions).where(eq(authSessions.userId, token.userId));
+    return true;
+  }),
 
   findExternalIdentity: async (provider, providerSubject) => {
     const [identity] = await database.select({ userId: accountIdentities.userId })

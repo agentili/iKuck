@@ -25,8 +25,7 @@ const repositoryWith = (overrides: Partial<AuthRepository> = {}): AuthRepository
   revokeSession: vi.fn(),
   revokeAllSessions: vi.fn(),
   createPasswordResetToken: vi.fn(),
-  consumePasswordResetToken: vi.fn(),
-  updatePassword: vi.fn(),
+  resetPassword: vi.fn(),
   findExternalIdentity: vi.fn().mockResolvedValue(null),
   createExternalIdentity: vi.fn().mockResolvedValue(undefined),
   ...overrides,
@@ -212,5 +211,20 @@ describe('authentication service', () => {
       emailVerified: true,
     })).rejects.toMatchObject({ code: 'google_account_already_linked', status: 409 });
     expect(createGoogleUser).toHaveBeenCalledOnce();
+  });
+
+  it.each(['replay', 'expired'])('returns the same safe reset error for a %s token', async () => {
+    const service = createAuthService({
+      repository: repositoryWith({ resetPassword: vi.fn().mockResolvedValue(false) }),
+      email,
+      appOrigin: 'http://127.0.0.1:5173',
+      password: {
+        hash: vi.fn().mockResolvedValue('new-password-hash'),
+        verify: vi.fn(),
+      },
+    });
+
+    await expect(service.resetPassword({ token: 'reset-token', password: 'a long enough password' }))
+      .rejects.toMatchObject({ code: 'invalid_token', status: 400 });
   });
 });
