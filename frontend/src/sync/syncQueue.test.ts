@@ -74,6 +74,81 @@ describe('sync queue', () => {
     ]);
   });
 
+  it('keeps cursors independent for two account scopes', async () => {
+    const sessionA = { ...session, userId: 'user-a' };
+    const sessionB = { ...session, userId: 'user-b' };
+    const requestA = vi.fn().mockResolvedValue({ changes: [], nextCursor: 7 });
+    const requestB = vi.fn().mockResolvedValue({ changes: [], nextCursor: 3 });
+
+    await syncNow({ session: sessionA, request: requestA });
+    await syncNow({ session: sessionB, request: requestB });
+
+    await expect(readSyncCursor(getAccountSyncScope('user-a'))).resolves.toBe(7);
+    await expect(readSyncCursor(getAccountSyncScope('user-b'))).resolves.toBe(3);
+    expect(requestA).toHaveBeenCalledOnce();
+    expect(requestB).toHaveBeenCalledOnce();
+  });
+
+  it('shares one in-flight request for concurrent syncs of the same account', async () => {
+    let resolveRequest: ((value: SyncChangeSet) => void) | undefined;
+    const request = vi.fn(() => new Promise<SyncChangeSet>((resolve) => {
+      resolveRequest = resolve;
+    }));
+
+    const first = syncNow({ session, request });
+    const second = syncNow({ session, request });
+
+    await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
+    resolveRequest?.({ changes: [], nextCursor: 4 });
+    await Promise.all([first, second]);
+  });
+
+  it('runs concurrent syncs for different accounts without sharing responses', async () => {
+    const sessionA = { ...session, userId: 'user-a' };
+    const sessionB = { ...session, userId: 'user-b' };
+    const requestA = vi.fn().mockResolvedValue({
+      changes: [{ ...sampleMutation('change-a'), entityId: 'tomato' as const, serverSequence: 1 }],
+      nextCursor: 11,
+    });
+    const requestB = vi.fn().mockResolvedValue({
+      changes: [{ ...sampleMutation('change-b'), entityId: 'pasta' as const, serverSequence: 2 }],
+      nextCursor: 22,
+    });
+
+    await Promise.all([
+      syncNow({ session: sessionA, request: requestA }),
+      syncNow({ session: sessionB, request: requestB }),
+    ]);
+
+    await vi.waitFor(() => {
+      expect(requestA).toHaveBeenCalledOnce();
+      expect(requestB).toHaveBeenCalledOnce();
+    });
+    await expect(readSyncCursor(getAccountSyncScope('user-a'))).resolves.toBe(11);
+    await expect(readSyncCursor(getAccountSyncScope('user-b'))).resolves.toBe(22);
+  });
+
+  it('does not apply or delete a response after the active session changes', async () => {
+    await enqueueMutation(accountScope, sampleMutation('pending-mutation'));
+    let isCurrent = true;
+    const request = vi.fn().mockResolvedValue({
+      changes: [{ ...sampleMutation('remote-change'), entityId: 'tomato' as const, serverSequence: 1 }],
+      nextCursor: 5,
+    });
+
+    const operation = syncNow({
+      session,
+      request,
+      isSessionCurrent: () => isCurrent,
+    });
+    isCurrent = false;
+
+    await expect(operation).rejects.toMatchObject({ code: 'session_changed' });
+    await expect(readQueuedMutations(accountScope)).resolves.toHaveLength(1);
+    await expect(readSyncCursor(accountScope)).resolves.toBe(0);
+    await expect(readPantrySnapshot()).resolves.toBeNull();
+  });
+
   it('creates a device id once without storing account secrets', async () => {
     const first = await getDeviceId();
     const second = await getDeviceId();

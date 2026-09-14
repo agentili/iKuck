@@ -64,9 +64,19 @@ interface SyncRequestOptions {
   fetch?: typeof globalThis.fetch;
   request?: ApiRequest;
   session: SyncSession;
+  isSessionCurrent?: () => boolean;
 }
 
-let syncPromise: Promise<SyncChangeSet> | null = null;
+export class SyncSessionChangedError extends Error {
+  readonly code = 'session_changed';
+
+  constructor() {
+    super('The active session changed while synchronizing');
+    this.name = 'SyncSessionChangedError';
+  }
+}
+
+const syncPromises = new Map<string, Promise<SyncChangeSet>>();
 let pendingQueueWrites = Promise.resolve();
 const pantrySnapshotListeners = new Set<(snapshot: PantrySnapshot) => void>();
 const shoppingListListeners = new Set<(items: ShoppingListItem[]) => void>();
@@ -340,12 +350,13 @@ export function registerDietProfileSnapshotListener(listener: (profile: DietProf
   return () => dietProfileSnapshotListeners.delete(listener);
 }
 
-export async function syncNow({ fetch, request = apiRequest, session }: SyncRequestOptions): Promise<SyncChangeSet> {
+export async function syncNow({ fetch, request = apiRequest, session, isSessionCurrent }: SyncRequestOptions): Promise<SyncChangeSet> {
   ensureVerifiedSession(session);
   const scope = getAccountSyncScope(session.userId);
-  if (syncPromise !== null) return syncPromise;
+  const inFlight = syncPromises.get(scope);
+  if (inFlight !== undefined) return inFlight;
 
-  syncPromise = (async () => {
+  const operation = (async () => {
     await waitForPendingQueueWrites();
     const deviceId = await getDeviceId();
     const cursor = await readSyncCursor(scope);
@@ -358,17 +369,27 @@ export async function syncNow({ fetch, request = apiRequest, session }: SyncRequ
       body: { deviceId, cursor, mutations: batch.map(toMutation) },
     });
 
+    if (isSessionCurrent !== undefined && !isSessionCurrent()) {
+      throw new SyncSessionChangedError();
+    }
+
     await applyServerChanges(result.changes);
+    if (isSessionCurrent !== undefined && !isSessionCurrent()) {
+      throw new SyncSessionChangedError();
+    }
     await writeMeta(cursorMetaKey(scope), Math.max(cursor, result.nextCursor));
     for (const mutation of batch) {
       await deleteQueueValue(mutation.mutationId, scope);
     }
     return result;
   })().finally(() => {
-    syncPromise = null;
+    if (syncPromises.get(scope) === operation) {
+      syncPromises.delete(scope);
+    }
   });
 
-  return syncPromise;
+  syncPromises.set(scope, operation);
+  return operation;
 }
 
 export function syncOnReconnect(getSession: () => SyncSession | null): () => void {
