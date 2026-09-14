@@ -103,12 +103,19 @@ export const aggregatePantryLots = (lots: readonly PantryLot[]): PantryQuantityA
   });
 };
 
-const startOfDay = (date: Date): number => Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+const calendarDayIndex = (year: number, month: number, day: number): number => Date.UTC(year, month, day) / (24 * 60 * 60 * 1000);
+
+const localCalendarDayIndex = (date: Date): number => calendarDayIndex(date.getFullYear(), date.getMonth(), date.getDate());
+
+const expiryCalendarDayIndex = (value: string): number => {
+  const [year, month, day] = value.split('-').map(Number);
+  return calendarDayIndex(year, month - 1, day);
+};
 
 export const getExpiryStatus = (expiresAt: string | null, now = new Date()): ExpiryStatus => {
   if (expiresAt === null || !isValidCalendarDate(expiresAt)) return 'unknown';
 
-  const differenceInDays = (Date.parse(`${expiresAt}T00:00:00.000Z`) - startOfDay(now)) / (24 * 60 * 60 * 1000);
+  const differenceInDays = expiryCalendarDayIndex(expiresAt) - localCalendarDayIndex(now);
   if (differenceInDays < 0) return 'expired';
   if (differenceInDays <= 3) return 'expiring_soon';
   return 'okay';

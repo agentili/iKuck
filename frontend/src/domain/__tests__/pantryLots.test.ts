@@ -66,6 +66,27 @@ describe('pantry lot domain', () => {
     expect(getExpiryStatus('2026-09-30', today)).toBe('okay');
   });
 
+  it('compares expiry dates with the local civil date, not the UTC date', () => {
+    class DateWithLocalDay extends Date {
+      override getFullYear(): number {
+        return 2026;
+      }
+
+      override getMonth(): number {
+        return 8;
+      }
+
+      override getDate(): number {
+        return 14;
+      }
+    }
+
+    const justAfterLocalMidnight = new DateWithLocalDay('2026-09-13T22:30:00.000Z');
+
+    expect(getExpiryStatus('2026-09-13', justAfterLocalMidnight)).toBe('expired');
+    expect(getExpiryStatus('2026-09-14', justAfterLocalMidnight)).toBe('expiring_soon');
+  });
+
   it('warns when a recipe needs more compatible quantity without changing presence', () => {
     const aggregate = aggregatePantryLots([lot({ quantity: 100, unit: 'g' })])[0];
     expect(getQuantityWarning({ ingredientId: 'pasta', amount: '80 g' }, aggregate)).toBe(false);
