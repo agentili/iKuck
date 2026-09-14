@@ -91,12 +91,14 @@ export default function ProfilePage() {
     setMessage(null);
     setError(null);
     try {
-      await importLocalData({
+      const result = await importLocalData({
         userId: user.id,
         emailVerifiedAt: user.emailVerifiedAt,
         csrfToken,
       });
-      setMessage('La tua dispensa è stata sincronizzata.');
+      setMessage(result.complete
+        ? `Sincronizzazione completata: ${result.uploaded} elementi inviati e ${result.downloaded} ricevuti.`
+        : `Sincronizzazione parziale: ${result.pending} elementi restano in attesa.`);
     } catch (importError) {
       setError(operationError(importError));
     } finally {

@@ -41,6 +41,9 @@ import { readDietProfile, writeDietProfile } from '../storage/dietProfileStorage
 
 const DEVICE_ID_META_KEY = 'deviceId';
 const MAX_MUTATIONS_PER_REQUEST = 100;
+const SERVER_CHANGE_PAGE_SIZE = 200;
+// Bound page draining so a malformed server cursor cannot create an infinite sync loop.
+const MAX_SYNC_PAGES = 100;
 
 export type { SyncScope } from '../storage/indexedDb';
 export const GUEST_SYNC_SCOPE: SyncScope = 'guest';
@@ -67,6 +70,17 @@ interface SyncRequestOptions {
   isSessionCurrent?: () => boolean;
 }
 
+interface SyncPage extends SyncChangeSet {
+  hasMore?: boolean;
+}
+
+export interface SyncResult {
+  uploaded: number;
+  downloaded: number;
+  pending: number;
+  complete: boolean;
+}
+
 export type SyncStatusState = 'idle' | 'syncing' | 'success' | 'error';
 
 export interface SyncStatusSnapshot {
@@ -83,7 +97,16 @@ export class SyncSessionChangedError extends Error {
   }
 }
 
-const syncPromises = new Map<string, Promise<SyncChangeSet>>();
+export class SyncCursorStalledError extends Error {
+  readonly code = 'cursor_stalled';
+
+  constructor() {
+    super('The sync cursor did not advance while more changes were available');
+    this.name = 'SyncCursorStalledError';
+  }
+}
+
+const syncPromises = new Map<string, Promise<SyncResult>>();
 const syncStatuses = new Map<SyncScope, SyncStatusSnapshot>();
 const syncStatusListeners = new Map<SyncScope, Set<(status: SyncStatusSnapshot) => void>>();
 let pendingQueueWrites = Promise.resolve();
@@ -213,7 +236,7 @@ export async function waitForPendingQueueWrites(): Promise<void> {
   await pendingQueueWrites;
 }
 
-export async function importLocalData(session: SyncSession): Promise<SyncChangeSet> {
+export async function importLocalData(session: SyncSession): Promise<SyncResult> {
   ensureVerifiedSession(session);
   const scope = getAccountSyncScope(session.userId);
   const snapshot = normalizePantrySnapshot(await readPantrySnapshot() ?? { pantryItems: [], stapleIds: [] });
@@ -383,7 +406,7 @@ export function registerDietProfileSnapshotListener(listener: (profile: DietProf
   return () => dietProfileSnapshotListeners.delete(listener);
 }
 
-export async function syncNow({ fetch, request = apiRequest, session, isSessionCurrent }: SyncRequestOptions): Promise<SyncChangeSet> {
+export async function syncNow({ fetch, request = apiRequest, session, isSessionCurrent }: SyncRequestOptions): Promise<SyncResult> {
   ensureVerifiedSession(session);
   const scope = getAccountSyncScope(session.userId);
   const inFlight = syncPromises.get(scope);
@@ -392,29 +415,50 @@ export async function syncNow({ fetch, request = apiRequest, session, isSessionC
   const operation = (async () => {
     await waitForPendingQueueWrites();
     const deviceId = await getDeviceId();
-    const cursor = await readSyncCursor(scope);
-    const queued = (await readQueueValues<QueuedMutation>(scope)).sort(compareMutations);
-    const batch = queued.slice(0, MAX_MUTATIONS_PER_REQUEST);
-    const result = await request<SyncChangeSet>('/v1/sync', {
-      method: 'POST',
-      csrfToken: session.csrfToken,
-      fetch,
-      body: { deviceId, cursor, mutations: batch.map(toMutation) },
-    });
+    let cursor = await readSyncCursor(scope);
+    let uploaded = 0;
+    let downloaded = 0;
 
-    if (isSessionCurrent !== undefined && !isSessionCurrent()) {
-      throw new SyncSessionChangedError();
+    for (let page = 0; page < MAX_SYNC_PAGES; page += 1) {
+      const queued = (await readQueueValues<QueuedMutation>(scope)).sort(compareMutations);
+      const batch = queued.slice(0, MAX_MUTATIONS_PER_REQUEST);
+      const result = await request<SyncPage>('/v1/sync', {
+        method: 'POST',
+        csrfToken: session.csrfToken,
+        fetch,
+        body: { deviceId, cursor, mutations: batch.map(toMutation) },
+      });
+
+      if (isSessionCurrent !== undefined && !isSessionCurrent()) {
+        throw new SyncSessionChangedError();
+      }
+
+      const serverHasMore = result.hasMore ?? result.changes.length >= SERVER_CHANGE_PAGE_SIZE;
+      if (result.nextCursor < cursor || (result.changes.length > 0 && result.nextCursor <= cursor)
+        || (serverHasMore && result.nextCursor <= cursor)) {
+        throw new SyncCursorStalledError();
+      }
+
+      await applyServerChanges(result.changes);
+      if (isSessionCurrent !== undefined && !isSessionCurrent()) {
+        throw new SyncSessionChangedError();
+      }
+      await writeMeta(cursorMetaKey(scope), Math.max(cursor, result.nextCursor));
+      for (const mutation of batch) {
+        await deleteQueueValue(mutation.mutationId, scope);
+      }
+
+      uploaded += batch.length;
+      downloaded += result.changes.length;
+      cursor = Math.max(cursor, result.nextCursor);
+      const pending = (await readQueueValues<QueuedMutation>(scope)).length;
+      if (pending === 0 && !serverHasMore) {
+        return { uploaded, downloaded, pending, complete: true };
+      }
     }
 
-    await applyServerChanges(result.changes);
-    if (isSessionCurrent !== undefined && !isSessionCurrent()) {
-      throw new SyncSessionChangedError();
-    }
-    await writeMeta(cursorMetaKey(scope), Math.max(cursor, result.nextCursor));
-    for (const mutation of batch) {
-      await deleteQueueValue(mutation.mutationId, scope);
-    }
-    return result;
+    const pending = (await readQueueValues<QueuedMutation>(scope)).length;
+    return { uploaded, downloaded, pending, complete: false };
   })().finally(() => {
     if (syncPromises.get(scope) === operation) {
       syncPromises.delete(scope);
@@ -428,7 +472,7 @@ export async function syncNow({ fetch, request = apiRequest, session, isSessionC
 export async function syncVerifiedSession(
   session: SyncSession,
   options: Omit<SyncRequestOptions, 'session'> = {},
-): Promise<SyncChangeSet | null> {
+): Promise<SyncResult | null> {
   const scope = getAccountSyncScope(session.userId);
   setSyncStatus(scope, { state: 'syncing', error: null });
   try {

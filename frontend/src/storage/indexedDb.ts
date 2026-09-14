@@ -55,19 +55,6 @@ export async function openLocalDatabase(): Promise<IDBPDatabase<LocalDatabaseSch
             queue.createIndex('byScope', 'scope');
           }
 
-          const cursorRequest = queue.openCursor();
-          cursorRequest.onsuccess = () => {
-            const cursor = cursorRequest.result;
-            if (cursor === null) return;
-
-            const value = cursor.value as Record<string, unknown>;
-            if (typeof value.scope !== 'string') {
-              const updateRequest = cursor.update({ ...value, scope: 'guest' satisfies SyncScope });
-              updateRequest.onsuccess = () => cursor.continue();
-              return;
-            }
-            cursor.continue();
-          };
         }
 
         if (!database.objectStoreNames.contains(SYNC_META_STORE)) {

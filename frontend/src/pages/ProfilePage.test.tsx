@@ -67,4 +67,27 @@ describe('ProfilePage', () => {
 
     expect(screen.getByRole('button', { name: 'Conferma eliminazione account' })).toBeInTheDocument();
   });
+
+  it('shows sync counts only after the complete local-data import', async () => {
+    const user = userEvent.setup();
+    const fetch = vi.fn().mockImplementation((path: string) => {
+      if (path === '/v1/profile') {
+        return Promise.resolve(new Response(JSON.stringify({ profile: { displayName: 'Ale' } }), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ changes: [], nextCursor: 1 }), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetch);
+    useAuthStore.setState({
+      user: verifiedUser,
+      csrfToken: 'csrf-1',
+      expiresAt: '2026-10-12T10:00:00.000Z',
+    });
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    await screen.findByRole('heading', { name: 'Il tuo profilo' });
+    await user.click(screen.getByRole('button', { name: 'Importa la dispensa' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/Sincronizzazione completata/);
+    vi.unstubAllGlobals();
+  });
 });

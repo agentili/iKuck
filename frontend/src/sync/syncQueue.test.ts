@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CookEvent, DietProfile, PantryLot, RecipePreference, ShoppingListItem, SyncChangeSet, SyncMutation } from '@ikuck/shared/contracts';
+import type { ApiRequest } from '../api/apiClient';
 import {
   deleteLocalDatabase,
   deleteQueueValue,
@@ -94,14 +95,15 @@ describe('sync queue', () => {
 
   it('shares one in-flight request for concurrent syncs of the same account', async () => {
     let resolveRequest: ((value: SyncChangeSet) => void) | undefined;
-    const request = vi.fn(() => new Promise<SyncChangeSet>((resolve) => {
+    const requestMock = vi.fn(async () => new Promise<SyncChangeSet>((resolve) => {
       resolveRequest = resolve;
     }));
+    const request = requestMock as unknown as ApiRequest;
 
     const first = syncNow({ session, request });
     const second = syncNow({ session, request });
 
-    await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(requestMock).toHaveBeenCalledOnce());
     resolveRequest?.({ changes: [], nextCursor: 4 });
     await Promise.all([first, second]);
   });
@@ -177,6 +179,65 @@ describe('sync queue', () => {
     window.dispatchEvent(new Event('online'));
     expect(fetch).toHaveBeenCalledOnce();
     vi.unstubAllGlobals();
+  });
+
+  it('drains all queued mutations in bounded batches and reports the counts', async () => {
+    for (let index = 0; index < 201; index += 1) {
+      await enqueueMutation(accountScope, sampleMutation(`mutation-${index}`));
+    }
+    let nextCursor = 0;
+    const request = vi.fn().mockImplementation(() => ({ changes: [], nextCursor: ++nextCursor }));
+
+    await expect(syncNow({ session, request })).resolves.toMatchObject({
+      uploaded: 201,
+      downloaded: 0,
+      pending: 0,
+      complete: true,
+    });
+
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(request.mock.calls.map(([, options]) => (
+      (options?.body as { mutations: unknown[] }).mutations.length
+    ))).toEqual([100, 100, 1]);
+    await expect(readQueuedMutations(accountScope)).resolves.toEqual([]);
+  });
+
+  it('drains multiple server change pages until the cursor is complete', async () => {
+    const firstPage = Array.from({ length: 200 }, (_, index) => ({
+      ...sampleMutation(`change-${index}`),
+      entityType: 'staple_preference' as const,
+      entityId: `staple-${index}`,
+      payload: { enabled: true },
+      serverSequence: index + 1,
+    }));
+    const secondPage = [{
+      ...sampleMutation('change-last'),
+      entityType: 'staple_preference' as const,
+      entityId: 'staple-last',
+      payload: { enabled: true },
+      serverSequence: 201,
+    }];
+    const request = vi.fn()
+      .mockResolvedValueOnce({ changes: firstPage, nextCursor: 200 })
+      .mockResolvedValueOnce({ changes: secondPage, nextCursor: 201 });
+
+    await expect(syncNow({ session, request })).resolves.toMatchObject({
+      uploaded: 0,
+      downloaded: 201,
+      pending: 0,
+      complete: true,
+    });
+    expect(request).toHaveBeenCalledTimes(2);
+    await expect(readSyncCursor(accountScope)).resolves.toBe(201);
+  });
+
+  it('rejects with a typed error when a non-empty page does not advance the cursor', async () => {
+    const request = vi.fn().mockResolvedValue({
+      changes: [{ ...sampleMutation('change-stalled'), serverSequence: 1 }],
+      nextCursor: 0,
+    });
+
+    await expect(syncNow({ session, request })).rejects.toMatchObject({ code: 'cursor_stalled' });
   });
 
   it('creates a device id once without storing account secrets', async () => {
