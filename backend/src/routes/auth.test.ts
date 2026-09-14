@@ -49,6 +49,7 @@ describe('authentication routes', () => {
     expect(response.headers['set-cookie']).toContain('HttpOnly');
     expect(response.headers['set-cookie']).toContain('SameSite=Lax');
     expect(response.headers['set-cookie']).not.toContain('Secure');
+    expect(response.headers['set-cookie']).not.toContain('Max-Age=');
     expect(response.json()).toMatchObject({ authenticated: true, csrfToken: 'csrf-token' });
   });
 

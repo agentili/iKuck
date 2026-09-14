@@ -21,7 +21,6 @@ const readComposeConfig = (relativePath: string) => {
         POSTGRES_DB: 'ikuck',
         POSTGRES_PASSWORD: 'test-postgres-password',
         POSTGRES_USER: 'ikuck',
-        SESSION_SECRET: 'test-session-secret-that-is-longer-than-thirty-two-characters',
       },
     },
   );

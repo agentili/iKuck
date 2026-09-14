@@ -12,7 +12,6 @@ APP_DOMAIN=app.ikuck.it
 POSTGRES_DB=ikuck
 POSTGRES_USER=ikuck
 POSTGRES_PASSWORD=local-safe-password-123
-SESSION_SECRET=locally-generated-session-secret-with-more-than-32-characters
 RESEND_API_KEY=
 RESEND_FROM_EMAIL=
 USDA_API_KEY=
@@ -63,9 +62,8 @@ OPENAI_MODEL=gpt-5.5
     }
 
     Assert-Valid -Name 'valid HTTPS deployment domain' -Content $validConfig
-    Assert-Invalid -Name 'missing session secret' -Content ($validConfig -replace "(?m)^SESSION_SECRET=.*\r?\n", '')
     Assert-Invalid -Name 'unchanged example database password' -Content ($validConfig -replace "(?m)^POSTGRES_PASSWORD=.*$", 'POSTGRES_PASSWORD=replace-with-a-unique-long-database-password')
-    Assert-Invalid -Name 'short session secret' -Content ($validConfig -replace "(?m)^SESSION_SECRET=.*$", 'SESSION_SECRET=too-short')
+    Assert-Invalid -Name 'missing database user' -Content ($validConfig -replace "(?m)^POSTGRES_USER=.*\r?\n", '')
     Assert-Invalid -Name 'provider key in committed sample file' -FileName '.env.example' -Content ($validConfig -replace "(?m)^RESEND_API_KEY=.*$", 'RESEND_API_KEY=re_live_provider_secret')
     Assert-Invalid -Name 'database URL outside private Compose network' -Content ($validConfig + "`nDATABASE_URL=postgres://ikuck:password@db.example.com:5432/ikuck")
     Assert-Invalid -Name 'invalid production domain' -Content ($validConfig -replace "(?m)^APP_DOMAIN=.*$", 'APP_DOMAIN=http://localhost:8080')

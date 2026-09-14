@@ -12,7 +12,6 @@ Copia `deploy/.env.example` in `deploy/.env` sul VPS e sostituisci tutti i place
 | `POSTGRES_DB` | sì | nome database |
 | `POSTGRES_USER` | sì | utente database |
 | `POSTGRES_PASSWORD` | sì | password nuova, senza caratteri riservati da URL (`@`, `:`, `/`, `?`, `#`) |
-| `SESSION_SECRET` | sì | almeno 32 caratteri casuali e unici |
 | `GOOGLE_CLIENT_ID` | no | client ID Web per Google Identity Services |
 | `RESEND_API_KEY` | no | abilita l'invio email solo insieme a un mittente |
 | `RESEND_FROM_EMAIL` | no | mittente verificato Resend; `RESEND_FROM` resta accettato per compatibilità |
@@ -31,7 +30,7 @@ powershell -ExecutionPolicy Bypass -File scripts/validate-production-config.ps1 
 docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml config
 ```
 
-Il validator rifiuta valori mancanti o placeholder, domini non validi, segreti di sessione corti, password non sicure per la URL PostgreSQL, chiavi provider presenti nei file `.example` e URL database/Redis esterni alla rete privata Compose.
+Il validator rifiuta valori mancanti o placeholder, domini non validi, password non sicure per la URL PostgreSQL, chiavi provider presenti nei file `.example` e URL database/Redis esterni alla rete privata Compose.
 
 ## Staging e produzione
 
@@ -54,6 +53,15 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml lo
 ```
 
 Le migrazioni vengono eseguite dall'API prima dell'avvio del server. Se l'API non diventa healthy, controlla prima i log dell'API e lo stato health di PostgreSQL e Redis; non cancellare i volumi come tentativo di diagnosi.
+
+Il cookie di sessione non ha `Max-Age` per scelta: resta valido solo fino alla chiusura del browser, mentre il record server-side ha comunque una scadenza massima di 30 giorni. La pulizia dei record scaduti è idempotente e va eseguita con frequenza settimanale, dopo un backup:
+
+```powershell
+docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml exec -e DRY_RUN=true api node dist/db/cleanupExpiredAuth.js
+docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml exec api node dist/db/cleanupExpiredAuth.js
+```
+
+Usa prima `DRY_RUN=true` per registrare i conteggi, poi esegui la cancellazione reale. Il dry-run non modifica il database; la cancellazione non è reversibile senza il backup precedente.
 
 ## Backup, ripristino e rollback
 

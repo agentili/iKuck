@@ -41,7 +41,6 @@ Modifica almeno:
 
 - `APP_ORIGIN`: l’indirizzo che userai nel browser, per esempio `http://192.168.1.50:8080`;
 - `POSTGRES_PASSWORD`: una password locale nuova, senza caratteri che rompano una URL (`@`, `:`, `/`, `?`, `#`);
-- `SESSION_SECRET`: una stringa casuale di almeno 32 caratteri.
 
 `IKUCK_PORT` può restare `8080`. Se la porta è già occupata, scegline un’altra, per esempio `8180`, e aggiorna anche `APP_ORIGIN`.
 

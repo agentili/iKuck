@@ -132,13 +132,8 @@ $null = Require-ProductionValue -Values $values -Name 'APP_DOMAIN'
 $null = Require-ProductionValue -Values $values -Name 'POSTGRES_DB'
 $null = Require-ProductionValue -Values $values -Name 'POSTGRES_USER'
 $postgresPassword = Require-ProductionValue -Values $values -Name 'POSTGRES_PASSWORD'
-$sessionSecret = Require-ProductionValue -Values $values -Name 'SESSION_SECRET'
 
 Test-ProductionDomain -Domain (Get-Value -Values $values -Name 'APP_DOMAIN')
-
-if ($null -ne $sessionSecret -and $sessionSecret.Length -lt 32) {
-    Add-ValidationError 'SESSION_SECRET must contain at least 32 characters'
-}
 
 if ($null -ne $postgresPassword -and $postgresPassword -match '[@:/?#]') {
     Add-ValidationError 'POSTGRES_PASSWORD contains URL-reserved characters and cannot be embedded safely in DATABASE_URL'

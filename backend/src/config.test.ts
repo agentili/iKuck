@@ -14,13 +14,13 @@ describe('loadConfig', () => {
     });
   });
 
-  it('rejects a production configuration without a session secret', () => {
-    expect(() => loadConfig({
+  it('accepts production configuration without an additional secret', () => {
+    expect(loadConfig({
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://ikuck:secret@database:5432/ikuck',
       REDIS_URL: 'redis://cache:6379',
       APP_ORIGIN: 'https://ikuck.example',
-    })).toThrow('SESSION_SECRET is required');
+    })).toMatchObject({ appOrigin: 'https://ikuck.example' });
   });
 
   it('maps the production sender variable to the existing email provider contract', () => {
@@ -28,7 +28,6 @@ describe('loadConfig', () => {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://ikuck:secret@postgres:5432/ikuck',
       REDIS_URL: 'redis://redis:6379',
-      SESSION_SECRET: 'production-session-secret-that-is-longer-than-thirty-two-characters',
       APP_ORIGIN: 'https://app.ikuck.it',
       RESEND_API_KEY: 're_test_key',
       RESEND_FROM_EMAIL: 'noreply@app.ikuck.it',
@@ -45,7 +44,6 @@ describe('loadConfig', () => {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://ikuck:secret@postgres:5432/ikuck',
       REDIS_URL: 'redis://redis:6379',
-      SESSION_SECRET: 'production-session-secret-that-is-longer-than-thirty-two-characters',
       APP_ORIGIN: 'https://app.ikuck.it',
       TRUST_PROXY: '10.0.0.10, 10.0.0.11/32',
     })).toMatchObject({ trustProxy: ['10.0.0.10', '10.0.0.11/32'] });
@@ -53,7 +51,6 @@ describe('loadConfig', () => {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://ikuck:secret@postgres:5432/ikuck',
       REDIS_URL: 'redis://redis:6379',
-      SESSION_SECRET: 'production-session-secret-that-is-longer-than-thirty-two-characters',
       APP_ORIGIN: 'https://app.ikuck.it',
     }).trustProxy).toBeUndefined();
   });

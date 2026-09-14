@@ -92,7 +92,9 @@ Per una prova standalone su un mini PC Linux nella rete locale, usa la guida [de
 
 Per creare un backup PostgreSQL in formato compresso, imposta `COMPOSE_FILE`, `POSTGRES_DB`, `POSTGRES_USER` e `BACKUP_DIR`, poi esegui `sh deploy/backup-postgres.sh`. Per ripristinare un archivio, imposta anche `ARCHIVE_PATH` ed esegui `sh deploy/restore-postgres.sh`. Il ripristino è distruttivo: usa `pg_restore --clean --if-exists` e deve essere eseguito solo con un archivio verificato.
 
-Le chiavi di provider esterni e i segreti di sessione non devono mai essere inseriti nel frontend, nei file committati o nei log.
+Le chiavi dei provider esterni non devono mai essere inserite nel frontend, nei file committati o nei log.
+
+Le sessioni usano un cookie volutamente non persistente: chiudere il browser richiede un nuovo accesso. Se il browser resta aperto, la sessione viene comunque rifiutata dal backend dopo la sua scadenza server-side.
 
 ## Dati
 
