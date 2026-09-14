@@ -1,13 +1,16 @@
 import { DEFAULT_STAPLE_IDS } from '../../domain/ingredients';
 import { vi } from 'vitest';
+import * as pantryStorage from '../../storage/pantryStorage';
 import { deleteLocalDatabase, readKeyValue, writeKeyValue } from '../../storage/indexedDb';
 import { GUEST_SYNC_SCOPE, readQueuedMutations, syncNow, waitForPendingQueueWrites } from '../../sync/syncQueue';
 import { hydratePantryStore, usePantryStore } from '../localPantryStore';
+import { usePersistenceStatusStore } from '../persistenceStatusStore';
 
 describe('pantry store', () => {
   beforeEach(async () => {
     await deleteLocalDatabase();
     window.localStorage.clear();
+    usePersistenceStatusStore.getState().reset();
     usePantryStore.setState({
       hasHydrated: false,
       pantryItems: [],
@@ -178,6 +181,15 @@ describe('pantry store', () => {
         payload: { enabled: false },
       }),
     ]));
+  });
+
+  it('surfaces a pantry persistence failure while keeping the local change available', async () => {
+    vi.spyOn(pantryStorage, 'writePantrySnapshot').mockRejectedValueOnce(new Error('IndexedDB unavailable'));
+
+    usePantryStore.getState().addIngredients([{ id: 'pasta', label: 'Pasta', known: true }]);
+
+    await vi.waitFor(() => expect(usePersistenceStatusStore.getState().statuses.pantry.state).toBe('memory-only'));
+    expect(usePantryStore.getState().pantryItems).toEqual([{ id: 'pasta', label: 'Pasta', known: true }]);
   });
 
   it('applies a server change without creating a second local mutation', async () => {

@@ -1,9 +1,11 @@
 import type { PantryRecipe } from '../../domain/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { deleteLocalDatabase, readKeyValue } from '../../storage/indexedDb';
+import * as shoppingListStorage from '../../storage/shoppingListStorage';
 import { readShoppingList } from '../../storage/shoppingListStorage';
 import { GUEST_SYNC_SCOPE, readQueuedMutations, waitForPendingQueueWrites } from '../../sync/syncQueue';
 import { hydrateShoppingListStore, useShoppingListStore } from '../shoppingListStore';
+import { usePersistenceStatusStore } from '../persistenceStatusStore';
 
 const recipe: PantryRecipe = {
   id: 'recipe-1',
@@ -25,6 +27,7 @@ const recipe: PantryRecipe = {
 describe('shopping list store', () => {
   beforeEach(async () => {
     await deleteLocalDatabase();
+    usePersistenceStatusStore.getState().reset();
     useShoppingListStore.setState({ hasHydrated: false, items: [] });
   });
 
@@ -53,6 +56,23 @@ describe('shopping list store', () => {
 
     expect(useShoppingListStore.getState().clearPurchased()).toBe(1);
     expect(useShoppingListStore.getState().items).toEqual([]);
+  });
+
+  it('surfaces a shopping list persistence failure while keeping the local change available', async () => {
+    vi.spyOn(shoppingListStorage, 'writeShoppingList').mockRejectedValueOnce(new Error('IndexedDB unavailable'));
+
+    useShoppingListStore.getState().addItem({
+      ingredientId: 'pasta',
+      label: 'Pasta',
+      quantity: null,
+      unit: null,
+      note: null,
+      purchased: false,
+      sourceRecipeId: null,
+    });
+
+    await vi.waitFor(() => expect(usePersistenceStatusStore.getState().statuses['shopping-list'].state).toBe('memory-only'));
+    expect(useShoppingListStore.getState().items).toHaveLength(1);
   });
 
   it('rejects invalid details without changing the list', () => {

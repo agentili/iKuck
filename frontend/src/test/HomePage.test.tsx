@@ -1,12 +1,14 @@
 import { MemoryRouter } from 'react-router-dom';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { vi } from 'vitest';
 import { DEFAULT_STAPLE_IDS } from '../domain/ingredients';
 import { DEFAULT_DIET_PROFILE } from '../domain/dietary';
 import HomePage from '../pages/HomePage';
 import { usePantryStore } from '../store/localPantryStore';
 import { useActivityStore } from '../store/activityStore';
 import { useDietProfileStore } from '../store/dietProfileStore';
+import { reportPersistenceMemoryOnly, usePersistenceStatusStore } from '../store/persistenceStatusStore';
 
 const renderHome = async () => {
   render(
@@ -31,6 +33,7 @@ const renderHome = async () => {
 describe('HomePage integration', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    usePersistenceStatusStore.getState().reset();
     usePantryStore.setState({
       hasHydrated: false,
       pantryItems: [],
@@ -53,6 +56,17 @@ describe('HomePage integration', () => {
     expect(Array.from(main.querySelectorAll('section')).indexOf(account)).toBeLessThan(
       Array.from(main.querySelectorAll('section')).indexOf(pantry),
     );
+  });
+
+  it('shows an accessible persistence warning with an explicit retry action', async () => {
+    const retry = vi.fn(async () => undefined);
+    reportPersistenceMemoryOnly('pantry', new Error('IndexedDB unavailable'), retry);
+
+    await renderHome();
+
+    expect(screen.getByRole('alert')).toHaveTextContent('disponibili solo in memoria');
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Riprova' }));
+    expect(retry).toHaveBeenCalledOnce();
   });
 
   it('adds comma-separated ingredients and searches only on request', async () => {

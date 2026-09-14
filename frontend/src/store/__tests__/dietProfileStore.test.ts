@@ -1,9 +1,11 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DietProfilePayload } from '@ikuck/shared/contracts';
 import { deleteLocalDatabase, readMeta } from '../../storage/indexedDb';
+import * as dietProfileStorage from '../../storage/dietProfileStorage';
 import { readDietProfile } from '../../storage/dietProfileStorage';
 import { GUEST_SYNC_SCOPE, readQueuedMutations } from '../../sync/syncQueue';
 import { hydrateDietProfileStore, useDietProfileStore, waitForPendingDietProfileWrites } from '../dietProfileStore';
+import { usePersistenceStatusStore } from '../persistenceStatusStore';
 
 const profile: DietProfilePayload = {
   diet: 'vegetarian',
@@ -15,6 +17,7 @@ describe('diet profile store', () => {
   beforeEach(async () => {
     await waitForPendingDietProfileWrites();
     await deleteLocalDatabase();
+    usePersistenceStatusStore.getState().reset();
     useDietProfileStore.setState({
       hasHydrated: false,
       profile: {
@@ -42,6 +45,15 @@ describe('diet profile store', () => {
       expect.objectContaining({ entityType: 'diet_profile', entityId: 'profile', operation: 'upsert', payload: expect.objectContaining(profile) }),
     ]));
     await expect(readMeta('deviceId')).resolves.toBeTypeOf('string');
+  });
+
+  it('surfaces a diet persistence failure while keeping the local profile available', async () => {
+    vi.spyOn(dietProfileStorage, 'writeDietProfile').mockRejectedValueOnce(new Error('IndexedDB unavailable'));
+
+    expect(useDietProfileStore.getState().setDietProfile(profile)).toBe(true);
+
+    await vi.waitFor(() => expect(usePersistenceStatusStore.getState().statuses.diet.state).toBe('memory-only'));
+    expect(useDietProfileStore.getState().profile).toMatchObject(profile);
   });
 
   it('rejects invalid thresholds and resets explicitly', () => {

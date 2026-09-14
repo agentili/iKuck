@@ -13,6 +13,7 @@ import {
   registerDietProfileSnapshotListener,
   waitForPendingQueueWrites,
 } from '../sync/syncQueue';
+import { trackPersistence, trackSync } from './persistenceStatusStore';
 
 export interface DietProfileState {
   hasHydrated: boolean;
@@ -36,8 +37,8 @@ const persistProfile = (profile: DietProfile): Promise<void> => {
 };
 
 const persistAndQueue = (profile: DietProfile): void => {
-  void persistProfile(profile).catch(() => undefined);
-  void enqueueEntityMutation(GUEST_SYNC_SCOPE, 'diet_profile', 'profile', 'upsert', profile).catch(() => undefined);
+  void trackPersistence('diet', () => persistProfile(profile));
+  void trackSync('diet', () => enqueueEntityMutation(GUEST_SYNC_SCOPE, 'diet_profile', 'profile', 'upsert', profile));
 };
 
 export const useDietProfileStore = create<DietProfileState>((set) => ({

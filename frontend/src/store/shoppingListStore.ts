@@ -13,6 +13,7 @@ import {
   registerShoppingListSnapshotListener,
   waitForPendingQueueWrites,
 } from '../sync/syncQueue';
+import { trackPersistence, trackSync } from './persistenceStatusStore';
 
 export interface ShoppingListItemPatch {
   label?: string;
@@ -65,8 +66,14 @@ const persistAndQueue = (
   changed: ShoppingListItem,
   operation: 'upsert' | 'delete' = 'upsert',
 ): void => {
-  void persistItems(items).catch(() => undefined);
-  void enqueueEntityMutation(GUEST_SYNC_SCOPE, 'shopping_list_item', changed.id, operation, operation === 'upsert' ? changed : null).catch(() => undefined);
+  void trackPersistence('shopping-list', () => persistItems(items));
+  void trackSync('shopping-list', () => enqueueEntityMutation(
+    GUEST_SYNC_SCOPE,
+    'shopping_list_item',
+    changed.id,
+    operation,
+    operation === 'upsert' ? changed : null,
+  ));
 };
 
 export const useShoppingListStore = create<ShoppingListState>((set, get) => ({
@@ -138,9 +145,15 @@ export const useShoppingListStore = create<ShoppingListState>((set, get) => ({
     if (removed.length === 0) return 0;
     const items = get().items.filter((item) => !item.purchased);
     set({ items });
-    void persistItems(items).catch(() => undefined);
+    void trackPersistence('shopping-list', () => persistItems(items));
     for (const item of removed) {
-      void enqueueEntityMutation(GUEST_SYNC_SCOPE, 'shopping_list_item', item.id, 'delete', null).catch(() => undefined);
+      void trackSync('shopping-list', () => enqueueEntityMutation(
+        GUEST_SYNC_SCOPE,
+        'shopping_list_item',
+        item.id,
+        'delete',
+        null,
+      ));
     }
     return removed.length;
   },

@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECIPES } from '../../domain/recipes';
 import { deleteLocalDatabase, readMeta } from '../../storage/indexedDb';
+import * as activityStorage from '../../storage/activityStorage';
 import { readCookEvents, readRecipePreferences } from '../../storage/activityStorage';
 import { GUEST_SYNC_SCOPE, readQueuedMutations } from '../../sync/syncQueue';
 import { usePantryStore } from '../localPantryStore';
@@ -9,11 +10,13 @@ import {
   useActivityStore,
   waitForPendingActivityWrites,
 } from '../activityStore';
+import { usePersistenceStatusStore } from '../persistenceStatusStore';
 
 describe('activity store', () => {
   beforeEach(async () => {
     await waitForPendingActivityWrites();
     await deleteLocalDatabase();
+    usePersistenceStatusStore.getState().reset();
     useActivityStore.setState({ hasHydrated: false, events: [], preferences: [] });
     usePantryStore.setState({
       pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
@@ -40,6 +43,16 @@ describe('activity store', () => {
       note: 'Con poco limone',
     }]);
     expect(JSON.stringify(usePantryStore.getState())).toBe(before);
+  });
+
+  it('surfaces an activity persistence failure while keeping the local event available', async () => {
+    vi.spyOn(activityStorage, 'writeCookEvents').mockRejectedValueOnce(new Error('IndexedDB unavailable'));
+
+    const id = useActivityStore.getState().recordCookEvent(RECIPES[0]);
+
+    await vi.waitFor(() => expect(usePersistenceStatusStore.getState().statuses.activity.state).toBe('memory-only'));
+    expect(id).not.toBeNull();
+    expect(useActivityStore.getState().events).toHaveLength(1);
   });
 
   it('replaces a preference and removes it when no signal remains', async () => {

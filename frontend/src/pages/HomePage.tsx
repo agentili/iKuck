@@ -18,6 +18,22 @@ import { hydratePantryStore, usePantryStore } from '../store/localPantryStore';
 import { useDietProfileStore } from '../store/dietProfileStore';
 import { useAuthStore } from '../auth/authStore';
 import { useActivityStore } from '../store/activityStore';
+import {
+  persistenceDomains,
+  retryPersistence,
+  usePersistenceStatusStore,
+  type PersistenceDomain,
+  type PersistenceState,
+} from '../store/persistenceStatusStore';
+
+const persistenceLabels: Record<PersistenceDomain, string> = {
+  pantry: 'dispensa',
+  'shopping-list': 'lista della spesa',
+  activity: 'attività',
+  diet: 'preferenze alimentari',
+};
+
+const blockingPersistenceStates: readonly PersistenceState[] = ['memory-only', 'sync-error'];
 
 export default function HomePage() {
   const hasHydrated = usePantryStore((state) => state.hasHydrated);
@@ -42,6 +58,11 @@ export default function HomePage() {
   const preferences = useActivityStore((state) => state.preferences);
   const user = useAuthStore((state) => state.user);
   const csrfToken = useAuthStore((state) => state.csrfToken);
+  const persistenceStatuses = usePersistenceStatusStore((state) => state.statuses);
+
+  const persistenceIssue = persistenceDomains
+    .map((domain) => ({ domain, status: persistenceStatuses[domain] }))
+    .find(({ status }) => blockingPersistenceStates.includes(status.state));
 
   const availableIngredientIds = useMemo(
     () => [...pantryItems.filter((item) => item.known).map((item) => item.id), ...stapleIds],
@@ -153,6 +174,18 @@ export default function HomePage() {
       <div className="mb-6 max-w-3xl">
         <AccountPanel />
       </div>
+
+      {persistenceIssue !== undefined && (
+        <div role="alert" className="mb-6 flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
+          <p>
+            {persistenceIssue.status.state === 'memory-only'
+              ? `Le modifiche alla ${persistenceLabels[persistenceIssue.domain]} sono disponibili solo in memoria.`
+              : `La sincronizzazione della ${persistenceLabels[persistenceIssue.domain]} non è riuscita.`}
+            {' '}Puoi riprovare quando vuoi.
+          </p>
+          <button type="button" onClick={() => void retryPersistence(persistenceIssue.domain)} className="min-h-10 rounded-xl border-2 border-amber-700 px-3 py-1.5 font-bold text-amber-900 hover:bg-amber-100">Riprova</button>
+        </div>
+      )}
 
       <section aria-labelledby="pantry-title" className="space-y-5 rounded-3xl border-2 border-gray-200 bg-gray-50 p-4 sm:p-6">
         <div>
