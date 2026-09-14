@@ -48,7 +48,7 @@ describe('ProfilePage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Il tuo profilo' })).toBeInTheDocument();
     expect(screen.getByText('ale@example.com')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Importa la dispensa' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Importa i dati locali' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Esporta i miei dati' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Elimina account' })).toBeInTheDocument();
   });
@@ -85,9 +85,27 @@ describe('ProfilePage', () => {
     render(<MemoryRouter><ProfilePage /></MemoryRouter>);
 
     await screen.findByRole('heading', { name: 'Il tuo profilo' });
-    await user.click(screen.getByRole('button', { name: 'Importa la dispensa' }));
+    await user.click(screen.getByRole('button', { name: 'Importa i dati locali' }));
+    expect(screen.getByText(/I dati locali resteranno sul dispositivo/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Conferma importazione' }));
 
     expect(await screen.findByRole('status')).toHaveTextContent(/Sincronizzazione completata/);
     vi.unstubAllGlobals();
+  });
+
+  it('requires explicit confirmation before importing local data', async () => {
+    const user = userEvent.setup();
+    useAuthStore.setState({
+      user: verifiedUser,
+      csrfToken: 'csrf-1',
+      expiresAt: '2026-10-12T10:00:00.000Z',
+    });
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    await screen.findByRole('heading', { name: 'Il tuo profilo' });
+    await user.click(screen.getByRole('button', { name: 'Importa i dati locali' }));
+
+    expect(screen.getByRole('button', { name: 'Conferma importazione' })).toBeInTheDocument();
+    expect(screen.getByText(/Confermi l’unione.*non verranno cancellati/)).toBeInTheDocument();
   });
 });

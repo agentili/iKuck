@@ -67,8 +67,9 @@ test('verified users explicitly import the local pantry into the account', async
   await page.getByRole('link', { name: 'Apri il profilo' }).click();
   await expect(page.getByRole('heading', { name: 'Il tuo profilo' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Importa la dispensa' }).click();
-  await expect(page.getByText('La tua dispensa è stata sincronizzata.')).toBeVisible();
+  await page.getByRole('button', { name: 'Importa i dati locali' }).click();
+  await page.getByRole('button', { name: 'Conferma importazione' }).click();
+  await expect(page.getByText(/Sincronizzazione completata/)).toBeVisible();
   expect(syncRequests.some(({ mutations }) => mutations.some((mutation) => (
     typeof mutation === 'object' && mutation !== null && 'entityId' in mutation && mutation.entityId === 'pasta'
   )))).toBe(true);

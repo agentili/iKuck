@@ -10,11 +10,12 @@ import {
   type SyncScope,
 } from '../storage/indexedDb';
 import { readCookEvents, readRecipePreferences, writeCookEvents, writeRecipePreferences } from '../storage/activityStorage';
-import { readPantrySnapshot } from '../storage/pantryStorage';
+import { readPantrySnapshot, writePantrySnapshot } from '../storage/pantryStorage';
 import { readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
 import { readDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
 import {
   enqueueMutation,
+  GUEST_SYNC_SCOPE,
   getSyncStatus,
   getAccountSyncScope,
   getDeviceId,
@@ -238,6 +239,72 @@ describe('sync queue', () => {
     });
 
     await expect(syncNow({ session, request })).rejects.toMatchObject({ code: 'cursor_stalled' });
+  });
+
+  it('never uploads guest mutations during an account sync', async () => {
+    await enqueueMutation(GUEST_SYNC_SCOPE, sampleMutation('guest-only-mutation'));
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      void input;
+      void init;
+      return responseFor({ changes: [], nextCursor: 0 });
+    });
+
+    await syncNow({ fetch, session });
+
+    expect(JSON.parse(fetch.mock.calls[0]?.[1]?.body as string).mutations).toEqual([]);
+    await expect(readQueuedMutations(GUEST_SYNC_SCOPE)).resolves.toHaveLength(1);
+  });
+
+  it('imports pantry data into the account scope without deleting the guest data', async () => {
+    await writePantrySnapshot({
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+      stapleIds: ['salt'],
+      pantryLots: [],
+    });
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      void input;
+      void init;
+      return responseFor({ changes: [], nextCursor: 0 });
+    });
+    vi.stubGlobal('fetch', fetch);
+
+    await importLocalData(session);
+
+    const body = JSON.parse(fetch.mock.calls[0]?.[1]?.body as string) as { mutations: Array<{ entityType: string; entityId: string }> };
+    expect(body.mutations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ entityType: 'pantry_lot', entityId: 'pasta' }),
+      expect.objectContaining({ entityType: 'staple_preference', entityId: 'salt' }),
+      expect.objectContaining({ entityType: 'diet_profile', entityId: 'profile' }),
+    ]));
+    await expect(readPantrySnapshot()).resolves.toMatchObject({
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+    });
+    await expect(readQueuedMutations(GUEST_SYNC_SCOPE)).resolves.toEqual([]);
+    vi.unstubAllGlobals();
+  });
+
+  it('uses stable mutation ids when the explicit import is retried', async () => {
+    await writePantrySnapshot({
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+      stapleIds: [],
+      pantryLots: [],
+    });
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      void input;
+      void init;
+      return responseFor({ changes: [], nextCursor: 0 });
+    });
+    vi.stubGlobal('fetch', fetch);
+
+    await importLocalData(session);
+    await importLocalData(session);
+
+    const mutationIds = fetch.mock.calls.map(([, init]) => {
+      const body = JSON.parse((init as RequestInit).body as string) as { mutations: Array<{ mutationId: string }> };
+      return body.mutations.map((mutation) => mutation.mutationId);
+    });
+    expect(mutationIds[0]).toEqual(mutationIds[1]);
+    vi.unstubAllGlobals();
   });
 
   it('creates a device id once without storing account secrets', async () => {

@@ -31,6 +31,7 @@ export default function ProfilePage() {
   const [isImporting, setIsImporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
+  const [confirmImport, setConfirmImport] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +87,7 @@ export default function ProfilePage() {
   };
 
   const handleImport = async () => {
-    if (csrfToken === null) return;
+    if (!confirmImport || csrfToken === null) return;
     setIsImporting(true);
     setMessage(null);
     setError(null);
@@ -103,6 +104,7 @@ export default function ProfilePage() {
       setError(operationError(importError));
     } finally {
       setIsImporting(false);
+      setConfirmImport(false);
     }
   };
 
@@ -180,9 +182,17 @@ export default function ProfilePage() {
 
         <div className="mt-7 grid gap-3 border-t border-gray-200 pt-6">
           <h2 className="text-xl font-black text-gray-950">I tuoi dati</h2>
-          <p className="text-gray-600">La sincronizzazione parte solo quando la richiedi. La dispensa ospite non viene caricata automaticamente al login.</p>
+          <p className="text-gray-600">La sincronizzazione parte solo quando la richiedi. I dati locali verranno copiati nell’account e uniti a quelli già presenti. I dati locali resteranno sul dispositivo e non verranno cancellati.</p>
           <div className="flex flex-wrap gap-3">
-            <button type="button" onClick={() => void handleImport()} disabled={isImporting || csrfToken === null} className="min-h-11 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800 disabled:opacity-60">{isImporting ? 'Sincronizzazione…' : 'Importa la dispensa'}</button>
+            {!confirmImport ? (
+              <button type="button" onClick={() => setConfirmImport(true)} disabled={isImporting || csrfToken === null} className="min-h-11 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800 disabled:opacity-60">Importa i dati locali</button>
+            ) : (
+              <div className="flex w-full flex-wrap items-center gap-3 rounded-xl border-2 border-amber-200 bg-amber-50 p-3">
+                <p className="basis-full font-semibold text-amber-950">Confermi l’unione dei dati locali con quelli dell’account? I dati locali non verranno cancellati.</p>
+                <button type="button" onClick={() => void handleImport()} disabled={isImporting || csrfToken === null} className="min-h-11 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800 disabled:opacity-60">{isImporting ? 'Sincronizzazione…' : 'Conferma importazione'}</button>
+                <button type="button" onClick={() => setConfirmImport(false)} disabled={isImporting} className="min-h-11 rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900 disabled:opacity-60">Annulla</button>
+              </div>
+            )}
             <button type="button" onClick={() => void handleExport()} className="min-h-11 rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900">Esporta i miei dati</button>
           </div>
         </div>

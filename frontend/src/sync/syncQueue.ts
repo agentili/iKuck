@@ -190,6 +190,17 @@ export async function createPantryMutation(
   };
 }
 
+const createImportMutation = async (
+  scope: SyncScope,
+  entityType: SyncEntityType,
+  entityId: string,
+  operation: SyncOperation,
+  payload: unknown | null,
+): Promise<SyncMutation> => ({
+  ...(await createPantryMutation(entityType, entityId, operation, payload)),
+  mutationId: `import:${scope}:${entityType}:${entityId}`,
+});
+
 const queueMutationWrite = (scope: SyncScope, mutation: SyncMutation): Promise<void> => {
   const operation = pendingQueueWrites.then(() => writeQueueValue<QueuedMutation>({
     ...mutation,
@@ -242,10 +253,11 @@ export async function importLocalData(session: SyncSession): Promise<SyncResult>
   const snapshot = normalizePantrySnapshot(await readPantrySnapshot() ?? { pantryItems: [], stapleIds: [] });
 
   for (const lot of snapshot.pantryLots ?? []) {
-    await enqueueMutation(scope, await createPantryMutation('pantry_lot', lot.id, 'upsert', lot));
+    await enqueueMutation(scope, await createImportMutation(scope, 'pantry_lot', lot.id, 'upsert', lot));
   }
   for (const stapleId of snapshot.stapleIds) {
-    await enqueueMutation(scope, await createPantryMutation(
+    await enqueueMutation(scope, await createImportMutation(
+      scope,
       'staple_preference',
       stapleId,
       'upsert',
@@ -253,15 +265,27 @@ export async function importLocalData(session: SyncSession): Promise<SyncResult>
     ));
   }
   for (const item of await readShoppingList()) {
-    await enqueueMutation(scope, await createPantryMutation('shopping_list_item', item.id, 'upsert', item));
+    await enqueueMutation(scope, await createImportMutation(scope, 'shopping_list_item', item.id, 'upsert', item));
   }
   for (const event of await readCookEvents()) {
-    await enqueueMutation(scope, await createPantryMutation('cook_event', event.id, 'upsert', event));
+    await enqueueMutation(scope, await createImportMutation(scope, 'cook_event', event.id, 'upsert', event));
   }
   for (const preference of await readRecipePreferences()) {
-    await enqueueMutation(scope, await createPantryMutation('recipe_preference', preference.recipeId, 'upsert', preference));
+    await enqueueMutation(scope, await createImportMutation(
+      scope,
+      'recipe_preference',
+      preference.recipeId,
+      'upsert',
+      preference,
+    ));
   }
-  await enqueueMutation(scope, await createPantryMutation('diet_profile', 'profile', 'upsert', await readDietProfile()));
+  await enqueueMutation(scope, await createImportMutation(
+    scope,
+    'diet_profile',
+    'profile',
+    'upsert',
+    await readDietProfile(),
+  ));
 
   return syncNow({ session });
 }
