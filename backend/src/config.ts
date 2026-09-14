@@ -15,6 +15,7 @@ export interface AppConfig {
   redisUrl: string;
   appOrigin: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
+  syncMaxClientClockSkewMs: number;
   providers: ProviderConfig;
   googleClientId?: string;
   trustProxy?: string | string[];
@@ -42,6 +43,7 @@ const environmentSchema = z.object({
   HOST: z.string().min(1).default('127.0.0.1'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+  SYNC_MAX_CLIENT_CLOCK_SKEW_SECONDS: z.coerce.number().int().min(0).max(86400).default(300),
   TRUST_PROXY: z.preprocess(
     (value) => value === '' ? undefined : value,
     z.string().min(1).optional(),
@@ -75,6 +77,7 @@ export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
     redisUrl: parsed.REDIS_URL,
     appOrigin: parsed.APP_ORIGIN,
     logLevel: parsed.LOG_LEVEL,
+    syncMaxClientClockSkewMs: parsed.SYNC_MAX_CLIENT_CLOCK_SKEW_SECONDS * 1000,
     providers: {
       resendApiKey: parsed.RESEND_API_KEY,
       resendFrom: parsed.RESEND_FROM_EMAIL ?? parsed.RESEND_FROM,

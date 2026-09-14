@@ -96,6 +96,12 @@ Le chiavi dei provider esterni non devono mai essere inserite nel frontend, nei 
 
 Le sessioni usano un cookie volutamente non persistente: chiudere il browser richiede un nuovo accesso. Se il browser resta aperto, la sessione viene comunque rifiutata dal backend dopo la sua scadenza server-side.
 
+### Conflitti di sincronizzazione
+
+La sincronizzazione applica un last-write-wins per entità: non viene eseguito alcun merge campo per campo. Il timestamp del client è accettato finché non supera di oltre cinque minuti l’orologio del server; in quel caso il backend usa l’ora server come timestamp effettivo e registra solo un warning generico, senza payload, token o identificativi privati. La soglia è configurabile in secondi tramite `SYNC_MAX_CLIENT_CLOCK_SKEW_SECONDS`.
+
+Quando più dispositivi hanno lo stesso timestamp effettivo, il conflitto viene risolto usando l’istante di ricezione server, poi `deviceId` e infine `mutationId`, così il risultato è deterministico. Una mutation scartata non modifica l’entità già salvata.
+
 ## Dati
 
 La dispensa ospite è salvata in IndexedDB nel database locale `ikuck-local-v2`; le versioni precedenti con le chiavi `ikuck-pantry-v1` o `iricetto-pantry-v1` vengono migrate automaticamente. Le modifiche dell’ospite possono restare in una coda locale, ma non vengono mai inviate senza un account verificato. L’importazione verso un account è sempre un’azione esplicita dalla pagina Profilo. Password, cookie di sessione e token non vengono salvati nel browser. Disinstallare l’app o cancellare i dati del sito elimina la dispensa locale.

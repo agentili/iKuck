@@ -54,4 +54,15 @@ describe('loadConfig', () => {
       APP_ORIGIN: 'https://app.ikuck.it',
     }).trustProxy).toBeUndefined();
   });
+
+  it('parses the configurable sync clock skew tolerance in seconds', () => {
+    expect(loadConfig({
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://ikuck:secret@postgres:5432/ikuck',
+      REDIS_URL: 'redis://redis:6379',
+      APP_ORIGIN: 'https://app.ikuck.it',
+      SYNC_MAX_CLIENT_CLOCK_SKEW_SECONDS: '900',
+    })).toMatchObject({ syncMaxClientClockSkewMs: 900000 });
+  });
+
 });

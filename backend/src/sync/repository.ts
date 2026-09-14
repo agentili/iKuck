@@ -11,6 +11,7 @@ export interface StoredSyncItem {
   payload: unknown | null;
   deleted: boolean;
   clientUpdatedAt: Date;
+  serverUpdatedAt: Date;
   mutationId: string;
   serverSequence: number;
 }
@@ -19,6 +20,18 @@ export interface AppliedSyncMutation {
   applied: boolean;
   change: SyncChange | null;
 }
+
+export interface SyncRepositoryLogger {
+  warn: (message: string) => void;
+}
+
+export interface SyncRepositoryOptions {
+  clock?: () => Date;
+  logger?: SyncRepositoryLogger;
+  maxClientClockSkewMs?: number;
+}
+
+export const DEFAULT_MAX_CLIENT_CLOCK_SKEW_MS = 5 * 60 * 1000;
 
 export interface SyncRepository {
   applyMutation: (userId: string, mutation: SyncMutation) => Promise<AppliedSyncMutation>;
@@ -29,6 +42,32 @@ export interface SyncRepository {
 
 const entityKey = (userId: string, entityType: SyncMutation['entityType'], entityId: string): string =>
   `${userId}:${entityType}:${entityId}`;
+
+interface PreparedMutation {
+  mutation: SyncMutation;
+  serverUpdatedAt: Date;
+}
+
+const resolveOptions = (options: SyncRepositoryOptions): Required<SyncRepositoryOptions> => ({
+  clock: options.clock ?? (() => new Date()),
+  logger: options.logger ?? { warn: (message) => console.warn(message) },
+  maxClientClockSkewMs: options.maxClientClockSkewMs ?? DEFAULT_MAX_CLIENT_CLOCK_SKEW_MS,
+});
+
+const prepareMutation = (mutation: SyncMutation, options: Required<SyncRepositoryOptions>): PreparedMutation => {
+  const validMutation = assertSyncMutation(mutation);
+  const serverUpdatedAt = options.clock();
+  const clientUpdatedAt = new Date(validMutation.clientUpdatedAt);
+  const isFutureSkewed = clientUpdatedAt.getTime() > serverUpdatedAt.getTime() + options.maxClientClockSkewMs;
+  if (isFutureSkewed) options.logger.warn('Sync client timestamp exceeded the configured clock skew tolerance');
+
+  return {
+    mutation: isFutureSkewed
+      ? { ...validMutation, clientUpdatedAt: serverUpdatedAt.toISOString() }
+      : validMutation,
+    serverUpdatedAt,
+  };
+};
 
 const toChange = (item: StoredSyncItem): SyncChange => ({
   mutationId: item.mutationId,
@@ -41,36 +80,43 @@ const toChange = (item: StoredSyncItem): SyncChange => ({
   serverSequence: item.serverSequence,
 });
 
-const wins = (incoming: SyncMutation, existing: StoredSyncItem): boolean => {
-  const incomingTime = new Date(incoming.clientUpdatedAt).getTime();
+const wins = (incoming: PreparedMutation, existing: StoredSyncItem): boolean => {
+  const incomingTime = new Date(incoming.mutation.clientUpdatedAt).getTime();
   const existingTime = existing.clientUpdatedAt.getTime();
-  return incomingTime > existingTime
-    || (incomingTime === existingTime && incoming.mutationId > existing.mutationId);
+  if (incomingTime !== existingTime) return incomingTime > existingTime;
+
+  const incomingServerTime = incoming.serverUpdatedAt.getTime();
+  const existingServerTime = existing.serverUpdatedAt.getTime();
+  if (incomingServerTime !== existingServerTime) return incomingServerTime > existingServerTime;
+  if (incoming.mutation.deviceId !== existing.deviceId) return incoming.mutation.deviceId > existing.deviceId;
+  return incoming.mutation.mutationId > existing.mutationId;
 };
 
-export const createMemorySyncRepository = (): SyncRepository & {
+export const createMemorySyncRepository = (repositoryOptions: SyncRepositoryOptions = {}): SyncRepository & {
   readEntity: SyncRepository['readEntity'];
 } => {
+  const options = resolveOptions(repositoryOptions);
   const entities = new Map<string, StoredSyncItem>();
   const processed = new Set<string>();
   let sequence = 0;
 
   return {
     applyMutation: async (userId, mutation) => {
-      const validMutation = assertSyncMutation(mutation);
-      if (processed.has(`${userId}:${validMutation.mutationId}`)) return { applied: false, change: null };
-      processed.add(`${userId}:${validMutation.mutationId}`);
-      const key = entityKey(userId, validMutation.entityType, validMutation.entityId);
+      const prepared = prepareMutation(mutation, options);
+      if (processed.has(`${userId}:${prepared.mutation.mutationId}`)) return { applied: false, change: null };
+      processed.add(`${userId}:${prepared.mutation.mutationId}`);
+      const key = entityKey(userId, prepared.mutation.entityType, prepared.mutation.entityId);
       const existing = entities.get(key);
-      if (existing !== undefined && !wins(validMutation, existing)) return { applied: false, change: null };
+      if (existing !== undefined && !wins(prepared, existing)) return { applied: false, change: null };
       const item: StoredSyncItem = {
-        entityType: validMutation.entityType,
-        entityId: validMutation.entityId,
-        deviceId: validMutation.deviceId,
-        payload: validMutation.payload,
-        deleted: validMutation.operation === 'delete',
-        clientUpdatedAt: new Date(validMutation.clientUpdatedAt),
-        mutationId: validMutation.mutationId,
+        entityType: prepared.mutation.entityType,
+        entityId: prepared.mutation.entityId,
+        deviceId: prepared.mutation.deviceId,
+        payload: prepared.mutation.payload,
+        deleted: prepared.mutation.operation === 'delete',
+        clientUpdatedAt: new Date(prepared.mutation.clientUpdatedAt),
+        serverUpdatedAt: prepared.serverUpdatedAt,
+        mutationId: prepared.mutation.mutationId,
         serverSequence: ++sequence,
       };
       entities.set(key, item);
@@ -98,51 +144,62 @@ const fromDatabaseItem = (item: typeof syncItems.$inferSelect): StoredSyncItem =
   payload: item.payload,
   deleted: item.deleted,
   clientUpdatedAt: item.clientUpdatedAt,
+  serverUpdatedAt: item.updatedAt,
   mutationId: item.mutationId,
   serverSequence: item.serverSequence,
 });
 
-export const createDrizzleSyncRepository = (database: ApplicationDatabase['db']): SyncRepository => ({
-  applyMutation: async (userId, mutation) => database.transaction(async (transaction) => {
-    const validMutation = assertSyncMutation(mutation);
-    const [alreadyProcessed] = await transaction.select({ id: processedSyncMutations.id })
-      .from(processedSyncMutations)
-      .where(and(
-        eq(processedSyncMutations.userId, userId),
-        eq(processedSyncMutations.mutationId, validMutation.mutationId),
-      ))
-      .limit(1);
-    if (alreadyProcessed !== undefined) return { applied: false, change: null };
+export const createDrizzleSyncRepository = (
+  database: ApplicationDatabase['db'],
+  repositoryOptions: SyncRepositoryOptions = {},
+): SyncRepository => {
+  const options = resolveOptions(repositoryOptions);
 
-    await transaction.insert(processedSyncMutations).values({ userId, mutationId: validMutation.mutationId });
-    const [existingRow] = await transaction.select().from(syncItems).where(and(
-      eq(syncItems.userId, userId),
-      eq(syncItems.entityType, validMutation.entityType),
-      eq(syncItems.entityId, validMutation.entityId),
-    )).limit(1);
-    const existing = existingRow === undefined ? null : fromDatabaseItem(existingRow);
-    if (existing !== null && !wins(validMutation, existing)) return { applied: false, change: null };
+  return {
+    applyMutation: async (userId, mutation) => {
+      const prepared = prepareMutation(mutation, options);
+      return database.transaction(async (transaction) => {
+        const validMutation = prepared.mutation;
+        const [alreadyProcessed] = await transaction.select({ id: processedSyncMutations.id })
+          .from(processedSyncMutations)
+          .where(and(
+            eq(processedSyncMutations.userId, userId),
+            eq(processedSyncMutations.mutationId, validMutation.mutationId),
+          ))
+          .limit(1);
+        if (alreadyProcessed !== undefined) return { applied: false, change: null };
 
-    const values = {
-      userId,
-      entityType: validMutation.entityType,
-      entityId: validMutation.entityId,
-      deviceId: validMutation.deviceId,
-      payload: validMutation.operation === 'delete' ? null : validMutation.payload,
-      deleted: validMutation.operation === 'delete',
-      clientUpdatedAt: new Date(validMutation.clientUpdatedAt),
-      mutationId: validMutation.mutationId,
-    };
-    const [saved] = existing === null
-      ? await transaction.insert(syncItems).values(values).returning()
-      : await transaction.update(syncItems).set({
-        ...values,
-        serverSequence: sql`nextval('sync_server_sequence')`,
-        updatedAt: new Date(),
-      }).where(eq(syncItems.id, existingRow!.id)).returning();
-    const item = fromDatabaseItem(saved);
-    return { applied: true, change: toChange(item) };
-  }),
+        await transaction.insert(processedSyncMutations).values({ userId, mutationId: validMutation.mutationId });
+        const [existingRow] = await transaction.select().from(syncItems).where(and(
+          eq(syncItems.userId, userId),
+          eq(syncItems.entityType, validMutation.entityType),
+          eq(syncItems.entityId, validMutation.entityId),
+        )).limit(1);
+        const existing = existingRow === undefined ? null : fromDatabaseItem(existingRow);
+        if (existing !== null && !wins(prepared, existing)) return { applied: false, change: null };
+
+        const values = {
+          userId,
+          entityType: validMutation.entityType,
+          entityId: validMutation.entityId,
+          deviceId: validMutation.deviceId,
+          payload: validMutation.operation === 'delete' ? null : validMutation.payload,
+          deleted: validMutation.operation === 'delete',
+          clientUpdatedAt: new Date(validMutation.clientUpdatedAt),
+          updatedAt: prepared.serverUpdatedAt,
+          mutationId: validMutation.mutationId,
+        };
+        const [saved] = existing === null
+          ? await transaction.insert(syncItems).values(values).returning()
+          : await transaction.update(syncItems).set({
+            ...values,
+            serverSequence: sql`nextval('sync_server_sequence')`,
+            updatedAt: prepared.serverUpdatedAt,
+          }).where(eq(syncItems.id, existingRow!.id)).returning();
+        const item = fromDatabaseItem(saved);
+        return { applied: true, change: toChange(item) };
+      });
+    },
 
   readChanges: async (userId, cursor, limit) => {
     const rows = await database.select().from(syncItems).where(and(
@@ -167,4 +224,5 @@ export const createDrizzleSyncRepository = (database: ApplicationDatabase['db'])
     )).limit(1);
     return row === undefined ? null : fromDatabaseItem(row);
   },
-});
+  };
+};

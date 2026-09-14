@@ -23,7 +23,9 @@ export const start = async () => {
     appOrigin: config.appOrigin,
     autoVerifyEmail: config.nodeEnvironment === 'development',
   });
-  const sync = createDrizzleSyncRepository(database.db);
+  const sync = createDrizzleSyncRepository(database.db, {
+    maxClientClockSkewMs: config.syncMaxClientClockSkewMs,
+  });
   const profile = createDrizzleProfileRepository(database.db, sync);
   const app = createApp(
     {

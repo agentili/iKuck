@@ -531,4 +531,43 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     const migration = await readFile(join(dirname(fileURLToPath(import.meta.url)), '..', 'db', 'migrations', '0001_accounts_and_sync.sql'), 'utf8');
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS "users"');
   });
+
+  it('bounds future client clocks and resolves equal timestamps by device id', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+
+    const user = await createDrizzleAuthRepository(database.db).createUser({
+      email: `integration-clock-${Date.now()}@example.com`,
+      passwordHash: 'clock-test-password-hash',
+      emailVerifiedAt: new Date('2026-09-13T11:00:00.000Z'),
+    });
+    const serverNow = new Date('2026-09-13T12:00:00.000Z');
+    const repository = createDrizzleSyncRepository(database.db, {
+      clock: () => serverNow,
+      logger: { warn: () => undefined },
+    });
+    const baseMutation = {
+      deviceId: 'device-b',
+      entityType: 'pantry_item' as const,
+      entityId: 'clock-item',
+      operation: 'upsert' as const,
+      clientUpdatedAt: '2026-09-13T12:10:00.000Z',
+    };
+
+    await repository.applyMutation(user.id, {
+      ...baseMutation,
+      mutationId: `clock-device-b-${Date.now()}`,
+      payload: { id: 'clock-item', label: 'Device B', known: true },
+    });
+    await repository.applyMutation(user.id, {
+      ...baseMutation,
+      deviceId: 'device-a',
+      mutationId: `clock-device-a-${Date.now()}`,
+      payload: { id: 'clock-item', label: 'Device A', known: true },
+    });
+
+    await expect(repository.readEntity(user.id, 'pantry_item', 'clock-item')).resolves.toMatchObject({
+      clientUpdatedAt: serverNow,
+      payload: { label: 'Device B' },
+    });
+  });
 });
