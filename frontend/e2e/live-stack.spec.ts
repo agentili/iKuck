@@ -26,7 +26,7 @@ test('registers, verifies, logs in, synchronizes and logs out against the live s
     await page.getByRole('link', { name: 'Vai al tuo profilo' }).click();
   } else {
     await expect(registrationStatus).toHaveText('Account creato. Ora puoi accedere.');
-    await page.getByRole('button', { name: 'Accedi' }).click();
+    await page.getByRole('button', { name: 'Accedi', exact: true }).click();
   }
 
   await page.getByLabel('Email').fill(email);

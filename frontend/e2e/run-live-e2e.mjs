@@ -5,8 +5,7 @@ if (!process.env.E2E_BASE_URL?.trim()) {
   process.exit(1);
 }
 
-const runner = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-const result = spawnSync(runner, ['playwright', 'test', '--project=live-chromium'], {
+const result = spawnSync(process.execPath, ['./node_modules/@playwright/test/cli.js', 'test', '--project=live-chromium'], {
   env: { ...process.env, E2E_LIVE: 'true' },
   stdio: 'inherit',
 });
