@@ -38,6 +38,16 @@ const requiredEnvironmentValue = (name: string) => z
   .string({ error: `${name} is required` })
   .min(1, `${name} is required`);
 
+const optionalEnvironmentString = () => z.preprocess(
+  (value) => value === '' ? undefined : value,
+  z.string().min(1).optional(),
+);
+
+const optionalEnvironmentEmail = () => z.preprocess(
+  (value) => value === '' ? undefined : value,
+  z.string().email().optional(),
+);
+
 const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: requiredEnvironmentValue('DATABASE_URL'),
@@ -54,13 +64,13 @@ const environmentSchema = z.object({
     (value) => value === '' ? undefined : value,
     z.string().min(1).optional(),
   ),
-  RESEND_API_KEY: z.string().min(1).optional(),
-  RESEND_FROM_EMAIL: z.string().email().optional(),
-  RESEND_FROM: z.string().email().optional(),
-  USDA_API_KEY: z.string().min(1).optional(),
-  OPENAI_API_KEY: z.string().min(1).optional(),
+  RESEND_API_KEY: optionalEnvironmentString(),
+  RESEND_FROM_EMAIL: optionalEnvironmentEmail(),
+  RESEND_FROM: optionalEnvironmentEmail(),
+  USDA_API_KEY: optionalEnvironmentString(),
+  OPENAI_API_KEY: optionalEnvironmentString(),
   OPENAI_MODEL: z.string().min(1).default('gpt-5.5'),
-  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_CLIENT_ID: optionalEnvironmentString(),
 });
 
 export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {

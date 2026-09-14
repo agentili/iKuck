@@ -87,4 +87,25 @@ describe('loadConfig', () => {
     })).toThrow();
   });
 
+  it('treats blank optional provider settings as absent', () => {
+    const config = loadConfig({
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://ikuck:secret@postgres:5432/ikuck',
+      REDIS_URL: 'redis://redis:6379',
+      APP_ORIGIN: 'https://app.ikuck.it',
+      GOOGLE_CLIENT_ID: '',
+      OPENAI_API_KEY: '',
+      RESEND_API_KEY: '',
+      RESEND_FROM_EMAIL: '',
+      USDA_API_KEY: '',
+    });
+
+    expect(config.providers).toMatchObject({ openAiModel: 'gpt-5.5' });
+    expect(config.googleClientId).toBeUndefined();
+    expect(config.providers.resendApiKey).toBeUndefined();
+    expect(config.providers.resendFrom).toBeUndefined();
+    expect(config.providers.usdaApiKey).toBeUndefined();
+    expect(config.providers.openAiApiKey).toBeUndefined();
+  });
+
 });
