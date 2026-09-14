@@ -44,4 +44,15 @@ describe('OpenAI recipe provider', () => {
     });
     await expect(malformed.generate({ ingredients: ['Ceci'], constraints: [] })).rejects.toMatchObject({ code: 'provider_error', provider: 'recipes' });
   });
+
+  it('maps a network timeout to a stable recipes timeout error', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation((_input, init) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    }));
+    const provider = createOpenAiRecipeProvider({ apiKey: 'secret-key', model: 'gpt-5.5', fetch, timeoutMs: 1 });
+
+    await expect(provider.generate({ ingredients: ['Ceci'], constraints: [] })).rejects.toMatchObject({
+      code: 'provider_timeout', provider: 'recipes',
+    });
+  });
 });

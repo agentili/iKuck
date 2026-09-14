@@ -1,4 +1,6 @@
+import { FetchTimeoutError, fetchWithTimeout } from './fetchWithTimeout.js';
 import { ProviderRequestError, type NutritionEstimate, type NutritionLookup, type NutritionProvider } from './types.js';
+import { ProviderTimeoutError } from './types.js';
 
 const USDA_SEARCH_URL = 'https://api.nal.usda.gov/fdc/v1/foods/search';
 
@@ -12,6 +14,7 @@ const requiredNutrients = [
 interface UsdaProviderOptions {
   apiKey: string;
   fetch?: typeof globalThis.fetch;
+  timeoutMs?: number;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
@@ -45,7 +48,7 @@ const scaleValue = (value: number | null, quantityGrams: number | undefined): nu
   value === null ? null : value * (quantityGrams === undefined ? 1 : quantityGrams / 100)
 );
 
-export const createUsdaNutritionProvider = ({ apiKey, fetch }: UsdaProviderOptions): NutritionProvider => ({
+export const createUsdaNutritionProvider = ({ apiKey, fetch, timeoutMs = 8000 }: UsdaProviderOptions): NutritionProvider => ({
   lookup: async (lookup: NutritionLookup): Promise<NutritionEstimate> => {
     if (apiKey.trim() === '' || lookup.query.trim() === ''
       || (lookup.quantityGrams !== undefined && (!Number.isFinite(lookup.quantityGrams) || lookup.quantityGrams <= 0))) {
@@ -60,8 +63,9 @@ export const createUsdaNutritionProvider = ({ apiKey, fetch }: UsdaProviderOptio
 
     let response: Response;
     try {
-      response = await request(url, { method: 'GET', headers: { accept: 'application/json' } });
-    } catch {
+      response = await fetchWithTimeout(request, url, { method: 'GET', headers: { accept: 'application/json' } }, timeoutMs);
+    } catch (error) {
+      if (error instanceof FetchTimeoutError) throw new ProviderTimeoutError('nutrition');
       throw new ProviderRequestError('nutrition');
     }
     if (!response.ok) throw new ProviderRequestError('nutrition');

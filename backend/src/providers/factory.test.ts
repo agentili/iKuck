@@ -45,4 +45,15 @@ describe('createProviders', () => {
     await expect(providers.recipes.generate({ ingredients: ['Ceci'], constraints: [] })).resolves.toMatchObject({ title: 'Ceci croccanti' });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
+
+  it('injects the same fetch implementation into the Resend adapter', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(JSON.stringify({ id: 'email-1' })));
+    const providers = createProviders({ providers: {
+      resendApiKey: 'test-key', resendFrom: 'no-reply@ikuck.example',
+    } }, { fetch });
+
+    await providers.email.send({ to: 'person@example.com', subject: 'Verify', html: '<p>Verify</p>' });
+
+    expect(fetch).toHaveBeenCalledOnce();
+  });
 });

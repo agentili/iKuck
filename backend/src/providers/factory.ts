@@ -26,13 +26,23 @@ export const createProviders = (
 
   return {
     email: providers.resendApiKey !== undefined && providers.resendFrom !== undefined
-      ? createResendEmailProvider({ apiKey: providers.resendApiKey, from: providers.resendFrom })
+      ? createResendEmailProvider({
+        apiKey: providers.resendApiKey,
+        from: providers.resendFrom,
+        fetch: options.fetch,
+        timeoutMs: providers.resendTimeoutMs,
+      })
       : createUnavailableEmailProvider(reasonFor(providers.resendApiKey)),
     nutrition: providers.usdaApiKey !== undefined
-      ? createUsdaNutritionProvider({ apiKey: providers.usdaApiKey, fetch: options.fetch })
+      ? createUsdaNutritionProvider({ apiKey: providers.usdaApiKey, fetch: options.fetch, timeoutMs: providers.usdaTimeoutMs })
       : createUnavailableNutritionProvider(reasonFor(providers.usdaApiKey)),
     recipes: providers.openAiApiKey !== undefined
-      ? createOpenAiRecipeProvider({ apiKey: providers.openAiApiKey, model: providers.openAiModel ?? 'gpt-5.5', fetch: options.fetch })
+      ? createOpenAiRecipeProvider({
+        apiKey: providers.openAiApiKey,
+        model: providers.openAiModel ?? 'gpt-5.5',
+        fetch: options.fetch,
+        timeoutMs: providers.openAiTimeoutMs,
+      })
       : createUnavailableRecipeProvider(reasonFor(providers.openAiApiKey)),
   };
 };

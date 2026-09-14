@@ -58,4 +58,15 @@ describe('USDA nutrition provider', () => {
     const malformedProvider = createUsdaNutritionProvider({ apiKey: 'test-key', fetch: malformedFetch });
     await expect(malformedProvider.lookup({ query: 'rice' })).rejects.toMatchObject({ code: 'provider_error', provider: 'nutrition' });
   });
+
+  it('maps a network timeout to a stable nutrition timeout error', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation((_input, init) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    }));
+    const provider = createUsdaNutritionProvider({ apiKey: 'test-key', fetch, timeoutMs: 1 });
+
+    await expect(provider.lookup({ query: 'rice' })).rejects.toMatchObject({
+      code: 'provider_timeout', provider: 'nutrition',
+    });
+  });
 });

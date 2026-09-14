@@ -26,6 +26,15 @@ export class ProviderRequestError extends Error {
   }
 }
 
+export class ProviderTimeoutError extends Error {
+  readonly code = 'provider_timeout' as const;
+
+  constructor(readonly provider: ProviderName | 'resend') {
+    super(`${provider} provider request timed out`);
+    this.name = 'ProviderTimeoutError';
+  }
+}
+
 export interface EmailMessage {
   to: string;
   subject: string;

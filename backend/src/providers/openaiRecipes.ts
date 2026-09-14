@@ -1,4 +1,6 @@
+import { FetchTimeoutError, fetchWithTimeout } from './fetchWithTimeout.js';
 import { ProviderRequestError, type GeneratedRecipeDraft, type RecipeGenerationProvider } from './types.js';
+import { ProviderTimeoutError } from './types.js';
 
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 
@@ -30,6 +32,7 @@ interface OpenAiRecipeProviderOptions {
   apiKey: string;
   model: string;
   fetch?: typeof globalThis.fetch;
+  timeoutMs?: number;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
@@ -47,7 +50,7 @@ const readOutputText = (value: unknown): string | null => {
   return null;
 };
 
-export const createOpenAiRecipeProvider = ({ apiKey, model, fetch }: OpenAiRecipeProviderOptions): RecipeGenerationProvider => ({
+export const createOpenAiRecipeProvider = ({ apiKey, model, fetch, timeoutMs = 30000 }: OpenAiRecipeProviderOptions): RecipeGenerationProvider => ({
   generate: async (request): Promise<GeneratedRecipeDraft> => {
     if (apiKey.trim() === '' || model.trim() === '' || request.ingredients.length === 0) {
       throw new ProviderRequestError('recipes', 'OpenAI request is invalid');
@@ -71,12 +74,13 @@ export const createOpenAiRecipeProvider = ({ apiKey, model, fetch }: OpenAiRecip
 
     let response: Response;
     try {
-      response = await requestFetch(OPENAI_RESPONSES_URL, {
+      response = await fetchWithTimeout(requestFetch, OPENAI_RESPONSES_URL, {
         method: 'POST',
         headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
         body: JSON.stringify(body),
-      });
-    } catch {
+      }, timeoutMs);
+    } catch (error) {
+      if (error instanceof FetchTimeoutError) throw new ProviderTimeoutError('recipes');
       throw new ProviderRequestError('recipes');
     }
     if (!response.ok) throw new ProviderRequestError('recipes');

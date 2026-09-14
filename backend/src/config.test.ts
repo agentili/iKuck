@@ -65,4 +65,26 @@ describe('loadConfig', () => {
     })).toMatchObject({ syncMaxClientClockSkewMs: 900000 });
   });
 
+  it('parses distinct provider timeouts and rejects unsafe values', () => {
+    expect(loadConfig({
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://ikuck:secret@postgres:5432/ikuck',
+      REDIS_URL: 'redis://redis:6379',
+      APP_ORIGIN: 'https://app.ikuck.it',
+      RESEND_TIMEOUT_MS: '1200',
+      USDA_TIMEOUT_MS: '2400',
+      OPENAI_TIMEOUT_MS: '3600',
+    })).toMatchObject({
+      providers: { resendTimeoutMs: 1200, usdaTimeoutMs: 2400, openAiTimeoutMs: 3600 },
+    });
+
+    expect(() => loadConfig({
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://ikuck:secret@postgres:5432/ikuck',
+      REDIS_URL: 'redis://redis:6379',
+      APP_ORIGIN: 'https://app.ikuck.it',
+      RESEND_TIMEOUT_MS: '99',
+    })).toThrow();
+  });
+
 });
