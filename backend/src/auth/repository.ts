@@ -33,7 +33,6 @@ export interface AuthRepository {
   consumeVerificationToken: (tokenHash: string, now: Date) => Promise<UserRecord | null>;
   createSession: (input: { userId: string; tokenHash: string; csrfTokenHash: string; expiresAt: Date }) => Promise<{ id: string }>;
   findSessionByTokenHash: (tokenHash: string, now: Date) => Promise<SessionRecord | null>;
-  rotateCsrfToken: (sessionId: string, csrfTokenHash: string) => Promise<void>;
   touchSession: (sessionId: string, now: Date) => Promise<void>;
   revokeSession: (tokenHash: string) => Promise<void>;
   revokeAllSessions: (userId: string) => Promise<void>;
@@ -117,10 +116,6 @@ export const createDrizzleAuthRepository = (database: ApplicationDatabase['db'])
       csrfTokenHash: result.session.csrfTokenHash,
       expiresAt: result.session.expiresAt,
     };
-  },
-
-  rotateCsrfToken: async (sessionId, csrfTokenHash) => {
-    await database.update(authSessions).set({ csrfTokenHash }).where(eq(authSessions.id, sessionId));
   },
 
   touchSession: async (sessionId, now) => {

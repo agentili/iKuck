@@ -113,18 +113,18 @@ const createSessionForUser = async (input: {
   tokenFactory: () => OpaqueToken;
 }): Promise<{ user: AccountSummary; sessionToken: string; csrfToken: string; expiresAt: Date }> => {
   const sessionToken = input.tokenFactory();
-  const csrfToken = input.tokenFactory();
+  const csrfToken = hashOpaqueToken(sessionToken.raw);
   const expiresAt = new Date(input.clock().getTime() + SESSION_TTL_MS);
   await input.repository.createSession({
     userId: input.user.id,
     tokenHash: sessionToken.hash,
-    csrfTokenHash: csrfToken.hash,
+    csrfTokenHash: hashOpaqueToken(csrfToken),
     expiresAt,
   });
   return {
     user: toAccountSummary(input.user),
     sessionToken: sessionToken.raw,
-    csrfToken: csrfToken.raw,
+    csrfToken,
     expiresAt,
   };
 };
@@ -294,10 +294,8 @@ export const createAuthService = ({
     if (session === null) return null;
     const user = await repository.findUserById(session.userId);
     if (user === null || user.emailVerifiedAt === null) return null;
-    const csrfToken = tokenFactory();
-    await repository.rotateCsrfToken(session.id, csrfToken.hash);
     await repository.touchSession(session.id, clock());
-    return { user: toAccountSummary(user), csrfToken: csrfToken.raw, expiresAt: session.expiresAt };
+    return { user: toAccountSummary(user), csrfToken: hashOpaqueToken(sessionToken), expiresAt: session.expiresAt };
   },
 
   authenticate: async (sessionToken) => {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { EmailProvider } from '../providers/types.js';
 import type { AuthRepository, UserRecord } from './repository.js';
 import { createAuthService } from './service.js';
+import { hashOpaqueToken } from './tokens.js';
 
 const user: UserRecord = {
   id: 'user-1',
@@ -19,7 +20,6 @@ const repositoryWith = (overrides: Partial<AuthRepository> = {}): AuthRepository
   consumeVerificationToken: vi.fn(),
   createSession: vi.fn(),
   findSessionByTokenHash: vi.fn(),
-  rotateCsrfToken: vi.fn(),
   touchSession: vi.fn(),
   revokeSession: vi.fn(),
   revokeAllSessions: vi.fn(),
@@ -117,6 +117,38 @@ describe('authentication service', () => {
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1' }));
   });
 
+  it('keeps the csrf token stable across repeated session restores', async () => {
+    const session = {
+      id: 'session-1',
+      userId: 'user-1',
+      email: user.email,
+      tokenHash: hashOpaqueToken('session-token'),
+      csrfTokenHash: hashOpaqueToken(hashOpaqueToken('session-token')),
+      expiresAt: new Date('2026-10-13T12:00:00.000Z'),
+    };
+    const findSessionByTokenHash = vi.fn().mockResolvedValue(session);
+    const tokenFactory = vi.fn()
+      .mockReturnValueOnce({ raw: 'rotated-csrf-1', hash: 'rotated-csrf-hash-1' })
+      .mockReturnValueOnce({ raw: 'rotated-csrf-2', hash: 'rotated-csrf-hash-2' });
+    const service = createAuthService({
+      repository: repositoryWith({
+        findSessionByTokenHash,
+        findUserById: vi.fn().mockResolvedValue({ ...user, emailVerifiedAt: new Date('2026-09-12T12:00:00.000Z') }),
+      }),
+      email,
+      appOrigin: 'http://localhost:5173',
+      tokenFactory,
+    });
+
+    const first = await service.restoreSession('session-token');
+    const second = await service.restoreSession('session-token');
+
+    expect(first?.csrfToken).toBe(hashOpaqueToken('session-token'));
+    expect(second?.csrfToken).toBe(first?.csrfToken);
+    expect(tokenFactory).not.toHaveBeenCalled();
+    expect(findSessionByTokenHash).toHaveBeenCalledTimes(2);
+  });
+
   it('creates a verified local account for a new Google identity', async () => {
     const now = new Date('2026-09-13T12:00:00.000Z');
     const createdUser: UserRecord = {
@@ -150,7 +182,7 @@ describe('authentication service', () => {
     })).resolves.toMatchObject({
       user: { id: 'google-user-1', email: 'google@example.com', emailVerifiedAt: now.toISOString() },
       sessionToken: 'session-token',
-      csrfToken: 'csrf-token',
+      csrfToken: hashOpaqueToken('session-token'),
     });
     expect(createUser).toHaveBeenCalledWith({ email: 'google@example.com', passwordHash: null, emailVerifiedAt: now });
     expect(createExternalIdentity).toHaveBeenCalledWith({
