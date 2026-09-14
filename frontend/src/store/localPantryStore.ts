@@ -5,6 +5,7 @@ import { aggregatePantryLots, validatePantryLotDetails, type PantryQuantityAggre
 import type { ParsedIngredient } from '../domain/types';
 import type { PantryLot, PantryLotPayload } from '@ikuck/shared/contracts';
 import {
+  GUEST_SYNC_SCOPE,
   enqueuePantryMutation,
   registerPantrySnapshotListener,
 } from '../sync/syncQueue';
@@ -80,7 +81,7 @@ export const usePantryStore = create<PantryState>()(
             pantryLots: nextLots,
           });
           for (const lot of newLots) {
-            void enqueuePantryMutation('pantry_lot', lot.id, 'upsert', lot).catch(() => undefined);
+            void enqueuePantryMutation(GUEST_SYNC_SCOPE, 'pantry_lot', lot.id, 'upsert', lot).catch(() => undefined);
           }
         },
         addPantryLot: (input) => {
@@ -97,7 +98,7 @@ export const usePantryStore = create<PantryState>()(
           };
           const nextLots = [...(current.pantryLots ?? []), lot];
           set({ pantryItems: derivePantryItems(nextLots), pantryLots: nextLots });
-          void enqueuePantryMutation('pantry_lot', lot.id, 'upsert', lot).catch(() => undefined);
+          void enqueuePantryMutation(GUEST_SYNC_SCOPE, 'pantry_lot', lot.id, 'upsert', lot).catch(() => undefined);
           return lot.id;
         },
         updatePantryLot: (id, details) => {
@@ -109,7 +110,7 @@ export const usePantryStore = create<PantryState>()(
           const updated: PantryLot = { ...existing, ...details, updatedAt: new Date().toISOString() };
           const nextLots = (current.pantryLots ?? []).map((lot) => lot.id === id ? updated : lot);
           set({ pantryItems: derivePantryItems(nextLots), pantryLots: nextLots });
-          void enqueuePantryMutation('pantry_lot', updated.id, 'upsert', updated).catch(() => undefined);
+          void enqueuePantryMutation(GUEST_SYNC_SCOPE, 'pantry_lot', updated.id, 'upsert', updated).catch(() => undefined);
           return true;
         },
         removePantryLot: (id) => {
@@ -117,7 +118,7 @@ export const usePantryStore = create<PantryState>()(
           if (!current.pantryLots?.some((lot) => lot.id === id)) return;
           const nextLots = (current.pantryLots ?? []).filter((lot) => lot.id !== id);
           set({ pantryItems: derivePantryItems(nextLots), pantryLots: nextLots });
-          void enqueuePantryMutation('pantry_lot', id, 'delete', null).catch(() => undefined);
+          void enqueuePantryMutation(GUEST_SYNC_SCOPE, 'pantry_lot', id, 'delete', null).catch(() => undefined);
         },
         getLotsForIngredient: (ingredientId) => normalizeStateSnapshot(get()).pantryLots?.filter((lot) => lot.ingredientId === ingredientId) ?? [],
         getPantryQuantitySummary: () => aggregatePantryLots(normalizeStateSnapshot(get()).pantryLots ?? []),
@@ -128,7 +129,7 @@ export const usePantryStore = create<PantryState>()(
           const nextLots = (current.pantryLots ?? []).filter((lot) => lot.ingredientId !== id);
           set({ pantryItems: derivePantryItems(nextLots), pantryLots: nextLots });
           for (const lot of removedLots) {
-            void enqueuePantryMutation('pantry_lot', lot.id, 'delete', null).catch(() => undefined);
+            void enqueuePantryMutation(GUEST_SYNC_SCOPE, 'pantry_lot', lot.id, 'delete', null).catch(() => undefined);
           }
         },
         toggleStaple: (id) => {
@@ -138,7 +139,7 @@ export const usePantryStore = create<PantryState>()(
               ? [...state.stapleIds, id]
               : state.stapleIds.filter((item) => item !== id),
           }));
-          void enqueuePantryMutation('staple_preference', id, 'upsert', { enabled }).catch(() => undefined);
+          void enqueuePantryMutation(GUEST_SYNC_SCOPE, 'staple_preference', id, 'upsert', { enabled }).catch(() => undefined);
         },
         resetPantry: () => {
           const current = normalizeStateSnapshot(get());
@@ -151,12 +152,12 @@ export const usePantryStore = create<PantryState>()(
             pantryLots: [],
           });
           for (const lot of current.pantryLots ?? []) {
-            void enqueuePantryMutation('pantry_lot', lot.id, 'delete', null).catch(() => undefined);
+            void enqueuePantryMutation(GUEST_SYNC_SCOPE, 'pantry_lot', lot.id, 'delete', null).catch(() => undefined);
           }
           for (const stapleId of changedStaples) {
             const enabled = defaultStapleIds.has(stapleId);
             if (current.stapleIds.includes(stapleId) !== enabled) {
-              void enqueuePantryMutation('staple_preference', stapleId, 'upsert', { enabled }).catch(() => undefined);
+              void enqueuePantryMutation(GUEST_SYNC_SCOPE, 'staple_preference', stapleId, 'upsert', { enabled }).catch(() => undefined);
             }
           }
         },

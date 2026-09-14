@@ -1,7 +1,7 @@
 import { DEFAULT_STAPLE_IDS } from '../../domain/ingredients';
 import { vi } from 'vitest';
 import { deleteLocalDatabase, readKeyValue, writeKeyValue } from '../../storage/indexedDb';
-import { readQueuedMutations, syncNow, waitForPendingQueueWrites } from '../../sync/syncQueue';
+import { GUEST_SYNC_SCOPE, readQueuedMutations, syncNow, waitForPendingQueueWrites } from '../../sync/syncQueue';
 import { hydratePantryStore, usePantryStore } from '../localPantryStore';
 
 describe('pantry store', () => {
@@ -161,7 +161,7 @@ describe('pantry store', () => {
     usePantryStore.getState().toggleStaple('salt');
     await waitForPendingQueueWrites();
 
-    const mutations = await readQueuedMutations();
+    const mutations = await readQueuedMutations(GUEST_SYNC_SCOPE);
     expect(usePantryStore.getState().pantryItems).toEqual([
       { id: 'pasta', label: 'Pasta', known: true },
     ]);
@@ -210,7 +210,7 @@ describe('pantry store', () => {
       label: 'Pomodoro',
       known: true,
     });
-    await expect(readQueuedMutations()).resolves.toEqual([]);
+    await expect(readQueuedMutations(GUEST_SYNC_SCOPE)).resolves.toEqual([]);
   });
 
   it('persists pantry and staples across rehydration', async () => {

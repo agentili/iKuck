@@ -1,12 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CookEvent, DietProfile, PantryLot, RecipePreference, ShoppingListItem, SyncChangeSet, SyncMutation } from '@ikuck/shared/contracts';
-import { deleteLocalDatabase, readMeta } from '../storage/indexedDb';
+import {
+  deleteLocalDatabase,
+  deleteQueueValue,
+  readMeta,
+  readQueueValues,
+  writeQueueValue,
+  type SyncScope,
+} from '../storage/indexedDb';
 import { readCookEvents, readRecipePreferences, writeCookEvents, writeRecipePreferences } from '../storage/activityStorage';
 import { readPantrySnapshot } from '../storage/pantryStorage';
 import { readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
 import { readDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
 import {
   enqueueMutation,
+  getAccountSyncScope,
   getDeviceId,
   importLocalData,
   readQueuedMutations,
@@ -31,10 +39,39 @@ const sampleMutation = (mutationId = 'mutation-1', clientUpdatedAt = '2026-09-12
 });
 
 const responseFor = (body: SyncChangeSet) => new Response(JSON.stringify(body), { status: 200 });
+const accountScope = getAccountSyncScope(session.userId);
 
 describe('sync queue', () => {
   beforeEach(async () => {
     await deleteLocalDatabase();
+  });
+
+  it('isolates queue reads and deletes by guest and account scope', async () => {
+    const writeScopedMutation = async (scope: SyncScope, mutationId: string) => {
+      await writeQueueValue({
+        ...sampleMutation(mutationId),
+        scope,
+        createdAt: '2026-09-12T12:00:00.000Z',
+      });
+    };
+
+    await writeScopedMutation('guest', 'guest-mutation');
+    await writeScopedMutation('account:user-a', 'user-a-mutation');
+    await writeScopedMutation('account:user-b', 'user-b-mutation');
+
+    await expect(readQueueValues<{ mutationId: string }>('guest')).resolves.toEqual([
+      expect.objectContaining({ mutationId: 'guest-mutation' }),
+    ]);
+    await expect(readQueueValues<{ mutationId: string }>('account:user-a')).resolves.toEqual([
+      expect.objectContaining({ mutationId: 'user-a-mutation' }),
+    ]);
+
+    await deleteQueueValue('user-a-mutation', 'account:user-a');
+
+    await expect(readQueueValues<{ mutationId: string }>('account:user-a')).resolves.toEqual([]);
+    await expect(readQueueValues<{ mutationId: string }>('account:user-b')).resolves.toEqual([
+      expect.objectContaining({ mutationId: 'user-b-mutation' }),
+    ]);
   });
 
   it('creates a device id once without storing account secrets', async () => {
@@ -47,22 +84,22 @@ describe('sync queue', () => {
   });
 
   it('queues mutations in timestamp order and remains idempotent by mutation id', async () => {
-    await enqueueMutation(sampleMutation('mutation-2', '2026-09-12T12:02:00.000Z'));
-    await enqueueMutation(sampleMutation('mutation-1', '2026-09-12T12:01:00.000Z'));
-    await enqueueMutation(sampleMutation('mutation-1', '2026-09-12T12:01:00.000Z'));
+    await enqueueMutation(accountScope, sampleMutation('mutation-2', '2026-09-12T12:02:00.000Z'));
+    await enqueueMutation(accountScope, sampleMutation('mutation-1', '2026-09-12T12:01:00.000Z'));
+    await enqueueMutation(accountScope, sampleMutation('mutation-1', '2026-09-12T12:01:00.000Z'));
 
-    expect((await readQueuedMutations()).map(({ mutationId }) => mutationId)).toEqual([
+    expect((await readQueuedMutations(accountScope)).map(({ mutationId }) => mutationId)).toEqual([
       'mutation-1',
       'mutation-2',
     ]);
   });
 
   it('keeps mutations queued when the sync request fails', async () => {
-    await enqueueMutation(sampleMutation());
+    await enqueueMutation(accountScope, sampleMutation());
     const fetch = vi.fn().mockRejectedValue(new TypeError('offline'));
 
     await expect(syncNow({ fetch, session })).rejects.toMatchObject({ code: 'network_error' });
-    await expect(readQueuedMutations()).resolves.toHaveLength(1);
+    await expect(readQueuedMutations(accountScope)).resolves.toHaveLength(1);
   });
 
   it('rejects before sending when the session is not verified', async () => {
@@ -76,7 +113,7 @@ describe('sync queue', () => {
   });
 
   it('removes sent mutations, applies server changes and advances the cursor', async () => {
-    await enqueueMutation(sampleMutation());
+    await enqueueMutation(accountScope, sampleMutation());
     const fetch = vi.fn().mockResolvedValue(responseFor({
       changes: [{ ...sampleMutation(), serverSequence: 4 }],
       nextCursor: 4,
@@ -88,8 +125,8 @@ describe('sync queue', () => {
       credentials: 'include',
       headers: expect.objectContaining({ 'x-csrf-token': 'csrf-1' }),
     }));
-    await expect(readQueuedMutations()).resolves.toEqual([]);
-    await expect(readSyncCursor()).resolves.toBe(4);
+    await expect(readQueuedMutations(accountScope)).resolves.toEqual([]);
+    await expect(readSyncCursor(accountScope)).resolves.toBe(4);
   });
 
   it('applies a remote pantry lot and keeps its quantity and expiry details', async () => {
@@ -156,7 +193,7 @@ describe('sync queue', () => {
     await syncNow({ fetch, session });
 
     await expect(readShoppingList()).resolves.toEqual([item]);
-    await expect(readQueuedMutations()).resolves.toEqual([]);
+    await expect(readQueuedMutations(accountScope)).resolves.toEqual([]);
   });
 
   it('includes local shopping items in the explicit account import', async () => {
@@ -252,7 +289,7 @@ describe('sync queue', () => {
 
     await expect(readCookEvents()).resolves.toEqual([event]);
     await expect(readRecipePreferences()).resolves.toEqual([preference]);
-    await expect(readQueuedMutations()).resolves.toEqual([]);
+    await expect(readQueuedMutations(accountScope)).resolves.toEqual([]);
   });
 
   it('applies a remote diet profile without re-enqueueing it', async () => {
@@ -273,7 +310,7 @@ describe('sync queue', () => {
     await syncNow({ fetch, session });
 
     await expect(readDietProfile()).resolves.toEqual(profile);
-    await expect(readQueuedMutations()).resolves.toEqual([]);
+    await expect(readQueuedMutations(accountScope)).resolves.toEqual([]);
   });
 
   it('includes the local diet profile in the explicit account import', async () => {

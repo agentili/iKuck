@@ -14,6 +14,7 @@ import {
   deleteQueueValue,
   readMeta,
   readQueueValues,
+  type SyncScope,
   writeMeta,
   writeQueueValue,
 } from '../storage/indexedDb';
@@ -39,8 +40,14 @@ import { readShoppingList, writeShoppingList } from '../storage/shoppingListStor
 import { readDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
 
 const DEVICE_ID_META_KEY = 'deviceId';
-const CURSOR_META_KEY = 'cursor';
 const MAX_MUTATIONS_PER_REQUEST = 100;
+
+export type { SyncScope } from '../storage/indexedDb';
+export const GUEST_SYNC_SCOPE: SyncScope = 'guest';
+
+export const getAccountSyncScope = (userId: string): SyncScope => `account:${userId}`;
+
+const cursorMetaKey = (scope: SyncScope): string => `syncCursor:${scope}`;
 
 export interface SyncSession {
   userId: string;
@@ -48,7 +55,8 @@ export interface SyncSession {
   csrfToken: string;
 }
 
-interface QueuedMutation extends SyncMutation {
+export interface QueuedMutation extends SyncMutation {
+  scope: SyncScope;
   createdAt: string;
 }
 
@@ -116,20 +124,22 @@ export async function createPantryMutation(
   };
 }
 
-const queueMutationWrite = (mutation: SyncMutation): Promise<void> => {
+const queueMutationWrite = (scope: SyncScope, mutation: SyncMutation): Promise<void> => {
   const operation = pendingQueueWrites.then(() => writeQueueValue<QueuedMutation>({
     ...mutation,
+    scope,
     createdAt: new Date().toISOString(),
   }));
   pendingQueueWrites = operation.catch(() => undefined);
   return operation;
 };
 
-export async function enqueueMutation(mutation: SyncMutation): Promise<void> {
-  await queueMutationWrite(mutation);
+export async function enqueueMutation(scope: SyncScope, mutation: SyncMutation): Promise<void> {
+  await queueMutationWrite(scope, mutation);
 }
 
 export function enqueuePantryMutation(
+  scope: SyncScope,
   entityType: SyncEntityType,
   entityId: string,
   operation: SyncOperation,
@@ -139,6 +149,7 @@ export function enqueuePantryMutation(
     .then(() => createPantryMutation(entityType, entityId, operation, payload))
     .then((mutation) => writeQueueValue<QueuedMutation>({
       ...mutation,
+      scope,
       createdAt: new Date().toISOString(),
     }));
   pendingQueueWrites = operationPromise.catch(() => undefined);
@@ -146,12 +157,13 @@ export function enqueuePantryMutation(
 }
 
 export function enqueueEntityMutation(
+  scope: SyncScope,
   entityType: SyncEntityType,
   entityId: string,
   operation: SyncOperation,
   payload: unknown | null,
 ): Promise<void> {
-  return enqueuePantryMutation(entityType, entityId, operation, payload);
+  return enqueuePantryMutation(scope, entityType, entityId, operation, payload);
 }
 
 export async function waitForPendingQueueWrites(): Promise<void> {
@@ -160,13 +172,14 @@ export async function waitForPendingQueueWrites(): Promise<void> {
 
 export async function importLocalData(session: SyncSession): Promise<SyncChangeSet> {
   ensureVerifiedSession(session);
+  const scope = getAccountSyncScope(session.userId);
   const snapshot = normalizePantrySnapshot(await readPantrySnapshot() ?? { pantryItems: [], stapleIds: [] });
 
   for (const lot of snapshot.pantryLots ?? []) {
-    await enqueueMutation(await createPantryMutation('pantry_lot', lot.id, 'upsert', lot));
+    await enqueueMutation(scope, await createPantryMutation('pantry_lot', lot.id, 'upsert', lot));
   }
   for (const stapleId of snapshot.stapleIds) {
-    await enqueueMutation(await createPantryMutation(
+    await enqueueMutation(scope, await createPantryMutation(
       'staple_preference',
       stapleId,
       'upsert',
@@ -174,15 +187,15 @@ export async function importLocalData(session: SyncSession): Promise<SyncChangeS
     ));
   }
   for (const item of await readShoppingList()) {
-    await enqueueMutation(await createPantryMutation('shopping_list_item', item.id, 'upsert', item));
+    await enqueueMutation(scope, await createPantryMutation('shopping_list_item', item.id, 'upsert', item));
   }
   for (const event of await readCookEvents()) {
-    await enqueueMutation(await createPantryMutation('cook_event', event.id, 'upsert', event));
+    await enqueueMutation(scope, await createPantryMutation('cook_event', event.id, 'upsert', event));
   }
   for (const preference of await readRecipePreferences()) {
-    await enqueueMutation(await createPantryMutation('recipe_preference', preference.recipeId, 'upsert', preference));
+    await enqueueMutation(scope, await createPantryMutation('recipe_preference', preference.recipeId, 'upsert', preference));
   }
-  await enqueueMutation(await createPantryMutation('diet_profile', 'profile', 'upsert', await readDietProfile()));
+  await enqueueMutation(scope, await createPantryMutation('diet_profile', 'profile', 'upsert', await readDietProfile()));
 
   return syncNow({ session });
 }
@@ -192,13 +205,13 @@ const toMutation = ({ createdAt, ...mutation }: QueuedMutation): SyncMutation =>
   return mutation;
 };
 
-export async function readQueuedMutations(): Promise<SyncMutation[]> {
-  const values = await readQueueValues<QueuedMutation>();
+export async function readQueuedMutations(scope: SyncScope): Promise<SyncMutation[]> {
+  const values = await readQueueValues<QueuedMutation>(scope);
   return values.sort(compareMutations).map(toMutation);
 }
 
-export async function readSyncCursor(): Promise<number> {
-  const cursor = await readMeta<number>(CURSOR_META_KEY);
+export async function readSyncCursor(scope: SyncScope): Promise<number> {
+  const cursor = await readMeta<number>(cursorMetaKey(scope));
   return cursor ?? 0;
 }
 
@@ -329,13 +342,14 @@ export function registerDietProfileSnapshotListener(listener: (profile: DietProf
 
 export async function syncNow({ fetch, request = apiRequest, session }: SyncRequestOptions): Promise<SyncChangeSet> {
   ensureVerifiedSession(session);
+  const scope = getAccountSyncScope(session.userId);
   if (syncPromise !== null) return syncPromise;
 
   syncPromise = (async () => {
     await waitForPendingQueueWrites();
     const deviceId = await getDeviceId();
-    const cursor = await readSyncCursor();
-    const queued = (await readQueueValues<QueuedMutation>()).sort(compareMutations);
+    const cursor = await readSyncCursor(scope);
+    const queued = (await readQueueValues<QueuedMutation>(scope)).sort(compareMutations);
     const batch = queued.slice(0, MAX_MUTATIONS_PER_REQUEST);
     const result = await request<SyncChangeSet>('/v1/sync', {
       method: 'POST',
@@ -345,9 +359,9 @@ export async function syncNow({ fetch, request = apiRequest, session }: SyncRequ
     });
 
     await applyServerChanges(result.changes);
-    await writeMeta(CURSOR_META_KEY, Math.max(cursor, result.nextCursor));
+    await writeMeta(cursorMetaKey(scope), Math.max(cursor, result.nextCursor));
     for (const mutation of batch) {
-      await deleteQueueValue(mutation.mutationId);
+      await deleteQueueValue(mutation.mutationId, scope);
     }
     return result;
   })().finally(() => {

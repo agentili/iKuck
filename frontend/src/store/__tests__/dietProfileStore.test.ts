@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { DietProfilePayload } from '@ikuck/shared/contracts';
 import { deleteLocalDatabase, readMeta } from '../../storage/indexedDb';
 import { readDietProfile } from '../../storage/dietProfileStorage';
-import { readQueuedMutations } from '../../sync/syncQueue';
+import { GUEST_SYNC_SCOPE, readQueuedMutations } from '../../sync/syncQueue';
 import { hydrateDietProfileStore, useDietProfileStore, waitForPendingDietProfileWrites } from '../dietProfileStore';
 
 const profile: DietProfilePayload = {
@@ -38,7 +38,7 @@ describe('diet profile store', () => {
     await waitForPendingDietProfileWrites();
 
     expect(await readDietProfile()).toMatchObject(profile);
-    expect(await readQueuedMutations()).toEqual(expect.arrayContaining([
+    expect(await readQueuedMutations(GUEST_SYNC_SCOPE)).toEqual(expect.arrayContaining([
       expect.objectContaining({ entityType: 'diet_profile', entityId: 'profile', operation: 'upsert', payload: expect.objectContaining(profile) }),
     ]));
     await expect(readMeta('deviceId')).resolves.toBeTypeOf('string');

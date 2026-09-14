@@ -2,7 +2,7 @@ import type { PantryRecipe } from '../../domain/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { deleteLocalDatabase, readKeyValue } from '../../storage/indexedDb';
 import { readShoppingList } from '../../storage/shoppingListStorage';
-import { readQueuedMutations, waitForPendingQueueWrites } from '../../sync/syncQueue';
+import { GUEST_SYNC_SCOPE, readQueuedMutations, waitForPendingQueueWrites } from '../../sync/syncQueue';
 import { hydrateShoppingListStore, useShoppingListStore } from '../shoppingListStore';
 
 const recipe: PantryRecipe = {
@@ -92,7 +92,7 @@ describe('shopping list store', () => {
     });
     await waitForPendingQueueWrites();
 
-    await expect(readQueuedMutations()).resolves.toEqual([
+    await expect(readQueuedMutations(GUEST_SYNC_SCOPE)).resolves.toEqual([
       expect.objectContaining({ entityType: 'shopping_list_item', operation: 'upsert' }),
     ]);
   });

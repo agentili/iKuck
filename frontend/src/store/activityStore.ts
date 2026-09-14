@@ -11,6 +11,7 @@ import {
   writeRecipePreferences,
 } from '../storage/activityStorage';
 import {
+  GUEST_SYNC_SCOPE,
   enqueueEntityMutation,
   registerActivitySnapshotListener,
   waitForPendingQueueWrites,
@@ -81,7 +82,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     const events = [...get().events, event];
     set({ events });
     void persistEvents(events).catch(() => undefined);
-    void enqueueEntityMutation('cook_event', event.id, 'upsert', event).catch(() => undefined);
+    void enqueueEntityMutation(GUEST_SYNC_SCOPE, 'cook_event', event.id, 'upsert', event).catch(() => undefined);
     return event.id;
   },
   removeCookEvent: (id) => {
@@ -90,7 +91,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     const events = get().events.filter((event) => event.id !== id);
     set({ events });
     void persistEvents(events).catch(() => undefined);
-    void enqueueEntityMutation('cook_event', id, 'delete', null).catch(() => undefined);
+    void enqueueEntityMutation(GUEST_SYNC_SCOPE, 'cook_event', id, 'delete', null).catch(() => undefined);
     return true;
   },
   clearActivity: () => {
@@ -99,7 +100,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     set({ events: [] });
     void persistEvents([]).catch(() => undefined);
     for (const event of events) {
-      void enqueueEntityMutation('cook_event', event.id, 'delete', null).catch(() => undefined);
+      void enqueueEntityMutation(GUEST_SYNC_SCOPE, 'cook_event', event.id, 'delete', null).catch(() => undefined);
     }
     return events.length;
   },
@@ -113,7 +114,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
       const preferences = get().preferences.filter((preference) => preference.recipeId !== recipeId);
       set({ preferences });
       void persistPreferences(preferences).catch(() => undefined);
-      void enqueueEntityMutation('recipe_preference', recipeId, 'delete', null).catch(() => undefined);
+      void enqueueEntityMutation(GUEST_SYNC_SCOPE, 'recipe_preference', recipeId, 'delete', null).catch(() => undefined);
       return true;
     }
     const now = new Date().toISOString();
@@ -125,7 +126,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     const preferences = [...get().preferences.filter((item) => item.recipeId !== recipeId), preference];
     set({ preferences });
     void persistPreferences(preferences).catch(() => undefined);
-    void enqueueEntityMutation('recipe_preference', recipeId, 'upsert', preference).catch(() => undefined);
+    void enqueueEntityMutation(GUEST_SYNC_SCOPE, 'recipe_preference', recipeId, 'upsert', preference).catch(() => undefined);
     return true;
   },
   removeRecipePreference: (recipeId) => get().setRecipePreference(recipeId, false, null, null),

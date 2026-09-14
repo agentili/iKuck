@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { RECIPES } from '../../domain/recipes';
 import { deleteLocalDatabase, readMeta } from '../../storage/indexedDb';
 import { readCookEvents, readRecipePreferences } from '../../storage/activityStorage';
-import { readQueuedMutations } from '../../sync/syncQueue';
+import { GUEST_SYNC_SCOPE, readQueuedMutations } from '../../sync/syncQueue';
 import { usePantryStore } from '../localPantryStore';
 import {
   hydrateActivityStore,
@@ -72,7 +72,7 @@ describe('activity store', () => {
     useActivityStore.getState().setRecipePreference(RECIPES[0].id, true, 5, null);
     await waitForPendingActivityWrites();
 
-    const mutations = await readQueuedMutations();
+    const mutations = await readQueuedMutations(GUEST_SYNC_SCOPE);
     expect(mutations).toEqual(expect.arrayContaining([
       expect.objectContaining({ entityType: 'cook_event', operation: 'upsert' }),
       expect.objectContaining({ entityType: 'recipe_preference', entityId: RECIPES[0].id, operation: 'upsert' }),
