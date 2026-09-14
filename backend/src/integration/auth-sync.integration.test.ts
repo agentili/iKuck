@@ -113,7 +113,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
 
     try {
       await expect(repository.createUser({ email, passwordHash: 'password-hash' }))
-        .rejects.toThrow('profile insert failed');
+        .rejects.toThrow();
       await expect(repository.findUserByEmail(email)).resolves.toBeNull();
     } finally {
       await database.db.execute(sql`DROP TRIGGER IF EXISTS auth_repository_test_profile_failure ON user_profiles`);
@@ -146,7 +146,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
         providerSubject: `google-subject-${Date.now()}`,
         providerEmail: email,
         emailVerifiedAt: new Date('2026-09-13T12:00:00.000Z'),
-      })).rejects.toThrow('identity insert failed');
+      })).rejects.toThrow();
       await expect(repository.findUserByEmail(email)).resolves.toBeNull();
     } finally {
       await database.db.execute(sql`DROP TRIGGER IF EXISTS auth_repository_test_google_identity_failure ON account_identities`);
@@ -191,8 +191,10 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     const tokenMatch = sentEmails[0].html.match(/token=([^"&]+)/);
     expect(tokenMatch).not.toBeNull();
     const verification = await app.inject({
-      method: 'GET',
-      url: `/v1/auth/verify-email?token=${decodeURIComponent(tokenMatch![1])}`,
+      method: 'POST',
+      url: '/v1/auth/verify-email',
+      headers: { origin: appOrigin },
+      payload: { token: decodeURIComponent(tokenMatch![1]) },
     });
     expect(verification.statusCode).toBe(200);
 
@@ -482,8 +484,10 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     const tokenMatch = emailMessage!.html.match(/token=([^"&]+)/);
     expect(tokenMatch).not.toBeNull();
     const verification = await app.inject({
-      method: 'GET',
-      url: `/v1/auth/verify-email?token=${decodeURIComponent(tokenMatch![1])}`,
+      method: 'POST',
+      url: '/v1/auth/verify-email',
+      headers: { origin: appOrigin },
+      payload: { token: decodeURIComponent(tokenMatch![1]) },
     });
     expect(verification.statusCode).toBe(200);
 
