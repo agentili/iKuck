@@ -67,6 +67,13 @@ interface SyncRequestOptions {
   isSessionCurrent?: () => boolean;
 }
 
+export type SyncStatusState = 'idle' | 'syncing' | 'success' | 'error';
+
+export interface SyncStatusSnapshot {
+  state: SyncStatusState;
+  error: unknown | null;
+}
+
 export class SyncSessionChangedError extends Error {
   readonly code = 'session_changed';
 
@@ -77,6 +84,8 @@ export class SyncSessionChangedError extends Error {
 }
 
 const syncPromises = new Map<string, Promise<SyncChangeSet>>();
+const syncStatuses = new Map<SyncScope, SyncStatusSnapshot>();
+const syncStatusListeners = new Map<SyncScope, Set<(status: SyncStatusSnapshot) => void>>();
 let pendingQueueWrites = Promise.resolve();
 const pantrySnapshotListeners = new Set<(snapshot: PantrySnapshot) => void>();
 const shoppingListListeners = new Set<(items: ShoppingListItem[]) => void>();
@@ -85,6 +94,30 @@ const activitySnapshotListeners = new Set<(snapshot: {
   preferences: RecipePreference[];
 }) => void>();
 const dietProfileSnapshotListeners = new Set<(profile: DietProfile) => void>();
+
+const idleSyncStatus = (): SyncStatusSnapshot => ({ state: 'idle', error: null });
+
+const setSyncStatus = (scope: SyncScope, status: SyncStatusSnapshot): void => {
+  syncStatuses.set(scope, status);
+  for (const listener of syncStatusListeners.get(scope) ?? []) listener(status);
+};
+
+export function getSyncStatus(scope: SyncScope): SyncStatusSnapshot {
+  return syncStatuses.get(scope) ?? idleSyncStatus();
+}
+
+export function subscribeSyncStatus(
+  scope: SyncScope,
+  listener: (status: SyncStatusSnapshot) => void,
+): () => void {
+  const listeners = syncStatusListeners.get(scope) ?? new Set<(status: SyncStatusSnapshot) => void>();
+  listeners.add(listener);
+  syncStatusListeners.set(scope, listeners);
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0) syncStatusListeners.delete(scope);
+  };
+}
 
 const createRandomId = (): string => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -392,11 +425,27 @@ export async function syncNow({ fetch, request = apiRequest, session, isSessionC
   return operation;
 }
 
-export function syncOnReconnect(getSession: () => SyncSession | null): () => void {
+export async function syncVerifiedSession(
+  session: SyncSession,
+  options: Omit<SyncRequestOptions, 'session'> = {},
+): Promise<SyncChangeSet | null> {
+  const scope = getAccountSyncScope(session.userId);
+  setSyncStatus(scope, { state: 'syncing', error: null });
+  try {
+    const result = await syncNow({ ...options, session });
+    setSyncStatus(scope, { state: 'success', error: null });
+    return result;
+  } catch (error) {
+    setSyncStatus(scope, { state: 'error', error });
+    return null;
+  }
+}
+
+export function listenForReconnect(getSession: () => SyncSession | null): () => void {
   const onOnline = () => {
     const session = getSession();
     if (session === null) return;
-    void syncNow({ session }).catch(() => undefined);
+    void syncVerifiedSession(session);
   };
 
   window.addEventListener('online', onOnline);

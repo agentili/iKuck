@@ -14,12 +14,15 @@ import { readShoppingList, writeShoppingList } from '../storage/shoppingListStor
 import { readDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
 import {
   enqueueMutation,
+  getSyncStatus,
   getAccountSyncScope,
   getDeviceId,
   importLocalData,
   readQueuedMutations,
   readSyncCursor,
   syncNow,
+  syncVerifiedSession,
+  listenForReconnect,
 } from './syncQueue';
 
 const session = {
@@ -147,6 +150,33 @@ describe('sync queue', () => {
     await expect(readQueuedMutations(accountScope)).resolves.toHaveLength(1);
     await expect(readSyncCursor(accountScope)).resolves.toBe(0);
     await expect(readPantrySnapshot()).resolves.toBeNull();
+  });
+
+  it('records the initial sync error instead of swallowing it', async () => {
+    const request = vi.fn().mockRejectedValue(new Error('offline'));
+
+    await expect(syncVerifiedSession(session, { request })).resolves.toBeNull();
+
+    expect(getSyncStatus(accountScope)).toMatchObject({
+      state: 'error',
+      error: expect.objectContaining({ message: 'offline' }),
+    });
+  });
+
+  it('syncs a verified session on reconnect and removes the listener', async () => {
+    let currentSession: typeof session | null = session;
+    const fetch = vi.fn().mockResolvedValue(responseFor({ changes: [], nextCursor: 1 }));
+    vi.stubGlobal('fetch', fetch);
+    const removeListener = listenForReconnect(() => currentSession);
+
+    window.dispatchEvent(new Event('online'));
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+
+    removeListener();
+    currentSession = null;
+    window.dispatchEvent(new Event('online'));
+    expect(fetch).toHaveBeenCalledOnce();
+    vi.unstubAllGlobals();
   });
 
   it('creates a device id once without storing account secrets', async () => {

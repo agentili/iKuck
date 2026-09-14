@@ -8,10 +8,21 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import ShoppingListPage from './pages/ShoppingListPage';
 import ActivityPage from './pages/ActivityPage';
-import { syncOnReconnect, type SyncSession } from './sync/syncQueue';
+import { listenForReconnect, syncVerifiedSession, type SyncSession } from './sync/syncQueue';
 import { hydrateShoppingListStore } from './store/shoppingListStore';
 import { hydrateActivityStore } from './store/activityStore';
 import { hydrateDietProfileStore } from './store/dietProfileStore';
+
+const readVerifiedSession = (): SyncSession | null => {
+  const { user, csrfToken } = useAuthStore.getState();
+  if (user === null || csrfToken === null || user.emailVerifiedAt === '') return null;
+
+  return {
+    userId: user.id,
+    emailVerifiedAt: user.emailVerifiedAt,
+    csrfToken,
+  };
+};
 
 export default function App() {
   const user = useAuthStore((state) => state.user);
@@ -29,14 +40,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (user === null || csrfToken === null || user.emailVerifiedAt === '') return undefined;
+    const session = readVerifiedSession();
+    if (session === null) return undefined;
 
-    const session: SyncSession = {
-      userId: user.id,
-      emailVerifiedAt: user.emailVerifiedAt,
-      csrfToken,
-    };
-    return syncOnReconnect(() => session);
+    void syncVerifiedSession(session, {
+      isSessionCurrent: () => {
+        const current = readVerifiedSession();
+        return current?.userId === session.userId && current.csrfToken === session.csrfToken;
+      },
+    });
+
+    return listenForReconnect(readVerifiedSession);
   }, [csrfToken, user]);
 
   return (
