@@ -19,6 +19,7 @@ const repositoryWith = (overrides: Partial<AuthRepository> = {}): AuthRepository
   createVerificationToken: vi.fn(),
   consumeVerificationToken: vi.fn(),
   createSession: vi.fn(),
+  createGoogleUser: vi.fn(),
   findSessionByTokenHash: vi.fn(),
   touchSession: vi.fn(),
   revokeSession: vi.fn(),
@@ -157,14 +158,12 @@ describe('authentication service', () => {
       passwordHash: null,
       emailVerifiedAt: now,
     };
-    const createUser = vi.fn().mockResolvedValue(createdUser);
-    const createExternalIdentity = vi.fn().mockResolvedValue(undefined);
+    const createGoogleUser = vi.fn().mockResolvedValue(createdUser);
     const createSession = vi.fn().mockResolvedValue({ id: 'session-1' });
     const service = createAuthService({
       repository: repositoryWith({
         findUserByEmail: vi.fn().mockResolvedValue(null),
-        createUser,
-        createExternalIdentity,
+        createGoogleUser,
         createSession,
       }),
       email,
@@ -184,13 +183,34 @@ describe('authentication service', () => {
       sessionToken: 'session-token',
       csrfToken: hashOpaqueToken('session-token'),
     });
-    expect(createUser).toHaveBeenCalledWith({ email: 'google@example.com', passwordHash: null, emailVerifiedAt: now });
-    expect(createExternalIdentity).toHaveBeenCalledWith({
-      userId: 'google-user-1',
-      provider: 'google',
+    expect(createGoogleUser).toHaveBeenCalledWith({
+      email: 'google@example.com',
       providerSubject: 'google-subject-1',
       providerEmail: 'google@example.com',
+      emailVerifiedAt: now,
     });
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ userId: 'google-user-1' }));
+  });
+
+  it('maps a concurrent Google subject race to a deterministic account conflict', async () => {
+    const createGoogleUser = vi.fn().mockRejectedValue(new Error('duplicate key value violates unique constraint'));
+    const service = createAuthService({
+      repository: repositoryWith({
+        findUserByEmail: vi.fn().mockResolvedValue(null),
+        findExternalIdentity: vi.fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ userId: 'other-user' }),
+        createGoogleUser,
+      }),
+      email,
+      appOrigin: 'http://127.0.0.1:5173',
+    });
+
+    await expect(service.loginWithGoogle({
+      subject: 'google-subject-1',
+      email: 'google@example.com',
+      emailVerified: true,
+    })).rejects.toMatchObject({ code: 'google_account_already_linked', status: 409 });
+    expect(createGoogleUser).toHaveBeenCalledOnce();
   });
 });

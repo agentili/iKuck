@@ -26,6 +26,12 @@ export interface SessionRecord {
 
 export interface AuthRepository {
   createUser: (input: { email: string; passwordHash: string | null; emailVerifiedAt?: Date | null }) => Promise<UserRecord>;
+  createGoogleUser: (input: {
+    email: string;
+    providerSubject: string;
+    providerEmail: string;
+    emailVerifiedAt: Date;
+  }) => Promise<UserRecord>;
   markEmailVerified: (userId: string, now: Date) => Promise<void>;
   findUserByEmail: (email: string) => Promise<UserRecord | null>;
   findUserById: (id: string) => Promise<UserRecord | null>;
@@ -54,6 +60,21 @@ export const createDrizzleAuthRepository = (database: ApplicationDatabase['db'])
   createUser: async ({ email, passwordHash, emailVerifiedAt = null }) => database.transaction(async (transaction) => {
     const [user] = await transaction.insert(users).values({ email, passwordHash, emailVerifiedAt }).returning();
     await transaction.insert(userProfiles).values({ userId: user.id });
+    return toUserRecord(user);
+  }),
+
+  createGoogleUser: async ({ email, providerSubject, providerEmail, emailVerifiedAt }) => database.transaction(async (transaction) => {
+    const [user] = await transaction.insert(users).values({
+      email,
+      passwordHash: null,
+      emailVerifiedAt,
+    }).returning();
+    await transaction.insert(accountIdentities).values({
+      userId: user.id,
+      provider: 'google',
+      providerSubject,
+      providerEmail,
+    });
     return toUserRecord(user);
   }),
 

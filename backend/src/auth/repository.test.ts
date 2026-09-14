@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ApplicationDatabase } from '../db/client.js';
-import { userProfiles, users } from '../db/schema.js';
+import { accountIdentities, userProfiles, users } from '../db/schema.js';
 import { createDrizzleAuthRepository } from './repository.js';
 
 describe('Drizzle auth repository', () => {
@@ -34,5 +34,45 @@ describe('Drizzle auth repository', () => {
     expect(database.transaction).toHaveBeenCalledOnce();
     expect(insert).toHaveBeenCalledWith(users);
     expect(insert).toHaveBeenCalledWith(userProfiles);
+  });
+
+  it('rolls back a Google user when identity creation fails', async () => {
+    const createdUser = {
+      id: 'google-user-1',
+      email: 'google@example.com',
+      passwordHash: null,
+      emailVerifiedAt: new Date('2026-09-13T12:00:00.000Z'),
+    };
+    const identityError = new Error('identity insert failed');
+    const insert = vi.fn((table: unknown) => table === accountIdentities
+      ? { values: vi.fn(async () => { throw identityError; }) }
+      : {
+          values: vi.fn(() => ({
+            returning: vi.fn(async () => [createdUser]),
+          })),
+        });
+    const transaction = { insert };
+    const database = {
+      transaction: vi.fn(async (callback: (value: typeof transaction) => Promise<unknown>) => callback(transaction)),
+    } as unknown as ApplicationDatabase['db'];
+
+    const repository = createDrizzleAuthRepository(database) as unknown as {
+      createGoogleUser: (input: {
+        email: string;
+        providerSubject: string;
+        providerEmail: string;
+        emailVerifiedAt: Date;
+      }) => Promise<unknown>;
+    };
+
+    await expect(repository.createGoogleUser({
+      email: createdUser.email,
+      providerSubject: 'google-subject-1',
+      providerEmail: createdUser.email,
+      emailVerifiedAt: createdUser.emailVerifiedAt,
+    })).rejects.toThrow('identity insert failed');
+    expect(database.transaction).toHaveBeenCalledOnce();
+    expect(insert).toHaveBeenCalledWith(users);
+    expect(insert).toHaveBeenCalledWith(accountIdentities);
   });
 });

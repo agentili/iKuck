@@ -241,17 +241,24 @@ export const createAuthService = ({
       : await repository.findUserById(linkedIdentity.userId);
 
     if (user === null && linkedIdentity === null) {
-      user = await repository.createUser({
-        email: normalizeEmail(identity.email),
-        passwordHash: null,
-        emailVerifiedAt: clock(),
-      });
-      await repository.createExternalIdentity({
-        userId: user.id,
-        provider: 'google',
-        providerSubject: identity.subject,
-        providerEmail: normalizeEmail(identity.email),
-      });
+      try {
+        user = await repository.createGoogleUser({
+          email: normalizeEmail(identity.email),
+          providerSubject: identity.subject,
+          providerEmail: normalizeEmail(identity.email),
+          emailVerifiedAt: clock(),
+        });
+      } catch (error) {
+        const racedIdentity = await repository.findExternalIdentity('google', identity.subject);
+        if (racedIdentity !== null) {
+          throw new AuthServiceError('google_account_already_linked', 409, 'Google account is already linked');
+        }
+        const racedUser = await repository.findUserByEmail(normalizeEmail(identity.email));
+        if (racedUser !== null) {
+          throw new AuthServiceError('google_account_link_required', 409, 'Google account must be linked explicitly');
+        }
+        throw error;
+      }
     } else if (user === null) {
       throw new AuthServiceError('invalid_credentials', 401, 'Google account is not available');
     } else if (linkedIdentity === null) {

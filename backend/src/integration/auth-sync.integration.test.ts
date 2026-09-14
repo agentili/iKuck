@@ -121,6 +121,39 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     }
   });
 
+  it('rolls back a Google user when identity creation fails', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+
+    const email = `integration-google-atomic-${Date.now()}@example.com`;
+    const repository = createDrizzleAuthRepository(database.db);
+    await database.db.execute(sql`DROP TRIGGER IF EXISTS auth_repository_test_google_identity_failure ON account_identities`);
+    await database.db.execute(sql`DROP FUNCTION IF EXISTS auth_repository_test_google_identity_failure()`);
+    await database.db.execute(sql`
+      CREATE FUNCTION auth_repository_test_google_identity_failure()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $$ BEGIN RAISE EXCEPTION 'identity insert failed'; END; $$
+    `);
+    await database.db.execute(sql`
+      CREATE TRIGGER auth_repository_test_google_identity_failure
+      BEFORE INSERT ON account_identities
+      FOR EACH ROW EXECUTE FUNCTION auth_repository_test_google_identity_failure()
+    `);
+
+    try {
+      await expect(repository.createGoogleUser({
+        email,
+        providerSubject: `google-subject-${Date.now()}`,
+        providerEmail: email,
+        emailVerifiedAt: new Date('2026-09-13T12:00:00.000Z'),
+      })).rejects.toThrow('identity insert failed');
+      await expect(repository.findUserByEmail(email)).resolves.toBeNull();
+    } finally {
+      await database.db.execute(sql`DROP TRIGGER IF EXISTS auth_repository_test_google_identity_failure ON account_identities`);
+      await database.db.execute(sql`DROP FUNCTION IF EXISTS auth_repository_test_google_identity_failure()`);
+    }
+  });
+
   it('registers, verifies, logs in, synchronizes idempotently and exports without secrets', async () => {
     const email = `integration-${Date.now()}@example.com`;
     const register = await app.inject({
