@@ -69,7 +69,21 @@ npm run build
 npm run test:e2e
 ```
 
-I test end-to-end avviano la build di produzione e verificano il percorso principale con Chromium in formato mobile e desktop, compreso il funzionamento offline e il percorso account. I test d’integrazione API richiedono invece servizi dedicati configurati con `INTEGRATION_DATABASE_URL` e `INTEGRATION_REDIS_URL`; senza queste variabili vengono saltati intenzionalmente.
+`npm run test:e2e` avvia una build locale e una suite offline deterministica: tutte le richieste `/v1/**` previste sono stub espliciti e una richiesta API non prevista fa fallire il test. Non è necessario avviare il backend e il log della suite non deve contenere `ECONNREFUSED`.
+
+`npm run test:e2e:live` è una suite separata e fail-fast: richiede `E2E_BASE_URL` e verifica `/healthz` prima di eseguire il flusso register, verify, login, sync e logout contro uno stack già avviato. Per uno stack disposable locale:
+
+```powershell
+docker compose -f compose.dev.yml up -d --build
+cd frontend
+$env:E2E_BASE_URL = 'http://localhost:5173'
+$env:E2E_API_URL = 'http://localhost:3000'
+npm run dev -- --host localhost
+```
+
+In un secondo terminale, dalla directory `frontend`, esegui `npm run test:e2e:live`. Lo stack development verifica automaticamente il nuovo account; per testare il percorso email reale in un ambiente production-like, configura il provider email e valorizza `E2E_VERIFICATION_TOKEN` con il token ricevuto per l’account creato dal test. Un token mancante non viene trattato come skip: il test usa esplicitamente il comportamento auto-verificato dello stack development.
+
+I test d’integrazione API richiedono invece servizi dedicati configurati con `INTEGRATION_DATABASE_URL` e `INTEGRATION_REDIS_URL`; senza queste variabili vengono saltati intenzionalmente.
 
 ## Operazioni VPS
 

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
 
 const verifiedUser = {
   id: 'user-1',
@@ -15,8 +16,18 @@ const clearLocalDatabase = async (page: Page) => {
   }));
 };
 
-test.beforeEach(async ({ context }) => {
+test.beforeEach(async ({ context, page }) => {
   await context.clearCookies();
+  await installOfflineBackend(page, {
+    responses: {
+      'GET /v1/ai-recipes/consent': { json: { consent: { enabled: false, updatedAt: '2026-09-14T00:00:00.000Z' } } },
+      'GET /v1/ai-recipes': { json: { recipes: [] } },
+    },
+  });
+});
+
+test.afterEach(async ({ page }) => {
+  assertOfflineBackendClean(page);
 });
 
 test('guest pantry survives reload while the API is offline', async ({ page }) => {

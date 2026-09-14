@@ -1,7 +1,13 @@
 import { expect, test } from '@playwright/test';
+import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
 
-test.beforeEach(async ({ context }) => {
+test.beforeEach(async ({ context, page }) => {
   await context.clearCookies();
+  await installOfflineBackend(page);
+});
+
+test.afterEach(async ({ page }) => {
+  assertOfflineBackendClean(page);
 });
 
 test('adds and retains optional lot quantity and expiry details', async ({ page }) => {

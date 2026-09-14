@@ -10,7 +10,7 @@ describe('Playwright execution profiles', () => {
 
     expect(config.use?.baseURL).toBe('https://staging.example.test');
     expect(config.webServer).toBeUndefined();
-    expect(config.projects?.[0].testIgnore).toEqual(/production-smoke\.spec\.ts/);
+    expect(config.projects?.[0].testIgnore).toEqual(/(?:production-smoke|live-stack)\.spec\.ts/);
   });
 
   it('rejects an HTTP target when production mode is enabled', () => {
@@ -27,5 +27,22 @@ describe('Playwright execution profiles', () => {
     expect(config.webServer).toMatchObject({
       url: 'http://127.0.0.1:4173',
     });
+  });
+
+  it('requires an explicit target for the live-stack profile', () => {
+    expect(() => createPlaywrightConfig({ E2E_LIVE: 'true' })).toThrow(/E2E_BASE_URL/);
+  });
+
+  it('selects only the live-stack project and health setup when enabled', () => {
+    const config = createPlaywrightConfig({
+      E2E_LIVE: 'true',
+      E2E_BASE_URL: 'http://127.0.0.1:8080',
+    });
+
+    expect(config.projects).toEqual([
+      expect.objectContaining({ name: 'live-chromium', testMatch: /live-stack\.spec\.ts/ }),
+    ]);
+    expect(config.globalSetup).toBe('./e2e/liveSetup.ts');
+    expect(config.webServer).toBeUndefined();
   });
 });

@@ -1,7 +1,47 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
 
-test.beforeEach(async ({ context }) => {
+const waitForDietProfilePersistence = async (page: Page): Promise<void> => {
+  await page.waitForFunction(() => new Promise<boolean>((resolve) => {
+    const request = indexedDB.open('ikuck-local-v2');
+    request.onerror = () => resolve(false);
+    request.onsuccess = () => {
+      const database = request.result;
+      try {
+        const read = database.transaction('keyValue', 'readonly').objectStore('keyValue').get('diet-profile');
+        read.onerror = () => {
+          database.close();
+          resolve(false);
+        };
+        read.onsuccess = () => {
+          const value = read.result;
+          database.close();
+          if (typeof value !== 'string') {
+            resolve(false);
+            return;
+          }
+          try {
+            const profile = JSON.parse(value) as { profile?: { excludedAllergens?: unknown } };
+            resolve(Array.isArray(profile.profile?.excludedAllergens) && profile.profile.excludedAllergens.includes('fish'));
+          } catch {
+            resolve(false);
+          }
+        };
+      } catch {
+        database.close();
+        resolve(false);
+      }
+    };
+  }));
+};
+
+test.beforeEach(async ({ context, page }) => {
   await context.clearCookies();
+  await installOfflineBackend(page);
+});
+
+test.afterEach(async ({ page }) => {
+  assertOfflineBackendClean(page);
 });
 
 test('user adds pantry items, requests recipes and opens one', async ({ page }) => {
@@ -159,6 +199,8 @@ test('nutrition filters persist and keep the narrow layout without overflow', as
   await page.getByLabel('Calorie massime per porzione').fill('400');
   await expect(page.getByText('Pasta tonno e pomodoro')).toHaveCount(0);
   await page.getByLabel('Escludi pesce').check();
+  await expect(page.getByLabel('Escludi pesce')).toBeChecked();
+  await waitForDietProfilePersistence(page);
   await page.reload();
   await expect(page.getByLabel('Calorie massime per porzione')).toHaveValue('400');
   await expect(page.getByLabel('Escludi pesce')).toBeChecked();
@@ -245,6 +287,10 @@ test('verified users can consent to private AI recipes without changing pantry l
         expiresAt: '2026-10-13T12:00:00.000Z',
       }),
     });
+  });
+
+  await page.route('**/v1/sync', async (route) => {
+    await route.fulfill({ status: 200, json: { changes: [], nextCursor: 0 } });
   });
 
   await page.route('**/v1/ai-recipes**', async (route) => {

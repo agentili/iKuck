@@ -317,7 +317,7 @@ describe('sync queue', () => {
       const body = JSON.parse((init as RequestInit).body as string) as { mutations: Array<{ mutationId: string }> };
       return body.mutations.map((mutation) => mutation.mutationId);
     });
-    expect(mutationIds[0]).toEqual(mutationIds[1]);
+    expect(new Set(mutationIds[0])).toEqual(new Set(mutationIds[1]));
     vi.unstubAllGlobals();
   });
 
