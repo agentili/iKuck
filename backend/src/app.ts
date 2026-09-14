@@ -6,6 +6,7 @@ import { type AuthRouteDependencies, registerAuthRoutes } from './routes/auth.js
 import { registerHealthRoute } from './routes/health.js';
 import { type ProfileRouteDependencies, registerProfileRoutes } from './routes/profile.js';
 import { type SyncRouteDependencies, registerSyncRoutes } from './routes/sync.js';
+import { SyncPayloadError } from './routes/sync.js';
 import { type PantryLotRouteDependencies, registerPantryLotRoutes } from './routes/pantryLots.js';
 import { type ShoppingListRouteDependencies, registerShoppingListRoutes } from './routes/shoppingList.js';
 import { type ActivityRouteDependencies, registerActivityRoutes } from './routes/activity.js';
@@ -38,6 +39,9 @@ export const createApp = (
     ...(options.trustProxy === undefined ? {} : { trustProxy: options.trustProxy }),
   });
   app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof SyncPayloadError) {
+      return reply.code(error.status).send({ code: error.code, message: error.message });
+    }
     if (error instanceof AuthServiceError) {
       if (error instanceof AuthRateLimitError && error.retryAfterSeconds !== undefined) {
         reply.header('retry-after', String(error.retryAfterSeconds));

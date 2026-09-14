@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../app.js';
 import { hashOpaqueToken } from '../auth/tokens.js';
 import type { AuthService } from '../auth/service.js';
@@ -86,7 +86,7 @@ describe('sync routes', () => {
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json()).toMatchObject({ code: 'invalid_payload' });
+    expect(response.json()).toMatchObject({ code: 'INVALID_SYNC_PAYLOAD' });
   });
 
   it('rejects an invalid shopping list payload before writing it', async () => {
@@ -125,7 +125,7 @@ describe('sync routes', () => {
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json()).toMatchObject({ code: 'invalid_payload' });
+    expect(response.json()).toMatchObject({ code: 'INVALID_SYNC_PAYLOAD' });
   });
 
   it('accepts valid activity and preference mutations and rejects invalid payloads', async () => {
@@ -189,7 +189,7 @@ describe('sync routes', () => {
       },
     });
     expect(invalid.statusCode).toBe(400);
-    expect(invalid.json()).toMatchObject({ code: 'invalid_payload' });
+    expect(invalid.json()).toMatchObject({ code: 'INVALID_SYNC_PAYLOAD' });
     await app.close();
   });
 
@@ -230,7 +230,7 @@ describe('sync routes', () => {
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json()).toMatchObject({ code: 'invalid_payload' });
+    expect(response.json()).toMatchObject({ code: 'INVALID_SYNC_PAYLOAD' });
     await app.close();
   });
 
@@ -318,7 +318,83 @@ describe('sync routes', () => {
       },
     });
     expect(invalid.statusCode).toBe(400);
-    expect(invalid.json()).toMatchObject({ code: 'invalid_payload' });
+    expect(invalid.json()).toMatchObject({ code: 'INVALID_SYNC_PAYLOAD' });
+    await app.close();
+  });
+
+  it.each([
+    ['malformed body', null],
+    ['unknown entity', {
+      deviceId: 'device-1', cursor: 0, mutations: [{
+        mutationId: 'mutation-unknown', deviceId: 'device-1', entityType: 'unknown', entityId: 'item-1',
+        operation: 'upsert', payload: {}, clientUpdatedAt: '2026-09-13T12:00:00.000Z',
+      }],
+    }],
+    ['incomplete mutation', {
+      deviceId: 'device-1', cursor: 0, mutations: [{
+        deviceId: 'device-1', entityType: 'pantry_item', entityId: 'item-1',
+        operation: 'upsert', payload: {}, clientUpdatedAt: '2026-09-13T12:00:00.000Z',
+      }],
+    }],
+    ['incoherent device id', {
+      deviceId: 'device-1', cursor: 0, mutations: [{
+        mutationId: 'mutation-device', deviceId: 'device-2', entityType: 'pantry_item', entityId: 'item-1',
+        operation: 'upsert', payload: {}, clientUpdatedAt: '2026-09-13T12:00:00.000Z',
+      }],
+    }],
+  ])('returns a stable 400 for %s', async (_name, body) => {
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository: createMemorySyncRepository(), authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers: {
+        cookie: 'ikuck_session=session-token',
+        origin: 'http://127.0.0.1:5173',
+        'x-csrf-token': 'csrf-token',
+      },
+      payload: body,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ code: 'INVALID_SYNC_PAYLOAD', message: 'Request payload is invalid' });
+    await app.close();
+  });
+
+  it('redacts repository failures instead of exposing internal details', async () => {
+    const repository = createMemorySyncRepository();
+    vi.spyOn(repository, 'applyMutation').mockRejectedValue(new Error('database connection details'));
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository, authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers: {
+        cookie: 'ikuck_session=session-token',
+        origin: 'http://127.0.0.1:5173',
+        'x-csrf-token': 'csrf-token',
+      },
+      payload: {
+        deviceId: 'device-1', cursor: 0, mutations: [{
+          mutationId: 'mutation-error', deviceId: 'device-1', entityType: 'pantry_item', entityId: 'item-1',
+          operation: 'upsert', payload: { id: 'item-1', label: 'Item', known: true }, clientUpdatedAt: '2026-09-13T12:00:00.000Z',
+        }],
+      },
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({ code: 'internal_error', message: 'Internal server error' });
+    expect(response.body).not.toContain('database connection details');
     await app.close();
   });
 });

@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { SyncMutation } from '@ikuck/shared/contracts';
-import { AuthServiceError, type AuthService } from '../auth/service.js';
+import type { AuthService } from '../auth/service.js';
 import { ensureCsrf, ensureSameOrigin, requireSession } from './auth.js';
 import type { SyncRepository } from '../sync/repository.js';
 import { isPantryLot } from '../pantry/validation.js';
@@ -42,51 +42,63 @@ const syncSchema = z.object({
   mutations: z.array(mutationSchema).max(100),
 });
 
+export class SyncPayloadError extends Error {
+  readonly code = 'INVALID_SYNC_PAYLOAD';
+  readonly status = 400;
+
+  constructor() {
+    super('Request payload is invalid');
+    this.name = 'SyncPayloadError';
+  }
+}
+
 export const registerSyncRoutes = ({ repository, authService, appOrigin }: SyncRouteDependencies): FastifyPluginAsync => async (app) => {
   app.post('/v1/sync', async (request) => {
     ensureSameOrigin(request, appOrigin);
     const { session } = await requireSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
-    const body = syncSchema.parse(request.body) as {
+    const parsedBody = syncSchema.safeParse(request.body);
+    if (!parsedBody.success) throw new SyncPayloadError();
+    const body = parsedBody.data as {
       deviceId: string;
       cursor: number;
       mutations: SyncMutation[];
     };
     if (body.mutations.some((mutation) => mutation.deviceId !== body.deviceId)) {
-      throw new Error('Mutation device does not match request device');
+      throw new SyncPayloadError();
     }
 
     for (const mutation of body.mutations) {
       if (mutation.entityType === 'pantry_lot' && mutation.operation === 'upsert'
         && (!isPantryLot(mutation.payload) || mutation.payload.id !== mutation.entityId)) {
-        throw new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');
+        throw new SyncPayloadError();
       }
       if (mutation.entityType === 'shopping_list_item' && mutation.operation === 'upsert'
         && (!isShoppingListItem(mutation.payload) || mutation.payload.id !== mutation.entityId)) {
-        throw new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');
+        throw new SyncPayloadError();
       }
       if (mutation.entityType === 'cook_event' && mutation.operation === 'upsert'
         && (!isCookEvent(mutation.payload) || mutation.payload.id !== mutation.entityId)) {
-        throw new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');
+        throw new SyncPayloadError();
       }
       if (mutation.entityType === 'recipe_preference' && mutation.operation === 'upsert'
         && (!isRecipePreference(mutation.payload) || mutation.payload.recipeId !== mutation.entityId)) {
-        throw new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');
+        throw new SyncPayloadError();
       }
       if (mutation.entityType === 'diet_profile'
         && (mutation.entityId !== 'profile'
           || (mutation.operation === 'upsert' && !isDietProfile(mutation.payload)))) {
-        throw new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');
+        throw new SyncPayloadError();
       }
       if (mutation.entityType === 'ai_consent'
         && (mutation.entityId !== 'profile'
           || (mutation.operation === 'upsert' && !isAiConsent(mutation.payload)))) {
-        throw new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');
+        throw new SyncPayloadError();
       }
       if (mutation.entityType === 'generated_recipe'
         && (mutation.operation === 'upsert'
           && (!isGeneratedRecipe(mutation.payload) || mutation.payload.id !== mutation.entityId))) {
-        throw new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');
+        throw new SyncPayloadError();
       }
     }
 
