@@ -51,11 +51,11 @@ const toUserRecord = (user: typeof users.$inferSelect): UserRecord => ({
 });
 
 export const createDrizzleAuthRepository = (database: ApplicationDatabase['db']): AuthRepository => ({
-  createUser: async ({ email, passwordHash, emailVerifiedAt = null }) => {
-    const [user] = await database.insert(users).values({ email, passwordHash, emailVerifiedAt }).returning();
-    await database.insert(userProfiles).values({ userId: user.id });
+  createUser: async ({ email, passwordHash, emailVerifiedAt = null }) => database.transaction(async (transaction) => {
+    const [user] = await transaction.insert(users).values({ email, passwordHash, emailVerifiedAt }).returning();
+    await transaction.insert(userProfiles).values({ userId: user.id });
     return toUserRecord(user);
-  },
+  }),
 
   markEmailVerified: async (userId, now) => {
     await database.update(users)

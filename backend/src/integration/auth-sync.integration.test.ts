@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { sql } from 'drizzle-orm';
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { createApp } from '../app.js';
 import { createAuthService } from '../auth/service.js';
@@ -89,6 +90,35 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     await app?.close();
     await cache?.close();
     await database?.close();
+  });
+
+  it('rolls back the user when profile creation fails', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+
+    const email = `integration-atomic-${Date.now()}@example.com`;
+    const repository = createDrizzleAuthRepository(database.db);
+    await database.db.execute(sql`DROP TRIGGER IF EXISTS auth_repository_test_profile_failure ON user_profiles`);
+    await database.db.execute(sql`DROP FUNCTION IF EXISTS auth_repository_test_profile_failure()`);
+    await database.db.execute(sql`
+      CREATE FUNCTION auth_repository_test_profile_failure()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $$ BEGIN RAISE EXCEPTION 'profile insert failed'; END; $$
+    `);
+    await database.db.execute(sql`
+      CREATE TRIGGER auth_repository_test_profile_failure
+      BEFORE INSERT ON user_profiles
+      FOR EACH ROW EXECUTE FUNCTION auth_repository_test_profile_failure()
+    `);
+
+    try {
+      await expect(repository.createUser({ email, passwordHash: 'password-hash' }))
+        .rejects.toThrow('profile insert failed');
+      await expect(repository.findUserByEmail(email)).resolves.toBeNull();
+    } finally {
+      await database.db.execute(sql`DROP TRIGGER IF EXISTS auth_repository_test_profile_failure ON user_profiles`);
+      await database.db.execute(sql`DROP FUNCTION IF EXISTS auth_repository_test_profile_failure()`);
+    }
   });
 
   it('registers, verifies, logs in, synchronizes idempotently and exports without secrets', async () => {
