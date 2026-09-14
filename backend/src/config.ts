@@ -18,6 +18,7 @@ export interface AppConfig {
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   providers: ProviderConfig;
   googleClientId?: string;
+  trustProxy?: string | string[];
   nodeEnvironment: 'development' | 'test' | 'production';
 }
 
@@ -44,6 +45,10 @@ const environmentSchema = z.object({
   HOST: z.string().min(1).default('127.0.0.1'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+  TRUST_PROXY: z.preprocess(
+    (value) => value === '' ? undefined : value,
+    z.string().min(1).optional(),
+  ),
   RESEND_API_KEY: z.string().min(1).optional(),
   RESEND_FROM_EMAIL: z.string().email().optional(),
   RESEND_FROM: z.string().email().optional(),
@@ -59,6 +64,12 @@ export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
     ? { ...developmentDefaults, ...environment, NODE_ENV: nodeEnvironment }
     : environment;
   const parsed = environmentSchema.parse(source);
+  const configuredProxies = parsed.TRUST_PROXY?.split(',').map((value) => value.trim()).filter(Boolean);
+  const trustProxy = configuredProxies === undefined || configuredProxies.length === 0
+    ? undefined
+    : configuredProxies.length === 1
+      ? configuredProxies[0]
+      : configuredProxies;
 
   if (parsed.NODE_ENV === 'production' && parsed.SESSION_SECRET.length < 32) {
     throw new Error('SESSION_SECRET must be at least 32 characters in production');
@@ -80,6 +91,7 @@ export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
       openAiModel: parsed.OPENAI_MODEL,
     },
     googleClientId: parsed.GOOGLE_CLIENT_ID,
+    trustProxy,
     nodeEnvironment: parsed.NODE_ENV,
   };
 };

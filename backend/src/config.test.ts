@@ -39,4 +39,22 @@ describe('loadConfig', () => {
       },
     });
   });
+
+  it('parses only explicitly configured proxy addresses', () => {
+    expect(loadConfig({
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://ikuck:secret@postgres:5432/ikuck',
+      REDIS_URL: 'redis://redis:6379',
+      SESSION_SECRET: 'production-session-secret-that-is-longer-than-thirty-two-characters',
+      APP_ORIGIN: 'https://app.ikuck.it',
+      TRUST_PROXY: '10.0.0.10, 10.0.0.11/32',
+    })).toMatchObject({ trustProxy: ['10.0.0.10', '10.0.0.11/32'] });
+    expect(loadConfig({
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://ikuck:secret@postgres:5432/ikuck',
+      REDIS_URL: 'redis://redis:6379',
+      SESSION_SECRET: 'production-session-secret-that-is-longer-than-thirty-two-characters',
+      APP_ORIGIN: 'https://app.ikuck.it',
+    }).trustProxy).toBeUndefined();
+  });
 });

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AuthServiceError, type AuthenticatedSession, type AuthService } from '../auth/service.js';
 import { hashOpaqueToken } from '../auth/tokens.js';
 import { GoogleIdentityError, type GoogleIdentityProvider } from '../auth/google.js';
+import type { AuthRateLimiter } from '../auth/rateLimit.js';
 
 export const SESSION_COOKIE_NAME = 'ikuck_session';
 
@@ -11,6 +12,7 @@ export interface AuthRouteDependencies {
   google?: GoogleIdentityProvider;
   appOrigin: string;
   secureCookies: boolean;
+  rateLimiter?: AuthRateLimiter;
 }
 
 const credentialsSchema = z.object({
@@ -22,6 +24,7 @@ const emailSchema = z.object({ email: z.string().trim().email().max(254) });
 const resetSchema = credentialsSchema.extend({ token: z.string().min(32).max(256) });
 const verifySchema = z.object({ token: z.string().min(32).max(256) });
 const googleSchema = z.object({ credential: z.string().min(1).max(8192) });
+const noOpRateLimiter: AuthRateLimiter = { enforce: async () => undefined };
 
 const parseBody = <T>(schema: z.ZodType<T>, body: unknown): T => {
   const result = schema.safeParse(body);
@@ -82,10 +85,12 @@ export const ensureCsrf = (request: FastifyRequest, csrfTokenHash: string): void
   }
 };
 
-export const registerAuthRoutes = ({ service, google, appOrigin, secureCookies }: AuthRouteDependencies): FastifyPluginAsync => async (app) => {
+export const registerAuthRoutes = ({ service, google, appOrigin, secureCookies, rateLimiter = noOpRateLimiter }: AuthRouteDependencies): FastifyPluginAsync => async (app) => {
   app.post('/v1/auth/register', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
-    const result = await service.register(parseBody(credentialsSchema, request.body));
+    const credentials = parseBody(credentialsSchema, request.body);
+    await rateLimiter.enforce('register', { ip: request.ip, email: credentials.email });
+    const result = await service.register(credentials);
     return reply.code(202).send({
       status: result.verificationRequired ? 'verification_required' : 'registered',
       verificationRequired: result.verificationRequired,
@@ -94,7 +99,9 @@ export const registerAuthRoutes = ({ service, google, appOrigin, secureCookies }
 
   app.post('/v1/auth/resend-verification', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
-    await service.resendVerification(parseBody(emailSchema, request.body).email);
+    const { email } = parseBody(emailSchema, request.body);
+    await rateLimiter.enforce('resendVerification', { ip: request.ip, email });
+    await service.resendVerification(email);
     return reply.code(202).send({ status: 'verification_required' });
   });
 
@@ -106,7 +113,9 @@ export const registerAuthRoutes = ({ service, google, appOrigin, secureCookies }
 
   app.post('/v1/auth/login', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
-    const result = await service.login(parseBody(credentialsSchema, request.body));
+    const credentials = parseBody(credentialsSchema, request.body);
+    await rateLimiter.enforce('login', { ip: request.ip, email: credentials.email });
+    const result = await service.login(credentials);
     reply.header('set-cookie', sessionCookie(result.sessionToken, secureCookies));
     return { authenticated: true, user: result.user, csrfToken: result.csrfToken, expiresAt: result.expiresAt.toISOString() };
   });
@@ -172,7 +181,9 @@ export const registerAuthRoutes = ({ service, google, appOrigin, secureCookies }
 
   app.post('/v1/auth/request-password-reset', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
-    await service.requestPasswordReset(parseBody(emailSchema, request.body).email);
+    const { email } = parseBody(emailSchema, request.body);
+    await rateLimiter.enforce('requestPasswordReset', { ip: request.ip, email });
+    await service.requestPasswordReset(email);
     return reply.code(202).send({ status: 'reset_requested' });
   });
 

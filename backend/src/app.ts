@@ -1,5 +1,6 @@
 import Fastify, { type FastifyServerOptions } from 'fastify';
 import { AuthServiceError } from './auth/service.js';
+import { AuthRateLimitError } from './auth/rateLimit.js';
 import type { PlatformDependencies } from './platform.js';
 import { type AuthRouteDependencies, registerAuthRoutes } from './routes/auth.js';
 import { registerHealthRoute } from './routes/health.js';
@@ -30,11 +31,17 @@ export interface ExtendedPlatformDependencies extends PlatformDependencies {
 
 export const createApp = (
   dependencies: ExtendedPlatformDependencies,
-  options: Pick<FastifyServerOptions, 'logger'> = {},
+  options: Pick<FastifyServerOptions, 'logger' | 'trustProxy'> = {},
 ) => {
-  const app = Fastify({ logger: options.logger ?? false });
+  const app = Fastify({
+    logger: options.logger ?? false,
+    ...(options.trustProxy === undefined ? {} : { trustProxy: options.trustProxy }),
+  });
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof AuthServiceError) {
+      if (error instanceof AuthRateLimitError && error.retryAfterSeconds !== undefined) {
+        reply.header('retry-after', String(error.retryAfterSeconds));
+      }
       return reply.code(error.status).send({ code: error.code, message: error.message });
     }
     app.log.error({ error: error instanceof Error ? error.name : 'unknown' }, 'Unhandled request error');

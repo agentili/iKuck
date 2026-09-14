@@ -44,6 +44,7 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       REDIS_URL: redis://redis:6379
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required}
+      TRUST_PROXY: ${TRUST_PROXY:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/healthz').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))\""]

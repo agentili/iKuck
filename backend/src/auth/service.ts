@@ -21,7 +21,9 @@ export type AuthErrorCode =
   | 'invalid_google_credential'
   | 'google_account_link_required'
   | 'google_account_already_linked'
-  | 'google_email_mismatch';
+  | 'google_email_mismatch'
+  | 'rate_limited'
+  | 'rate_limit_unavailable';
 
 export class AuthServiceError extends Error {
   constructor(

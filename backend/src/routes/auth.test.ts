@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../app.js';
 import type { AuthService } from '../auth/service.js';
 import { hashOpaqueToken } from '../auth/tokens.js';
+import { AuthRateLimitError } from '../auth/rateLimit.js';
 
 const probes = {
   database: { ping: async () => undefined },
@@ -49,6 +50,62 @@ describe('authentication routes', () => {
     expect(response.headers['set-cookie']).toContain('SameSite=Lax');
     expect(response.headers['set-cookie']).not.toContain('Secure');
     expect(response.json()).toMatchObject({ authenticated: true, csrfToken: 'csrf-token' });
+  });
+
+  it('applies the auth rate limiter before calling the login service', async () => {
+    const enforce = vi.fn().mockResolvedValue(undefined);
+    const app = createApp({
+      ...probes,
+      auth: {
+        service,
+        appOrigin: 'http://127.0.0.1:5173',
+        secureCookies: false,
+        rateLimiter: { enforce },
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/login',
+      payload: { email: 'user@example.com', password: 'password' },
+      headers: { origin: 'http://127.0.0.1:5173' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(enforce).toHaveBeenCalledWith('login', { ip: expect.any(String), email: 'user@example.com' });
+    expect(service.login).toHaveBeenCalledWith({ email: 'user@example.com', password: 'password' });
+  });
+
+  it('returns Retry-After when auth abuse limits are exceeded', async () => {
+    const app = createApp({
+      ...probes,
+      auth: {
+        service,
+        appOrigin: 'http://127.0.0.1:5173',
+        secureCookies: false,
+        rateLimiter: {
+          enforce: vi.fn().mockRejectedValue(new AuthRateLimitError(
+            'rate_limited',
+            429,
+            'Too many authentication attempts. Please try again later.',
+            900,
+          )),
+        },
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/login',
+      payload: { email: 'user@example.com', password: 'password' },
+      headers: { origin: 'http://127.0.0.1:5173' },
+    });
+
+    expect(response.statusCode).toBe(429);
+    expect(response.headers['retry-after']).toBe('900');
+    expect(response.json()).toEqual({
+      code: 'rate_limited',
+      message: 'Too many authentication attempts. Please try again later.',
+    });
+    expect(service.login).not.toHaveBeenCalled();
   });
 
   it('rejects a state-changing request from an unexpected origin', async () => {

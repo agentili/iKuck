@@ -10,6 +10,7 @@ import { createDrizzleProfileRepository } from './profile/repository.js';
 import { createDrizzleSyncRepository } from './sync/repository.js';
 import { createRedisGenerationRateLimiter } from './ai/rateLimit.js';
 import { createGoogleIdentityProvider } from './auth/google.js';
+import { createRedisAuthRateLimiter } from './auth/rateLimit.js';
 
 export const start = async () => {
   const config = loadConfig(process.env);
@@ -33,6 +34,7 @@ export const start = async () => {
         google: config.googleClientId === undefined ? undefined : createGoogleIdentityProvider({ clientId: config.googleClientId }),
         appOrigin: config.appOrigin,
         secureCookies: config.nodeEnvironment === 'production',
+        rateLimiter: createRedisAuthRateLimiter(cache),
       },
       profile: {
         repository: profile,
@@ -55,7 +57,10 @@ export const start = async () => {
         appOrigin: config.appOrigin,
       },
     },
-    { logger: { level: config.logLevel, redact: ['req.headers.cookie', 'req.headers.authorization'] } },
+    {
+      logger: { level: config.logLevel, redact: ['req.headers.cookie', 'req.headers.authorization'] },
+      trustProxy: config.trustProxy,
+    },
   );
 
   const shutdown = async () => {
