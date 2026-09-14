@@ -152,6 +152,37 @@ describe('authentication routes', () => {
     });
   });
 
+  it('keeps email verification GET requests non-mutating and confirms only on POST', async () => {
+    const verifyEmail = vi.fn().mockResolvedValue({
+      id: 'user-3',
+      email: 'verified@example.com',
+      emailVerifiedAt: '2026-09-14T12:00:00.000Z',
+    });
+    const verificationService = { verifyEmail } as unknown as AuthService;
+    const app = createApp({
+      ...probes,
+      auth: { service: verificationService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+    });
+    const token = 'verification-token-12345678901234567890';
+
+    const landing = await app.inject({
+      method: 'GET',
+      url: `/v1/auth/verify-email?token=${token}`,
+    });
+    const confirmation = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/verify-email',
+      payload: { token },
+      headers: { origin: 'http://127.0.0.1:5173' },
+    });
+
+    expect(landing.statusCode).toBe(200);
+    expect(landing.json()).toEqual({ status: 'confirmation_required' });
+    expect(confirmation.statusCode).toBe(200);
+    expect(confirmation.json()).toMatchObject({ verified: true, user: { id: 'user-3' } });
+    expect(verifyEmail).toHaveBeenCalledTimes(1);
+  });
+
   it('allows a csrf-protected mutation after two restores of the same cookie', async () => {
     const restoredSession = {
       user: { id: 'user-1', email: 'user@example.com', emailVerifiedAt: '2026-09-12T12:00:00.000Z' },

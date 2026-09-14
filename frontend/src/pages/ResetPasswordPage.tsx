@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useEffect, useState, type FormEvent } from 'react';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { ApiClientError } from '../api/apiClient';
 import { useAuthStore } from '../auth/authStore';
 
@@ -18,12 +18,22 @@ const resetError = (error: unknown): string => {
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const [token] = useState(() => searchParams.get('token'));
   const resetPassword = useAuthStore((state) => state.resetPassword);
   const isLoading = useAuthStore((state) => state.isLoading);
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [completed, setCompleted] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => (
+    token === null || token.length < 32 ? 'Il link non è valido o è scaduto.' : null
+  ));
+
+  useEffect(() => {
+    if (token !== null) {
+      window.history.replaceState(window.history.state ?? {}, '', `${location.pathname}${location.hash}`);
+    }
+  }, [location.hash, location.pathname, token]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -33,7 +43,6 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    const token = searchParams.get('token');
     if (token === null || token.length < 32) {
       setError('Il link non è valido o è scaduto.');
       return;

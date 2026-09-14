@@ -11,6 +11,7 @@ describe('ResetPasswordPage', () => {
 
   it('submits a new password with the URL token without displaying the token', async () => {
     const user = userEvent.setup();
+    const replaceState = vi.spyOn(window.history, 'replaceState');
     render(
       <MemoryRouter initialEntries={['/reset-password?token=secret-reset-token-123456789012345']}>
         <Routes>
@@ -25,10 +26,24 @@ describe('ResetPasswordPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Password aggiornata' })).toBeInTheDocument();
     expect(screen.queryByText('secret-reset-token-123456789012345')).not.toBeInTheDocument();
+    expect(replaceState).toHaveBeenCalledWith(expect.anything(), '', '/reset-password');
     expect(vi.mocked(fetch)).toHaveBeenCalledWith('/v1/auth/reset-password', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ token: 'secret-reset-token-123456789012345', password: 'a brand new password' }),
     }));
+  });
+
+  it('does not reuse a token after the URL has been scrubbed', async () => {
+    render(
+      <MemoryRouter initialEntries={['/reset-password']}>
+        <Routes>
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Il link non è valido o è scaduto.');
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('rejects mismatched passwords before calling the API', async () => {

@@ -106,7 +106,13 @@ export const registerAuthRoutes = ({ service, google, appOrigin, secureCookies, 
   });
 
   app.get('/v1/auth/verify-email', async (request) => {
-    const token = parseBody(verifySchema, request.query as { token?: string });
+    void request;
+    return { status: 'confirmation_required' };
+  });
+
+  app.post('/v1/auth/verify-email', async (request) => {
+    ensureSameOrigin(request, appOrigin);
+    const token = parseBody(verifySchema, request.body);
     const user = await service.verifyEmail(token.token);
     return { verified: true, user };
   });
