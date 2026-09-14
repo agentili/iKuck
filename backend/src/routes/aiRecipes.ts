@@ -3,7 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AiConsent, DietProfilePayload, GeneratedRecipe, GeneratedRecipeDraft, SyncChange, SyncMutation } from '@ikuck/shared/contracts';
 import { isGeneratedRecipeCompatible, isAiConsent, isGeneratedRecipe, parseGeneratedRecipeDraft } from '../ai/validation.js';
-import type { GenerationRateLimiter } from '../ai/rateLimit.js';
+import type { GenerationRateLimiter, GenerationRateReservation } from '../ai/rateLimit.js';
 import { AuthServiceError, type AuthService } from '../auth/service.js';
 import { dietProfilePayloadSchema } from '../diet/validation.js';
 import type { RecipeGenerationProvider } from '../providers/types.js';
@@ -74,6 +74,20 @@ const parseConsent = (body: unknown): boolean => {
   return result.data.enabled;
 };
 
+const reserveGeneration = async (limiter: GenerationRateLimiter, userId: string): Promise<GenerationRateReservation> => {
+  if (limiter.reserve !== undefined) return limiter.reserve(userId);
+  const quota = await limiter.consume(userId);
+  return {
+    quota,
+    commit: async () => undefined,
+    release: async () => undefined,
+  };
+};
+
+const releaseGeneration = async (reservation: GenerationRateReservation): Promise<void> => {
+  await reservation.release().catch(() => undefined);
+};
+
 export const registerAiRecipeRoutes = ({
   provider,
   limiter,
@@ -111,12 +125,13 @@ export const registerAiRecipeRoutes = ({
     const consent = await readConsent(repository, session.userId);
     if (!consent.enabled) throw new AuthServiceError('ai_consent_required', 403, 'AI recipe consent is required');
 
-    let quota;
+    let reservation: GenerationRateReservation;
     try {
-      quota = await limiter.consume(session.userId);
+      reservation = await reserveGeneration(limiter, session.userId);
     } catch {
       throw new AuthServiceError('provider_unavailable', 503, 'AI recipe provider is unavailable');
     }
+    const { quota } = reservation;
     if (!quota.allowed) {
       throw new AuthServiceError('ai_daily_limit_reached', 429, 'Daily AI recipe limit reached');
     }
@@ -129,10 +144,15 @@ export const registerAiRecipeRoutes = ({
         dietProfile: parsed.data.dietProfile as DietProfilePayload,
       }));
     } catch {
+      await releaseGeneration(reservation);
       throw new AuthServiceError('provider_unavailable', 503, 'AI recipe provider is unavailable');
     }
-    if (draft === null) throw new AuthServiceError('provider_unavailable', 503, 'AI recipe provider is unavailable');
+    if (draft === null) {
+      await releaseGeneration(reservation);
+      throw new AuthServiceError('provider_unavailable', 503, 'AI recipe provider is unavailable');
+    }
     if (!isGeneratedRecipeCompatible(draft, parsed.data.dietProfile)) {
+      await releaseGeneration(reservation);
       throw new AuthServiceError('ai_recipe_incompatible', 422, 'Generated recipe does not match the active dietary profile');
     }
 
@@ -144,7 +164,13 @@ export const registerAiRecipeRoutes = ({
       createdAt: now,
       updatedAt: now,
     };
-    await repository.applyMutation(session.userId, createMutation('generated_recipe', recipe.id, 'upsert', recipe, now));
+    try {
+      await repository.applyMutation(session.userId, createMutation('generated_recipe', recipe.id, 'upsert', recipe, now));
+      await reservation.commit();
+    } catch (error) {
+      await releaseGeneration(reservation);
+      throw error;
+    }
     return reply.code(201).send({ recipe, quota });
   });
 

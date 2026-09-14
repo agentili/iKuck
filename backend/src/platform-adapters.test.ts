@@ -41,4 +41,28 @@ describe('platform adapters', () => {
     expect(client.expire).toHaveBeenCalledWith('ikuck:test', 120);
     expect(client.quit).toHaveBeenCalledTimes(1);
   });
+
+  it('uses atomic Redis scripts for quota reservation and release', async () => {
+    let isOpen = true;
+    const evalScript = vi.fn()
+      .mockResolvedValueOnce([1, 2])
+      .mockResolvedValueOnce(1);
+    const client = {
+      get isOpen() {
+        return isOpen;
+      },
+      connect: vi.fn(),
+      ping: vi.fn().mockResolvedValue('PONG'),
+      eval: evalScript,
+      quit: vi.fn().mockImplementation(async () => { isOpen = false; }),
+    };
+    const cache = createCacheWithClient(client);
+
+    await expect(cache.reserveWithExpiry('quota-key', 5, 120)).resolves.toEqual({ allowed: true, used: 2 });
+    await expect(cache.releaseReservation('quota-key')).resolves.toBe(1);
+
+    expect(evalScript).toHaveBeenCalledTimes(2);
+    expect(evalScript.mock.calls[0]?.[1]).toEqual({ keys: ['quota-key'], arguments: ['5', '120'] });
+    expect(evalScript.mock.calls[1]?.[1]).toEqual({ keys: ['quota-key'], arguments: [] });
+  });
 });

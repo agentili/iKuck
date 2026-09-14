@@ -6,6 +6,7 @@ import { hashOpaqueToken } from '../auth/tokens.js';
 import type { GenerationRateLimiter } from '../ai/rateLimit.js';
 import { createMemorySyncRepository } from '../sync/repository.js';
 import type { RecipeGenerationProvider } from '../providers/types.js';
+import { ProviderTimeoutError } from '../providers/types.js';
 
 const appOrigin = 'http://127.0.0.1:5173';
 const headers = {
@@ -171,6 +172,120 @@ describe('AI recipe routes', () => {
     expect(exhausted.statusCode).toBe(429);
     expect(exhausted.json()).toMatchObject({ code: 'ai_daily_limit_reached' });
     expect(provider.generate).toHaveBeenCalledTimes(5);
+    await app.close();
+  });
+
+  it('commits quota only after provider success and releases it on provider failure', async () => {
+    const commit = vi.fn().mockResolvedValue(undefined);
+    const release = vi.fn().mockResolvedValue(undefined);
+    const limiter: GenerationRateLimiter = {
+      consume: vi.fn(),
+      reserve: vi.fn().mockResolvedValue({
+        quota: { allowed: true, used: 1, remaining: 4 },
+        commit,
+        release,
+      }),
+    };
+    const provider: RecipeGenerationProvider = { generate: vi.fn().mockResolvedValue(generatedDraft) };
+    const { app } = createAiApp({ provider, limiter });
+    await consent(app, true);
+
+    await expect(generate(app)).resolves.toMatchObject({ statusCode: 201 });
+    expect(commit).toHaveBeenCalledOnce();
+    expect(release).not.toHaveBeenCalled();
+
+    const failedCommit = vi.fn().mockResolvedValue(undefined);
+    const failedRelease = vi.fn().mockResolvedValue(undefined);
+    const failedProvider: RecipeGenerationProvider = { generate: vi.fn().mockRejectedValue(new Error('provider failed')) };
+    const failed = createAiApp({
+      provider: failedProvider,
+      limiter: {
+        consume: vi.fn(),
+        reserve: vi.fn().mockResolvedValue({
+          quota: { allowed: true, used: 1, remaining: 4 },
+          commit: failedCommit,
+          release: failedRelease,
+        }),
+      },
+    });
+    await consent(failed.app, true);
+
+    await expect(generate(failed.app)).resolves.toMatchObject({ statusCode: 503 });
+    expect(failedCommit).not.toHaveBeenCalled();
+    expect(failedRelease).toHaveBeenCalledOnce();
+
+    const invalidRelease = vi.fn().mockResolvedValue(undefined);
+    const invalid = createAiApp({
+      provider: { generate: vi.fn().mockResolvedValue({ ...generatedDraft, title: '' }) },
+      limiter: {
+        consume: vi.fn(),
+        reserve: vi.fn().mockResolvedValue({
+          quota: { allowed: true, used: 1, remaining: 4 },
+          commit: vi.fn().mockResolvedValue(undefined),
+          release: invalidRelease,
+        }),
+      },
+    });
+    await consent(invalid.app, true);
+    await expect(generate(invalid.app)).resolves.toMatchObject({ statusCode: 503 });
+    expect(invalidRelease).toHaveBeenCalledOnce();
+
+    const timeoutRelease = vi.fn().mockResolvedValue(undefined);
+    const timedOut = createAiApp({
+      provider: { generate: vi.fn().mockRejectedValue(new ProviderTimeoutError('recipes')) },
+      limiter: {
+        consume: vi.fn(),
+        reserve: vi.fn().mockResolvedValue({
+          quota: { allowed: true, used: 1, remaining: 4 },
+          commit: vi.fn().mockResolvedValue(undefined),
+          release: timeoutRelease,
+        }),
+      },
+    });
+    await consent(timedOut.app, true);
+    await expect(generate(timedOut.app)).resolves.toMatchObject({ statusCode: 503 });
+    expect(timeoutRelease).toHaveBeenCalledOnce();
+
+    await app.close();
+    await failed.app.close();
+    await invalid.app.close();
+    await timedOut.app.close();
+  });
+
+  it('does not let concurrent generations exceed the reserved quota', async () => {
+    let active = 0;
+    let resolveProvider: ((draft: GeneratedRecipeDraft) => void) | undefined;
+    const provider: RecipeGenerationProvider = {
+      generate: vi.fn(() => new Promise<GeneratedRecipeDraft>((resolve) => {
+        resolveProvider = resolve;
+      })),
+    };
+    const limiter: GenerationRateLimiter = {
+      consume: vi.fn(),
+      reserve: vi.fn(async () => {
+        if (active >= 1) {
+          return {
+            quota: { allowed: false, used: 2, remaining: 0 },
+            commit: async () => undefined,
+            release: async () => undefined,
+          };
+        }
+        active += 1;
+        return {
+          quota: { allowed: true, used: 1, remaining: 4 },
+          commit: async () => undefined,
+          release: async () => { active -= 1; },
+        };
+      }),
+    };
+    const { app } = createAiApp({ provider, limiter });
+    await consent(app, true);
+
+    const first = generate(app);
+    await vi.waitFor(() => expect(provider.generate).toHaveBeenCalledOnce());
+    await expect(generate(app)).resolves.toMatchObject({ statusCode: 429 });
+    resolveProvider?.(generatedDraft);
+    await expect(first).resolves.toMatchObject({ statusCode: 201 });
     await app.close();
   });
 

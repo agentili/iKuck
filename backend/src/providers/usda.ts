@@ -1,6 +1,11 @@
 import { FetchTimeoutError, fetchWithTimeout } from './fetchWithTimeout.js';
-import { ProviderRequestError, type NutritionEstimate, type NutritionLookup, type NutritionProvider } from './types.js';
-import { ProviderTimeoutError } from './types.js';
+import {
+  ProviderRequestError,
+  ProviderTimeoutError,
+  type NutritionEstimate,
+  type NutritionLookup,
+  type NutritionProvider,
+} from './types.js';
 
 const USDA_SEARCH_URL = 'https://api.nal.usda.gov/fdc/v1/foods/search';
 

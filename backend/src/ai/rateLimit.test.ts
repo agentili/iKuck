@@ -31,4 +31,37 @@ describe('AI generation rate limiter', () => {
     expect(incrementWithExpiry.mock.calls[0]?.[0]).toContain('2026-09-13');
     expect(incrementWithExpiry.mock.calls[0]?.[1]).toBeGreaterThan(0);
   });
+
+  it('reserves atomically and commits without releasing a successful slot', async () => {
+    const reserveWithExpiry = vi.fn().mockResolvedValue({ allowed: true, used: 1 });
+    const releaseReservation = vi.fn().mockResolvedValue(0);
+    const limiter = createRedisGenerationRateLimiter({
+      incrementWithExpiry: vi.fn(),
+      reserveWithExpiry,
+      releaseReservation,
+      clock: () => new Date('2026-09-13T12:00:00.000Z'),
+    });
+
+    const reservation = await limiter.reserve?.('user-1');
+
+    expect(reservation?.quota).toEqual({ allowed: true, used: 1, remaining: 4 });
+    await reservation?.commit();
+    expect(releaseReservation).not.toHaveBeenCalled();
+    expect(reserveWithExpiry).toHaveBeenCalledWith(expect.stringContaining('2026-09-13'), 5, expect.any(Number));
+  });
+
+  it('releases a reserved slot when generation fails', async () => {
+    const releaseReservation = vi.fn().mockResolvedValue(0);
+    const reservation = await createRedisGenerationRateLimiter({
+      incrementWithExpiry: vi.fn(),
+      reserveWithExpiry: vi.fn().mockResolvedValue({ allowed: true, used: 1 }),
+      releaseReservation,
+    }).reserve?.('user-1');
+
+    await reservation?.release();
+    await reservation?.release();
+
+    expect(reservation?.quota).toMatchObject({ allowed: true, used: 1 });
+    expect(releaseReservation).toHaveBeenCalledOnce();
+  });
 });
