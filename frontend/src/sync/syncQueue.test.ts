@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CookEvent, DietProfile, PantryLot, RecipePreference, ShoppingListItem, SyncChangeSet, SyncMutation } from '@ikuck/shared/contracts';
+import validMutations from '@ikuck/shared/sync-fixtures/valid.json';
+import invalidMutations from '@ikuck/shared/sync-fixtures/invalid.json';
 import type { ApiRequest } from '../api/apiClient';
 import {
   deleteLocalDatabase,
@@ -77,6 +79,18 @@ describe('sync queue', () => {
     await expect(readQueueValues<{ mutationId: string }>('account:user-b')).resolves.toEqual([
       expect.objectContaining({ mutationId: 'user-b-mutation' }),
     ]);
+  });
+
+  it('accepts valid contract fixtures and rejects invalid mutations before enqueue', async () => {
+    for (const mutation of validMutations) {
+      await expect(enqueueMutation(accountScope, mutation as SyncMutation)).resolves.toBeUndefined();
+    }
+
+    for (const mutation of invalidMutations) {
+      await expect(enqueueMutation(accountScope, mutation as SyncMutation)).rejects.toMatchObject({
+        code: 'INVALID_SYNC_MUTATION',
+      });
+    }
   });
 
   it('keeps cursors independent for two account scopes', async () => {

@@ -7,6 +7,8 @@
     "./contracts": {
       "types": "./src/contracts.ts",
       "default": "./src/contracts.ts"
-    }
+    },
+    "./sync-fixtures/valid.json": "./sync-fixtures/valid.json",
+    "./sync-fixtures/invalid.json": "./sync-fixtures/invalid.json"
   }
 }

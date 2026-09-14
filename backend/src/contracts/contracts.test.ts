@@ -12,6 +12,16 @@ const migrationPath = join(
   '0001_accounts_and_sync.sql',
 );
 
+const syncFixturePath = (name: string): string => join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  '..',
+  'shared',
+  'sync-fixtures',
+  name,
+);
+
 describe('shared contracts and account migration', () => {
   it('keeps sync mutations entity-scoped and serializable', () => {
     const mutation: SyncMutation = {
@@ -25,6 +35,13 @@ describe('shared contracts and account migration', () => {
     };
 
     expect(JSON.parse(JSON.stringify(mutation))).toEqual(mutation);
+  });
+
+  it('keeps the shared sync fixtures valid JSON contract data', () => {
+    for (const fixture of ['valid.json', 'invalid.json']) {
+      const raw = readFileSync(syncFixturePath(fixture), 'utf8');
+      expect(JSON.parse(JSON.stringify(JSON.parse(raw)))).toEqual(JSON.parse(raw));
+    }
   });
 
   it('keeps a presence-only pantry lot serializable', () => {

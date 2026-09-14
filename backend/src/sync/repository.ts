@@ -2,6 +2,7 @@ import type { SyncChange, SyncMutation } from '@ikuck/shared/contracts';
 import { and, asc, eq, gt, sql } from 'drizzle-orm';
 import type { ApplicationDatabase } from '../db/client.js';
 import { processedSyncMutations, syncItems } from '../db/schema.js';
+import { assertSyncMutation } from './validation.js';
 
 export interface StoredSyncItem {
   entityType: SyncMutation['entityType'];
@@ -56,19 +57,20 @@ export const createMemorySyncRepository = (): SyncRepository & {
 
   return {
     applyMutation: async (userId, mutation) => {
-      if (processed.has(`${userId}:${mutation.mutationId}`)) return { applied: false, change: null };
-      processed.add(`${userId}:${mutation.mutationId}`);
-      const key = entityKey(userId, mutation.entityType, mutation.entityId);
+      const validMutation = assertSyncMutation(mutation);
+      if (processed.has(`${userId}:${validMutation.mutationId}`)) return { applied: false, change: null };
+      processed.add(`${userId}:${validMutation.mutationId}`);
+      const key = entityKey(userId, validMutation.entityType, validMutation.entityId);
       const existing = entities.get(key);
-      if (existing !== undefined && !wins(mutation, existing)) return { applied: false, change: null };
+      if (existing !== undefined && !wins(validMutation, existing)) return { applied: false, change: null };
       const item: StoredSyncItem = {
-        entityType: mutation.entityType,
-        entityId: mutation.entityId,
-        deviceId: mutation.deviceId,
-        payload: mutation.payload,
-        deleted: mutation.operation === 'delete',
-        clientUpdatedAt: new Date(mutation.clientUpdatedAt),
-        mutationId: mutation.mutationId,
+        entityType: validMutation.entityType,
+        entityId: validMutation.entityId,
+        deviceId: validMutation.deviceId,
+        payload: validMutation.payload,
+        deleted: validMutation.operation === 'delete',
+        clientUpdatedAt: new Date(validMutation.clientUpdatedAt),
+        mutationId: validMutation.mutationId,
         serverSequence: ++sequence,
       };
       entities.set(key, item);
@@ -102,33 +104,34 @@ const fromDatabaseItem = (item: typeof syncItems.$inferSelect): StoredSyncItem =
 
 export const createDrizzleSyncRepository = (database: ApplicationDatabase['db']): SyncRepository => ({
   applyMutation: async (userId, mutation) => database.transaction(async (transaction) => {
+    const validMutation = assertSyncMutation(mutation);
     const [alreadyProcessed] = await transaction.select({ id: processedSyncMutations.id })
       .from(processedSyncMutations)
       .where(and(
         eq(processedSyncMutations.userId, userId),
-        eq(processedSyncMutations.mutationId, mutation.mutationId),
+        eq(processedSyncMutations.mutationId, validMutation.mutationId),
       ))
       .limit(1);
     if (alreadyProcessed !== undefined) return { applied: false, change: null };
 
-    await transaction.insert(processedSyncMutations).values({ userId, mutationId: mutation.mutationId });
+    await transaction.insert(processedSyncMutations).values({ userId, mutationId: validMutation.mutationId });
     const [existingRow] = await transaction.select().from(syncItems).where(and(
       eq(syncItems.userId, userId),
-      eq(syncItems.entityType, mutation.entityType),
-      eq(syncItems.entityId, mutation.entityId),
+      eq(syncItems.entityType, validMutation.entityType),
+      eq(syncItems.entityId, validMutation.entityId),
     )).limit(1);
     const existing = existingRow === undefined ? null : fromDatabaseItem(existingRow);
-    if (existing !== null && !wins(mutation, existing)) return { applied: false, change: null };
+    if (existing !== null && !wins(validMutation, existing)) return { applied: false, change: null };
 
     const values = {
       userId,
-      entityType: mutation.entityType,
-      entityId: mutation.entityId,
-      deviceId: mutation.deviceId,
-      payload: mutation.operation === 'delete' ? null : mutation.payload,
-      deleted: mutation.operation === 'delete',
-      clientUpdatedAt: new Date(mutation.clientUpdatedAt),
-      mutationId: mutation.mutationId,
+      entityType: validMutation.entityType,
+      entityId: validMutation.entityId,
+      deviceId: validMutation.deviceId,
+      payload: validMutation.operation === 'delete' ? null : validMutation.payload,
+      deleted: validMutation.operation === 'delete',
+      clientUpdatedAt: new Date(validMutation.clientUpdatedAt),
+      mutationId: validMutation.mutationId,
     };
     const [saved] = existing === null
       ? await transaction.insert(syncItems).values(values).returning()

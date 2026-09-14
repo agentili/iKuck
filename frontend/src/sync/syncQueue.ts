@@ -38,6 +38,7 @@ import {
 } from '../storage/activityStorage';
 import { readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
 import { readDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
+import { assertSyncMutation, isPantryItemPayload, isStaplePreferencePayload } from './validation';
 
 const DEVICE_ID_META_KEY = 'deviceId';
 const MAX_MUTATIONS_PER_REQUEST = 100;
@@ -179,7 +180,7 @@ export async function createPantryMutation(
   operation: SyncOperation,
   payload: unknown | null,
 ): Promise<SyncMutation> {
-  return {
+  return assertSyncMutation({
     mutationId: createRandomId(),
     deviceId: await getDeviceId(),
     entityType,
@@ -187,7 +188,7 @@ export async function createPantryMutation(
     operation,
     payload,
     clientUpdatedAt: new Date().toISOString(),
-  };
+  });
 }
 
 const createImportMutation = async (
@@ -212,7 +213,7 @@ const queueMutationWrite = (scope: SyncScope, mutation: SyncMutation): Promise<v
 };
 
 export async function enqueueMutation(scope: SyncScope, mutation: SyncMutation): Promise<void> {
-  await queueMutationWrite(scope, mutation);
+  await queueMutationWrite(scope, assertSyncMutation(mutation));
 }
 
 export function enqueuePantryMutation(
@@ -321,18 +322,15 @@ const applyChangeToSnapshot = (snapshot: PantrySnapshot, change: SyncChange): Pa
   if (change.entityType === 'pantry_item') {
     const pantryItems = normalizedSnapshot.pantryItems.filter((item) => item.id !== change.entityId);
     const pantryLots = (normalizedSnapshot.pantryLots ?? []).filter((lot) => lot.ingredientId !== change.entityId);
-    if (change.operation === 'upsert' && typeof change.payload === 'object' && change.payload !== null) {
-      const item = change.payload as PantrySnapshot['pantryItems'][number];
-      pantryItems.push(item);
-      pantryLots.push(createPresencePantryLot(item));
+    if (change.operation === 'upsert' && isPantryItemPayload(change.payload)
+      && change.payload.id === change.entityId) {
+      pantryItems.push(change.payload);
+      pantryLots.push(createPresencePantryLot(change.payload));
     }
     return { ...normalizedSnapshot, pantryItems: derivePantryItems(pantryLots), pantryLots };
   }
 
-  const enabled = typeof change.payload === 'object'
-    && change.payload !== null
-    && 'enabled' in change.payload
-    && (change.payload as { enabled?: unknown }).enabled === true;
+  const enabled = isStaplePreferencePayload(change.payload) && change.payload.enabled;
   const stapleIds = normalizedSnapshot.stapleIds.filter((id) => id !== change.entityId);
   return enabled ? { ...normalizedSnapshot, stapleIds: [...stapleIds, change.entityId] } : { ...normalizedSnapshot, stapleIds };
 };

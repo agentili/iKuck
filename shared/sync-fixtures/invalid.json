@@ -1,0 +1,138 @@
+[
+  {
+    "mutationId": "invalid-pantry-item",
+    "deviceId": "device-1",
+    "entityType": "pantry_item",
+    "entityId": "tomato",
+    "operation": "upsert",
+    "payload": { "id": "tomato", "label": "Pomodoro" },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "invalid-pantry-lot-extra",
+    "deviceId": "device-1",
+    "entityType": "pantry_lot",
+    "entityId": "lot-pasta",
+    "operation": "upsert",
+    "payload": {
+      "id": "lot-pasta",
+      "ingredientId": "pasta",
+      "label": "Pasta",
+      "known": true,
+      "quantity": null,
+      "unit": null,
+      "expiresAt": null,
+      "createdAt": "2026-09-13T12:00:00.000Z",
+      "updatedAt": "2026-09-13T12:00:00.000Z",
+      "unexpected": true
+    },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "invalid-staple",
+    "deviceId": "device-1",
+    "entityType": "staple_preference",
+    "entityId": "salt",
+    "operation": "upsert",
+    "payload": { "enabled": "yes" },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "invalid-shopping-item",
+    "deviceId": "device-1",
+    "entityType": "shopping_list_item",
+    "entityId": "shopping-pasta",
+    "operation": "upsert",
+    "payload": {
+      "id": "shopping-pasta",
+      "ingredientId": "pasta",
+      "label": "Pasta",
+      "quantity": 500,
+      "unit": null,
+      "note": null,
+      "purchased": false,
+      "sourceRecipeId": null,
+      "createdAt": "2026-09-13T12:00:00.000Z",
+      "updatedAt": "2026-09-13T12:00:00.000Z"
+    },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "invalid-cook-event",
+    "deviceId": "device-1",
+    "entityType": "cook_event",
+    "entityId": "event-1",
+    "operation": "upsert",
+    "payload": {
+      "id": "event-1",
+      "recipeId": "recipe-1",
+      "recipeTitle": "Pasta",
+      "servings": 0,
+      "cookedAt": "2026-09-13T12:00:00.000Z",
+      "note": null,
+      "createdAt": "2026-09-13T12:00:00.000Z",
+      "updatedAt": "2026-09-13T12:00:00.000Z"
+    },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "invalid-preference-id",
+    "deviceId": "device-1",
+    "entityType": "recipe_preference",
+    "entityId": "recipe-2",
+    "operation": "upsert",
+    "payload": {
+      "recipeId": "recipe-1",
+      "favorite": true,
+      "rating": 5,
+      "note": null,
+      "createdAt": "2026-09-13T12:00:00.000Z",
+      "updatedAt": "2026-09-13T12:00:00.000Z"
+    },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "invalid-diet-profile-extra",
+    "deviceId": "device-1",
+    "entityType": "diet_profile",
+    "entityId": "profile",
+    "operation": "upsert",
+    "payload": {
+      "diet": "vegetarian",
+      "excludedAllergens": [],
+      "nutrition": { "maxCaloriesPerServing": null, "minProteinGramsPerServing": null },
+      "updatedAt": "2026-09-13T12:00:00.000Z",
+      "unexpected": true
+    },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "invalid-ai-delete-payload",
+    "deviceId": "device-1",
+    "entityType": "ai_consent",
+    "entityId": "profile",
+    "operation": "delete",
+    "payload": {},
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "invalid-generated-recipe",
+    "deviceId": "device-1",
+    "entityType": "generated_recipe",
+    "entityId": "generated-1",
+    "operation": "upsert",
+    "payload": {
+      "id": "generated-1",
+      "source": "user",
+      "title": "Ceci croccanti",
+      "description": "Una ricetta semplice.",
+      "ingredients": [{ "name": "Ceci", "amount": "240 g" }],
+      "steps": ["Scola i ceci."],
+      "diets": ["vegan"],
+      "allergens": [],
+      "createdAt": "2026-09-13T12:00:00.000Z",
+      "updatedAt": "2026-09-13T12:00:00.000Z"
+    },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  }
+]

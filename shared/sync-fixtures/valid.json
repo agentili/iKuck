@@ -1,0 +1,145 @@
+[
+  {
+    "mutationId": "valid-pantry-item",
+    "deviceId": "device-1",
+    "entityType": "pantry_item",
+    "entityId": "tomato",
+    "operation": "upsert",
+    "payload": { "id": "tomato", "label": "Pomodoro", "known": true },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "valid-pantry-lot",
+    "deviceId": "device-1",
+    "entityType": "pantry_lot",
+    "entityId": "lot-pasta",
+    "operation": "upsert",
+    "payload": {
+      "id": "lot-pasta",
+      "ingredientId": "pasta",
+      "label": "Pasta",
+      "known": true,
+      "quantity": 500,
+      "unit": "g",
+      "expiresAt": "2026-09-20",
+      "createdAt": "2026-09-13T12:00:00.000Z",
+      "updatedAt": "2026-09-13T12:00:00.000Z"
+    },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "valid-staple",
+    "deviceId": "device-1",
+    "entityType": "staple_preference",
+    "entityId": "salt",
+    "operation": "upsert",
+    "payload": { "enabled": true },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "valid-shopping-item",
+    "deviceId": "device-1",
+    "entityType": "shopping_list_item",
+    "entityId": "shopping-pasta",
+    "operation": "upsert",
+    "payload": {
+      "id": "shopping-pasta",
+      "ingredientId": "pasta",
+      "label": "Pasta",
+      "quantity": 500,
+      "unit": "g",
+      "note": null,
+      "purchased": false,
+      "sourceRecipeId": null,
+      "createdAt": "2026-09-13T12:00:00.000Z",
+      "updatedAt": "2026-09-13T12:00:00.000Z"
+    },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "valid-cook-event",
+    "deviceId": "device-1",
+    "entityType": "cook_event",
+    "entityId": "event-1",
+    "operation": "upsert",
+    "payload": {
+      "id": "event-1",
+      "recipeId": "recipe-1",
+      "recipeTitle": "Pasta",
+      "servings": 2,
+      "cookedAt": "2026-09-13T12:00:00.000Z",
+      "note": null,
+      "createdAt": "2026-09-13T12:00:00.000Z",
+      "updatedAt": "2026-09-13T12:00:00.000Z"
+    },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "valid-preference",
+    "deviceId": "device-1",
+    "entityType": "recipe_preference",
+    "entityId": "recipe-1",
+    "operation": "upsert",
+    "payload": {
+      "recipeId": "recipe-1",
+      "favorite": true,
+      "rating": 5,
+      "note": null,
+      "createdAt": "2026-09-13T12:00:00.000Z",
+      "updatedAt": "2026-09-13T12:00:00.000Z"
+    },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "valid-diet-profile",
+    "deviceId": "device-1",
+    "entityType": "diet_profile",
+    "entityId": "profile",
+    "operation": "upsert",
+    "payload": {
+      "diet": "vegetarian",
+      "excludedAllergens": ["fish"],
+      "nutrition": { "maxCaloriesPerServing": 650, "minProteinGramsPerServing": 20 },
+      "updatedAt": "2026-09-13T12:00:00.000Z"
+    },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "valid-ai-consent",
+    "deviceId": "device-1",
+    "entityType": "ai_consent",
+    "entityId": "profile",
+    "operation": "upsert",
+    "payload": { "enabled": true, "updatedAt": "2026-09-13T12:00:00.000Z" },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "valid-generated-recipe",
+    "deviceId": "device-1",
+    "entityType": "generated_recipe",
+    "entityId": "generated-1",
+    "operation": "upsert",
+    "payload": {
+      "id": "generated-1",
+      "source": "ai",
+      "title": "Ceci croccanti",
+      "description": "Una ricetta semplice.",
+      "ingredients": [{ "name": "Ceci", "amount": "240 g" }],
+      "steps": ["Scola i ceci."],
+      "diets": ["vegan"],
+      "allergens": [],
+      "createdAt": "2026-09-13T12:00:00.000Z",
+      "updatedAt": "2026-09-13T12:00:00.000Z"
+    },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "valid-delete",
+    "deviceId": "device-1",
+    "entityType": "pantry_lot",
+    "entityId": "lot-pasta",
+    "operation": "delete",
+    "payload": null,
+    "clientUpdatedAt": "2026-09-13T12:01:00.000Z"
+  }
+]
