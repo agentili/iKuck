@@ -30,6 +30,13 @@ services:
       context: ..
       dockerfile: backend/Dockerfile
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     command: ["sh", "-c", "node dist/db/migrate.js && node dist/server.js"]
     depends_on:
       postgres:

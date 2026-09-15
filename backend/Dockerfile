@@ -22,6 +22,10 @@ RUN npm ci --omit=dev
 COPY --from=build /app/backend/dist ./dist
 COPY --from=build /app/backend/src/db/migrations ./dist/db/migrations
 
+RUN addgroup -S ikuck && adduser -S -G ikuck ikuck \
+  && chown -R ikuck:ikuck /app/backend
+USER ikuck
+
 EXPOSE 3000
 
 CMD ["node", "dist/server.js"]
