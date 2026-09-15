@@ -4,6 +4,10 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  define: {
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(process.env.npm_package_version ?? '0.1.0'),
+    'import.meta.env.VITE_BUILD_ID': JSON.stringify(process.env.VITE_BUILD_ID ?? 'local'),
+  },
   server: {
     proxy: {
       '/v1': {
@@ -15,7 +19,8 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      injectRegister: null,
+      registerType: 'prompt',
       strategies: 'generateSW',
       includeAssets: ['icons/icon-192x192.png', 'icons/icon-512x512.png'],
       manifest: {

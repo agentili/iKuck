@@ -12,6 +12,9 @@ interface ProfileResponse {
   };
 }
 
+const appVersion = import.meta.env.VITE_APP_VERSION ?? '0.1.0';
+const buildId = import.meta.env.VITE_BUILD_ID ?? 'local';
+
 const operationError = (error: unknown): string => {
   if (error instanceof ApiClientError && error.code === 'network_error') {
     return 'Sei offline: l’operazione non è stata completata. Riprova quando torni online.';
@@ -215,6 +218,22 @@ export default function ProfilePage() {
             <GoogleSignInButton onCredential={(credential) => void handleGoogleLink(credential)} />
           </div>
           {isLinkingGoogle && <p className="text-sm font-semibold text-gray-600">Collegamento in corso…</p>}
+        </div>
+
+        <div className="mt-7 border-t border-gray-200 pt-6">
+          <details className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <summary className="cursor-pointer font-bold text-gray-900">Diagnostica applicazione</summary>
+            <dl className="mt-3 grid gap-2 text-sm text-gray-700 sm:grid-cols-2">
+              <div>
+                <dt className="font-semibold">Versione app</dt>
+                <dd>{appVersion}</dd>
+              </div>
+              <div>
+                <dt className="font-semibold">Build</dt>
+                <dd>{buildId}</dd>
+              </div>
+            </dl>
+          </details>
         </div>
 
         <div className="mt-7 border-t border-rose-200 pt-6">

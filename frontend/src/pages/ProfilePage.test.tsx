@@ -57,6 +57,23 @@ describe('ProfilePage', () => {
     expect(screen.getByText('Accesso con Google non disponibile in questo ambiente.')).toBeVisible();
   });
 
+  it('keeps app version and build diagnostics outside the primary profile header', async () => {
+    useAuthStore.setState({
+      user: verifiedUser,
+      csrfToken: 'csrf-1',
+      expiresAt: '2026-10-12T10:00:00.000Z',
+    });
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    await screen.findByRole('heading', { name: 'Il tuo profilo' });
+    const diagnostics = screen.getByText('Diagnostica applicazione').closest('details');
+
+    expect(diagnostics).not.toBeNull();
+    expect(diagnostics).not.toHaveAttribute('open');
+    expect(screen.getByText('Versione app')).toBeInTheDocument();
+    expect(screen.getByText('Build')).toBeInTheDocument();
+  });
+
   it('requires a second confirmation before account deletion', async () => {
     const user = userEvent.setup();
     useAuthStore.setState({
