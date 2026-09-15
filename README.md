@@ -126,6 +126,12 @@ Le sessioni usano un cookie volutamente non persistente: chiudere il browser ric
 
 L'audit tecnico datato è in [docs/audits/2026-09-14-repository-audit.md](docs/audits/2026-09-14-repository-audit.md). Lo stato corrente, l'ordine dei piani, i tag e le prove sono mantenuti nell'[indice del piano di risanamento](docs/superpowers/plans/2026-09-14-remediation-index.md). Le prove locali, disposable e production sono separate nella [guida production readiness](docs/production-readiness.md); ciò che non è stato eseguito resta esplicitamente non verificato.
 
+### Stato consolidato
+
+I piani di risanamento 1–7 sono integrati localmente su `main`. I checkpoint restano disponibili nei tag `plan-1-complete`, `plan-2-complete`, `plan-3-complete`, `plan-4-complete`, `plan-5-complete`, `plan-6-complete` e `plan-7-complete`.
+
+In sintesi, il percorso copre isolamento account e sincronizzazione, integrità dell'autenticazione, resilienza API/provider, navigazione e UX, PWA e accessibilità, dipendenze/CI/documentazione, hardening del deployment e procedure di backup/ripristino. Le verifiche locali e disposable sono documentate; provider reali, HTTPS pubblico, VPS reale e prove di recupero da guasti di produzione restano da eseguire nell'ambiente target.
+
 ### Conflitti di sincronizzazione
 
 La sincronizzazione applica un last-write-wins per entità: non viene eseguito alcun merge campo per campo. Il timestamp del client è accettato finché non supera di oltre cinque minuti l’orologio del server; in quel caso il backend usa l’ora server come timestamp effettivo e registra solo un warning generico, senza payload, token o identificativi privati. La soglia è configurabile in secondi tramite `SYNC_MAX_CLIENT_CLOCK_SKEW_SECONDS`.
