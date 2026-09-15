@@ -1,6 +1,6 @@
 # iKuck — indice del piano di risanamento
 
-> **Status:** current source of truth. Plans 1–5 are completed and tagged; plan 6 is in progress on `codex/plan6-dependencies-ci-docs`; plan 7 has not started.
+> **Status:** current source of truth. Plans 1–7 are completed and tagged; production/provider/HTTPS-public evidence remains explicitly not verified where noted.
 
 > **Per l'agente esecutore:** usa `superpowers:test-driven-development` per ogni bug, `superpowers:systematic-debugging` se un test fallisce in modo inatteso e `superpowers:verification-before-completion` prima di spuntare un task. Esegui un solo task alla volta. Non iniziare il successivo finché test, diff e nota di avanzamento del corrente non sono completi.
 
@@ -32,8 +32,8 @@
 | 3 | [API, provider e resilienza I/O](2026-09-14-api-provider-resilience.md) | IO-01…04, SYNC-06…08 | contratti sync definiti | completato — [plan-3-complete](../../../../.git) (`c798920`) |
 | 4 | [Home, navigazione e flussi UX](2026-09-14-home-navigation-and-ux.md) | UX-01…08, 10…12 | sync result API definita | completato — [plan-4-complete](../../../../.git) (`85bb8d3`) |
 | 5 | [PWA, accessibilità e test frontend](2026-09-14-pwa-accessibility-and-frontend-tests.md) | UX-09, UX-13, TEST-01 | nuova gerarchia UI | completato — [plan-5-complete](../../../../.git) (`8395a3c`) |
-| 6 | [Dipendenze, CI e documentazione](2026-09-14-dependencies-ci-and-docs.md) | DEP-02, OPS-04, DOC-01…02, TEST-02 | piani 1-5 | in corso — `codex/plan6-dependencies-ci-docs` |
-| 7 | [Hardening e recovery](2026-09-14-deployment-and-recovery-hardening.md) | OPS-01…03, TEST-02 | CI verde e immagini finali | non iniziato |
+| 6 | [Dipendenze, CI e documentazione](2026-09-14-dependencies-ci-and-docs.md) | DEP-02, OPS-04, DOC-01…02, TEST-02 | piani 1-5 | completato — [plan-6-complete](../../../../.git) (`861de27`) |
+| 7 | [Hardening e recovery](2026-09-14-deployment-and-recovery-hardening.md) | OPS-01…03, TEST-02 | CI verde e immagini finali | completato — [plan-7-complete](../../../../.git) |
 
 ## Gate dopo ogni piano
 
@@ -61,7 +61,8 @@ Se un test di integrazione viene saltato, annotarlo come non verificato: non equ
 | 2026-09-14 | Piano 3 — API, provider e resilienza I/O | `c798920` / `plan-3-complete` | evidenza registrata nel checkpoint del branch | completato |
 | 2026-09-15 | Piano 4 — home, navigazione e UX | `85bb8d3` / `plan-4-complete` | evidenza registrata nel checkpoint del branch | completato |
 | 2026-09-15 | Piano 5 — PWA, accessibilità e test frontend | `8395a3c` / `plan-5-complete` | Docker standalone verificato su LAN | completato |
-| 2026-09-15 | Piano 6 — dipendenze, CI e documentazione | `64c7b2d`, `19167df`, `b05fb4a`, `a770487`, `eb0be9c` | suite locali e audit runtime verificati; production non verificata | in corso fino al tag finale |
+| 2026-09-15 | Piano 6 — dipendenze, CI e documentazione | `64c7b2d`, `19167df`, `b05fb4a`, `a770487`, `eb0be9c`, `861de27` | suite locali, audit runtime e deploy LAN verificati; production non verificata | completato — `plan-6-complete` |
+| 2026-09-15 | Piano 7 — hardening deployment e recovery | `1cbf5e6`, `ebad673`, `6d4cd06`, `9294777`, `00ab185`, `e4e193d`, `c826d36`, `bdb3ea6` | staging LAN e disposable restore verificati; production/HTTPS pubblico/OOM non verificati | completato — `plan-7-complete` |
 
 ## Definition of done globale
 

@@ -165,8 +165,15 @@ Una release pubblica non è pronta finché non sono verificati DNS, HTTPS, healt
 
 | Data | Commit/tag | Comando o ambiente | Risultato |
 |---|---|---|---|
-| 2026-09-15 | `plan-5-complete` (`8395a3c`) | Docker Compose standalone sulla LAN, `http://192.168.178.21:8080/` | Verificati: Caddy, API, PostgreSQL e Redis healthy; homepage e `/v1/auth/session` raggiungibili. Questa è evidenza del checkpoint precedente; il deploy del piano 6 viene ripetuto dopo il tag del piano. |
+| 2026-09-15 | `plan-5-complete` (`8395a3c`) | Docker Compose standalone sulla LAN, `http://192.168.178.21:8080/` | Verificati: Caddy, API, PostgreSQL e Redis healthy; homepage e `/v1/auth/session` raggiungibili come checkpoint precedente. |
+| 2026-09-15 | `bdb3ea6` | `powershell -ExecutionPolicy Bypass -File scripts/verify-backup-restore.ps1` con progetto Compose e fixture sintetiche usa-e-getta | Verificati: dry-run preflight, backup, ricreazione del database, restore, query sentinella, count `3`, hash fixture uguale, archivio `1791` byte e durata `26.4` secondi; l'output non contiene dati fixture. |
 | 2026-09-15 | — | PostgreSQL/Redis integration senza URL usa-e-getta | Non verificato in questo checkpoint; senza `INTEGRATION_DATABASE_URL` e `INTEGRATION_REDIS_URL` i test restano intenzionalmente non verificati, mai “passed”. |
+
+## Evidenze verificate su staging LAN
+
+| Data | Commit/tag | Comando o ambiente | Risultato |
+|---|---|---|---|
+| 2026-09-15 | `e4e193d` + `c826d36` | Docker Compose standalone pinnato, `http://192.168.178.21:8080/`, `security-headers.test.ps1`, `docker inspect` API | Verificati: stack healthy, homepage `200`, `/v1/auth/session` `200`, CSP senza `unsafe-eval`, HSTS assente su HTTP, API `USER=ikuck`, root read-only e `CAPDROP=ALL`. OOM/restart controllato e HTTPS pubblico non verificati. |
 
 ## Evidenze verificate in produzione
 
