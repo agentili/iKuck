@@ -48,7 +48,8 @@ function Invoke-Compose {
 function Invoke-BashScript {
     param(
         [string]$ScriptPath,
-        [hashtable]$Environment
+        [hashtable]$Environment,
+        [string]$Arguments = ''
     )
 
     $scriptUnix = Convert-ToBashPath $ScriptPath
@@ -56,7 +57,8 @@ function Invoke-BashScript {
         $value = ([string]$entry.Value).Replace("'", "'\\''")
         "$($entry.Key)='$value'"
     }
-    $command = "$($assignments -join ' ') sh '$scriptUnix'"
+    $argumentSuffix = if ($Arguments) { " $Arguments" } else { '' }
+    $command = "$($assignments -join ' ') sh '$scriptUnix'$argumentSuffix"
     & $bashExe -lc $command
     if ($LASTEXITCODE -ne 0) {
         throw "Shell script failed with exit code ${LASTEXITCODE}: $ScriptPath"
@@ -88,6 +90,7 @@ function Get-FixtureFingerprint {
 }
 
 try {
+    $stopwatch = [Diagnostics.Stopwatch]::StartNew()
     $composeUnix = Convert-ToBashPath $composeFile
     $backupUnix = Convert-ToBashPath $backupDirectory
     $backupScript = Join-Path $RepositoryRoot 'deploy/backup-postgres.sh'
@@ -149,7 +152,7 @@ INSERT INTO recovery_fixture (fixture_key, fixture_value) VALUES
     }
 
     $restoreTarget = "ikuck_integration@$projectName"
-    Invoke-BashScript -ScriptPath $restoreScript -Environment @{
+    $restoreEnvironment = @{
         COMPOSE_PROJECT_NAME = $projectName
         ARCHIVE_PATH = (Convert-ToBashPath $archive.FullName)
         ARCHIVE_CHECKSUM_PATH = (Convert-ToBashPath $checksum.FullName)
@@ -161,21 +164,25 @@ INSERT INTO recovery_fixture (fixture_key, fixture_value) VALUES
         BACKUP_DIR = $backupUnix
         API_SERVICE = 'none'
     }
+    Invoke-BashScript -ScriptPath $restoreScript -Environment $restoreEnvironment -Arguments '--dry-run'
+    Invoke-BashScript -ScriptPath $restoreScript -Environment $restoreEnvironment
     $after = Get-FixtureFingerprint
 
     if ($before.Count -ne $after.Count -or $before.Hash -ne $after.Hash) {
         throw "Recovery fixture mismatch: before count/hash $($before.Count)/$($before.Hash), after $($after.Count)/$($after.Hash)."
     }
 
-    Write-Output "Backup and restore rehearsal passed: count=$($after.Count), hash=$($after.Hash)."
+    $stopwatch.Stop()
+    Write-Output "Backup and restore rehearsal passed: count=$($after.Count), hash=$($after.Hash), archiveBytes=$($archive.Length), durationSeconds=$([math]::Round($stopwatch.Elapsed.TotalSeconds, 1))."
 } finally {
     if ($composeStarted -and -not $KeepArtifacts) {
-        try {
-            & docker compose -p $projectName -f $composeFile down -v --remove-orphans 2> $null | Out-Null
-        } catch {
-            if ($LASTEXITCODE -ne 0) {
-                Write-Warning "Disposable cleanup failed; remove project $projectName manually."
-            }
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'SilentlyContinue'
+        & docker compose -p $projectName -f $composeFile down -v --remove-orphans 2> $null | Out-Null
+        $cleanupExitCode = $LASTEXITCODE
+        $ErrorActionPreference = $previousErrorActionPreference
+        if ($cleanupExitCode -ne 0) {
+            Write-Warning "Disposable cleanup failed; remove project $projectName manually."
         }
     }
     Remove-Item Env:INTEGRATION_POSTGRES_PORT -ErrorAction SilentlyContinue
