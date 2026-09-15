@@ -10,7 +10,7 @@ describe('Playwright execution profiles', () => {
 
     expect(config.use?.baseURL).toBe('https://staging.example.test');
     expect(config.webServer).toBeUndefined();
-    expect(config.projects?.[0].testIgnore).toEqual(/(?:production-smoke|live-stack)\.spec\.ts/);
+    expect(config.projects?.[0].testIgnore).toEqual(/(?:production-smoke|live-stack|pwa-update|accessibility)\.spec\.ts/);
   });
 
   it('rejects an HTTP target when production mode is enabled', () => {

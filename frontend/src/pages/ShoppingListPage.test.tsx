@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ShoppingListItem } from '@ikuck/shared/contracts';
 import ShoppingListPage from './ShoppingListPage';
-import { hydrateShoppingListStore, useShoppingListStore } from '../store/shoppingListStore';
+import { useShoppingListStore } from '../store/shoppingListStore';
 
 const hydrateShoppingListStoreMock = vi.hoisted(() => vi.fn());
 

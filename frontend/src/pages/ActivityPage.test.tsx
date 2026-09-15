@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CookEvent, RecipePreference } from '@ikuck/shared/contracts';
 import ActivityPage from './ActivityPage';
-import { hydrateActivityStore, useActivityStore } from '../store/activityStore';
+import { useActivityStore } from '../store/activityStore';
 
 const hydrateActivityStoreMock = vi.hoisted(() => vi.fn());
 
