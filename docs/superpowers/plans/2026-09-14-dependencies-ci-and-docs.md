@@ -22,10 +22,10 @@
 - Modify: `frontend/playwright.config.ts`
 
 - [ ] Salvare baseline `npm outdated` e `npm audit` nel messaggio commit, senza copiare rumore nel repository.
-- [ ] Aggiornare Vite, Vitest, coverage e plugin React a versioni compatibili non vulnerabili.
-- [ ] Leggere le migration note delle major e modificare solo config necessaria.
-- [ ] Eseguire lint, unit, coverage, E2E e build PWA.
-- [ ] Verificare `npm audit --omit=dev` pulito e registrare advisory dev residui.
+- [x] Aggiornare Vite, Vitest, coverage e plugin React a versioni compatibili non vulnerabili.
+- [x] Leggere le migration note delle major e modificare solo config necessaria.
+- [x] Eseguire lint, unit, coverage, E2E e build PWA.
+- [x] Verificare `npm audit --omit=dev` pulito e registrare advisory dev residui.
 - [ ] Commit: `chore(frontend): update vite and vitest toolchain`.
 
 ## Task 2: aggiornare tooling backend
@@ -36,10 +36,10 @@
 - Modify: `backend/package-lock.json`
 - Modify: config Vitest/TypeScript se richiesto
 
-- [ ] Aggiornare Vitest/esbuild/tooling in un gruppo compatibile.
+- [x] Aggiornare Vitest/esbuild/tooling in un gruppo compatibile.
 - [ ] Non combinare con cambi applicativi.
-- [ ] Eseguire lint, unit, coverage, integration e build.
-- [ ] Registrare audit runtime e completo.
+- [x] Eseguire lint, unit, coverage, integration e build.
+- [x] Registrare audit runtime e completo.
 - [ ] Commit: `chore(backend): update test and build toolchain`.
 
 ## Task 3: aggiungere un orchestratore root minimo
@@ -61,9 +61,9 @@
 }
 ```
 
-- [ ] Testare propagazione exit code e messaggio quando `node_modules` manca.
-- [ ] Eseguire in ordine frontend lint/test/build e backend lint/test/build.
-- [ ] Aggiungere flag espliciti per coverage, E2E offline e integration; niente skip nascosti.
+- [x] Testare propagazione exit code e messaggio quando `node_modules` manca.
+- [x] Eseguire in ordine frontend lint/test/build e backend lint/test/build.
+- [x] Aggiungere flag espliciti per coverage, E2E offline e integration; niente skip nascosti.
 - [ ] Non introdurre un workspace npm se non necessario.
 - [ ] Commit: `build: add a repository-wide verification command`.
 
@@ -74,10 +74,10 @@
 - Create: `.github/workflows/ci.yml`
 - Modify: `README.md`
 
-- [ ] Pin action a commit SHA, non solo tag mobile.
-- [ ] Job frontend: `npm ci`, lint, unit, build, E2E offline.
-- [ ] Job backend: PostgreSQL/Redis service, `npm ci`, lint, unit, integration non saltata, build, audit runtime.
-- [ ] Cache basata sui due lockfile; nessun secret richiesto per test ordinari.
+- [x] Pin action a commit SHA, non solo tag mobile.
+- [x] Job frontend: `npm ci`, lint, unit, build, E2E offline.
+- [x] Job backend: PostgreSQL/Redis service, `npm ci`, lint, unit, integration non saltata, build, audit runtime.
+- [x] Cache basata sui due lockfile; nessun secret richiesto per test ordinari.
 - [ ] Caricare report solo se privi di token/dati utente.
 - [ ] Proteggere la branch usando i due job come required checks dopo il merge della CI.
 - [ ] Commit: `ci: verify frontend backend and disposable integrations`.
@@ -90,11 +90,11 @@
 - Modify or Remove: `GEMINI.md`
 - Modify: `README.md`
 
-- [ ] Descrivere architettura reale: React/Vite guest-first, Fastify, PostgreSQL, Redis, sync esplicita.
-- [ ] Elencare comandi esatti dalle directory corrette e i limiti Docker/provider.
-- [ ] Dichiarare codice/commenti inglesi e copy visibile italiano.
-- [ ] Rimuovere riferimenti a Supabase, TanStack Query, struttura e algoritmi non esistenti.
-- [ ] Se `GEMINI.md` resta, renderlo un link corto ad `AGENTS.md` per evitare duplicazione.
+- [x] Descrivere architettura reale: React/Vite guest-first, Fastify, PostgreSQL, Redis, sync esplicita.
+- [x] Elencare comandi esatti dalle directory corrette e i limiti Docker/provider.
+- [x] Dichiarare codice/commenti inglesi e copy visibile italiano.
+- [x] Rimuovere riferimenti a Supabase, TanStack Query, struttura e algoritmi non esistenti dalle istruzioni correnti.
+- [x] Se `GEMINI.md` resta, renderlo un link corto ad `AGENTS.md` per evitare duplicazione.
 - [ ] Commit: `docs: align agent guidance with the current platform`.
 
 ## Task 6: rendere l'indice la fonte di verità
@@ -119,10 +119,10 @@
 - Modify: `docs/superpowers/plans/2026-09-13-production-readiness-and-provider-smoke.md`
 - Modify: `docs/superpowers/plans/2026-09-14-remediation-index.md`
 
-- [ ] Creare tre sezioni: verified locally, verified on disposable stack, verified in production.
-- [ ] Ogni prova contiene data, commit, comando/ambiente e risultato.
-- [ ] Gli skip restano “not verified”, mai “passed”.
-- [ ] Non salvare email reali, endpoint privati, token, prompt o output utenti.
+- [x] Creare tre sezioni: verified locally, verified on disposable stack, verified in production.
+- [x] Ogni prova contiene data, commit, comando/ambiente e risultato.
+- [x] Gli skip restano “not verified”, mai “passed”.
+- [x] Non salvare email reali, endpoint privati, token, prompt o output utenti.
 - [ ] Commit: `docs: separate local staging and production evidence`.
 
 ## Gate del piano

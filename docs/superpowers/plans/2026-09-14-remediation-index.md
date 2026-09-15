@@ -61,6 +61,7 @@ Se un test di integrazione viene saltato, annotarlo come non verificato: non equ
 | 2026-09-14 | Piano 3 — API, provider e resilienza I/O | `c798920` / `plan-3-complete` | evidenza registrata nel checkpoint del branch | completato |
 | 2026-09-15 | Piano 4 — home, navigazione e UX | `85bb8d3` / `plan-4-complete` | evidenza registrata nel checkpoint del branch | completato |
 | 2026-09-15 | Piano 5 — PWA, accessibilità e test frontend | `8395a3c` / `plan-5-complete` | Docker standalone verificato su LAN | completato |
+| 2026-09-15 | Piano 6 — dipendenze, CI e documentazione | `64c7b2d`, `19167df`, `b05fb4a`, `a770487`, `eb0be9c` | suite locali e audit runtime verificati; production non verificata | in corso fino al tag finale |
 
 ## Definition of done globale
 

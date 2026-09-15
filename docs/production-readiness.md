@@ -119,3 +119,25 @@ La suite verifica migrazioni ripetibili, cookie di sessione, blocco prima della 
 ## Stato e criteri di rilascio
 
 Una release pubblica non è pronta finché non sono verificati DNS, HTTPS, health API, migrazioni, persistenza dopo riavvio, backup e ripristino, sincronizzazione account, fallback dei provider disabilitati e smoke test dei provider esplicitamente abilitati. I risultati devono riportare commit/tag, timestamp UTC, digest immagini, checksum backup e motivi degli eventuali test saltati, senza dati sensibili.
+
+## Evidenze verificate localmente
+
+| Data | Commit/tag | Comando o ambiente | Risultato |
+|---|---|---|---|
+| 2026-09-15 | `64c7b2d` + `19167df` | `npm --prefix frontend run lint`, `npm --prefix frontend test -- --run`, `npm --prefix frontend run test:coverage`, `npm --prefix frontend run build`, `npm --prefix frontend run test:e2e` | Verificati: lint, 253 test unitari, coverage, build PWA, 40 test E2E passati e 2 skip production attesi. |
+| 2026-09-15 | `19167df` | `npm --prefix backend run lint`, `npm --prefix backend test -- --run`, `npm --prefix backend run test:coverage`, `npm --prefix backend run build` | Verificati: lint, 127 test passati e 7 skip espliciti, coverage e build. |
+| 2026-09-15 | `b05fb4a` + `a770487` | `npm run verify` dalla root | Verificato: orchestratore root completato con exit code 0; CI ispezionata staticamente, non eseguita da questo host. |
+| 2026-09-15 | `64c7b2d` + `19167df` | `npm audit --omit=dev --json` in frontend e backend | Verificato: audit runtime senza vulnerabilità; l'audit completo backend conserva 4 advisory moderate dev-only nella toolchain Drizzle Kit e non è stato forzato. |
+
+## Evidenze verificate su stack disposable
+
+| Data | Commit/tag | Comando o ambiente | Risultato |
+|---|---|---|---|
+| 2026-09-15 | `plan-5-complete` (`8395a3c`) | Docker Compose standalone sulla LAN, `http://192.168.178.21:8080/` | Verificati: Caddy, API, PostgreSQL e Redis healthy; homepage e `/v1/auth/session` raggiungibili. Questa è evidenza del checkpoint precedente; il deploy del piano 6 viene ripetuto dopo il tag del piano. |
+| 2026-09-15 | — | PostgreSQL/Redis integration senza URL usa-e-getta | Non verificato in questo checkpoint; senza `INTEGRATION_DATABASE_URL` e `INTEGRATION_REDIS_URL` i test restano intenzionalmente non verificati, mai “passed”. |
+
+## Evidenze verificate in produzione
+
+| Data | Commit/tag | Comando o ambiente | Risultato |
+|---|---|---|---|
+| 2026-09-15 | — | VPS autenticato, dominio HTTPS reale, DNS, provider smoke test | Non verificato: nessun accesso production, credenziale, dominio o provider reale è stato usato. |
