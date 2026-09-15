@@ -91,6 +91,8 @@ COMPOSE_FILE=deploy/docker-compose.production.yml \
   sh deploy/restore-postgres.sh
 ```
 
+Il restore richiede `RESTORE_TARGET` e una conferma esatta in `RESTORE_CONFIRM` (`RESTORE <target>`). Prima di modificare dati verifica checksum, estensione custom-format, versione degli strumenti PostgreSQL e spazio libero; `--dry-run` esegue solo il preflight. Nel percorso distruttivo crea automaticamente un nuovo backup, ferma l'API, esegue `pg_restore` in transazione singola, riavvia l'API e verifica health, migrazioni e la query sentinella `SELECT 1`. Un errore lascia intatto l'archivio indicato e stampa di mantenere il backup per il recovery manuale.
+
 Per il rollback applicativo, conserva il riferimento all'immagine o al commit precedente, esegui un backup, riporta il repository alla release nota e ricostruisci i servizi. Non eseguire downgrade dello schema senza una procedura di migrazione reversibile verificata.
 
 ## Provider e smoke test
