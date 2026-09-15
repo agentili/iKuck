@@ -38,7 +38,7 @@ summary {
   font: inherit;
 }
 
-:focus-visible {
+:where(a, button, input, select, textarea, summary, [role='button'], [role='dialog']):focus-visible {
   outline: 3px solid #f2be3e;
   outline-offset: 3px;
 }
@@ -53,8 +53,9 @@ summary {
   *::before,
   *::after {
     scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
+    animation-duration: 0ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    transition-duration: 0ms !important;
   }
 }

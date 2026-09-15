@@ -77,3 +77,59 @@ test('recipe detail passes the critical and serious axe gate', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'Pasta tonno e pomodoro' })).toBeVisible();
   await auditPage(page, 'recipe detail');
 });
+
+test('keeps focus indicators visible for links, controls and summaries', async ({ page }) => {
+  await page.goto('/shopping-list');
+
+  const focusableSelectors = [
+    page.getByRole('link', { name: 'Home' }),
+    page.getByLabel('Cosa ti serve?'),
+    page.getByRole('button', { name: 'Aggiungi alla lista' }),
+    page.getByText('Aggiungi dettagli (facoltativi)'),
+  ];
+
+  for (const locator of focusableSelectors) {
+    const focusStyle = await locator.evaluate((element) => {
+      element.focus();
+      const style = window.getComputedStyle(element);
+      return { outlineColor: style.outlineColor, outlineWidth: style.outlineWidth };
+    });
+    expect(focusStyle.outlineWidth).not.toBe('0px');
+    expect(focusStyle.outlineColor).not.toBe('rgba(0, 0, 0, 0)');
+  }
+});
+
+test('supports a 320px viewport and a 200% text-zoom equivalent without horizontal scroll', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto('/');
+  const narrowOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+  expect(narrowOverflow).toBe(false);
+
+  await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+  const zoomOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+  expect(zoomOverflow).toBe(false);
+});
+
+test('respects reduced motion, heading order and icon-only accessible names', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/recipes/pasta-tonno-pomodoro');
+
+  const transitionDuration = await page.getByRole('link', { name: 'Home' }).evaluate((element) => (
+    window.getComputedStyle(element).transitionDuration
+  ));
+  expect(transitionDuration).toBe('0s');
+
+  const headingLevels = await page.locator('h1, h2, h3, h4, h5, h6').evaluateAll((elements) => (
+    elements.map((element) => Number(element.tagName.slice(1)))
+  ));
+  expect(headingLevels[0]).toBe(1);
+  for (let index = 1; index < headingLevels.length; index += 1) {
+    expect(headingLevels[index] - headingLevels[index - 1]).toBeLessThanOrEqual(1);
+  }
+
+  const unnamedIconButtons = await page.locator('button').evaluateAll((buttons) => buttons
+    .filter((button) => button.textContent?.trim() === '')
+    .filter((button) => (button.getAttribute('aria-label') ?? button.getAttribute('title') ?? '').trim() === '')
+    .map((button) => button.outerHTML));
+  expect(unnamedIconButtons).toEqual([]);
+});
