@@ -19,12 +19,13 @@ export const createPlaywrightConfig = (env: NodeJS.ProcessEnv = process.env): Pl
   }
 
   const useLocalWebServer = suppliedBaseURL === undefined && !production && !live;
-  const offlineTestIgnore = /(?:production-smoke|live-stack|pwa-update)\.spec\.ts/;
+  const offlineTestIgnore = /(?:production-smoke|live-stack|pwa-update|accessibility)\.spec\.ts/;
   const offlineProjects = [
     { name: 'mobile-chromium', testIgnore: offlineTestIgnore, use: { ...devices['Pixel 5'] } },
     { name: 'desktop-chromium', testIgnore: offlineTestIgnore, use: { ...devices['Desktop Chrome'] } },
     { name: 'production-chromium', testMatch: /production-smoke\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
     { name: 'pwa-update-chromium', testMatch: /pwa-update\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
+    { name: 'accessibility-chromium', testMatch: /accessibility\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
   ];
 
   return {

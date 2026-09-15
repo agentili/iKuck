@@ -12,6 +12,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:pwa": "playwright test e2e/pwa-update.spec.ts --project=pwa-update-chromium",
+    "test:e2e:a11y": "playwright test e2e/accessibility.spec.ts --project=accessibility-chromium",
     "test:e2e:live": "node ./e2e/run-live-e2e.mjs",
     "test:e2e:production": "playwright test --project=production-chromium",
     "preview": "vite preview"
@@ -27,6 +28,7 @@
     "zustand": "^4.5.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.63.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^7.0.1",
