@@ -56,9 +56,9 @@ describe('HomePage integration', () => {
     await renderHome();
 
     const searchOptions = screen.getByRole('region', { name: 'Opzioni ricette' });
-    const dietTitle = screen.getByText('Filtri alimentari');
+    const pantry = screen.getByRole('region', { name: 'La tua dispensa' });
 
-    expect(searchOptions.compareDocumentPosition(dietTitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(searchOptions.compareDocumentPosition(pantry) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('shows an accessible persistence warning with an explicit retry action', async () => {

@@ -191,6 +191,10 @@ export default function HomePage() {
         </div>
       )}
 
+      <div className="mb-6">
+        <SuggestionControls allowOneMissing={allowOneMissing} disabled={pantryItems.length === 0} onAllowOneMissingChange={setAllowOneMissing} onSearch={() => search()} />
+      </div>
+
       <section aria-labelledby="pantry-title" className="space-y-5 rounded-3xl border-2 border-gray-200 bg-gray-50 p-4 sm:p-6">
         <div>
           <h2 id="pantry-title" className="text-2xl font-bold text-gray-950">La tua dispensa</h2>
@@ -198,7 +202,6 @@ export default function HomePage() {
         </div>
         <IngredientInput onAdd={handleAdd} />
         <IngredientSuggestions ingredients={suggestedIngredients} onAdd={handleSuggestedIngredient} />
-        <SuggestionControls allowOneMissing={allowOneMissing} disabled={pantryItems.length === 0} onAllowOneMissingChange={setAllowOneMissing} onSearch={() => search()} />
       </section>
 
       <section aria-labelledby="results-title" aria-live="polite" aria-atomic="false" className="mt-8">
