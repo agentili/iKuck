@@ -60,6 +60,16 @@ L’API risponde a [http://127.0.0.1:3000/healthz](http://127.0.0.1:3000/healthz
 
 ## Verifica
 
+Per eseguire il gate minimo frontend/backend dalla root, installa prima le dipendenze nelle due directory e lancia:
+
+```powershell
+npm ci --prefix frontend
+npm ci --prefix backend
+npm run verify
+```
+
+Il verificatore esegue lint, unit test e build in ordine; aggiungi `-Coverage`, `-E2E` o `-Integration` a `scripts/verify-repository.ps1` per attivare esplicitamente coverage, E2E offline o integrazioni usa-e-getta. Le integrazioni richiedono entrambe `INTEGRATION_DATABASE_URL` e `INTEGRATION_REDIS_URL` e falliscono se non sono configurate.
+
 ```bash
 cd frontend
 npm test
@@ -84,6 +94,8 @@ npm run dev -- --host localhost
 In un secondo terminale, dalla directory `frontend`, esegui `npm run test:e2e:live`. Lo stack development verifica automaticamente il nuovo account; per testare il percorso email reale in un ambiente production-like, configura il provider email e valorizza `E2E_VERIFICATION_TOKEN` con il token ricevuto per l’account creato dal test. Un token mancante non viene trattato come skip: il test usa esplicitamente il comportamento auto-verificato dello stack development.
 
 I test d’integrazione API richiedono invece servizi dedicati configurati con `INTEGRATION_DATABASE_URL` e `INTEGRATION_REDIS_URL`; senza queste variabili vengono saltati intenzionalmente.
+
+La CI riproducibile è definita in `.github/workflows/ci.yml`: il job frontend esegue lint, unit test, build ed E2E offline; il job backend usa PostgreSQL e Redis disposable, esegue unit/integration test, build e audit delle sole dipendenze runtime. Le action GitHub sono pinnate a commit SHA e i job non richiedono secret per i test ordinari.
 
 ## Operazioni VPS
 
