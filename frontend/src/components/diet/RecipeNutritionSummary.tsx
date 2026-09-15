@@ -1,4 +1,5 @@
 import type { RecipeNutrition } from '@ikuck/shared/contracts';
+import { labelMissingNutrients } from './nutrientLabels';
 
 interface RecipeNutritionSummaryProps {
   nutrition: RecipeNutrition;
@@ -9,7 +10,7 @@ const formatValue = (value: number | null, suffix: string): string => value === 
 export default function RecipeNutritionSummary({ nutrition }: RecipeNutritionSummaryProps) {
   const sourceLabel = nutrition.source === 'usda' ? 'Valori USDA aggiornati' : 'Stima indicativa';
   const incompleteLabel = nutrition.missingNutrients.length > 0
-    ? `Dati incompleti: mancano ${nutrition.missingNutrients.join(', ')}`
+    ? `Dati incompleti: mancano ${labelMissingNutrients(nutrition.missingNutrients)}`
     : null;
 
   return (

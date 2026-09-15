@@ -52,6 +52,25 @@ describe('RecipeDetailPage integration', () => {
     expect(screen.getByText(/Allergeni dichiarati: glutine, pesce/)).toBeVisible();
   });
 
+  it('prioritizes cooking content before experience and secondary nutrition', () => {
+    renderRoute('/recipes/pasta-tonno-pomodoro');
+
+    const ingredients = screen.getByRole('heading', { name: 'Ingredienti' });
+    const preparation = screen.getByRole('heading', { name: 'Preparazione' });
+    const experience = screen.getByRole('heading', { name: 'La tua esperienza' });
+    const nutrition = screen.getByRole('heading', { name: 'Nutrizione stimata per porzione' });
+
+    expect(ingredients.compareDocumentPosition(preparation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(preparation.compareDocumentPosition(experience) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(experience.compareDocumentPosition(nutrition) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('uses the singular label for one rated star', () => {
+    renderRoute('/recipes/pasta-tonno-pomodoro');
+
+    expect(screen.getByRole('button', { name: 'Valuta Pasta tonno e pomodoro: 1 stella' })).toBeInTheDocument();
+  });
+
   it('shows a recoverable state for an unknown recipe id', () => {
     renderRoute('/recipes/not-real');
 
