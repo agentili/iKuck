@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Clock3, RefreshCw, ShoppingCart, Sparkles } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { RefreshCw, Sparkles } from 'lucide-react';
 import AiRecipePanel from '../components/ai/AiRecipePanel';
 import IngredientChip from '../components/pantry/IngredientChip';
 import IngredientInput from '../components/pantry/IngredientInput';
@@ -251,14 +250,6 @@ export default function HomePage() {
           </ul>
         )}
         <DietFiltersPanel profile={dietProfile} onChange={handleDietProfileChange} onReset={handleDietProfileReset} />
-        <div className="flex flex-wrap gap-3">
-          <Link to="/shopping-list" className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border-2 border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-800 hover:border-gray-900">
-            <ShoppingCart size={17} aria-hidden="true" /> Lista della spesa
-          </Link>
-          <Link to="/activity" className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border-2 border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-800 hover:border-gray-900">
-            <Clock3 size={17} aria-hidden="true" /> Attività
-          </Link>
-        </div>
         {pantryItems.length > 0 && (
           <PantryLotsPanel ingredients={pantryItems} lots={pantryLots} onAddLot={addPantryLot} onRemoveLot={removePantryLot} onUpdateLot={updatePantryLot} />
         )}

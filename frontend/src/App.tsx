@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { useAuthStore } from './auth/authStore';
+import AppHeader from './components/layout/AppHeader';
 import HomePage from './pages/HomePage';
 import RecipeDetailPage from './pages/RecipeDetailPage';
 import ProfilePage from './pages/ProfilePage';
@@ -55,6 +56,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <AppHeader />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/recipes/:recipeId" element={<RecipeDetailPage />} />

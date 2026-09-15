@@ -57,7 +57,7 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-xl items-center px-4 py-8 sm:px-6">
+    <main id="main-content" className="mx-auto flex min-h-screen w-full max-w-xl items-center px-4 py-8 sm:px-6">
       <section className="w-full rounded-3xl border-2 border-gray-200 bg-white p-6 shadow-sm sm:p-8">
         {completed ? (
           <>
