@@ -25,7 +25,7 @@ export default function IngredientSuggestions({ ingredients, onAdd }: Ingredient
             type="button"
             aria-label={`Aggiungi ${ingredient.label}`}
             onClick={() => onAdd(ingredient)}
-            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-2 font-semibold text-emerald-900 transition hover:border-emerald-400 hover:bg-emerald-100 focus:outline-none focus:ring-4 focus:ring-emerald-200"
+            className="inline-flex max-w-full min-h-11 items-center gap-2 whitespace-normal rounded-full border border-emerald-200 bg-white px-3 py-2 font-semibold text-emerald-900 transition hover:border-emerald-400 hover:bg-emerald-100 focus:outline-none focus:ring-4 focus:ring-emerald-200"
           >
             <Plus size={16} aria-hidden="true" />
             {ingredient.label}

@@ -38,6 +38,18 @@ summary {
   font: inherit;
 }
 
+details:not([open]) > :not(summary) {
+  display: none;
+}
+
+:where(.flex, .grid) > * {
+  min-width: 0;
+}
+
+:where(h1, h2, h3, h4, h5, h6, p, a, button, label, span, li) {
+  overflow-wrap: anywhere;
+}
+
 :where(a, button, input, select, textarea, summary, [role='button'], [role='dialog']):focus-visible {
   outline: 3px solid #f2be3e;
   outline-offset: 3px;

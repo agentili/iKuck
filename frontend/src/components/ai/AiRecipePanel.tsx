@@ -86,7 +86,7 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-violet-700 text-white">
             <LockKeyhole size={19} aria-hidden="true" />
           </span>
-          <div>
+          <div className="min-w-0 flex-1">
             <h2 className="text-xl font-black text-gray-950">Ricette AI private</h2>
             <p className="mt-1 text-sm leading-relaxed text-gray-700">Le ricette AI private sono disponibili dopo la verifica dell’account. Gli ospiti possono continuare a usare il catalogo locale offline.</p>
           </div>
