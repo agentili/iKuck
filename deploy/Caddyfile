@@ -9,11 +9,13 @@
     Referrer-Policy "strict-origin-when-cross-origin"
   }
 
-  handle /v1/* {
-    reverse_proxy api:3000
-  }
+  route {
+    handle /v1/* {
+      reverse_proxy api:3000
+    }
 
-  root * /srv/frontend
-  try_files {path} /index.html
-  file_server
+    root * /srv/frontend
+    try_files {path} /index.html
+    file_server
+  }
 }

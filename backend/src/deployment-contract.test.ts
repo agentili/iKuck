@@ -94,4 +94,10 @@ describe('deployment contracts', () => {
     expect(readFileSync(resolve(repositoryRoot, 'backend/Dockerfile'), 'utf8')).toContain('COPY shared /app/shared');
     expect(readFileSync(resolve(repositoryRoot, 'deploy/Caddy.Dockerfile'), 'utf8')).toContain('COPY shared /shared');
   });
+
+  it('keeps API proxying ahead of the frontend SPA fallback', () => {
+    const caddyfile = readFileSync(resolve(process.cwd(), '..', 'deploy/Caddyfile'), 'utf8');
+
+    expect(caddyfile).toMatch(/route\s*\{[\s\S]*handle \/v1\/\*[\s\S]*reverse_proxy api:3000[\s\S]*root \* \/srv\/frontend[\s\S]*try_files \{path\} \/index\.html/);
+  });
 });
