@@ -50,6 +50,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
         navigateFallback: '/index.html',
       },
