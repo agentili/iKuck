@@ -83,7 +83,7 @@ COMPOSE_FILE=deploy/docker-compose.production.yml \
   sh deploy/backup-postgres.sh
 ```
 
-Verifica checksum e contenuto dell'archivio con gli strumenti PostgreSQL prima di considerarlo valido. Per un ripristino usa solo un archivio verificato e una destinazione isolata; il ripristino production è distruttivo e richiede una copia di sicurezza aggiuntiva:
+`backup-postgres.sh` scrive il dump in un file temporaneo nella stessa directory, verifica che non sia vuoto, esegue `pg_restore --list`, crea il file `.sha256` e pubblica archivio e checksum solo dopo la verifica. Applica la retention solo dopo un backup valido; imposta `BACKUP_RETENTION_COUNT` a un valore esplicito maggiore di zero. Verifica checksum e contenuto dell'archivio con gli strumenti PostgreSQL prima di considerarlo valido. Per un ripristino usa solo un archivio verificato e una destinazione isolata; il ripristino production è distruttivo e richiede una copia di sicurezza aggiuntiva:
 
 ```bash
 COMPOSE_FILE=deploy/docker-compose.production.yml \
