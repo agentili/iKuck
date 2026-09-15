@@ -123,4 +123,24 @@ describe('AiRecipePanel', () => {
     await userEvents.click(await within(panel).findByRole('button', { name: 'Genera ricetta AI' }));
     expect(await within(panel).findByRole('alert')).toHaveTextContent(/cinque ricette AI al giorno/i);
   });
+
+  it('defers remote deletion so the undo action can restore the recipe', async () => {
+    const userEvents = userEvent.setup();
+    vi.mocked(fetchAiConsent).mockResolvedValue({ enabled: true, updatedAt: '2026-09-13T12:00:00.000Z' });
+    vi.mocked(fetchAiRecipes).mockResolvedValue([recipe]);
+    vi.mocked(deleteAiRecipe).mockResolvedValue();
+    renderPanel();
+
+    const panel = screen.getByRole('region', { name: 'Ricette AI private' });
+    expect(await within(panel).findByRole('heading', { name: recipe.title })).toBeInTheDocument();
+
+    await userEvents.click(within(panel).getByRole('button', { name: `Elimina ${recipe.title}` }));
+    expect(within(panel).queryByRole('heading', { name: recipe.title })).not.toBeInTheDocument();
+    expect(deleteAiRecipe).not.toHaveBeenCalled();
+
+    await userEvents.click(screen.getByRole('button', { name: 'Annulla' }));
+
+    expect(await within(panel).findByRole('heading', { name: recipe.title })).toBeInTheDocument();
+    expect(deleteAiRecipe).not.toHaveBeenCalled();
+  });
 });

@@ -5,12 +5,14 @@ import { parseIngredientInput } from '../../domain/ingredients';
 import { getRecipeById } from '../../domain/recipes';
 import { validateShoppingListItemDetails } from '../../domain/shoppingList';
 import type { ShoppingListItemPatch } from '../../store/shoppingListStore';
+import UndoToast from '../feedback/UndoToast';
 
 interface ShoppingListPanelProps {
   items: ShoppingListItem[];
   onAdd: (input: ShoppingListItemPayload) => string | null;
   onTogglePurchased: (id: string) => boolean;
   onRemove: (id: string) => void;
+  onRestoreItem?: (item: ShoppingListItem) => boolean;
   onUpdate: (id: string, patch: ShoppingListItemPatch) => boolean;
   onClearPurchased: () => number;
 }
@@ -133,15 +135,36 @@ function ShoppingListItemRow({ item, onTogglePurchased, onRemove, onUpdate }: Om
   );
 }
 
-export default function ShoppingListPanel({ items, onAdd, onTogglePurchased, onRemove, onUpdate, onClearPurchased }: ShoppingListPanelProps) {
+export default function ShoppingListPanel({ items, onAdd, onTogglePurchased, onRemove, onRestoreItem, onUpdate, onClearPurchased }: ShoppingListPanelProps) {
   const [label, setLabel] = useState('');
   const [quantity, setQuantity] = useState('');
   const [unit, setUnit] = useState<PantryUnit | ''>('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [removedItems, setRemovedItems] = useState<ShoppingListItem[] | null>(null);
   const pendingItems = items.filter((item) => !item.purchased);
   const purchasedItems = items.filter((item) => item.purchased);
+
+  const removeItem = (id: string) => {
+    const item = items.find((candidate) => candidate.id === id);
+    onRemove(id);
+    if (item !== undefined) setRemovedItems([item]);
+  };
+
+  const clearPurchased = () => {
+    const removed = [...purchasedItems];
+    const count = onClearPurchased();
+    if (count > 0) setRemovedItems(removed);
+  };
+
+  const restoreItems = () => {
+    if (removedItems === null) return;
+    const restored = removedItems.every((item) => onRestoreItem !== undefined
+      ? onRestoreItem(item)
+      : onAdd(item) !== null);
+    if (restored) setRemovedItems(null);
+  };
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -179,6 +202,7 @@ export default function ShoppingListPanel({ items, onAdd, onTogglePurchased, onR
   };
 
   return (
+    <>
     <section aria-labelledby="shopping-list-title" className="rounded-3xl border-2 border-gray-200 bg-white p-4 shadow-sm sm:p-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -186,7 +210,7 @@ export default function ShoppingListPanel({ items, onAdd, onTogglePurchased, onR
           <h2 id="shopping-list-title" className="mt-1 text-3xl font-black text-gray-950">Lista della spesa</h2>
           <p className="mt-1 text-gray-600">Aggiungi quello che manca. La lista resta disponibile anche offline.</p>
         </div>
-        {purchasedItems.length > 0 && <button type="button" onClick={onClearPurchased} className="min-h-11 rounded-xl border-2 border-gray-300 px-3 py-2 text-sm font-bold text-gray-800 hover:border-gray-900">Rimuovi gli acquistati</button>}
+        {purchasedItems.length > 0 && <button type="button" onClick={clearPurchased} className="min-h-11 rounded-xl border-2 border-gray-300 px-3 py-2 text-sm font-bold text-gray-800 hover:border-gray-900">Rimuovi gli acquistati</button>}
       </header>
 
       <form className="mt-6 grid gap-3" onSubmit={submit}>
@@ -226,17 +250,25 @@ export default function ShoppingListPanel({ items, onAdd, onTogglePurchased, onR
           {pendingItems.length > 0 && (
             <section aria-labelledby="shopping-pending-title">
               <h3 id="shopping-pending-title" className="text-lg font-black text-gray-950">Da acquistare <span className="font-semibold text-gray-500">({pendingItems.length})</span></h3>
-              <ul className="mt-3 grid gap-3">{pendingItems.map((item) => <ShoppingListItemRow key={item.id} item={item} onTogglePurchased={onTogglePurchased} onRemove={onRemove} onUpdate={onUpdate} />)}</ul>
+              <ul className="mt-3 grid gap-3">{pendingItems.map((item) => <ShoppingListItemRow key={item.id} item={item} onTogglePurchased={onTogglePurchased} onRemove={removeItem} onUpdate={onUpdate} />)}</ul>
             </section>
           )}
           {purchasedItems.length > 0 && (
             <section aria-labelledby="shopping-purchased-title">
               <h3 id="shopping-purchased-title" className="text-lg font-black text-gray-950">Acquistati <span className="font-semibold text-gray-500">({purchasedItems.length})</span></h3>
-              <ul className="mt-3 grid gap-3">{purchasedItems.map((item) => <ShoppingListItemRow key={item.id} item={item} onTogglePurchased={onTogglePurchased} onRemove={onRemove} onUpdate={onUpdate} />)}</ul>
+              <ul className="mt-3 grid gap-3">{purchasedItems.map((item) => <ShoppingListItemRow key={item.id} item={item} onTogglePurchased={onTogglePurchased} onRemove={removeItem} onUpdate={onUpdate} />)}</ul>
             </section>
           )}
         </div>
       )}
     </section>
+    {removedItems !== null && (
+      <UndoToast
+        message={removedItems.length === 1 ? `Elemento ${removedItems[0].label} rimosso.` : `${removedItems.length} elementi rimossi.`}
+        onUndo={restoreItems}
+        onExpire={() => setRemovedItems(null)}
+      />
+    )}
+    </>
   );
 }

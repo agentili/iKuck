@@ -4,12 +4,14 @@ import type { PantryLot, PantryUnit } from '@ikuck/shared/contracts';
 import { aggregatePantryLots, getExpiryStatus } from '../../domain/pantryLots';
 import type { ParsedIngredient } from '../../domain/types';
 import PantryLotEditor, { type PantryLotDetails } from './PantryLotEditor';
+import UndoToast from '../feedback/UndoToast';
 
 interface PantryLotsPanelProps {
   ingredients: readonly ParsedIngredient[];
   lots: readonly PantryLot[];
   onAddLot: (details: PantryLotDetails & Pick<PantryLot, 'ingredientId' | 'label' | 'known'>) => string | null;
   onRemoveLot: (id: string) => void;
+  onRestoreLot?: (lot: PantryLot) => boolean;
   onUpdateLot: (id: string, details: PantryLotDetails) => boolean;
 }
 
@@ -44,12 +46,34 @@ const detailsFromLot = (lot: PantryLot): PantryLotDetails => ({
   expiresAt: lot.expiresAt,
 });
 
-export default function PantryLotsPanel({ ingredients, lots, onAddLot, onRemoveLot, onUpdateLot }: PantryLotsPanelProps) {
+export default function PantryLotsPanel({ ingredients, lots, onAddLot, onRemoveLot, onRestoreLot, onUpdateLot }: PantryLotsPanelProps) {
   const [editorKey, setEditorKey] = useState<string | null>(null);
+  const [removedLot, setRemovedLot] = useState<PantryLot | null>(null);
   const aggregates = aggregatePantryLots(lots);
   const lotCountLabel = lots.length === 0 ? 'Nessun lotto' : `${lots.length} ${lots.length === 1 ? 'lotto' : 'lotti'}`;
 
+  const removeLot = (lot: PantryLot) => {
+    onRemoveLot(lot.id);
+    setRemovedLot(lot);
+  };
+
+  const restoreLot = () => {
+    if (removedLot === null) return;
+    const restored = onRestoreLot !== undefined
+      ? onRestoreLot(removedLot)
+      : onAddLot({
+        ingredientId: removedLot.ingredientId,
+        label: removedLot.label,
+        known: removedLot.known,
+        quantity: removedLot.quantity,
+        unit: removedLot.unit,
+        expiresAt: removedLot.expiresAt,
+      }) !== null;
+    if (restored) setRemovedLot(null);
+  };
+
   return (
+    <>
     <details aria-labelledby="pantry-lots-title" className="rounded-2xl border border-gray-200 bg-white p-4">
       <summary className="cursor-pointer list-none">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -102,7 +126,7 @@ export default function PantryLotsPanel({ ingredients, lots, onAddLot, onRemoveL
                       </p>
                       <div className="flex flex-wrap gap-2">
                         <button type="button" onClick={() => setEditorKey(lot.id)} className="min-h-9 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-800 hover:border-gray-900">Modifica</button>
-                        <button type="button" onClick={() => onRemoveLot(lot.id)} aria-label={`Rimuovi lotto ${index + 1} di ${ingredient.label}`} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50">
+                        <button type="button" onClick={() => removeLot(lot)} aria-label={`Rimuovi lotto ${index + 1} di ${ingredient.label}`} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50">
                           <Trash2 size={15} aria-hidden="true" />
                           Rimuovi
                         </button>
@@ -137,5 +161,13 @@ export default function PantryLotsPanel({ ingredients, lots, onAddLot, onRemoveL
         })}
       </div>
     </details>
+    {removedLot !== null && (
+      <UndoToast
+        message={`Lotto di ${removedLot.label} rimosso.`}
+        onUndo={restoreLot}
+        onExpire={() => setRemovedLot(null)}
+      />
+    )}
+    </>
   );
 }

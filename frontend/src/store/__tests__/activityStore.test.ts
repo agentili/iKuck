@@ -80,6 +80,16 @@ describe('activity store', () => {
     expect(useActivityStore.getState().events).toEqual([]);
   });
 
+  it('restores a removed cooking event with the same identity', () => {
+    const id = useActivityStore.getState().recordCookEvent(RECIPES[0]);
+    const removedEvent = useActivityStore.getState().events[0];
+
+    useActivityStore.getState().removeCookEvent(id!);
+
+    expect(useActivityStore.getState().restoreCookEvent(removedEvent)).toBe(true);
+    expect(useActivityStore.getState().events).toContainEqual(removedEvent);
+  });
+
   it('queues activity and preference changes with stable entity types', async () => {
     useActivityStore.getState().recordCookEvent(RECIPES[0]);
     useActivityStore.getState().setRecipePreference(RECIPES[0].id, true, 5, null);

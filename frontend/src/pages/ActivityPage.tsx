@@ -9,6 +9,7 @@ export default function ActivityPage() {
   const events = useActivityStore((state) => state.events);
   const preferences = useActivityStore((state) => state.preferences);
   const removeCookEvent = useActivityStore((state) => state.removeCookEvent);
+  const restoreCookEvent = useActivityStore((state) => state.restoreCookEvent);
   const clearActivity = useActivityStore((state) => state.clearActivity);
 
   useEffect(() => {
@@ -29,7 +30,7 @@ export default function ActivityPage() {
         <ArrowLeft size={18} aria-hidden="true" /> Torna alla dispensa
       </Link>
       <div className="mt-6">
-        <ActivityPanel events={events} preferences={preferences} onRemoveEvent={removeCookEvent} onClearActivity={clearActivity} />
+        <ActivityPanel events={events} preferences={preferences} onRemoveEvent={removeCookEvent} onRestoreEvent={restoreCookEvent} onClearActivity={clearActivity} />
       </div>
     </main>
   );

@@ -66,4 +66,15 @@ describe('PantryLotsPanel', () => {
 
     expect(onRemoveLot).toHaveBeenCalledWith('lot-1');
   });
+
+  it('restores a removed lot from the undo toast', async () => {
+    const user = userEvent.setup();
+    const onRestoreLot = vi.fn().mockReturnValue(true);
+    render(<PantryLotsPanel ingredients={ingredients} lots={lots} onAddLot={vi.fn()} onRemoveLot={vi.fn()} onRestoreLot={onRestoreLot} onUpdateLot={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Rimuovi lotto 1 di Pasta' }));
+    await user.click(screen.getByRole('button', { name: 'Annulla' }));
+
+    expect(onRestoreLot).toHaveBeenCalledWith(lots[0]);
+  });
 });

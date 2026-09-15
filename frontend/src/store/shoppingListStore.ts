@@ -30,6 +30,7 @@ export interface ShoppingListState {
   updateItem: (id: string, patch: ShoppingListItemPatch) => boolean;
   togglePurchased: (id: string) => boolean;
   removeItem: (id: string) => void;
+  restoreItem: (item: ShoppingListItem) => boolean;
   clearPurchased: () => number;
 }
 
@@ -139,6 +140,13 @@ export const useShoppingListStore = create<ShoppingListState>((set, get) => ({
     const items = get().items.filter((item) => item.id !== id);
     set({ items });
     persistAndQueue(items, existing, 'delete');
+  },
+  restoreItem: (item) => {
+    if (!isValidPayload(item) || get().items.some((existing) => existing.id === item.id)) return false;
+    const items = [...get().items, item];
+    set({ items });
+    persistAndQueue(items, item);
+    return true;
   },
   clearPurchased: () => {
     const removed = get().items.filter((item) => item.purchased);

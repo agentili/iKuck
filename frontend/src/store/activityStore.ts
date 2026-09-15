@@ -24,6 +24,7 @@ export interface ActivityState {
   preferences: RecipePreference[];
   recordCookEvent: (recipe: PantryRecipe, servings?: number, note?: string | null) => string | null;
   removeCookEvent: (id: string) => boolean;
+  restoreCookEvent: (event: CookEvent) => boolean;
   clearActivity: () => number;
   getRecipePreference: (recipeId: string) => RecipePreference | undefined;
   setRecipePreference: (recipeId: string, favorite: boolean, rating: number | null, note: string | null) => boolean;
@@ -93,6 +94,15 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     set({ events });
     void trackPersistence('activity', () => persistEvents(events));
     void trackSync('activity', () => enqueueEntityMutation(GUEST_SYNC_SCOPE, 'cook_event', id, 'delete', null));
+    return true;
+  },
+  restoreCookEvent: (event) => {
+    if (get().events.some((existing) => existing.id === event.id)) return false;
+    if (validateCookEventDetails(event.recipeId, event.recipeTitle, event.servings, event.cookedAt, event.note).length > 0) return false;
+    const events = [...get().events, event];
+    set({ events });
+    void trackPersistence('activity', () => persistEvents(events));
+    void trackSync('activity', () => enqueueEntityMutation(GUEST_SYNC_SCOPE, 'cook_event', event.id, 'upsert', event));
     return true;
   },
   clearActivity: () => {

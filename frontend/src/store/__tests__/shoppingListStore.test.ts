@@ -58,6 +58,24 @@ describe('shopping list store', () => {
     expect(useShoppingListStore.getState().items).toEqual([]);
   });
 
+  it('restores a removed item with the same identity', () => {
+    const id = useShoppingListStore.getState().addItem({
+      ingredientId: 'pasta',
+      label: 'Pasta',
+      quantity: null,
+      unit: null,
+      note: null,
+      purchased: false,
+      sourceRecipeId: null,
+    });
+    const removedItem = useShoppingListStore.getState().items[0];
+
+    useShoppingListStore.getState().removeItem(id!);
+
+    expect(useShoppingListStore.getState().restoreItem(removedItem)).toBe(true);
+    expect(useShoppingListStore.getState().items).toContainEqual(removedItem);
+  });
+
   it('surfaces a shopping list persistence failure while keeping the local change available', async () => {
     vi.spyOn(shoppingListStorage, 'writeShoppingList').mockRejectedValueOnce(new Error('IndexedDB unavailable'));
 

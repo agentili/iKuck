@@ -31,6 +31,7 @@ export interface PantryState {
   addPantryLot: (input: PantryLotPayload) => string | null;
   updatePantryLot: (id: string, details: Pick<PantryLotPayload, 'quantity' | 'unit' | 'expiresAt'>) => boolean;
   removePantryLot: (id: string) => void;
+  restorePantryLot: (lot: PantryLot) => boolean;
   getLotsForIngredient: (ingredientId: string) => PantryLot[];
   getPantryQuantitySummary: () => PantryQuantityAggregate[];
   removeIngredient: (id: string) => void;
@@ -138,6 +139,16 @@ export const usePantryStore = create<PantryState>()(
           set({ pantryItems: derivePantryItems(nextLots), pantryLots: nextLots });
           persistSnapshot(normalizeStateSnapshot(get()));
           queuePantryMutation('pantry_lot', id, 'delete', null);
+        },
+        restorePantryLot: (lot) => {
+          const current = normalizeStateSnapshot(get());
+          if (current.pantryLots?.some((existing) => existing.id === lot.id)) return false;
+          if (validatePantryLotDetails(lot.quantity, lot.unit, lot.expiresAt).length > 0) return false;
+          const nextLots = [...(current.pantryLots ?? []), lot];
+          set({ pantryItems: derivePantryItems(nextLots), pantryLots: nextLots });
+          persistSnapshot(normalizeStateSnapshot(get()));
+          queuePantryMutation('pantry_lot', lot.id, 'upsert', lot);
+          return true;
         },
         getLotsForIngredient: (ingredientId) => normalizeStateSnapshot(get()).pantryLots?.filter((lot) => lot.ingredientId === ingredientId) ?? [],
         getPantryQuantitySummary: () => aggregatePantryLots(normalizeStateSnapshot(get()).pantryLots ?? []),

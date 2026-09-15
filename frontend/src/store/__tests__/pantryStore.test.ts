@@ -146,6 +146,18 @@ describe('pantry store', () => {
     expect(usePantryStore.getState().pantryItems).toHaveLength(1);
   });
 
+  it('restores a removed lot with the same identity', () => {
+    usePantryStore.getState().addPantryLot({
+      ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 500, unit: 'g', expiresAt: null,
+    });
+    const removedLot = usePantryStore.getState().pantryLots[0];
+
+    usePantryStore.getState().removePantryLot(removedLot.id);
+
+    expect(usePantryStore.getState().restorePantryLot(removedLot)).toBe(true);
+    expect(usePantryStore.getState().pantryLots).toContainEqual(removedLot);
+  });
+
   it('updates quantity and expiry details without losing the lot id', () => {
     usePantryStore.getState().addIngredients([{ id: 'pasta', label: 'Pasta', known: true }]);
     const id = usePantryStore.getState().pantryLots[0].id;

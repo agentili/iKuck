@@ -22,6 +22,7 @@ const renderPanel = (items: ShoppingListItem[] = [], overrides: Partial<{
   onAdd: (input: ShoppingListItemPayload) => string | null;
   onTogglePurchased: (id: string) => boolean;
   onRemove: (id: string) => void;
+  onRestoreItem: (item: ShoppingListItem) => boolean;
   onUpdate: (id: string, patch: { label?: string; quantity?: number | null; unit?: ShoppingListItem['unit']; note?: string | null }) => boolean;
   onClearPurchased: () => number;
 }> = {}) => render(
@@ -30,6 +31,7 @@ const renderPanel = (items: ShoppingListItem[] = [], overrides: Partial<{
     onAdd={overrides.onAdd ?? vi.fn().mockReturnValue('shopping-new')}
     onTogglePurchased={overrides.onTogglePurchased ?? vi.fn().mockReturnValue(true)}
     onRemove={overrides.onRemove ?? vi.fn()}
+    onRestoreItem={overrides.onRestoreItem ?? vi.fn().mockReturnValue(true)}
     onUpdate={overrides.onUpdate ?? vi.fn().mockReturnValue(true)}
     onClearPurchased={overrides.onClearPurchased ?? vi.fn().mockReturnValue(1)}
   />,
@@ -103,5 +105,16 @@ describe('ShoppingListPanel', () => {
     );
     expect(screen.getByText(/Dalla ricetta: Pasta tonno e pomodoro/)).toBeVisible();
     expect(screen.getByText(/Nota: q\.b\./)).toBeVisible();
+  });
+
+  it('restores a removed item from the undo toast', async () => {
+    const user = userEvent.setup();
+    const onRestoreItem = vi.fn().mockReturnValue(true);
+    renderPanel([item()], { onRestoreItem });
+
+    await user.click(screen.getByRole('button', { name: 'Rimuovi Pasta' }));
+    await user.click(screen.getByRole('button', { name: 'Annulla' }));
+
+    expect(onRestoreItem).toHaveBeenCalledWith(item());
   });
 });

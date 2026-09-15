@@ -10,6 +10,7 @@ export default function ShoppingListPage() {
   const addItem = useShoppingListStore((state) => state.addItem);
   const togglePurchased = useShoppingListStore((state) => state.togglePurchased);
   const removeItem = useShoppingListStore((state) => state.removeItem);
+  const restoreItem = useShoppingListStore((state) => state.restoreItem);
   const updateItem = useShoppingListStore((state) => state.updateItem);
   const clearPurchased = useShoppingListStore((state) => state.clearPurchased);
 
@@ -31,7 +32,7 @@ export default function ShoppingListPage() {
         <ArrowLeft size={18} aria-hidden="true" /> Torna alla dispensa
       </Link>
       <div className="mt-6">
-        <ShoppingListPanel items={items} onAdd={addItem} onTogglePurchased={togglePurchased} onRemove={removeItem} onUpdate={updateItem} onClearPurchased={clearPurchased} />
+        <ShoppingListPanel items={items} onAdd={addItem} onTogglePurchased={togglePurchased} onRemove={removeItem} onRestoreItem={restoreItem} onUpdate={updateItem} onClearPurchased={clearPurchased} />
       </div>
     </main>
   );

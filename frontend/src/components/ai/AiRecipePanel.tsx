@@ -11,6 +11,7 @@ import {
   updateAiConsent,
 } from '../../ai/aiRecipeApi';
 import { ALLERGEN_LABELS, DIET_LABELS } from '../../domain/dietary';
+import UndoToast from '../feedback/UndoToast';
 
 interface AiRecipePanelProps {
   ingredients: string[];
@@ -47,6 +48,7 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
   const [isSaving, setIsSaving] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingDeletes, setPendingDeletes] = useState<GeneratedRecipe[]>([]);
   const pantryLabels = normalizedIngredients(ingredients);
 
   useEffect(() => {
@@ -122,18 +124,33 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
     }
   };
 
-  const remove = async (recipeId: string) => {
+  const restorePendingDelete = (recipe: GeneratedRecipe) => {
+    setPendingDeletes((current) => current.filter((item) => item.id !== recipe.id));
+    setRecipes((current) => [recipe, ...current.filter((item) => item.id !== recipe.id)]);
+  };
+
+  const finalizeDelete = async (recipe: GeneratedRecipe) => {
     if (csrfToken === null) return;
+    setPendingDeletes((current) => current.filter((item) => item.id !== recipe.id));
     setError(null);
     try {
-      await deleteAiRecipe(recipeId, csrfToken);
-      setRecipes((current) => current.filter((recipe) => recipe.id !== recipeId));
+      await deleteAiRecipe(recipe.id, csrfToken);
     } catch (deleteError) {
+      setRecipes((current) => [recipe, ...current.filter((item) => item.id !== recipe.id)]);
       setError(errorMessage(deleteError));
     }
   };
 
+  const remove = (recipeId: string) => {
+    const recipe = recipes.find((item) => item.id === recipeId);
+    if (recipe === undefined) return;
+    setError(null);
+    setRecipes((current) => current.filter((item) => item.id !== recipeId));
+    setPendingDeletes((current) => [...current.filter((item) => item.id !== recipeId), recipe]);
+  };
+
   return (
+    <>
     <section aria-label="Ricette AI private" className="mt-6 rounded-3xl border-2 border-violet-100 bg-violet-50/70 p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-3">
@@ -188,7 +205,7 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
                   <h3 className="text-xl font-black text-gray-950">{recipe.title}</h3>
                   <p className="mt-1 text-sm leading-relaxed text-gray-700">{recipe.description}</p>
                 </div>
-                <button type="button" onClick={() => void remove(recipe.id)} aria-label={`Elimina ${recipe.title}`} className="rounded-xl p-2 text-gray-500 hover:bg-rose-50 hover:text-rose-700">
+                <button type="button" onClick={() => remove(recipe.id)} aria-label={`Elimina ${recipe.title}`} className="rounded-xl p-2 text-gray-500 hover:bg-rose-50 hover:text-rose-700">
                   <Trash2 size={18} aria-hidden="true" />
                 </button>
               </div>
@@ -213,5 +230,14 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
         </div>
       )}
     </section>
+    {pendingDeletes.map((recipe) => (
+      <UndoToast
+        key={recipe.id}
+        message={`Ricetta ${recipe.title} rimossa.`}
+        onUndo={() => restorePendingDelete(recipe)}
+        onExpire={() => { void finalizeDelete(recipe); }}
+      />
+    ))}
+    </>
   );
 }

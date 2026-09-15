@@ -49,6 +49,7 @@ export default function HomePage() {
   const addPantryLot = usePantryStore((state) => state.addPantryLot);
   const updatePantryLot = usePantryStore((state) => state.updatePantryLot);
   const removePantryLot = usePantryStore((state) => state.removePantryLot);
+  const restorePantryLot = usePantryStore((state) => state.restorePantryLot);
   const removeIngredient = usePantryStore((state) => state.removeIngredient);
   const toggleStaple = usePantryStore((state) => state.toggleStaple);
   const dietProfile = useDietProfileStore((state) => state.profile);
@@ -251,7 +252,7 @@ export default function HomePage() {
         )}
         <DietFiltersPanel profile={dietProfile} onChange={handleDietProfileChange} onReset={handleDietProfileReset} />
         {pantryItems.length > 0 && (
-          <PantryLotsPanel ingredients={pantryItems} lots={pantryLots} onAddLot={addPantryLot} onRemoveLot={removePantryLot} onUpdateLot={updatePantryLot} />
+          <PantryLotsPanel ingredients={pantryItems} lots={pantryLots} onAddLot={addPantryLot} onRemoveLot={removePantryLot} onRestoreLot={restorePantryLot} onUpdateLot={updatePantryLot} />
         )}
         <StaplesPanel stapleIds={stapleIds} onToggle={handleToggleStaple} />
       </section>
