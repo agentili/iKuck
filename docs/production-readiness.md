@@ -32,6 +32,16 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml co
 
 Il validator rifiuta valori mancanti o placeholder, domini non validi, password non sicure per la URL PostgreSQL, chiavi provider presenti nei file `.example` e URL database/Redis esterni alla rete privata Compose.
 
+## Header browser e CSP
+
+Caddy applica `Content-Security-Policy` senza `unsafe-eval`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy` e HSTS solo quando la richiesta usa HTTPS. La CSP consente esclusivamente l'origine dell'app, gli asset inline necessari al rendering corrente e Google Identity Services quando il client Google è configurato. Verifica lo stack avviato con:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy/security-headers.test.ps1 -BaseUrl https://app.example.test
+```
+
+Su standalone HTTP il test deve confermare che HSTS è assente; la validazione production HTTPS deve invece confermare la presenza di HSTS. Se login Google, PWA o asset vengono modificati, aggiorna la CSP e ripeti il test prima del deploy.
+
 ## Staging e produzione
 
 Prima del deployment servono:
