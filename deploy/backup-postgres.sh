@@ -40,6 +40,11 @@ checksum_command() {
 mkdir -p "$BACKUP_DIR"
 timestamp=$(date -u +%Y%m%dT%H%M%SZ)
 archive_path="$BACKUP_DIR/ikuck-$timestamp.dump"
+suffix=0
+while [ -e "$archive_path" ] || [ -e "$archive_path.sha256" ]; do
+  suffix=$((suffix + 1))
+  archive_path="$BACKUP_DIR/ikuck-$timestamp-$suffix.dump"
+done
 checksum_path="$archive_path.sha256"
 temp_archive="$archive_path.tmp.$$"
 temp_checksum="$checksum_path.tmp.$$"

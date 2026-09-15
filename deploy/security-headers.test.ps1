@@ -35,16 +35,18 @@ Assert-Condition ($caddyfile -match 'Strict-Transport-Security') 'Caddyfile must
 
 $response = Invoke-WebRequest -UseBasicParsing -Uri $BaseUrl
 $headers = $response.Headers
-Assert-Condition ($headers['Content-Security-Policy'] -and $headers['Content-Security-Policy'] -notmatch 'unsafe-eval') 'Live response must expose CSP without unsafe-eval.'
-Assert-Condition ($headers['X-Content-Type-Options'] -eq 'nosniff') 'Live response must expose nosniff.'
-Assert-Condition ($headers['X-Frame-Options'] -eq 'DENY') 'Live response must deny framing.'
-Assert-Condition ($headers['Referrer-Policy'] -eq 'strict-origin-when-cross-origin') 'Live response must expose the documented referrer policy.'
-Assert-Condition ($headers['Permissions-Policy']) 'Live response must expose Permissions-Policy.'
+$contentSecurityPolicy = [string]$headers['Content-Security-Policy']
+$hsts = [string]$headers['Strict-Transport-Security']
+Assert-Condition ([bool]$contentSecurityPolicy -and $contentSecurityPolicy -notmatch 'unsafe-eval') 'Live response must expose CSP without unsafe-eval.'
+Assert-Condition ([string]$headers['X-Content-Type-Options'] -eq 'nosniff') 'Live response must expose nosniff.'
+Assert-Condition ([string]$headers['X-Frame-Options'] -eq 'DENY') 'Live response must deny framing.'
+Assert-Condition ([string]$headers['Referrer-Policy'] -eq 'strict-origin-when-cross-origin') 'Live response must expose the documented referrer policy.'
+Assert-Condition ([bool][string]$headers['Permissions-Policy']) 'Live response must expose Permissions-Policy.'
 
 if ($BaseUrl -match '^https://') {
-    Assert-Condition ($headers['Strict-Transport-Security']) 'HTTPS response must expose HSTS.'
+    Assert-Condition ([bool]$hsts) 'HTTPS response must expose HSTS.'
 } else {
-    Assert-Condition (-not $headers['Strict-Transport-Security']) 'HTTP response must not expose HSTS.'
+    Assert-Condition (-not [bool]$hsts) 'HTTP response must not expose HSTS.'
 }
 
 Write-Output "security-headers.test.ps1 passed for $BaseUrl"
