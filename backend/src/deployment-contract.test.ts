@@ -5,9 +5,21 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const temporaryDockerConfigs: string[] = [];
+type ComposeConfig = {
+  services: Record<string, {
+    ports?: Array<{ target: number; published?: string }>;
+    build?: { context?: string; dockerfile?: string };
+  }>;
+};
+
+const composeConfigCache = new Map<string, ComposeConfig>();
 const dockerCommand = process.platform === 'win32' ? 'docker.exe' : 'docker';
 
-const readComposeConfig = (relativePath: string) => {
+// Compose files are immutable during this suite, so avoid repeated external CLI startup.
+const readComposeConfig = (relativePath: string): ComposeConfig => {
+  const cached = composeConfigCache.get(relativePath);
+  if (cached !== undefined) return cached;
+
   const dockerConfig = mkdtempSync(join(tmpdir(), 'ikuck-docker-'));
   temporaryDockerConfigs.push(dockerConfig);
   const output = execFileSync(
@@ -25,12 +37,9 @@ const readComposeConfig = (relativePath: string) => {
     },
   );
 
-  return JSON.parse(output) as {
-    services: Record<string, {
-      ports?: Array<{ target: number; published?: string }>;
-      build?: { context?: string; dockerfile?: string };
-    }>;
-  };
+  const compose = JSON.parse(output) as ComposeConfig;
+  composeConfigCache.set(relativePath, compose);
+  return compose;
 };
 
 afterEach(() => {
