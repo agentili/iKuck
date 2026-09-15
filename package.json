@@ -1,0 +1,7 @@
+{
+  "name": "ikuck-repository",
+  "private": true,
+  "scripts": {
+    "verify": "powershell -ExecutionPolicy Bypass -File scripts/verify-repository.ps1"
+  }
+}
