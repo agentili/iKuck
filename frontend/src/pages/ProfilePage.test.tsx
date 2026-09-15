@@ -117,6 +117,46 @@ describe('ProfilePage', () => {
     vi.unstubAllGlobals();
   });
 
+  it('reports a partial import when the server keeps returning more pages', async () => {
+    const user = userEvent.setup();
+    let cursor = 0;
+    const fetch = vi.fn().mockImplementation((path: string) => {
+      if (path === '/v1/profile') {
+        return Promise.resolve(new Response(JSON.stringify({ profile: { displayName: 'Ale' } }), { status: 200 }));
+      }
+      cursor += 1;
+      return Promise.resolve(new Response(JSON.stringify({ changes: [], nextCursor: cursor, hasMore: true }), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetch);
+    useAuthStore.setState({
+      user: verifiedUser,
+      csrfToken: 'csrf-1',
+      expiresAt: '2026-10-12T10:00:00.000Z',
+    });
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    await screen.findByRole('heading', { name: 'Il tuo profilo' });
+    await user.click(screen.getByRole('button', { name: 'Importa i dati locali' }));
+    await user.click(screen.getByRole('button', { name: 'Conferma importazione' }));
+
+    expect(await screen.findByText(/Sincronizzazione parziale/)).toBeVisible();
+    expect(fetch).toHaveBeenCalledWith('/v1/sync', expect.objectContaining({ method: 'POST' }));
+    vi.unstubAllGlobals();
+  });
+
+  it('shows a recoverable error when profile loading fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new ApiClientError(0, 'network_error', 'Network unavailable')));
+    useAuthStore.setState({
+      user: verifiedUser,
+      csrfToken: 'csrf-1',
+      expiresAt: '2026-10-12T10:00:00.000Z',
+    });
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sei offline');
+    vi.unstubAllGlobals();
+  });
+
   it('requires explicit confirmation before importing local data', async () => {
     const user = userEvent.setup();
     useAuthStore.setState({

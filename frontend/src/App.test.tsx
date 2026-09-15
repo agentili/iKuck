@@ -2,6 +2,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { useAuthStore } from './auth/authStore';
+import { useActivityStore } from './store/activityStore';
+import { useShoppingListStore } from './store/shoppingListStore';
 
 const syncVerifiedSession = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 const listenForReconnect = vi.hoisted(() => vi.fn().mockReturnValue(vi.fn()));
@@ -29,6 +31,8 @@ describe('App synchronization lifecycle', () => {
       isLoading: false,
       restoreSession: vi.fn(),
     });
+    useActivityStore.setState({ hasHydrated: true, events: [], preferences: [] });
+    useShoppingListStore.setState({ hasHydrated: true, items: [] });
   });
 
   it('starts one initial sync and one reconnect listener for a verified session', async () => {
@@ -42,6 +46,15 @@ describe('App synchronization lifecycle', () => {
       expect.objectContaining({ isSessionCurrent: expect.any(Function) }),
     );
     expect(listenForReconnect).toHaveBeenCalledOnce();
+  });
+
+  it('restores the session once when the application mounts', () => {
+    const restoreSession = vi.fn().mockResolvedValue(undefined);
+    useAuthStore.setState({ restoreSession });
+
+    render(<App />);
+
+    expect(restoreSession).toHaveBeenCalledOnce();
   });
 
   it('does not start sync or a reconnect listener for guests and unverified sessions', async () => {
@@ -78,5 +91,44 @@ describe('App synchronization lifecycle', () => {
     expect(window.location.pathname).toBe('/missing-page');
 
     window.history.pushState({}, '', '/');
+  });
+
+  it.each([
+    ['/', /Cosa c’è in dispensa/],
+    ['/recipes/pasta-tonno-pomodoro', 'Pasta tonno e pomodoro'],
+    ['/profile', 'Accedi al tuo profilo'],
+    ['/shopping-list', 'Lista della spesa'],
+    ['/activity', 'La tua attività'],
+    ['/verify-email', 'Link non valido'],
+    ['/reset-password', 'Reimposta la password'],
+  ])('maps %s to its page without changing the route', async (path, heading) => {
+    window.history.pushState({}, '', path);
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: heading })).toBeVisible();
+    expect(window.location.pathname).toBe(path);
+  });
+
+  it('renders the authorized profile route with the restored verified session', async () => {
+    const verifiedUser = {
+      id: 'user-1',
+      email: 'ale@example.com',
+      emailVerifiedAt: '2026-09-12T10:00:00.000Z',
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ profile: { displayName: 'Ale' } }), { status: 200 }),
+    ));
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1', expiresAt: '2026-10-12T10:00:00.000Z' });
+    window.history.pushState({}, '', '/profile');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'Il tuo profilo' })).toBeVisible();
+    expect(syncVerifiedSession).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-1', csrfToken: 'csrf-1' }),
+      expect.anything(),
+    );
+    vi.unstubAllGlobals();
   });
 });

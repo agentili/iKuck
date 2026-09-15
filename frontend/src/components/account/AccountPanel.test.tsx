@@ -35,6 +35,15 @@ describe('AccountPanel', () => {
     expect(screen.getByLabelText('Password')).toBeInTheDocument();
   });
 
+  it('explains when Google sign-in is not configured', async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><AccountPanel /></MemoryRouter>);
+
+    await user.click(screen.getByRole('button', { name: 'Accedi o registrati' }));
+
+    expect(screen.getByText('Accesso con Google non disponibile in questo ambiente.')).toBeVisible();
+  });
+
   it('submits a registration and explains that email verification is required', async () => {
     const register = vi.fn().mockResolvedValue({ verificationRequired: true });
     useAuthStore.setState({ register });
