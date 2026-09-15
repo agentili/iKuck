@@ -14,7 +14,7 @@ interface ProfileResponse {
 
 const operationError = (error: unknown): string => {
   if (error instanceof ApiClientError && error.code === 'network_error') {
-    return 'Sei offline: i dati locali restano disponibili e l’operazione verrà riprovata.';
+    return 'Sei offline: l’operazione non è stata completata. Riprova quando torni online.';
   }
   return 'Non è stato possibile completare l’operazione. Riprova.';
 };
@@ -58,8 +58,8 @@ export default function ProfilePage() {
       <main id="main-content" className="mx-auto min-h-screen w-full max-w-2xl px-4 py-8 sm:px-6">
         <div className="mb-5"><Link to="/" className="font-semibold text-gray-700 underline underline-offset-2">← Torna alla dispensa</Link></div>
         <section className="rounded-3xl border-2 border-gray-200 bg-white p-6 shadow-sm sm:p-8">
-          <h1 className="text-3xl font-black text-gray-950">Accedi per vedere il profilo</h1>
-          <p className="mt-3 text-gray-600">La dispensa ospite resta sul dispositivo. Accedi solo quando vuoi sincronizzarla.</p>
+          <h1 className="text-3xl font-black text-gray-950">Accedi al tuo profilo</h1>
+          <p className="mt-3 text-gray-600">La dispensa ospite resta sul dispositivo. Il login non importa automaticamente i dati locali: l’importazione è un’azione separata.</p>
           <div className="mt-6"><AccountPanel /></div>
         </section>
       </main>
@@ -97,9 +97,7 @@ export default function ProfilePage() {
         emailVerifiedAt: user.emailVerifiedAt,
         csrfToken,
       });
-      setMessage(result.complete
-        ? `Sincronizzazione completata: ${result.uploaded} elementi inviati e ${result.downloaded} ricevuti.`
-        : `Sincronizzazione parziale: ${result.pending} elementi restano in attesa.`);
+      setMessage(`Sincronizzazione ${result.complete ? 'completata' : 'parziale'}: ${result.uploaded} elementi inviati, ${result.downloaded} ricevuti. In attesa: ${result.pending}.`);
     } catch (importError) {
       setError(operationError(importError));
     } finally {
@@ -155,6 +153,19 @@ export default function ProfilePage() {
     }
   };
 
+  const handleLogout = async () => {
+    setMessage(null);
+    setError(null);
+    try {
+      await logout();
+    } catch (logoutError) {
+      setError(operationError(logoutError));
+    } finally {
+      clearSession();
+      navigate('/');
+    }
+  };
+
   return (
     <main id="main-content" className="mx-auto min-h-screen w-full max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="mb-5"><Link to="/" className="font-semibold text-gray-700 underline underline-offset-2">← Torna alla dispensa</Link></div>
@@ -165,7 +176,7 @@ export default function ProfilePage() {
             <h1 className="mt-1 text-3xl font-black text-gray-950">Il tuo profilo</h1>
             <p className="mt-2 text-gray-600">{user.email}</p>
           </div>
-          <button type="button" onClick={() => void logout().then(() => navigate('/'))} className="rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900">Esci</button>
+          <button type="button" onClick={() => { void handleLogout(); }} className="rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900">Esci</button>
         </div>
 
         {message !== null && <p role="status" className="mt-5 rounded-xl bg-emerald-50 p-3 font-semibold text-emerald-900">{message}</p>}

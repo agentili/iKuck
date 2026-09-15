@@ -87,4 +87,25 @@ describe('AccountPanel', () => {
     expect(login).toHaveBeenCalledWith('ale@example.com', 'a long enough password');
     expect(await screen.findByRole('heading', { name: 'Profilo account' })).toBeInTheDocument();
   });
+
+  it('uses ordinary mode controls and focuses the error summary after submit', async () => {
+    const login = vi.fn().mockRejectedValue({ code: 'invalid_credentials' });
+    useAuthStore.setState({ login });
+    const user = userEvent.setup();
+    render(<MemoryRouter><AccountPanel /></MemoryRouter>);
+
+    await user.click(screen.getByRole('button', { name: 'Accedi o registrati' }));
+
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Accedi', exact: true })).toHaveAttribute('aria-pressed', 'true');
+
+    await user.type(screen.getByLabelText('Email'), 'ale@example.com');
+    await user.type(screen.getByLabelText('Password'), 'a long enough password');
+    await user.click(screen.getByRole('button', { name: 'Accedi al profilo' }));
+
+    const error = await screen.findByRole('alert');
+    expect(error).toHaveFocus();
+    expect(screen.getByLabelText('Email')).toHaveAttribute('aria-describedby', 'account-error');
+    expect(screen.getByLabelText('Password')).toHaveAttribute('aria-describedby', 'account-error');
+  });
 });

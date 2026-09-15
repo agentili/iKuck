@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { LogIn, UserRound } from 'lucide-react';
 import { ApiClientError } from '../../api/apiClient';
@@ -60,6 +60,11 @@ export default function AccountPanel() {
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const errorSummaryRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    if (error !== null) errorSummaryRef.current?.focus();
+  }, [error]);
 
   const openMode = (nextMode: Exclude<AccountMode, 'closed'>) => {
     setMode(nextMode);
@@ -144,9 +149,9 @@ export default function AccountPanel() {
             <LogIn size={17} aria-hidden="true" />
             Accedi o registrati
           </button>
-          <GoogleSignInButton onCredential={(credential) => void handleGoogleCredential(credential)} onUnavailable={() => setError('Accesso Google non ancora configurato per questo ambiente.')} />
+          <GoogleSignInButton onCredential={(credential) => void handleGoogleCredential(credential)} />
         </div>
-        {error !== null && <p role="alert" className="basis-full rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-900">{error}</p>}
+        {error !== null && <p ref={errorSummaryRef} id="account-error" role="alert" tabIndex={-1} className="basis-full rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-900">{error}</p>}
       </section>
     );
   }
@@ -161,17 +166,17 @@ export default function AccountPanel() {
         <button type="button" onClick={() => setMode('closed')} className="text-sm font-semibold text-gray-600 underline underline-offset-2">Chiudi</button>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="Operazioni account">
-        <button type="button" onClick={() => openMode('login')} className={`rounded-full px-3 py-1.5 text-sm font-bold ${mode === 'login' ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-700'}`}>Accedi</button>
-        <button type="button" onClick={() => openMode('register')} className={`rounded-full px-3 py-1.5 text-sm font-bold ${mode === 'register' ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-700'}`}>Registrati</button>
-        <button type="button" onClick={() => openMode('reset')} className={`rounded-full px-3 py-1.5 text-sm font-bold ${mode === 'reset' ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-700'}`}>Recupera password</button>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" aria-pressed={mode === 'login'} onClick={() => openMode('login')} className={`rounded-full px-3 py-1.5 text-sm font-bold ${mode === 'login' ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-700'}`}>Accedi</button>
+        <button type="button" aria-pressed={mode === 'register'} onClick={() => openMode('register')} className={`rounded-full px-3 py-1.5 text-sm font-bold ${mode === 'register' ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-700'}`}>Registrati</button>
+        <button type="button" aria-pressed={mode === 'reset'} onClick={() => openMode('reset')} className={`rounded-full px-3 py-1.5 text-sm font-bold ${mode === 'reset' ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-700'}`}>Recupera password</button>
       </div>
 
       {message !== null && <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-900">{message}</p>}
-      {error !== null && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-900">{error}</p>}
+      {error !== null && <p ref={errorSummaryRef} id="account-error" role="alert" tabIndex={-1} className="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-900">{error}</p>}
 
       <div className="mt-4 border-b border-gray-200 pb-4">
-        <GoogleSignInButton onCredential={(credential) => void handleGoogleCredential(credential)} onUnavailable={() => setError('Accesso Google non ancora configurato per questo ambiente.')} />
+        <GoogleSignInButton onCredential={(credential) => void handleGoogleCredential(credential)} />
       </div>
 
       <form className="mt-4 grid gap-3" onSubmit={handleSubmit}>
@@ -182,6 +187,7 @@ export default function AccountPanel() {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             autoComplete="email"
+            aria-describedby={error !== null ? 'account-error' : undefined}
             required
             maxLength={254}
             className="min-h-11 rounded-xl border-2 border-gray-200 bg-gray-50 px-3 text-base outline-none focus:border-gray-900"
@@ -195,6 +201,7 @@ export default function AccountPanel() {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+              aria-describedby={error !== null ? 'account-error' : undefined}
               required
               minLength={mode === 'register' ? 12 : undefined}
               maxLength={256}

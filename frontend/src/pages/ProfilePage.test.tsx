@@ -1,9 +1,10 @@
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProfilePage from './ProfilePage';
 import { useAuthStore } from '../auth/authStore';
+import { ApiClientError } from '../api/apiClient';
 
 const verifiedUser = {
   id: 'user-1',
@@ -32,10 +33,11 @@ describe('ProfilePage', () => {
     ));
   });
 
-  it('asks guests to log in before showing account controls', () => {
+  it('keeps guest account access explicit without promising an automatic import', () => {
     render(<MemoryRouter><ProfilePage /></MemoryRouter>);
 
-    expect(screen.getByRole('heading', { name: 'Accedi per vedere il profilo' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Accedi al tuo profilo' })).toBeInTheDocument();
+    expect(screen.getByText(/non importa automaticamente i dati locali/i)).toBeInTheDocument();
   });
 
   it('shows the verified account and explicit local-data controls', async () => {
@@ -51,6 +53,8 @@ describe('ProfilePage', () => {
     expect(screen.getByRole('button', { name: 'Importa i dati locali' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Esporta i miei dati' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Elimina account' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Accedi con Google' })).not.toBeInTheDocument();
+    expect(screen.getByText('Accesso con Google non disponibile in questo ambiente.')).toBeVisible();
   });
 
   it('requires a second confirmation before account deletion', async () => {
@@ -89,7 +93,10 @@ describe('ProfilePage', () => {
     expect(screen.getByText(/I dati locali resteranno sul dispositivo/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Conferma importazione' }));
 
-    expect(await screen.findByRole('status')).toHaveTextContent(/Sincronizzazione completata/);
+    const syncMessage = await screen.findByText(/Sincronizzazione completata/);
+    expect(syncMessage).toHaveTextContent(/elementi inviati/);
+    expect(syncMessage).toHaveTextContent(/0 ricevuti/);
+    expect(syncMessage).toHaveTextContent(/In attesa: 0/);
     vi.unstubAllGlobals();
   });
 
@@ -107,5 +114,28 @@ describe('ProfilePage', () => {
 
     expect(screen.getByRole('button', { name: 'Conferma importazione' })).toBeInTheDocument();
     expect(screen.getByText(/Confermi l’unione.*non verranno cancellati/)).toBeInTheDocument();
+  });
+
+  it('clears the local session and navigates home when logout fails', async () => {
+    const user = userEvent.setup();
+    const logout = vi.fn().mockRejectedValue(new ApiClientError(0, 'network_error', 'Network unavailable'));
+    const clearSession = vi.fn();
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1', logout, clearSession });
+
+    render(
+      <MemoryRouter initialEntries={['/profile']}>
+        <Routes>
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/" element={<h1>Home</h1>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: 'Il tuo profilo' });
+    await user.click(screen.getByRole('button', { name: 'Esci' }));
+
+    expect(await screen.findByRole('heading', { name: 'Home' })).toBeInTheDocument();
+    expect(logout).toHaveBeenCalledOnce();
+    expect(clearSession).toHaveBeenCalledOnce();
   });
 });

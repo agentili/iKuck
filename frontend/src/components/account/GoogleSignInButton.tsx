@@ -25,12 +25,11 @@ declare global {
 
 interface GoogleSignInButtonProps {
   onCredential: (credential: string) => void;
-  onUnavailable: () => void;
 }
 
 const GOOGLE_SCRIPT_ID = 'google-identity-services';
 
-export default function GoogleSignInButton({ onCredential, onUnavailable }: GoogleSignInButtonProps) {
+export default function GoogleSignInButton({ onCredential }: GoogleSignInButtonProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const configuredClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
   const clientId = configuredClientId?.trim() || undefined;
@@ -76,9 +75,9 @@ export default function GoogleSignInButton({ onCredential, onUnavailable }: Goog
 
   if (clientId === undefined) {
     return (
-      <button type="button" onClick={onUnavailable} className="min-h-11 w-full rounded-xl border-2 border-gray-300 bg-white px-4 py-2 font-bold text-gray-800 hover:border-gray-900">
-        Accedi con Google
-      </button>
+      <p role="status" className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-semibold text-gray-700">
+        Accesso con Google non disponibile in questo ambiente.
+      </p>
     );
   }
 

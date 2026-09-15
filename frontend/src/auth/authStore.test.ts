@@ -116,4 +116,16 @@ describe('auth store', () => {
       csrfToken: 'csrf-1',
     }));
   });
+
+  it('clears in-memory session state when the logout request fails', async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(verifiedSession)
+      .mockRejectedValueOnce(new ApiClientError(0, 'network_error', 'Network unavailable')) as ApiRequest;
+    const store = createAuthStore(request);
+
+    await store.getState().login('ale@example.com', 'a long enough password');
+    await expect(store.getState().logout()).rejects.toMatchObject({ code: 'network_error' });
+
+    expect(store.getState()).toMatchObject({ user: null, csrfToken: null, expiresAt: null, connection: 'offline' });
+  });
 });
