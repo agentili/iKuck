@@ -128,6 +128,14 @@ docker compose -p ikuck-integration -f deploy/docker-compose.integration.yml dow
 
 La suite verifica migrazioni ripetibili, cookie di sessione, blocco prima della verifica email, sincronizzazione last-write-wins, rollback della transazione e reset della quota Redis al cambio di giorno UTC. Avviare e rimuovere i container con un nome di progetto dedicato e non riutilizzare mai le URL production.
 
+### Rehearsal backup/restore disposable
+
+La prova ripetibile di recovery usa `scripts/verify-backup-restore.ps1`. Crea un progetto Compose con porte usa-e-getta, carica tre fixture sintetiche non sensibili, crea un dump e checksum fuori dal repository, ricrea il database da zero, ripristina con `--dry-run` preflight e restore reale, quindi confronta solo conteggio e SHA-256 del fixture canonico. Il progetto, i container, il network e i volumi disposable vengono rimossi in `finally`; usa `-KeepArtifacts` solo per il debugging locale. L'esito registrato non include valori delle fixture, URL private o credenziali.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/verify-backup-restore.ps1
+```
+
 ## Stato e criteri di rilascio
 
 Una release pubblica non è pronta finché non sono verificati DNS, HTTPS, health API, migrazioni, persistenza dopo riavvio, backup e ripristino, sincronizzazione account, fallback dei provider disabilitati e smoke test dei provider esplicitamente abilitati. I risultati devono riportare commit/tag, timestamp UTC, digest immagini, checksum backup e motivi degli eventuali test saltati, senza dati sensibili.

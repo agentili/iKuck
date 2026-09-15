@@ -13,6 +13,10 @@ BACKUP_DIR="${BACKUP_DIR:-${PRE_RESTORE_BACKUP_DIR:-}}"
 ARCHIVE_CHECKSUM_PATH="${ARCHIVE_CHECKSUM_PATH:-$ARCHIVE_PATH.sha256}"
 DRY_RUN="${DRY_RUN:-false}"
 
+if [ "$API_SERVICE" = 'none' ]; then
+  API_SERVICE=''
+fi
+
 case "${1:-}" in
   --dry-run)
     DRY_RUN=true
@@ -109,23 +113,27 @@ restore_cleanup() {
 }
 trap restore_cleanup EXIT HUP INT TERM
 
-compose stop "$API_SERVICE"
-api_stopped=1
+if [ -n "$API_SERVICE" ]; then
+  compose stop "$API_SERVICE"
+  api_stopped=1
+fi
 compose exec -T "$POSTGRES_SERVICE" \
   pg_restore --clean --if-exists --no-owner --exit-on-error --single-transaction \
   -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$ARCHIVE_PATH"
 
-compose up -d "$API_SERVICE" >/dev/null
-for attempt in $(seq 1 30); do
-  if compose exec -T "$API_SERVICE" node -e "fetch('http://127.0.0.1:3000/healthz').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))" >/dev/null 2>&1; then
-    break
-  fi
-  if [ "$attempt" -eq 30 ]; then
-    printf '%s\n' 'API health did not recover after restore; keep the backup and investigate.' >&2
-    exit 1
-  fi
-  sleep 2
-done
+if [ -n "$API_SERVICE" ]; then
+  compose up -d "$API_SERVICE" >/dev/null
+  for attempt in $(seq 1 30); do
+    if compose exec -T "$API_SERVICE" node -e "fetch('http://127.0.0.1:3000/healthz').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))" >/dev/null 2>&1; then
+      break
+    fi
+    if [ "$attempt" -eq 30 ]; then
+      printf '%s\n' 'API health did not recover after restore; keep the backup and investigate.' >&2
+      exit 1
+    fi
+    sleep 2
+  done
+fi
 
 compose exec -T "$POSTGRES_SERVICE" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc 'SELECT 1' | grep -qx '1'
 api_stopped=0
