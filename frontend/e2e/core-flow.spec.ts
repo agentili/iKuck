@@ -83,8 +83,7 @@ test('the core flow works at 320px using only the keyboard', async ({ page }) =>
   await page.reload();
 
   await expect(page.getByLabel('Ingredienti presenti')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Accedi o registrati' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Accedi con Google' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Profilo' })).toBeVisible();
   for (let step = 0; step < 12; step += 1) {
     if (await page.getByLabel('Ingredienti presenti').evaluate((element) => element === document.activeElement)) break;
     await page.keyboard.press('Tab');
@@ -149,6 +148,7 @@ test('local suggestions refresh after pantry and diet changes', async ({ page })
   )).not.toEqual(initialOrder);
   expect(await pantry.innerText()).toBe(pantryAfterUpdate);
 
+  await page.getByText('Filtri alimentari', { exact: true }).click();
   await page.getByLabel('Dieta').selectOption('vegan');
   await expect(page.getByText('Pasta tonno e pomodoro')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Ricette per te' })).toBeVisible();
@@ -168,6 +168,7 @@ test('diet and allergen filters block recipes and explain nutrition estimates', 
   await page.getByRole('button', { name: 'Trova ricette' }).click();
   await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
 
+  await page.getByText('Filtri alimentari', { exact: true }).click();
   await page.getByLabel('Dieta').selectOption('vegetarian');
   await expect(page.getByText('Pasta tonno e pomodoro')).toHaveCount(0);
   await page.getByLabel('Dieta').selectOption('omnivore');
@@ -196,12 +197,14 @@ test('nutrition filters persist and keep the narrow layout without overflow', as
   await page.getByRole('button', { name: 'Trova ricette' }).click();
   await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
 
+  await page.getByText('Filtri alimentari', { exact: true }).click();
   await page.getByLabel('Calorie massime per porzione').fill('400');
   await expect(page.getByText('Pasta tonno e pomodoro')).toHaveCount(0);
   await page.getByLabel('Escludi pesce').check();
   await expect(page.getByLabel('Escludi pesce')).toBeChecked();
   await waitForDietProfilePersistence(page);
   await page.reload();
+  await page.getByText('Filtri alimentari', { exact: true }).click();
   await expect(page.getByLabel('Calorie massime per porzione')).toHaveValue('400');
   await expect(page.getByLabel('Escludi pesce')).toBeChecked();
 
@@ -341,6 +344,7 @@ test('verified users can consent to private AI recipes without changing pantry l
   await page.reload();
   await page.getByLabel('Ingredienti presenti').fill('ceci, pomodoro');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await page.getByText('Dettagli lotti', { exact: true }).click();
   await page.getByRole('button', { name: 'Aggiungi lotto' }).first().click();
   await page.getByLabel('Quantità del lotto').fill('500');
   await page.getByLabel('Unità di misura').selectOption('g');
@@ -363,6 +367,7 @@ test('verified users can consent to private AI recipes without changing pantry l
   expect(await lots.innerText()).toBe(lotsBefore);
 
   await page.reload();
+  await page.getByText('Dettagli lotti', { exact: true }).click();
   await expect(page.getByRole('region', { name: 'Ricette AI private' }).getByRole('heading', { name: 'Ceci croccanti al pomodoro' })).toBeVisible();
   const reloadedAiPanel = page.getByRole('region', { name: 'Ricette AI private' });
   await reloadedAiPanel.getByRole('checkbox', { name: /acconsento all’uso degli ingredienti/i }).uncheck();

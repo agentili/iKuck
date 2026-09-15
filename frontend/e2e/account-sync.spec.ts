@@ -75,7 +75,7 @@ test('verified users explicitly import the local pantry into the account', async
   await page.reload();
   await page.getByLabel('Ingredienti presenti').fill('pasta');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
-  await page.getByRole('link', { name: 'Apri il profilo' }).click();
+  await page.getByRole('link', { name: 'Profilo' }).click();
   await expect(page.getByRole('heading', { name: 'Il tuo profilo' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Importa i dati locali' }).click();
@@ -96,12 +96,12 @@ test('unverified login remains blocked with clear guidance', async ({ page }) =>
     json: { code: 'email_not_verified', message: 'Email verification is required' },
   }));
 
-  await page.goto('/');
+  await page.goto('/profile');
   await page.getByRole('button', { name: 'Accedi o registrati' }).click();
   await page.getByLabel('Email').fill('ale@example.com');
   await page.getByLabel('Password').fill('a long enough password');
   await page.getByRole('button', { name: 'Accedi al profilo' }).click();
 
   await expect(page.getByText('Devi verificare la tua email prima di accedere.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Accedi o registrati' })).not.toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Accedi al tuo profilo' })).toBeVisible();
 });

@@ -9,7 +9,7 @@ test('registers, verifies, logs in, synchronizes and logs out against the live s
   const password = process.env.E2E_TEST_PASSWORD?.trim() || 'e2e-password-2026';
   const verificationToken = process.env.E2E_VERIFICATION_TOKEN?.trim();
 
-  await page.goto('/');
+  await page.goto('/profile');
   await page.getByRole('button', { name: 'Accedi o registrati' }).click();
   await page.getByRole('button', { name: 'Registrati' }).click();
   await page.getByLabel('Email').fill(email);
@@ -37,12 +37,12 @@ test('registers, verifies, logs in, synchronizes and logs out against the live s
   await page.goto('/');
   await page.getByLabel('Ingredienti presenti').fill('pasta');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
-  await page.getByRole('link', { name: 'Apri il profilo' }).click();
+  await page.getByRole('link', { name: 'Profilo' }).click();
   await page.getByRole('button', { name: 'Importa i dati locali' }).click();
   await page.getByRole('button', { name: 'Conferma importazione' }).click();
   await expect(page.getByText(/Sincronizzazione completata/)).toBeVisible();
 
   await page.getByRole('button', { name: 'Esci' }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole('button', { name: 'Accedi o registrati' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Profilo' })).toBeVisible();
 });

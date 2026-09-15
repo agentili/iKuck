@@ -14,8 +14,7 @@ test.describe('production target smoke checks', () => {
   test('serves the guest flow and keeps primary navigation reachable', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: /Cosa c’è in dispensa/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Accedi o registrati' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Accedi con Google' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Profilo' })).toBeVisible();
 
     await page.getByLabel('Ingredienti presenti').fill('pasta');
     await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
@@ -29,13 +28,13 @@ test.describe('production target smoke checks', () => {
     await expect(page.getByRole('heading', { name: 'La tua attività' })).toBeVisible();
 
     await page.goto('/profile');
-    await expect(page.getByRole('heading', { name: 'Accedi per vedere il profilo' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Accedi al tuo profilo' })).toBeVisible();
   });
 
   test('loads the disposable verified account boundary when credentials are supplied', async ({ page }) => {
     test.skip(testEmail === undefined || testPassword === undefined, 'Skipped: set E2E_TEST_EMAIL and E2E_TEST_PASSWORD for the disposable verified account check.');
 
-    await page.goto('/');
+    await page.goto('/profile');
     await page.getByRole('button', { name: 'Accedi o registrati' }).click();
     await page.getByLabel('Email').fill(testEmail!);
     await page.getByLabel('Password').fill(testPassword!);
@@ -45,13 +44,16 @@ test.describe('production target smoke checks', () => {
     await page.goto('/');
     await page.getByLabel('Ingredienti presenti').fill('pasta');
     await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
-    await page.getByRole('link', { name: 'Apri il profilo' }).click();
-    await page.getByRole('button', { name: 'Importa la dispensa' }).click();
-    await expect(page.getByText('La tua dispensa è stata sincronizzata.')).toBeVisible();
+    await page.getByRole('link', { name: 'Profilo' }).click();
+    await page.getByRole('button', { name: 'Importa i dati locali' }).click();
+    await page.getByRole('button', { name: 'Conferma importazione' }).click();
+    await expect(page.getByText(/Sincronizzazione completata/)).toBeVisible();
 
     await page.goto('/');
+    await page.getByText('Filtri alimentari', { exact: true }).click();
     await page.getByLabel('Dieta').selectOption('vegetarian');
     await page.reload();
+    await page.getByText('Filtri alimentari', { exact: true }).click();
     await expect(page.getByLabel('Dieta')).toHaveValue('vegetarian');
 
     const aiPanel = page.getByRole('region', { name: 'Ricette AI private' });

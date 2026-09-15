@@ -17,6 +17,7 @@ test('adds and retains optional lot quantity and expiry details', async ({ page 
 
   await page.getByLabel('Ingredienti presenti').fill('pasta');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await page.getByText('Dettagli lotti', { exact: true }).click();
   await page.getByRole('button', { name: 'Aggiungi lotto' }).click();
   await page.getByLabel('Quantità del lotto').fill('320');
   await page.getByLabel('Unità di misura').selectOption('g');
@@ -27,6 +28,7 @@ test('adds and retains optional lot quantity and expiry details', async ({ page 
   await expect(page.getByText(/Scade il|Scade presto/).first()).toBeVisible();
 
   await page.reload();
+  await page.getByText('Dettagli lotti', { exact: true }).click();
   await expect(page.getByText(/Totale: 320 g/)).toBeVisible();
   await expect(page.getByText(/2026|20 set/).first()).toBeVisible();
 });
