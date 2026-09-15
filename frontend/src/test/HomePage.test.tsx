@@ -46,16 +46,19 @@ describe('HomePage integration', () => {
     });
   });
 
-  it('keeps account access before the pantry content', async () => {
+  it('keeps the full account flow out of the recipe search page', async () => {
     await renderHome();
 
-    const main = screen.getByRole('main');
-    const account = screen.getByRole('region', { name: 'Account' });
-    const pantry = screen.getByRole('region', { name: 'La tua dispensa' });
+    expect(screen.queryByRole('region', { name: 'Account' })).not.toBeInTheDocument();
+  });
 
-    expect(Array.from(main.querySelectorAll('section')).indexOf(account)).toBeLessThan(
-      Array.from(main.querySelectorAll('section')).indexOf(pantry),
-    );
+  it('places the primary recipe search before secondary pantry controls', async () => {
+    await renderHome();
+
+    const searchOptions = screen.getByRole('region', { name: 'Opzioni ricette' });
+    const dietTitle = screen.getByText('Filtri alimentari');
+
+    expect(searchOptions.compareDocumentPosition(dietTitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('shows an accessible persistence warning with an explicit retry action', async () => {

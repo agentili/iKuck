@@ -8,6 +8,12 @@ interface DietFiltersPanelProps {
 }
 
 export default function DietFiltersPanel({ profile, onChange, onReset }: DietFiltersPanelProps) {
+  const activeFilterCount = Number(profile.diet !== 'omnivore')
+    + profile.excludedAllergens.length
+    + Number(profile.nutrition.maxCaloriesPerServing !== null)
+    + Number(profile.nutrition.minProteinGramsPerServing !== null);
+  const activeFilterLabel = activeFilterCount === 0 ? 'Nessun filtro attivo' : `${activeFilterCount} ${activeFilterCount === 1 ? 'attivo' : 'attivi'}`;
+
   const updateNutrition = (key: 'maxCaloriesPerServing' | 'minProteinGramsPerServing', value: string) => {
     const parsed = value.trim() === '' ? null : Number(value);
     onChange({
@@ -24,20 +30,26 @@ export default function DietFiltersPanel({ profile, onChange, onReset }: DietFil
   };
 
   return (
-    <section aria-labelledby="diet-filters-title" className="rounded-2xl border-2 border-emerald-100 bg-emerald-50/60 p-4 sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 id="diet-filters-title" className="text-xl font-black text-gray-950">Preferenze alimentari</h2>
+    <details aria-labelledby="diet-filters-title" className="rounded-2xl border-2 border-emerald-100 bg-emerald-50/60 p-4 sm:p-5">
+      <summary className="cursor-pointer list-none">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 id="diet-filters-title" className="text-xl font-black text-gray-950">Filtri alimentari</h2>
           <p id="diet-filters-help" className="mt-1 max-w-2xl text-sm leading-relaxed text-gray-700">
             Gli allergeni sono esclusioni bloccanti. I valori nutrizionali sono stime indicative e non sostituiscono un parere medico.
           </p>
+          </div>
+          <span className="rounded-full bg-white px-3 py-1 text-sm font-bold text-emerald-900">{activeFilterLabel}</span>
         </div>
+      </summary>
+
+      <div className="mt-5 flex justify-end">
         <button type="button" onClick={onReset} className="min-h-10 rounded-xl border-2 border-emerald-800 bg-white px-3 py-2 text-sm font-bold text-emerald-900 hover:bg-emerald-100">
           Ripristina filtri
         </button>
       </div>
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-3">
+      <div className="mt-4 grid gap-4 sm:grid-cols-3">
         <label htmlFor="diet-select" className="grid gap-1.5 text-sm font-bold text-gray-800 sm:col-span-1">
           Dieta
           <select
@@ -97,6 +109,6 @@ export default function DietFiltersPanel({ profile, onChange, onReset }: DietFil
           ))}
         </div>
       </fieldset>
-    </section>
+    </details>
   );
 }

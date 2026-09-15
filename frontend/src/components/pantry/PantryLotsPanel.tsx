@@ -47,13 +47,19 @@ const detailsFromLot = (lot: PantryLot): PantryLotDetails => ({
 export default function PantryLotsPanel({ ingredients, lots, onAddLot, onRemoveLot, onUpdateLot }: PantryLotsPanelProps) {
   const [editorKey, setEditorKey] = useState<string | null>(null);
   const aggregates = aggregatePantryLots(lots);
+  const lotCountLabel = lots.length === 0 ? 'Nessun lotto' : `${lots.length} ${lots.length === 1 ? 'lotto' : 'lotti'}`;
 
   return (
-    <section aria-labelledby="pantry-lots-title" className="rounded-2xl border border-gray-200 bg-white p-4">
-      <div>
-        <h3 id="pantry-lots-title" className="text-lg font-bold text-gray-950">Dettagli della dispensa</h3>
+    <details aria-labelledby="pantry-lots-title" className="rounded-2xl border border-gray-200 bg-white p-4">
+      <summary className="cursor-pointer list-none">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 id="pantry-lots-title" className="text-lg font-bold text-gray-950">Dettagli lotti</h3>
         <p className="mt-1 text-sm text-gray-600">Puoi aggiungere lotti, quantità e scadenze senza complicare la ricerca delle ricette.</p>
-      </div>
+          </div>
+          <span className="rounded-full bg-gray-100 px-3 py-1 text-sm font-bold text-gray-700">{lotCountLabel}</span>
+        </div>
+      </summary>
       <div className="mt-3 grid gap-3">
         {ingredients.map((ingredient) => {
           const ingredientLots = lots.filter((lot) => lot.ingredientId === ingredient.id);
@@ -130,6 +136,6 @@ export default function PantryLotsPanel({ ingredients, lots, onAddLot, onRemoveL
           );
         })}
       </div>
-    </section>
+    </details>
   );
 }

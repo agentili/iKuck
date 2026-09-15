@@ -11,6 +11,30 @@ const profile: DietProfilePayload = {
 };
 
 describe('DietFiltersPanel', () => {
+  it('starts collapsed and summarizes active filters before expansion', async () => {
+    const user = userEvent.setup();
+    render(
+      <DietFiltersPanel
+        profile={{ ...profile, diet: 'vegan', excludedAllergens: ['fish'], nutrition: { maxCaloriesPerServing: 600, minProteinGramsPerServing: null } }}
+        onChange={vi.fn()}
+        onReset={vi.fn()}
+      />,
+    );
+
+    const summary = screen.getByText('Filtri alimentari');
+    const details = summary.closest('details');
+
+    expect(details).not.toBeNull();
+    if (details === null) return;
+    expect(details).not.toHaveAttribute('open');
+    expect(screen.getByText('3 attivi')).toBeInTheDocument();
+
+    await user.click(summary);
+
+    expect(details).toHaveAttribute('open');
+    expect(screen.getByLabelText('Dieta')).toHaveValue('vegan');
+  });
+
   it('exposes an accessible diet selector, allergen checkboxes and estimate guidance', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

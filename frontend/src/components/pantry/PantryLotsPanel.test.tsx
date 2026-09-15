@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { PantryLot } from '@ikuck/shared/contracts';
 import PantryLotsPanel from './PantryLotsPanel';
 
@@ -18,10 +19,29 @@ const lots: PantryLot[] = [
 ];
 
 describe('PantryLotsPanel', () => {
-  it('shows aggregated quantities, lot count and expiry status', () => {
+  it('starts collapsed and summarizes the active lot count', async () => {
+    const user = userEvent.setup();
     render(<PantryLotsPanel ingredients={ingredients} lots={lots} onAddLot={vi.fn()} onRemoveLot={vi.fn()} onUpdateLot={vi.fn()} />);
 
-    expect(screen.getByRole('heading', { name: 'Dettagli della dispensa' })).toBeVisible();
+    const summary = screen.getByText('Dettagli lotti');
+    const details = summary.closest('details');
+
+    expect(details).not.toBeNull();
+    if (details === null) return;
+    expect(details).not.toHaveAttribute('open');
+    expect(screen.getByText('2 lotti')).toBeInTheDocument();
+
+    await user.click(summary);
+
+    expect(details).toHaveAttribute('open');
+  });
+
+  it('shows aggregated quantities, lot count and expiry status when expanded', async () => {
+    const user = userEvent.setup();
+    render(<PantryLotsPanel ingredients={ingredients} lots={lots} onAddLot={vi.fn()} onRemoveLot={vi.fn()} onUpdateLot={vi.fn()} />);
+
+    expect(screen.getByRole('heading', { name: 'Dettagli lotti' })).toBeVisible();
+    await user.click(screen.getByText('Dettagli lotti'));
     expect(screen.getByText(/Totale: 1500 g/)).toBeVisible();
     expect(screen.getAllByText(/Scade presto/)).toHaveLength(2);
   });

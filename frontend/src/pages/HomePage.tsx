@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock3, RefreshCw, ShoppingCart, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import AccountPanel from '../components/account/AccountPanel';
 import AiRecipePanel from '../components/ai/AiRecipePanel';
 import IngredientChip from '../components/pantry/IngredientChip';
 import IngredientInput from '../components/pantry/IngredientInput';
@@ -42,6 +41,8 @@ export default function HomePage() {
   const [searchedAllowOneMissing, setSearchedAllowOneMissing] = useState(false);
   const [varietySeed, setVarietySeed] = useState(0);
   const [suggestions, setSuggestions] = useState<RecipeSuggestion[]>([]);
+  const [focusResultsTitle, setFocusResultsTitle] = useState(false);
+  const resultsTitleRef = useRef<HTMLHeadingElement>(null);
   const pantryItems = usePantryStore((state) => state.pantryItems);
   const pantryLots = usePantryStore((state) => state.pantryLots);
   const stapleIds = usePantryStore((state) => state.stapleIds);
@@ -93,6 +94,12 @@ export default function HomePage() {
     if (hasSearched) setSuggestions(calculatedSuggestions);
   }, [calculatedSuggestions, hasSearched]);
 
+  useEffect(() => {
+    if (!focusResultsTitle || !hasSearched) return;
+    resultsTitleRef.current?.focus();
+    setFocusResultsTitle(false);
+  }, [focusResultsTitle, hasSearched]);
+
   if (!hasHydrated) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
@@ -143,6 +150,7 @@ export default function HomePage() {
     setSearchedAllowOneMissing(extended);
     setSuggestions(calculateSuggestions(varietySeed, extended));
     setHasSearched(true);
+    setFocusResultsTitle(true);
   };
 
   const tryExtended = () => {
@@ -161,7 +169,7 @@ export default function HomePage() {
     : [];
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+    <main id="main-content" className="mx-auto min-h-screen w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
       <header className="mb-8 max-w-3xl">
         <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-900">
           <Sparkles size={16} aria-hidden="true" />
@@ -170,10 +178,6 @@ export default function HomePage() {
         <h1 className="text-4xl font-black leading-tight text-gray-950 sm:text-6xl">Cosa c’è in dispensa?</h1>
         <p className="mt-4 max-w-2xl text-lg leading-relaxed text-gray-600">Scrivi gli ingredienti che hai. Alle ricette pensiamo noi.</p>
       </header>
-
-      <div className="mb-6 max-w-3xl">
-        <AccountPanel />
-      </div>
 
       {persistenceIssue !== undefined && (
         <div role="alert" className="mb-6 flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
@@ -194,41 +198,14 @@ export default function HomePage() {
         </div>
         <IngredientInput onAdd={handleAdd} />
         <IngredientSuggestions ingredients={suggestedIngredients} onAdd={handleSuggestedIngredient} />
-        <DietFiltersPanel profile={dietProfile} onChange={handleDietProfileChange} onReset={handleDietProfileReset} />
-        <div className="flex flex-wrap gap-3">
-          <Link to="/shopping-list" className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border-2 border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-800 hover:border-gray-900">
-            <ShoppingCart size={17} aria-hidden="true" /> Lista della spesa
-          </Link>
-          <Link to="/activity" className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border-2 border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-800 hover:border-gray-900">
-            <Clock3 size={17} aria-hidden="true" /> Attività
-          </Link>
-        </div>
-        {pantryItems.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-gray-300 bg-white p-4 text-gray-500">Aggiungi almeno un ingrediente per cercare una ricetta.</p>
-        ) : (
-          <ul aria-label="La tua dispensa" className="flex flex-wrap gap-2">
-            {pantryItems.map((item) => <IngredientChip key={item.id} item={item} onRemove={handleRemove} />)}
-          </ul>
-        )}
-        {pantryItems.length > 0 && (
-          <PantryLotsPanel ingredients={pantryItems} lots={pantryLots} onAddLot={addPantryLot} onRemoveLot={removePantryLot} onUpdateLot={updatePantryLot} />
-        )}
-        <StaplesPanel stapleIds={stapleIds} onToggle={handleToggleStaple} />
         <SuggestionControls allowOneMissing={allowOneMissing} disabled={pantryItems.length === 0} onAllowOneMissingChange={setAllowOneMissing} onSearch={() => search()} />
       </section>
 
-      <AiRecipePanel
-        ingredients={pantryItems.map((item) => item.label)}
-        dietProfile={dietProfile}
-        user={user}
-        csrfToken={csrfToken}
-      />
-
-      <section aria-live="polite" aria-atomic="false" className="mt-10">
+      <section aria-labelledby="results-title" aria-live="polite" aria-atomic="false" className="mt-8">
         {hasSearched && (
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-3xl font-black text-gray-950">Ricette per te</h2>
+              <h2 id="results-title" ref={resultsTitleRef} tabIndex={-1} className="text-3xl font-black text-gray-950">Ricette per te</h2>
               <p className="mt-1 text-gray-600">Scelte usando quello che hai indicato.</p>
             </div>
             {suggestions.length > 0 && (
@@ -260,6 +237,40 @@ export default function HomePage() {
           </div>
         )}
       </section>
+
+      <section aria-labelledby="pantry-details-title" className="mt-8 space-y-5 rounded-3xl border-2 border-gray-200 bg-gray-50 p-4 sm:p-6">
+        <div>
+          <h2 id="pantry-details-title" className="text-2xl font-bold text-gray-950">Dettagli della dispensa</h2>
+          <p className="mt-1 text-gray-600">Gestisci ingredienti, scadenze e preferenze senza interrompere la ricerca.</p>
+        </div>
+        {pantryItems.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-gray-300 bg-white p-4 text-gray-500">Aggiungi almeno un ingrediente per cercare una ricetta.</p>
+        ) : (
+          <ul aria-label="La tua dispensa" className="flex flex-wrap gap-2">
+            {pantryItems.map((item) => <IngredientChip key={item.id} item={item} onRemove={handleRemove} />)}
+          </ul>
+        )}
+        <DietFiltersPanel profile={dietProfile} onChange={handleDietProfileChange} onReset={handleDietProfileReset} />
+        <div className="flex flex-wrap gap-3">
+          <Link to="/shopping-list" className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border-2 border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-800 hover:border-gray-900">
+            <ShoppingCart size={17} aria-hidden="true" /> Lista della spesa
+          </Link>
+          <Link to="/activity" className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border-2 border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-800 hover:border-gray-900">
+            <Clock3 size={17} aria-hidden="true" /> Attività
+          </Link>
+        </div>
+        {pantryItems.length > 0 && (
+          <PantryLotsPanel ingredients={pantryItems} lots={pantryLots} onAddLot={addPantryLot} onRemoveLot={removePantryLot} onUpdateLot={updatePantryLot} />
+        )}
+        <StaplesPanel stapleIds={stapleIds} onToggle={handleToggleStaple} />
+      </section>
+
+      <AiRecipePanel
+        ingredients={pantryItems.map((item) => item.label)}
+        dietProfile={dietProfile}
+        user={user}
+        csrfToken={csrfToken}
+      />
     </main>
   );
 }
