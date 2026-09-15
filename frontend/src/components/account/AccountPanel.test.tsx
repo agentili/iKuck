@@ -97,7 +97,7 @@ describe('AccountPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Accedi o registrati' }));
 
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Accedi', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /^Accedi$/ })).toHaveAttribute('aria-pressed', 'true');
 
     await user.type(screen.getByLabelText('Email'), 'ale@example.com');
     await user.type(screen.getByLabelText('Password'), 'a long enough password');
