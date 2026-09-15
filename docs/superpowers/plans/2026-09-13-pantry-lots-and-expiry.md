@@ -1,5 +1,7 @@
 # iKuck — pantry lots, quantities and expiry
 
+> **Status:** superseded as the current roadmap by the [remediation index](2026-09-14-remediation-index.md); retained as historical implementation context.
+
 > **For agentic workers:** Execute this plan task-by-task. Keep each checkbox current, run the focused verification before moving on, and commit the plan and implementation as separate reviewable units.
 
 **Goal:** Extend the guest-first pantry from ingredient presence to separate pantry lots with optional quantities, units and expiry dates, while keeping recipe matching presence-based and usable offline.

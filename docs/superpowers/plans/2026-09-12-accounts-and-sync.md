@@ -1,5 +1,7 @@
 # Accounts and Synchronization Implementation Plan
 
+> **Status:** superseded as the current roadmap by the [remediation index](2026-09-14-remediation-index.md); retained as historical implementation context.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add verified email accounts, secure browser sessions, local-to-remote import and offline last-write-wins synchronization while keeping the guest PWA fully local and usable without an account.

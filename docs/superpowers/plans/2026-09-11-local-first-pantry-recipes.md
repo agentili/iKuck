@@ -1,5 +1,7 @@
 # iRicetto Local-First Pantry Recipes Implementation Plan
 
+> **Status:** superseded as the current roadmap by the [remediation index](2026-09-14-remediation-index.md); retained as historical implementation context.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Trasformare iRicetto in una PWA senza login che salva localmente la presenza degli ingredienti e propone, solo su richiesta, ricette complete o con un solo ingrediente facile da reperire.

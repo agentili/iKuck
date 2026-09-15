@@ -1,5 +1,7 @@
 # iKuck — diet, allergens and nutrition implementation plan
 
+> **Status:** superseded as the current roadmap by the [remediation index](2026-09-14-remediation-index.md); retained as historical implementation context.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let guests and verified users restrict recipe suggestions by common diet, block all 14 EU allergens and filter by estimated nutritional values, while keeping incomplete estimates visibly labelled.

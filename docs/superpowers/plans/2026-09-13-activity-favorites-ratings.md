@@ -1,5 +1,7 @@
 # iKuck — activity history, favorites and ratings
 
+> **Status:** superseded as the current roadmap by the [remediation index](2026-09-14-remediation-index.md); retained as historical implementation context.
+
 > **For agentic workers:** Execute this plan task-by-task. Keep each checkbox current, run the focused verification before moving on, and commit the plan and implementation as separate reviewable units.
 
 **Goal:** Record recipes cooked by the user, allow private favorites and 1–5 star ratings with a private note, and synchronize these personal signals for verified accounts without changing pantry lots automatically.

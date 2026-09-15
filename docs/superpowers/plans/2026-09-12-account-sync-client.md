@@ -1,5 +1,7 @@
 # iKuck — client account e sincronizzazione offline
 
+> **Status:** superseded as the current roadmap by the [remediation index](2026-09-14-remediation-index.md); retained as historical implementation context.
+
 > **For agentic workers:** Execute this plan task-by-task. Keep each checkbox current and do not start the next task before the focused verification of the previous task passes.
 
 **Goal:** Add a browser client for verified iKuck accounts, a durable offline mutation queue and explicit local-data import while preserving the guest-first, local-only pantry experience.

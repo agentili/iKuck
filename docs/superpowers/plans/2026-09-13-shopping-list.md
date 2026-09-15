@@ -1,5 +1,7 @@
 # iKuck — synchronized shopping list
 
+> **Status:** superseded as the current roadmap by the [remediation index](2026-09-14-remediation-index.md); retained as historical implementation context.
+
 > **For agentic workers:** Execute this plan task-by-task. Keep each checkbox current, run the focused verification before moving on, and commit the plan and implementation as separate reviewable units.
 
 **Goal:** Add one offline-capable shopping list that guests can edit locally and verified accounts can synchronize, with manual entries, recipe-derived missing ingredients, optional quantities and units, and an explicit purchased state.

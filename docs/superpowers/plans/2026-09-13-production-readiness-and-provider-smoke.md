@@ -1,5 +1,7 @@
 # iKuck — production readiness and provider smoke tests implementation plan
 
+> **Status:** superseded operational roadmap; production/provider checks remain not verified until executed against an authenticated target. Current evidence is recorded in [production readiness](../../production-readiness.md) and the [remediation index](2026-09-14-remediation-index.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Take the completed iKuck platform from the verified `v0.2.1-platform` baseline to a reproducible, monitored production deployment with HTTPS, tested PostgreSQL/Redis persistence, real Resend/USDA/OpenAI provider smoke tests, and a documented rollback and recovery procedure.
