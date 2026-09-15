@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { useAuthStore } from './auth/authStore';
 import AppHeader from './components/layout/AppHeader';
 import HomePage from './pages/HomePage';
@@ -9,6 +9,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import ShoppingListPage from './pages/ShoppingListPage';
 import ActivityPage from './pages/ActivityPage';
+import NotFoundPage from './pages/NotFoundPage';
 import { listenForReconnect, syncVerifiedSession, type SyncSession } from './sync/syncQueue';
 import { hydrateShoppingListStore } from './store/shoppingListStore';
 import { hydrateActivityStore } from './store/activityStore';
@@ -65,7 +66,7 @@ export default function App() {
         <Route path="/activity" element={<ActivityPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFoundPage resource="page" />} />
       </Routes>
     </BrowserRouter>
   );

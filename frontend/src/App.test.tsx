@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { useAuthStore } from './auth/authStore';
@@ -67,5 +67,16 @@ describe('App synchronization lifecycle', () => {
     unmount();
 
     expect(removeListener).toHaveBeenCalledOnce();
+  });
+
+  it('renders an explicit 404 without replacing the requested URL', () => {
+    window.history.pushState({}, '', '/missing-page');
+
+    render(<App />);
+
+    expect(screen.getByRole('heading', { name: 'Pagina non trovata' })).toBeVisible();
+    expect(window.location.pathname).toBe('/missing-page');
+
+    window.history.pushState({}, '', '/');
   });
 });
