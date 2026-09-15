@@ -62,6 +62,18 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml ps
 docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml logs --tail=200 api caddy
 ```
 
+Le immagini esterne di PostgreSQL, Redis, Node e Caddy sono pinnate a digest nel Compose/Dockerfile. I digest sono un dato di release e vanno aggiornati deliberatamente con `docker buildx imagetools inspect <image:tag>`, una verifica delle note di rilascio, il gate completo e un nuovo tag; non sostituire il digest con un tag mobile durante un hotfix.
+
+I servizi hanno limiti espliciti di CPU, memoria e processi e rotazione `json-file` da 10 MiB per 5 file. I healthcheck di PostgreSQL, Redis e API sono prerequisiti per l'avvio dipendente; in staging verifica anche il comportamento di restart/OOM prima di usare limiti diversi in production. Il controllo operativo minimo è:
+
+```powershell
+docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml ps
+docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml logs --since=15m api caddy postgres redis
+docker system df
+```
+
+Un servizio unhealthy, un aumento degli errori HTTP 5xx, spazio database basso o un backup assente richiedono apertura dell'incidente, conservazione dei log e verifica dell'ultimo backup valido. Non cancellare volumi per ripristinare la salute: esegui il runbook di backup/restore e annota owner, timestamp UTC, digest e risultato. Alerting esterno, DNS, VPS, OOM/restart controllato e provider smoke restano non verificati finché non vengono eseguiti sull'ambiente autenticato.
+
 Le migrazioni vengono eseguite dall'API prima dell'avvio del server. Se l'API non diventa healthy, controlla prima i log dell'API e lo stato health di PostgreSQL e Redis; non cancellare i volumi come tentativo di diagnosi.
 
 Il cookie di sessione non ha `Max-Age` per scelta: resta valido solo fino alla chiusura del browser, mentre il record server-side ha comunque una scadenza massima di 30 giorni. La pulizia dei record scaduti è idempotente e va eseguita con frequenza settimanale, dopo un backup:
