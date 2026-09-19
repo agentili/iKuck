@@ -60,6 +60,30 @@ details:not([open]) > :not(summary) {
   background: #f2be3e;
 }
 
+.app-navigation {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.app-overlay {
+  bottom: calc(4.75rem + env(safe-area-inset-bottom));
+}
+
+@media (max-width: 639px) {
+  .app-shell {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
+}
+
+@media (min-width: 640px) {
+  .app-navigation {
+    padding-bottom: 0;
+  }
+
+  .app-overlay {
+    bottom: 1rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -52,13 +52,21 @@ describe('HomePage integration', () => {
     expect(screen.queryByRole('region', { name: 'Account' })).not.toBeInTheDocument();
   });
 
-  it('places the primary recipe search before secondary pantry controls', async () => {
-    await renderHome();
+  it('places ingredient entry and selected items before the primary recipe action', async () => {
+    const user = userEvent.setup();
+    const input = await renderHome();
 
-    const searchOptions = screen.getByRole('region', { name: 'Opzioni ricette' });
     const pantry = screen.getByRole('region', { name: 'La tua dispensa' });
+    const searchOptions = screen.getByRole('region', { name: 'Opzioni ricette' });
 
-    expect(searchOptions.compareDocumentPosition(pantry) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(pantry.compareDocumentPosition(searchOptions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.type(input, 'pasta, tonno');
+    await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
+
+    const selectedIngredients = within(pantry).getByRole('list', { name: 'La tua dispensa' });
+    expect(within(selectedIngredients).getByText('Pasta')).toBeVisible();
+    expect(within(selectedIngredients).getByText('Tonno')).toBeVisible();
   });
 
   it('shows an accessible persistence warning with an explicit retry action', async () => {

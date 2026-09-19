@@ -14,7 +14,7 @@ export default function UndoToast({ message, onUndo, onExpire, durationMs = 6000
   }, [durationMs, onExpire]);
 
   return (
-    <div role="status" aria-live="polite" className="fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-xl items-center justify-between gap-4 rounded-2xl bg-gray-950 px-4 py-3 text-white shadow-xl">
+    <div role="status" aria-live="polite" className="app-overlay fixed inset-x-4 z-50 mx-auto flex max-w-xl items-center justify-between gap-4 rounded-2xl bg-gray-950 px-4 py-3 text-white shadow-xl">
       <span>{message}</span>
       <button type="button" onClick={onUndo} className="min-h-10 shrink-0 rounded-xl bg-white px-3 py-2 font-bold text-gray-950 hover:bg-gray-100">
         Annulla

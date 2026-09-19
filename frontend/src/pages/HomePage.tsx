@@ -191,16 +191,23 @@ export default function HomePage() {
         </div>
       )}
 
-      <div className="mb-6">
-        <SuggestionControls allowOneMissing={allowOneMissing} disabled={pantryItems.length === 0} onAllowOneMissingChange={setAllowOneMissing} onSearch={() => search()} />
-      </div>
-
       <section aria-labelledby="pantry-title" className="space-y-5 rounded-3xl border-2 border-gray-200 bg-gray-50 p-4 sm:p-6">
         <div>
           <h2 id="pantry-title" className="text-2xl font-bold text-gray-950">La tua dispensa</h2>
           <p className="mt-1 text-gray-600">Basta il nome: quantità e scadenze sono opzionali.</p>
         </div>
         <IngredientInput onAdd={handleAdd} />
+        {pantryItems.length > 0 && (
+          <div>
+            <p className="mb-2 text-sm font-semibold text-gray-700">
+              {pantryItems.length} {pantryItems.length === 1 ? 'ingrediente aggiunto' : 'ingredienti aggiunti'}
+            </p>
+            <ul aria-label="La tua dispensa" className="flex flex-wrap gap-2">
+              {pantryItems.map((item) => <IngredientChip key={item.id} item={item} onRemove={handleRemove} />)}
+            </ul>
+          </div>
+        )}
+        <SuggestionControls allowOneMissing={allowOneMissing} disabled={pantryItems.length === 0} onAllowOneMissingChange={setAllowOneMissing} onSearch={() => search()} />
         <IngredientSuggestions ingredients={suggestedIngredients} onAdd={handleSuggestedIngredient} />
       </section>
 
@@ -244,15 +251,8 @@ export default function HomePage() {
       <section aria-labelledby="pantry-details-title" className="mt-8 space-y-5 rounded-3xl border-2 border-gray-200 bg-gray-50 p-4 sm:p-6">
         <div>
           <h2 id="pantry-details-title" className="text-2xl font-bold text-gray-950">Dettagli della dispensa</h2>
-          <p className="mt-1 text-gray-600">Gestisci ingredienti, scadenze e preferenze senza interrompere la ricerca.</p>
+          <p className="mt-1 text-gray-600">Gestisci scadenze e preferenze senza interrompere la ricerca.</p>
         </div>
-        {pantryItems.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-gray-300 bg-white p-4 text-gray-500">Aggiungi almeno un ingrediente per cercare una ricetta.</p>
-        ) : (
-          <ul aria-label="La tua dispensa" className="flex flex-wrap gap-2">
-            {pantryItems.map((item) => <IngredientChip key={item.id} item={item} onRemove={handleRemove} />)}
-          </ul>
-        )}
         <DietFiltersPanel profile={dietProfile} onChange={handleDietProfileChange} onReset={handleDietProfileReset} />
         {pantryItems.length > 0 && (
           <PantryLotsPanel ingredients={pantryItems} lots={pantryLots} onAddLot={addPantryLot} onRemoveLot={removePantryLot} onRestoreLot={restorePantryLot} onUpdateLot={updatePantryLot} />

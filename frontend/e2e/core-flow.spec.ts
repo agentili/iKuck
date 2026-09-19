@@ -265,7 +265,17 @@ test('manifest is available and the application works offline after first load',
   expect(manifestResponse.ok()).toBe(true);
   const manifest = await manifestResponse.json();
   expect(manifest.name).toBe('iKuck');
+  expect(manifest.id).toBe('/');
   expect(manifest.start_url).toBe('/');
+  expect(manifest.shortcuts.map((shortcut: { url: string }) => shortcut.url)).toEqual(
+    expect.arrayContaining(['/shopping-list', '/activity']),
+  );
+  expect(manifest.icons).toEqual(expect.arrayContaining([
+    expect.objectContaining({ sizes: '192x192', purpose: 'any' }),
+    expect.objectContaining({ sizes: '512x512', purpose: 'maskable' }),
+  ]));
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute('href', '/icons/icon-192x192.png');
+  await expect(page.locator('meta[name="apple-mobile-web-app-title"]')).toHaveAttribute('content', 'iKuck');
 
   await page.waitForFunction(() => 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null);
   await context.setOffline(true);

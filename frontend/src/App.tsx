@@ -57,17 +57,19 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <AppHeader />
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/recipes/:recipeId" element={<RecipeDetailPage />} />
-        <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/shopping-list" element={<ShoppingListPage />} />
-        <Route path="/activity" element={<ActivityPage />} />
-        <Route path="/verify-email" element={<VerifyEmailPage />} />
-        <Route path="/reset-password" element={<ResetPasswordPage />} />
-        <Route path="*" element={<NotFoundPage resource="page" />} />
-      </Routes>
+      <div className="app-shell min-h-screen">
+        <AppHeader />
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/recipes/:recipeId" element={<RecipeDetailPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/shopping-list" element={<ShoppingListPage />} />
+          <Route path="/activity" element={<ActivityPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="*" element={<NotFoundPage resource="page" />} />
+        </Routes>
+      </div>
     </BrowserRouter>
   );
 }

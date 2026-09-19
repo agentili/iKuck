@@ -220,7 +220,7 @@ export default function ShoppingListPanel({ items, onAdd, onTogglePurchased, onR
           <button type="submit" aria-label="Aggiungi alla lista" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800"><Plus size={18} aria-hidden="true" /> Aggiungi</button>
         </div>
         <details className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-          <summary className="cursor-pointer text-sm font-semibold text-gray-700">Aggiungi dettagli (facoltativi)</summary>
+          <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-gray-700">Aggiungi dettagli (facoltativi)</summary>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1 text-sm font-semibold text-gray-700">
               Quantità da acquistare

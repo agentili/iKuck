@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Icona maskable iKuck</title>
+  <desc id="desc">Una pentola color crema con una foglia dorata su sfondo verde a pieno formato.</desc>
+  <rect width="512" height="512" fill="#147857"/>
+  <circle cx="256" cy="260" r="150" fill="#0F664A" opacity="0.45"/>
+  <path d="M171 246h170l-15 91c-4 23-24 40-48 40h-44c-24 0-44-17-48-40l-15-91Z" fill="#FFF9ED"/>
+  <path d="M157 239c0-12 10-22 22-22h154c12 0 22 10 22 22v7H157v-7Z" fill="#FFF9ED"/>
+  <path d="M225 202c-19-24-9-54 22-64 3 31-4 51-22 64Z" fill="#F2BE3E"/>
+  <path d="M268 204c-3-32 15-55 49-59-7 31-23 50-49 59Z" fill="#F2BE3E"/>
+  <path d="M252 215c0-28 9-51 27-71" fill="none" stroke="#FFF9ED" stroke-width="11" stroke-linecap="round"/>
+  <path d="M232 323h48" fill="none" stroke="#147857" stroke-width="16" stroke-linecap="round"/>
+</svg>

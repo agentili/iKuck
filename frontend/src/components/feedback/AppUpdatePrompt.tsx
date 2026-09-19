@@ -18,7 +18,7 @@ export default function AppUpdatePrompt({
 
   return (
     <aside
-      className="fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-4 rounded-2xl border-2 border-emerald-200 bg-white p-4 shadow-xl"
+      className="app-overlay fixed inset-x-4 z-50 mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-4 rounded-2xl border-2 border-emerald-200 bg-white p-4 shadow-xl"
       aria-label="Aggiornamento applicazione"
     >
       <div className="min-w-0 flex-1">

@@ -110,6 +110,50 @@ test('supports a 320px viewport and a 200% text-zoom equivalent without horizont
   expect(zoomOverflow).toBe(false);
 });
 
+test('keeps primary navigation fixed and touch-friendly on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/recipes/pasta-tonno-pomodoro');
+  await expect(page.getByRole('heading', { name: 'Pasta tonno e pomodoro' })).toBeVisible();
+
+  const navigation = page.getByRole('navigation', { name: 'Navigazione principale' });
+  expect(await navigation.evaluate((element) => window.getComputedStyle(element).position)).toBe('fixed');
+
+  for (const name of ['Home', 'Lista', 'Attività', 'Profilo']) {
+    const box = await navigation.getByRole('link', { name }).boundingBox();
+    expect(box, `${name} should have a measurable touch target`).not.toBeNull();
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const navigationBox = await navigation.boundingBox();
+  expect(navigationBox).not.toBeNull();
+  expect(navigationBox!.y).toBeGreaterThanOrEqual(0);
+  expect(navigationBox!.y + navigationBox!.height).toBeLessThanOrEqual(844);
+});
+
+test('keeps common mobile actions comfortably tappable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto('/');
+  await page.getByLabel('Ingredienti presenti').fill('pasta');
+  await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  const removeIngredientBox = await page.getByRole('button', { name: 'Rimuovi Pasta' }).boundingBox();
+  expect(removeIngredientBox).not.toBeNull();
+  expect(removeIngredientBox!.width).toBeGreaterThanOrEqual(44);
+  expect(removeIngredientBox!.height).toBeGreaterThanOrEqual(44);
+
+  await page.goto('/shopping-list');
+  const detailsBox = await page.getByText('Aggiungi dettagli (facoltativi)').boundingBox();
+  expect(detailsBox).not.toBeNull();
+  expect(detailsBox!.height).toBeGreaterThanOrEqual(44);
+
+  await page.goto('/profile');
+  const backBox = await page.getByRole('link', { name: /Torna alla dispensa/ }).boundingBox();
+  expect(backBox).not.toBeNull();
+  expect(backBox!.height).toBeGreaterThanOrEqual(44);
+});
+
 test('respects reduced motion, heading order and icon-only accessible names', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/recipes/pasta-tonno-pomodoro');

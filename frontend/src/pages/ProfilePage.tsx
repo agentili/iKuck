@@ -59,7 +59,7 @@ export default function ProfilePage() {
   if (user === null) {
     return (
       <main id="main-content" className="mx-auto min-h-screen w-full max-w-2xl px-4 py-8 sm:px-6">
-        <div className="mb-5"><Link to="/" className="font-semibold text-gray-700 underline underline-offset-2">← Torna alla dispensa</Link></div>
+        <div className="mb-5"><Link to="/" className="inline-flex min-h-11 items-center rounded-xl px-2 font-semibold text-gray-700 underline underline-offset-2">← Torna alla dispensa</Link></div>
         <section className="rounded-3xl border-2 border-gray-200 bg-white p-6 shadow-sm sm:p-8">
           <h1 className="text-3xl font-black text-gray-950">Accedi al tuo profilo</h1>
           <p className="mt-3 text-gray-600">La dispensa ospite resta sul dispositivo. Il login non importa automaticamente i dati locali: l’importazione è un’azione separata.</p>
@@ -171,7 +171,7 @@ export default function ProfilePage() {
 
   return (
     <main id="main-content" className="mx-auto min-h-screen w-full max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mb-5"><Link to="/" className="font-semibold text-gray-700 underline underline-offset-2">← Torna alla dispensa</Link></div>
+      <div className="mb-5"><Link to="/" className="inline-flex min-h-11 items-center rounded-xl px-2 font-semibold text-gray-700 underline underline-offset-2">← Torna alla dispensa</Link></div>
       <section className="rounded-3xl border-2 border-gray-200 bg-white p-6 shadow-sm sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
