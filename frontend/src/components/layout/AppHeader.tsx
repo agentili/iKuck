@@ -1,3 +1,4 @@
+import { UserRound } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../auth/authStore';
 
@@ -12,7 +13,7 @@ export default function AppHeader() {
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
   const connection = useAuthStore((state) => state.connection);
-  const accountStatus = user === null ? (connection === 'offline' ? 'Offline' : 'Ospite') : 'Connesso';
+  const accountStatus = connection === 'offline' ? 'Offline' : 'Ospite';
 
   return (
     <header className="border-b border-gray-200 bg-white">
@@ -39,9 +40,15 @@ export default function AppHeader() {
             })}
           </ul>
         </nav>
-        <span className="sr-only sm:not-sr-only sm:shrink-0 sm:text-xs sm:font-semibold sm:text-gray-600" aria-label="Stato account">
-          {accountStatus}
-        </span>
+        {user === null ? (
+          <span className="sr-only sm:not-sr-only sm:shrink-0 sm:text-xs sm:font-semibold sm:text-gray-600" aria-label="Stato account">
+            {accountStatus}
+          </span>
+        ) : (
+          <span role="img" aria-label="Profilo connesso" className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-emerald-700 text-white">
+            <UserRound size={17} aria-hidden="true" />
+          </span>
+        )}
       </div>
     </header>
   );
