@@ -6,12 +6,13 @@ iKuck suggerisce ricette semplici usando gli ingredienti presenti in dispensa. P
 
 1. Inserisci gli alimenti presenti, separandoli con una virgola o premendo Invio.
 2. Conferma gli ingredienti base che tieni normalmente in casa.
-3. Richiedi fino a sei proposte dal catalogo incluso di 20 ricette.
-4. Se vuoi, includi anche ricette per cui manca un solo ingrediente facile da reperire.
-5. Dopo la prima ricerca, le modifiche alla dispensa e alle preferenze aggiornano automaticamente le proposte locali; `Altre idee` cambia la varietà senza una nuova richiesta.
-6. Apri la lista della spesa per aggiungere elementi manualmente o i mancanti di una ricetta.
-7. Dalla ricetta puoi segnare la preparazione, salvarla tra i preferiti, assegnare da 1 a 5 stelle e aggiungere una nota privata.
-8. Se hai un account verificato, puoi attivare il consenso e chiedere una ricetta AI privata usando la dispensa e i filtri alimentari correnti.
+3. Se non sai cosa aggiungere, usa i cinque suggerimenti della dispensa: puoi cambiarli tutti con `Cambia tutti i suggerimenti` oppure sostituirne uno solo con il pulsante di aggiornamento accanto all'ingrediente.
+4. Richiedi fino a sei proposte dal catalogo incluso di 20 ricette.
+5. Se vuoi, includi anche ricette per cui manca un solo ingrediente facile da reperire.
+6. Dopo la prima ricerca, le modifiche alla dispensa e alle preferenze aggiornano automaticamente le proposte locali; `Altre idee` cambia la varietà senza una nuova richiesta.
+7. Apri la lista della spesa per aggiungere elementi manualmente o i mancanti di una ricetta.
+8. Dalla ricetta puoi segnare la preparazione, salvarla tra i preferiti, assegnare da 1 a 5 stelle e aggiungere una nota privata.
+9. Se hai un account verificato, puoi attivare il consenso e chiedere una ricetta AI privata usando la dispensa e i filtri alimentari correnti.
 
 Il catalogo copre carne, pesce, uova, legumi e verdure. Ogni proposta indica chiaramente se è già realizzabile o quale unico ingrediente manca.
 

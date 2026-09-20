@@ -128,6 +128,25 @@ describe('recipe suggestions', () => {
     expect(result.every((ingredient) => getIngredient(ingredient.id) === ingredient)).toBe(true);
   });
 
+  it('replaces a dismissed pantry suggestion and can refresh the complete set', () => {
+    const initial = findHelpfulIngredients(['water', 'salt', 'black_pepper', 'olive_oil'], 5);
+    const replacement = findHelpfulIngredients(
+      ['water', 'salt', 'black_pepper', 'olive_oil'],
+      5,
+      { excludedIds: [initial[0].id] },
+    );
+    const refreshed = findHelpfulIngredients(
+      ['water', 'salt', 'black_pepper', 'olive_oil'],
+      5,
+      { random: createSeededRandom(1) },
+    );
+
+    expect(replacement.map((ingredient) => ingredient.id)).not.toContain(initial[0].id);
+    expect(replacement).toHaveLength(5);
+    expect(refreshed.map((ingredient) => ingredient.id)).not.toEqual(initial.map((ingredient) => ingredient.id));
+    expect(new Set(refreshed.map((ingredient) => ingredient.id)).size).toBe(5);
+  });
+
   it('filters recipes by diet and excluded allergens before pantry availability', () => {
     const availableIds = [...new Set(RECIPES.flatMap((recipe) => recipe.ingredients.map((item) => item.ingredientId)))];
     const profile: DietProfilePayload = {

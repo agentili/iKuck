@@ -128,9 +128,9 @@ describe('HomePage integration', () => {
 
     await user.type(input, 'pom');
 
-    const suggestions = screen.getByRole('list', { name: 'Ingredienti suggeriti' });
-    expect(within(suggestions).getByRole('button', { name: 'Pomodoro' })).toBeInTheDocument();
-    await user.click(within(suggestions).getByRole('button', { name: 'Pomodoro' }));
+    const suggestions = screen.getByRole('listbox', { name: 'Ingredienti suggeriti' });
+    expect(within(suggestions).getByRole('option', { name: 'Pomodoro' })).toBeInTheDocument();
+    await user.click(within(suggestions).getByRole('option', { name: 'Pomodoro' }));
     expect(within(screen.getByRole('list', { name: 'La tua dispensa' })).getByText('Pomodoro')).toBeInTheDocument();
   });
 
@@ -145,6 +145,33 @@ describe('HomePage integration', () => {
 
     expect(within(screen.getByRole('list', { name: 'La tua dispensa' })).getByText('Cipolla')).toBeInTheDocument();
     expect(within(suggestions).queryByRole('button', { name: 'Aggiungi Cipolla' })).not.toBeInTheDocument();
+  });
+
+  it('can refresh all five pantry suggestions', async () => {
+    const user = userEvent.setup();
+    await renderHome();
+
+    const suggestions = screen.getByRole('region', { name: 'Potresti aggiungere' });
+    const initial = within(suggestions).getAllByRole('button', { name: /^Aggiungi / }).map((button) => button.textContent);
+
+    await user.click(within(suggestions).getByRole('button', { name: 'Cambia tutti i suggerimenti' }));
+
+    const refreshed = within(suggestions).getAllByRole('button', { name: /^Aggiungi / }).map((button) => button.textContent);
+    expect(initial).toHaveLength(5);
+    expect(refreshed).toHaveLength(5);
+    expect(refreshed).not.toEqual(initial);
+  });
+
+  it('can replace one pantry suggestion without adding it', async () => {
+    const user = userEvent.setup();
+    await renderHome();
+
+    const suggestions = screen.getByRole('region', { name: 'Potresti aggiungere' });
+    await user.click(within(suggestions).getByRole('button', { name: 'Sostituisci Cipolla' }));
+
+    expect(within(suggestions).queryByRole('button', { name: 'Aggiungi Cipolla' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'La tua dispensa' })).not.toBeInTheDocument();
+    expect(within(suggestions).getAllByRole('button', { name: /^Aggiungi / })).toHaveLength(5);
   });
 
   it('keeps an unknown ingredient and explains that it is not matched', async () => {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshCw, Sparkles } from 'lucide-react';
+import { Archive, RefreshCw, Sparkles } from 'lucide-react';
 import AiRecipePanel from '../components/ai/AiRecipePanel';
 import IngredientChip from '../components/pantry/IngredientChip';
 import IngredientInput from '../components/pantry/IngredientInput';
@@ -39,6 +39,8 @@ export default function HomePage() {
   const [allowOneMissing, setAllowOneMissing] = useState(false);
   const [searchedAllowOneMissing, setSearchedAllowOneMissing] = useState(false);
   const [varietySeed, setVarietySeed] = useState(0);
+  const [ingredientSuggestionSeed, setIngredientSuggestionSeed] = useState(0);
+  const [dismissedIngredientSuggestionIds, setDismissedIngredientSuggestionIds] = useState<string[]>([]);
   const [suggestions, setSuggestions] = useState<RecipeSuggestion[]>([]);
   const [focusResultsTitle, setFocusResultsTitle] = useState(false);
   const resultsTitleRef = useRef<HTMLHeadingElement>(null);
@@ -100,6 +102,14 @@ export default function HomePage() {
     setFocusResultsTitle(false);
   }, [focusResultsTitle, hasSearched]);
 
+  const suggestedIngredients = useMemo(
+    () => findHelpfulIngredients(availableIngredientIds, 5, {
+      excludedIds: dismissedIngredientSuggestionIds,
+      random: ingredientSuggestionSeed === 0 ? undefined : createSeededRandom(ingredientSuggestionSeed),
+    }),
+    [availableIngredientIds, dismissedIngredientSuggestionIds, ingredientSuggestionSeed],
+  );
+
   if (!hasHydrated) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
@@ -110,14 +120,21 @@ export default function HomePage() {
     );
   }
 
-  const suggestedIngredients = findHelpfulIngredients(availableIngredientIds, 5);
-
   const handleAdd = (items: ParsedIngredient[]) => {
     addIngredients(items);
   };
 
   const handleSuggestedIngredient = (ingredient: IngredientDefinition) => {
     addIngredients([{ id: ingredient.id, label: ingredient.label, known: true }]);
+  };
+
+  const refreshIngredientSuggestions = () => {
+    setIngredientSuggestionSeed((seed) => seed + 1);
+    setDismissedIngredientSuggestionIds([]);
+  };
+
+  const dismissIngredientSuggestion = (id: string) => {
+    setDismissedIngredientSuggestionIds((current) => current.includes(id) ? current : [...current, id]);
   };
 
   const handleRemove = (id: string) => {
@@ -191,12 +208,21 @@ export default function HomePage() {
         </div>
       )}
 
-      <section aria-labelledby="pantry-title" className="space-y-5 rounded-3xl border-2 border-gray-200 bg-gray-50 p-4 sm:p-6">
-        <div>
-          <h2 id="pantry-title" className="text-2xl font-bold text-gray-950">La tua dispensa</h2>
-          <p className="mt-1 text-gray-600">Basta il nome: quantità e scadenze sono opzionali.</p>
+      <section aria-labelledby="pantry-title" className="space-y-5 rounded-3xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-700 text-white shadow-sm" aria-hidden="true">
+            <Archive size={24} strokeWidth={2.25} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-black uppercase tracking-[0.16em] text-emerald-800">Passo 1 · La tua dispensa</p>
+            <h2 id="pantry-title" className="mt-1 text-2xl font-bold text-gray-950">La tua dispensa</h2>
+            <p className="mt-1 text-lg font-bold text-gray-900">Cosa hai in casa?</p>
+            <p className="mt-1 max-w-2xl text-gray-700">Aggiungi qui gli alimenti che hai davvero in cucina: useremo solo questi per consigliarti le ricette.</p>
+          </div>
         </div>
-        <IngredientInput onAdd={handleAdd} />
+        <div className="rounded-2xl border border-emerald-100 bg-white/90 p-4 shadow-sm">
+          <IngredientInput onAdd={handleAdd} />
+        </div>
         {pantryItems.length > 0 && (
           <div>
             <p className="mb-2 text-sm font-semibold text-gray-700">
@@ -207,8 +233,19 @@ export default function HomePage() {
             </ul>
           </div>
         )}
+        {pantryItems.length === 0 && (
+          <p role="status" className="rounded-2xl border border-dashed border-emerald-200 bg-white/70 px-4 py-3 text-sm font-medium text-emerald-950">
+            La tua dispensa è ancora vuota. Inizia scrivendo un ingrediente qui sopra.
+          </p>
+        )}
         <SuggestionControls allowOneMissing={allowOneMissing} disabled={pantryItems.length === 0} onAllowOneMissingChange={setAllowOneMissing} onSearch={() => search()} />
-        <IngredientSuggestions ingredients={suggestedIngredients} onAdd={handleSuggestedIngredient} />
+        <IngredientSuggestions
+          ingredients={suggestedIngredients}
+          onAdd={handleSuggestedIngredient}
+          onDismiss={dismissIngredientSuggestion}
+          onRefresh={refreshIngredientSuggestions}
+          showEmptyState={dismissedIngredientSuggestionIds.length > 0}
+        />
       </section>
 
       <section aria-labelledby="results-title" aria-live="polite" aria-atomic="false" className="mt-8">
