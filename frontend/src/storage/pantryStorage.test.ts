@@ -73,6 +73,29 @@ describe('pantry storage', () => {
     });
   });
 
+  it('reads the latest snapshot while its IndexedDB write is still pending', async () => {
+    await indexedDb.writeKeyValue('pantry', persistedPantry('old-pasta'));
+    let resolveWrite: (() => void) | undefined;
+    const pendingWrite = new Promise<void>((resolve) => {
+      resolveWrite = resolve;
+    });
+    const writeSpy = vi.spyOn(indexedDb, 'writeKeyValue').mockReturnValue(pendingWrite);
+    const persistPromise = writePantrySnapshot({
+      pantryItems: [{ id: 'new-pasta', label: 'Pasta', known: true }],
+      stapleIds: ['salt'],
+    });
+
+    await Promise.resolve();
+
+    await expect(readPantrySnapshot()).resolves.toMatchObject({
+      pantryItems: [{ id: 'new-pasta' }],
+    });
+
+    resolveWrite?.();
+    await persistPromise;
+    writeSpy.mockRestore();
+  });
+
   it('round-trips multiple lots without losing nullable details', async () => {
     await writePantrySnapshot({
       pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
