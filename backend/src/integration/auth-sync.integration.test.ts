@@ -437,7 +437,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       entityType: 'pantry_item',
       entityId: 'rollback-item',
       operation: 'upsert',
-      payload: { id: 'rollback-item', label: 'Rollback' },
+      payload: { id: 'rollback-item', label: 'Rollback', known: true },
       clientUpdatedAt: 'not-a-date',
     })).rejects.toThrow();
     await expect(rollbackRepository.applyMutation(loginBody.user.id, {
@@ -446,7 +446,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       entityType: 'pantry_item',
       entityId: 'rollback-item',
       operation: 'upsert',
-      payload: { id: 'rollback-item', label: 'Recovered' },
+      payload: { id: 'rollback-item', label: 'Recovered', known: true },
       clientUpdatedAt: '2026-09-13T14:00:00.000Z',
     })).resolves.toMatchObject({ applied: true });
 
