@@ -1,5 +1,5 @@
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProfilePage from './ProfilePage';
@@ -28,9 +28,15 @@ describe('ProfilePage', () => {
       restoreSession: vi.fn(),
       clearSession: vi.fn(),
     });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ profile: { displayName: 'Ale' } }), { status: 200 }),
-    ));
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => {
+      if (path === '/v1/ai-recipes/consent') {
+        return Promise.resolve(new Response(JSON.stringify({ consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' } }), { status: 200 }));
+      }
+      if (path === '/v1/ai-recipes') {
+        return Promise.resolve(new Response(JSON.stringify({ recipes: [] }), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ profile: { displayName: 'Ale' } }), { status: 200 }));
+    }));
   });
 
   it('keeps guest account access explicit without promising an automatic import', () => {
@@ -55,6 +61,22 @@ describe('ProfilePage', () => {
     expect(screen.getByRole('button', { name: 'Elimina account' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Accedi con Google' })).not.toBeInTheDocument();
     expect(screen.getByText('Accesso con Google non disponibile in questo ambiente.')).toBeVisible();
+  });
+
+  it('keeps private AI recipes inside the verified profile area', async () => {
+    useAuthStore.setState({
+      user: verifiedUser,
+      csrfToken: 'csrf-1',
+      expiresAt: '2026-10-12T10:00:00.000Z',
+    });
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    await screen.findByRole('heading', { name: 'Il tuo profilo' });
+    const accountData = screen.getByRole('heading', { name: 'I tuoi dati' });
+    const panel = screen.getByRole('region', { name: 'Ricette AI private' });
+
+    expect(accountData.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(panel).getByRole('heading', { name: 'Ricette AI private' })).toBeInTheDocument();
   });
 
   it('keeps app version and build diagnostics outside the primary profile header', async () => {
@@ -92,6 +114,12 @@ describe('ProfilePage', () => {
   it('shows sync counts only after the complete local-data import', async () => {
     const user = userEvent.setup();
     const fetch = vi.fn().mockImplementation((path: string) => {
+      if (path === '/v1/ai-recipes/consent') {
+        return Promise.resolve(new Response(JSON.stringify({ consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' } }), { status: 200 }));
+      }
+      if (path === '/v1/ai-recipes') {
+        return Promise.resolve(new Response(JSON.stringify({ recipes: [] }), { status: 200 }));
+      }
       if (path === '/v1/profile') {
         return Promise.resolve(new Response(JSON.stringify({ profile: { displayName: 'Ale' } }), { status: 200 }));
       }
@@ -121,6 +149,12 @@ describe('ProfilePage', () => {
     const user = userEvent.setup();
     let cursor = 0;
     const fetch = vi.fn().mockImplementation((path: string) => {
+      if (path === '/v1/ai-recipes/consent') {
+        return Promise.resolve(new Response(JSON.stringify({ consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' } }), { status: 200 }));
+      }
+      if (path === '/v1/ai-recipes') {
+        return Promise.resolve(new Response(JSON.stringify({ recipes: [] }), { status: 200 }));
+      }
       if (path === '/v1/profile') {
         return Promise.resolve(new Response(JSON.stringify({ profile: { displayName: 'Ale' } }), { status: 200 }));
       }

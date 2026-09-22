@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -14,6 +14,7 @@ type ComposeConfig = {
 
 const composeConfigCache = new Map<string, ComposeConfig>();
 const dockerCommand = process.platform === 'win32' ? 'docker.exe' : 'docker';
+const dockerComposeAvailable = spawnSync(dockerCommand, ['compose', 'version'], { stdio: 'ignore' }).status === 0;
 
 // Compose files are immutable during this suite, so avoid repeated external CLI startup.
 const readComposeConfig = (relativePath: string): ComposeConfig => {
@@ -47,7 +48,10 @@ afterEach(() => {
 });
 
 describe('deployment contracts', () => {
-  it('keeps PostgreSQL and Redis off the public network in development', () => {
+  const describeWithDockerCompose = dockerComposeAvailable ? describe : describe.skip;
+
+  describeWithDockerCompose('with Docker Compose available', () => {
+    it('keeps PostgreSQL and Redis off the public network in development', () => {
     const compose = readComposeConfig('compose.dev.yml');
 
     expect(compose.services.postgres.ports).toBeUndefined();
@@ -93,6 +97,8 @@ describe('deployment contracts', () => {
 
     expect(readFileSync(resolve(repositoryRoot, 'backend/Dockerfile'), 'utf8')).toContain('COPY shared /app/shared');
     expect(readFileSync(resolve(repositoryRoot, 'deploy/Caddy.Dockerfile'), 'utf8')).toContain('COPY shared /shared');
+  });
+
   });
 
   it('keeps API proxying ahead of the frontend SPA fallback', () => {

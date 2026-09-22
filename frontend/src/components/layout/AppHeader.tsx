@@ -16,7 +16,7 @@ export default function AppHeader() {
   const accountStatus = user === null ? (connection === 'offline' ? 'Offline' : 'Ospite') : 'Connesso';
 
   return (
-    <header className="sticky top-0 z-40 border-b border-gray-200 bg-white">
+    <header className="ik-app-header sticky top-0 z-40 border-b border-gray-200 bg-white">
       <a href="#main-content" className="sr-only rounded-lg bg-gray-950 px-3 py-2 text-sm font-bold text-white focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50">
         Salta al contenuto
       </a>

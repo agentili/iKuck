@@ -50,12 +50,15 @@ test.describe('production target smoke checks', () => {
     await expect(page.getByText(/Sincronizzazione completata/)).toBeVisible();
 
     await page.goto('/');
+    await page.getByText('Personalizza la dispensa', { exact: true }).click();
     await page.getByText('Filtri alimentari', { exact: true }).click();
     await page.getByLabel('Dieta').selectOption('vegetarian');
     await page.reload();
+    await page.getByText('Personalizza la dispensa', { exact: true }).click();
     await page.getByText('Filtri alimentari', { exact: true }).click();
     await expect(page.getByLabel('Dieta')).toHaveValue('vegetarian');
 
+    await page.getByRole('link', { name: 'Profilo' }).click();
     const aiPanel = page.getByRole('region', { name: 'Ricette AI private' });
     await expect(aiPanel.getByRole('checkbox', { name: /acconsento all’uso degli ingredienti/i })).toBeVisible();
     await expect(aiPanel.getByRole('button', { name: 'Genera ricetta AI' })).toHaveCount(0);

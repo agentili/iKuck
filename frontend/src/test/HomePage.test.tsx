@@ -8,6 +8,7 @@ import HomePage from '../pages/HomePage';
 import { usePantryStore } from '../store/localPantryStore';
 import { useActivityStore } from '../store/activityStore';
 import { useDietProfileStore } from '../store/dietProfileStore';
+import { useShoppingListStore } from '../store/shoppingListStore';
 import { reportPersistenceMemoryOnly, usePersistenceStatusStore } from '../store/persistenceStatusStore';
 
 const renderHome = async () => {
@@ -30,6 +31,14 @@ const renderHome = async () => {
   return screen.getByLabelText('Ingredienti presenti');
 };
 
+const openHomeDisclosure = async (user: ReturnType<typeof userEvent.setup>, name: string): Promise<HTMLDetailsElement> => {
+  const summary = screen.getByText(name, { exact: true });
+  const disclosure = summary.closest('details');
+  if (disclosure === null) throw new Error(`${name} must be a disclosure`);
+  if (!disclosure.hasAttribute('open')) await user.click(summary);
+  return disclosure;
+};
+
 describe('HomePage integration', () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -40,6 +49,7 @@ describe('HomePage integration', () => {
       stapleIds: [...DEFAULT_STAPLE_IDS],
     });
     useActivityStore.setState({ events: [], preferences: [] });
+    useShoppingListStore.setState({ hasHydrated: true, items: [] });
     useDietProfileStore.setState({
       hasHydrated: false,
       profile: { ...DEFAULT_DIET_PROFILE, updatedAt: '2026-09-13T12:00:00.000Z' },
@@ -50,6 +60,12 @@ describe('HomePage integration', () => {
     await renderHome();
 
     expect(screen.queryByRole('region', { name: 'Account' })).not.toBeInTheDocument();
+  });
+
+  it('keeps private AI recipes out of the main cooking flow', async () => {
+    await renderHome();
+
+    expect(screen.queryByRole('region', { name: 'Ricette AI private' })).not.toBeInTheDocument();
   });
 
   it('places ingredient entry and selected items before the primary recipe action', async () => {
@@ -67,6 +83,26 @@ describe('HomePage integration', () => {
     const selectedIngredients = within(pantry).getByRole('list', { name: 'La tua dispensa' });
     expect(within(selectedIngredients).getByText('Pasta')).toBeVisible();
     expect(within(selectedIngredients).getByText('Tonno')).toBeVisible();
+  });
+
+  it('keeps pantry exploration and configuration out of the initial action flow', async () => {
+    const user = userEvent.setup();
+    await renderHome();
+
+    const ideas = screen.getByText('Idee per ampliare la dispensa', { exact: true }).closest('details');
+    const configuration = screen.getByText('Personalizza la dispensa', { exact: true }).closest('details');
+
+    expect(ideas).not.toBeNull();
+    expect(configuration).not.toBeNull();
+    expect(ideas).not.toHaveAttribute('open');
+    expect(configuration).not.toHaveAttribute('open');
+    expect(screen.getByRole('button', { name: 'Trova ricette' }).compareDocumentPosition(ideas!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await openHomeDisclosure(user, 'Idee per ampliare la dispensa');
+    expect(screen.getByRole('region', { name: 'Potresti aggiungere' })).toBeVisible();
+
+    await openHomeDisclosure(user, 'Personalizza la dispensa');
+    expect(screen.getByText('Filtri alimentari', { exact: true })).toBeVisible();
   });
 
   it('shows an accessible persistence warning with an explicit retry action', async () => {
@@ -120,6 +156,41 @@ describe('HomePage integration', () => {
 
     expect(screen.getByText('Carbonara semplice')).toBeInTheDocument();
     expect(screen.getByText('Ti manca solo: Parmigiano')).toBeInTheDocument();
+  });
+
+  it('separates recipes that are ready from recipes needing one purchase', async () => {
+    const user = userEvent.setup();
+    const input = await renderHome();
+
+    await user.type(input, 'pasta, tonno, passata, uova, pancetta');
+    await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
+    await user.click(screen.getByLabelText('Anche con 1 ingrediente in più'));
+    await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
+
+    const readyRecipes = screen.getByRole('region', { name: 'Pronte da cucinare' });
+    const onePurchaseRecipes = screen.getByRole('region', { name: 'Con un solo acquisto' });
+
+    expect(within(readyRecipes).getByRole('article', { name: 'Pasta tonno e pomodoro' })).toHaveAttribute('data-availability', 'ready');
+    expect(within(onePurchaseRecipes).getByRole('article', { name: 'Carbonara semplice' })).toHaveAttribute('data-availability', 'one-missing');
+  });
+
+  it('adds the named missing ingredient to the shopping list from a one-purchase recipe', async () => {
+    const user = userEvent.setup();
+    const input = await renderHome();
+
+    await user.type(input, 'pasta, uova, pancetta');
+    await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
+    await user.click(screen.getByLabelText('Anche con 1 ingrediente in più'));
+    await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
+
+    const onePurchaseRecipes = screen.getByRole('region', { name: 'Con un solo acquisto' });
+    const carbonara = within(onePurchaseRecipes).getByRole('article', { name: 'Carbonara semplice' });
+    await user.click(within(carbonara).getByRole('button', { name: 'Aggiungi Parmigiano alla lista della spesa' }));
+
+    expect(useShoppingListStore.getState().items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ingredientId: 'parmesan', label: 'Parmigiano', purchased: false, sourceRecipeId: 'carbonara-semplice' }),
+    ]));
+    expect(within(carbonara).getByRole('link', { name: 'Apri lista della spesa' })).toHaveAttribute('href', '/shopping-list');
   });
 
   it('offers known ingredients while the current token is typed', async () => {

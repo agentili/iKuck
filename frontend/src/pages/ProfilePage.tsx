@@ -5,6 +5,9 @@ import AccountPanel from '../components/account/AccountPanel';
 import { useAuthStore } from '../auth/authStore';
 import { importLocalData } from '../sync/syncQueue';
 import GoogleSignInButton from '../components/account/GoogleSignInButton';
+import AiRecipePanel from '../components/ai/AiRecipePanel';
+import { usePantryStore } from '../store/localPantryStore';
+import { useDietProfileStore } from '../store/dietProfileStore';
 
 interface ProfileResponse {
   profile: {
@@ -29,6 +32,8 @@ export default function ProfilePage() {
   const logout = useAuthStore((state) => state.logout);
   const linkGoogle = useAuthStore((state) => state.linkGoogle);
   const clearSession = useAuthStore((state) => state.clearSession);
+  const pantryItems = usePantryStore((state) => state.pantryItems);
+  const dietProfile = useDietProfileStore((state) => state.profile);
   const [displayName, setDisplayName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -58,9 +63,9 @@ export default function ProfilePage() {
 
   if (user === null) {
     return (
-      <main id="main-content" className="mx-auto min-h-screen w-full max-w-2xl px-4 py-8 sm:px-6">
+      <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-2xl px-4 py-8 sm:px-6">
         <div className="mb-5"><Link to="/" className="inline-flex min-h-11 items-center rounded-xl px-2 font-semibold text-gray-700 underline underline-offset-2">← Torna alla dispensa</Link></div>
-        <section className="rounded-3xl border-2 border-gray-200 bg-white p-6 shadow-sm sm:p-8">
+        <section className="ik-surface ik-profile-surface rounded-3xl border-2 border-gray-200 bg-white p-6 shadow-sm sm:p-8">
           <h1 className="text-3xl font-black text-gray-950">Accedi al tuo profilo</h1>
           <p className="mt-3 text-gray-600">La dispensa ospite resta sul dispositivo. Il login non importa automaticamente i dati locali: l’importazione è un’azione separata.</p>
           <div className="mt-6"><AccountPanel /></div>
@@ -170,9 +175,9 @@ export default function ProfilePage() {
   };
 
   return (
-    <main id="main-content" className="mx-auto min-h-screen w-full max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mb-5"><Link to="/" className="inline-flex min-h-11 items-center rounded-xl px-2 font-semibold text-gray-700 underline underline-offset-2">← Torna alla dispensa</Link></div>
-      <section className="rounded-3xl border-2 border-gray-200 bg-white p-6 shadow-sm sm:p-8">
+    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mb-5"><Link to="/" className="ik-back-link inline-flex min-h-11 items-center rounded-xl px-2 font-semibold text-gray-700 underline underline-offset-2">← Torna alla dispensa</Link></div>
+      <section className="ik-surface ik-profile-surface rounded-3xl border-2 border-gray-200 bg-white p-6 shadow-sm sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-sm font-bold uppercase tracking-wide text-emerald-700">Account verificato</p>
@@ -209,6 +214,15 @@ export default function ProfilePage() {
             )}
             <button type="button" onClick={() => void handleExport()} className="min-h-11 rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900">Esporta i miei dati</button>
           </div>
+        </div>
+
+        <div className="mt-7 border-t border-gray-200 pt-6">
+          <AiRecipePanel
+            ingredients={pantryItems.map((item) => item.label)}
+            dietProfile={dietProfile}
+            user={user}
+            csrfToken={csrfToken}
+          />
         </div>
 
         <div className="mt-7 grid gap-3 border-t border-gray-200 pt-6">

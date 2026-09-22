@@ -81,9 +81,9 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
 
   if (!verified) {
     return (
-      <section aria-label="Ricette AI private" className="rounded-3xl border-2 border-violet-100 bg-violet-50/70 p-5 sm:p-6">
+      <section aria-label="Ricette AI private" className="ik-ai-panel rounded-3xl border-2 border-emerald-200 bg-emerald-50/70 p-5 sm:p-6">
         <div className="flex items-start gap-3">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-violet-700 text-white">
+          <span data-ai-emblem className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-emerald-700 text-white">
             <LockKeyhole size={19} aria-hidden="true" />
           </span>
           <div className="min-w-0 flex-1">
@@ -151,10 +151,10 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
 
   return (
     <>
-    <section aria-label="Ricette AI private" className="mt-6 rounded-3xl border-2 border-violet-100 bg-violet-50/70 p-5 sm:p-6">
+    <section aria-label="Ricette AI private" className="ik-ai-panel rounded-3xl border-2 border-emerald-200 bg-emerald-50/70 p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-3">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-violet-700 text-white">
+          <span data-ai-emblem className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-emerald-700 text-white">
             <Sparkles size={19} aria-hidden="true" />
           </span>
           <div>
@@ -162,13 +162,13 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
             <p className="mt-1 max-w-2xl text-sm leading-relaxed text-gray-700">Usa gli ingredienti presenti per creare un’idea personale. Il contenuto resta legato al tuo account e non entra nel catalogo pubblico.</p>
           </div>
         </div>
-        {isLoading && <p role="status" className="text-sm font-semibold text-violet-900">Carico le tue ricette AI…</p>}
+        {isLoading && <p role="status" className="text-sm font-semibold text-emerald-900">Carico le tue ricette AI…</p>}
       </div>
 
       {error !== null && <p role="alert" className="mt-4 rounded-xl bg-rose-100 p-3 text-sm font-semibold text-rose-900">{error}</p>}
 
       {consent !== null && (
-        <div className="mt-5 rounded-2xl border border-violet-200 bg-white p-4">
+        <div data-ai-consent className="mt-5 rounded-2xl border border-emerald-200 bg-white p-4">
           <label className="flex items-start gap-3 text-sm font-semibold text-gray-800">
             <input
               type="checkbox"
@@ -176,13 +176,13 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
               onChange={(event) => setConsentDraft(event.target.checked)}
               disabled={isSaving}
               aria-label="Acconsento all’uso degli ingredienti per generare ricette AI"
-              className="mt-0.5 h-5 w-5 accent-violet-700"
+              className="mt-0.5 h-5 w-5 accent-emerald-700"
             />
             <span>Acconsento all’uso degli ingredienti indicati e del mio profilo alimentare per generare ricette AI.</span>
           </label>
           <p className="mt-2 text-xs leading-relaxed text-gray-600">Puoi revocare il consenso in qualsiasi momento. Le ricette già salvate restano visibili finché non le elimini.</p>
           {consentDraft !== consent.enabled && (
-            <button type="button" onClick={() => void saveConsent()} disabled={isSaving} className="mt-3 min-h-11 rounded-xl bg-violet-700 px-4 py-2 font-bold text-white hover:bg-violet-800 disabled:cursor-wait disabled:opacity-60">
+            <button type="button" onClick={() => void saveConsent()} disabled={isSaving} className="mt-3 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
               {isSaving ? 'Salvataggio…' : 'Salva consenso'}
             </button>
           )}
@@ -199,7 +199,7 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
       {recipes.length > 0 && (
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
           {recipes.map((recipe) => (
-            <article key={recipe.id} className="rounded-2xl border-2 border-violet-200 bg-white p-4 shadow-sm">
+            <article key={recipe.id} data-ai-recipe className="rounded-2xl border-2 border-emerald-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-xl font-black text-gray-950">{recipe.title}</h3>
@@ -209,7 +209,7 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
                   <Trash2 size={18} aria-hidden="true" />
                 </button>
               </div>
-              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-violet-800">Dieta: {recipe.diets.map((diet) => DIET_LABELS[diet]).join(', ')}</p>
+              <p data-ai-label className="mt-3 text-xs font-semibold uppercase tracking-wide text-emerald-800">Dieta: {recipe.diets.map((diet) => DIET_LABELS[diet]).join(', ')}</p>
               <p className="mt-1 text-xs text-gray-600">Allergeni dichiarati: {recipe.allergens.length === 0 ? 'nessuno' : recipe.allergens.map((allergen) => ALLERGEN_LABELS[allergen]).join(', ')}</p>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <div>

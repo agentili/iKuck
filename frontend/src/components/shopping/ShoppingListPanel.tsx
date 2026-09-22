@@ -203,7 +203,7 @@ export default function ShoppingListPanel({ items, onAdd, onTogglePurchased, onR
 
   return (
     <>
-    <section aria-labelledby="shopping-list-title" className="rounded-3xl border-2 border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+    <section aria-labelledby="shopping-list-title" className="ik-surface rounded-3xl border-2 border-gray-200 bg-white p-4 shadow-sm sm:p-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-emerald-800"><ShoppingCart size={16} aria-hidden="true" /> Spesa</p>
@@ -216,8 +216,8 @@ export default function ShoppingListPanel({ items, onAdd, onTogglePurchased, onR
       <form className="mt-6 grid gap-3" onSubmit={submit}>
         <label htmlFor="shopping-item-label" className="text-sm font-semibold text-gray-700">Cosa ti serve?</label>
         <div className="flex flex-col gap-3 sm:flex-row">
-          <input id="shopping-item-label" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="es. latte, detersivo, mele" className="min-h-12 flex-1 rounded-xl border-2 border-gray-200 bg-gray-50 px-3 text-base outline-none focus:border-emerald-600" />
-          <button type="submit" aria-label="Aggiungi alla lista" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800"><Plus size={18} aria-hidden="true" /> Aggiungi</button>
+          <input id="shopping-item-label" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="es. latte, detersivo, mele" className="ik-input min-h-12 flex-1 rounded-xl border-2 border-gray-200 bg-gray-50 px-3 text-base outline-none focus:border-emerald-600" />
+          <button type="submit" aria-label="Aggiungi alla lista" className="ik-button-primary inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800"><Plus size={18} aria-hidden="true" /> Aggiungi</button>
         </div>
         <details className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
           <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-gray-700">Aggiungi dettagli (facoltativi)</summary>

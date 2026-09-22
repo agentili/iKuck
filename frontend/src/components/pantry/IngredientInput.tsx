@@ -76,7 +76,7 @@ export default function IngredientInput({ onAdd }: IngredientInputProps) {
       <label htmlFor="pantry-input" className="block text-sm font-semibold text-gray-700">
         Ingredienti presenti
       </label>
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="ik-ingredient-entry flex gap-3">
         <input
           id="pantry-input"
           role="combobox"
@@ -97,9 +97,9 @@ export default function IngredientInput({ onAdd }: IngredientInputProps) {
           aria-describedby="pantry-input-help"
           placeholder="es. pasta, pomodori, tonno"
           autoComplete="off"
-          className="min-h-12 flex-1 rounded-2xl border-2 border-gray-200 bg-white px-4 py-3 text-base text-gray-900 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+          className="ik-input min-h-12 flex-1 rounded-2xl border-2 border-gray-200 bg-white px-4 py-3 text-base text-gray-900 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
         />
-        <button type="submit" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-5 py-3 font-semibold text-white transition hover:bg-emerald-800">
+        <button type="submit" className="ik-button-primary inline-flex min-h-12 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-2xl bg-emerald-700 px-3 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800 sm:px-5 sm:text-base">
           <Plus size={19} aria-hidden="true" />
           Aggiungi ingredienti
         </button>

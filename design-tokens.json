@@ -1,0 +1,203 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "$description": "Un sistema locale-first per decidere cosa cucinare con ciò che è già in casa.",
+  "color": {
+    "$type": "color",
+    "primary": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.094,
+          0.188,
+          0.157
+        ],
+        "hex": "#183028"
+      }
+    },
+    "porcelain": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.98,
+          0.984,
+          0.969
+        ],
+        "hex": "#fafbf7"
+      }
+    },
+    "basil": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.141,
+          0.478,
+          0.29
+        ],
+        "hex": "#247a4a"
+      }
+    },
+    "basilDark": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.086,
+          0.361,
+          0.208
+        ],
+        "hex": "#165c35"
+      }
+    },
+    "sage": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.882,
+          0.925,
+          0.894
+        ],
+        "hex": "#e1ece4"
+      }
+    },
+    "mist": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.945,
+          0.953,
+          0.929
+        ],
+        "hex": "#f1f3ed"
+      }
+    },
+    "tomato": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.725,
+          0.22,
+          0.165
+        ],
+        "hex": "#b9382a"
+      }
+    },
+    "yolk": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.949,
+          0.745,
+          0.243
+        ],
+        "hex": "#f2be3e"
+      }
+    },
+    "inkMuted": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.322,
+          0.4,
+          0.357
+        ],
+        "hex": "#52665b"
+      }
+    }
+  },
+  "spacing": {
+    "$type": "dimension",
+    "xs": {
+      "$value": {
+        "value": 4,
+        "unit": "px"
+      }
+    },
+    "sm": {
+      "$value": {
+        "value": 8,
+        "unit": "px"
+      }
+    },
+    "md": {
+      "$value": {
+        "value": 16,
+        "unit": "px"
+      }
+    },
+    "lg": {
+      "$value": {
+        "value": 24,
+        "unit": "px"
+      }
+    },
+    "xl": {
+      "$value": {
+        "value": 32,
+        "unit": "px"
+      }
+    }
+  },
+  "rounded": {
+    "$type": "dimension",
+    "control": {
+      "$value": {
+        "value": 12,
+        "unit": "px"
+      }
+    },
+    "panel": {
+      "$value": {
+        "value": 20,
+        "unit": "px"
+      }
+    },
+    "feature": {
+      "$value": {
+        "value": 28,
+        "unit": "px"
+      }
+    }
+  },
+  "typography": {
+    "h1": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Bricolage Grotesque Variable, system-ui, sans-serif",
+        "fontSize": {
+          "value": 3.75,
+          "unit": "rem"
+        },
+        "fontWeight": 800,
+        "letterSpacing": {
+          "value": -0.03,
+          "unit": "em"
+        }
+      }
+    },
+    "h2": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Bricolage Grotesque Variable, system-ui, sans-serif",
+        "fontSize": {
+          "value": 2,
+          "unit": "rem"
+        },
+        "fontWeight": 800,
+        "letterSpacing": {
+          "value": -0.02,
+          "unit": "em"
+        }
+      }
+    },
+    "body-md": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Bricolage Grotesque Variable, system-ui, sans-serif",
+        "fontSize": {
+          "value": 1,
+          "unit": "rem"
+        },
+        "fontWeight": 450
+      }
+    }
+  }
+}

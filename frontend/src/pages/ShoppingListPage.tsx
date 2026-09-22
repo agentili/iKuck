@@ -27,8 +27,8 @@ export default function ShoppingListPage() {
   }
 
   return (
-    <main id="main-content" className="mx-auto min-h-screen w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-      <Link to="/" className="inline-flex min-h-11 items-center gap-2 rounded-xl px-2 py-2 font-semibold text-emerald-800 hover:bg-emerald-50">
+    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+      <Link to="/" className="ik-back-link inline-flex min-h-11 items-center gap-2 rounded-xl px-2 py-2 font-semibold text-emerald-800 hover:bg-emerald-50">
         <ArrowLeft size={18} aria-hidden="true" /> Torna alla dispensa
       </Link>
       <div className="mt-6">

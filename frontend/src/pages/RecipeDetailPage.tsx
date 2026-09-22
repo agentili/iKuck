@@ -129,13 +129,13 @@ export default function RecipeDetailPage() {
   };
 
   return (
-    <main id="main-content" className="mx-auto min-h-screen w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-      <Link to="/" className="inline-flex min-h-11 items-center gap-2 rounded-xl px-2 py-2 font-semibold text-emerald-800 hover:bg-emerald-50">
+    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+      <Link to="/" className="ik-back-link inline-flex min-h-11 items-center gap-2 rounded-xl px-2 py-2 font-semibold text-emerald-800 hover:bg-emerald-50">
         <ArrowLeft size={18} aria-hidden="true" />
         Torna alla dispensa
       </Link>
 
-      <header className="mt-6 rounded-3xl bg-gray-950 px-5 py-8 text-white sm:px-9 sm:py-10">
+      <header className="ik-recipe-hero mt-6 rounded-3xl bg-gray-950 px-5 py-8 text-white sm:px-9 sm:py-10">
         <p className="font-semibold text-amber-300">{CATEGORY_LABELS[recipe.category]}</p>
         <h1 className="mt-2 max-w-3xl text-4xl font-black leading-tight sm:text-6xl">{recipe.title}</h1>
         <p className="mt-4 max-w-2xl text-lg leading-relaxed text-gray-300">{recipe.description}</p>
@@ -224,7 +224,7 @@ export default function RecipeDetailPage() {
       </section>
 
       {metadata !== undefined && nutrition !== null && (
-        <section aria-labelledby="nutrition-title" className="mt-6 rounded-3xl border-2 border-gray-200 bg-white p-5 sm:p-6">
+        <section aria-labelledby="nutrition-title" className="ik-surface mt-6 rounded-3xl border-2 border-gray-200 bg-white p-5 sm:p-6">
           <h2 id="nutrition-title" className="text-2xl font-black text-gray-950">Nutrizione stimata per porzione</h2>
           <RecipeNutritionSummary nutrition={nutrition} />
           <p className="mt-3 text-sm font-semibold text-gray-700">

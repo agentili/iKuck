@@ -14,6 +14,7 @@ import { listenForReconnect, syncVerifiedSession, type SyncSession } from './syn
 import { hydrateShoppingListStore } from './store/shoppingListStore';
 import { hydrateActivityStore } from './store/activityStore';
 import { hydrateDietProfileStore } from './store/dietProfileStore';
+import { hydratePantryStore } from './store/localPantryStore';
 
 const readVerifiedSession = (): SyncSession | null => {
   const { user, csrfToken } = useAuthStore.getState();
@@ -36,6 +37,7 @@ export default function App() {
   }, [restoreSession]);
 
   useEffect(() => {
+    void hydratePantryStore();
     void hydrateShoppingListStore();
     void hydrateActivityStore();
     void hydrateDietProfileStore();

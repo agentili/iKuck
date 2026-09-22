@@ -4,6 +4,7 @@ import App from './App';
 import { useAuthStore } from './auth/authStore';
 import { useActivityStore } from './store/activityStore';
 import { useShoppingListStore } from './store/shoppingListStore';
+import { usePantryStore } from './store/localPantryStore';
 
 const syncVerifiedSession = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 const listenForReconnect = vi.hoisted(() => vi.fn().mockReturnValue(vi.fn()));
@@ -55,6 +56,17 @@ describe('App synchronization lifecycle', () => {
     render(<App />);
 
     expect(restoreSession).toHaveBeenCalledOnce();
+  });
+
+  it('hydrates pantry data before an authenticated profile uses it', async () => {
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
+    usePantryStore.setState({ hasHydrated: false, pantryItems: [] });
+    window.history.pushState({}, '', '/profile');
+
+    render(<App />);
+
+    await waitFor(() => expect(usePantryStore.getState().hasHydrated).toBe(true));
+    window.history.pushState({}, '', '/');
   });
 
   it('does not start sync or a reconnect listener for guests and unverified sessions', async () => {
