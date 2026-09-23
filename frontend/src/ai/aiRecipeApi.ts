@@ -47,9 +47,14 @@ export const generateAiRecipe = async (
   csrfToken: string,
   request: ApiRequest = apiRequest,
 ): Promise<GeneratedRecipe> => {
+  const profilePayload: DietProfilePayload = {
+    diet: dietProfile.diet,
+    excludedAllergens: dietProfile.excludedAllergens,
+    nutrition: dietProfile.nutrition,
+  };
   const response = await request<GeneratedRecipeResponse>('/v1/ai-recipes', {
     method: 'POST',
-    body: { ...input, dietProfile },
+    body: { ...input, dietProfile: profilePayload },
     csrfToken,
   });
   return response.recipe;

@@ -48,4 +48,18 @@ describe('AI recipe API', () => {
       csrfToken: 'csrf-token',
     });
   });
+
+  it('omits persistence metadata when sending a stored diet profile', async () => {
+    const request = vi.fn().mockResolvedValue({ recipe: { id: 'recipe-2', source: 'ai' } }) as unknown as ApiRequest;
+    const storedProfile = { ...profile, updatedAt: '2026-09-13T12:00:00.000Z' };
+
+    await expect(generateAiRecipe({ ingredients: ['Ceci'], constraints: [] }, storedProfile, 'csrf-token', request))
+      .resolves.toMatchObject({ id: 'recipe-2' });
+
+    expect(request).toHaveBeenCalledWith('/v1/ai-recipes', {
+      method: 'POST',
+      body: { ingredients: ['Ceci'], constraints: [], dietProfile: profile },
+      csrfToken: 'csrf-token',
+    });
+  });
 });
