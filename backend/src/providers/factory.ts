@@ -2,6 +2,7 @@ import type { AppConfig, ProviderConfig } from '../config.js';
 import { createResendEmailProvider } from './resend.js';
 import { createUsdaNutritionProvider } from './usda.js';
 import { createOpenAiRecipeProvider } from './openaiRecipes.js';
+import { createGeminiRecipeProvider } from './geminiRecipes.js';
 import {
   createUnavailableEmailProvider,
   createUnavailableNutritionProvider,
@@ -36,13 +37,21 @@ export const createProviders = (
     nutrition: providers.usdaApiKey !== undefined
       ? createUsdaNutritionProvider({ apiKey: providers.usdaApiKey, fetch: options.fetch, timeoutMs: providers.usdaTimeoutMs })
       : createUnavailableNutritionProvider(reasonFor(providers.usdaApiKey)),
-    recipes: providers.openAiApiKey !== undefined
-      ? createOpenAiRecipeProvider({
-        apiKey: providers.openAiApiKey,
-        model: providers.openAiModel ?? 'gpt-5.5',
-        fetch: options.fetch,
-        timeoutMs: providers.openAiTimeoutMs,
-      })
-      : createUnavailableRecipeProvider(reasonFor(providers.openAiApiKey)),
+    recipes: providers.recipeProvider === 'gemini'
+      ? providers.geminiApiKey !== undefined
+        ? createGeminiRecipeProvider({
+          apiKey: providers.geminiApiKey,
+          model: providers.geminiModel ?? 'gemini-3.5-flash-lite',
+          fetch: options.fetch,
+        })
+        : createUnavailableRecipeProvider(reasonFor(providers.geminiApiKey))
+      : providers.openAiApiKey !== undefined
+        ? createOpenAiRecipeProvider({
+          apiKey: providers.openAiApiKey,
+          model: providers.openAiModel ?? 'gpt-5.5',
+          fetch: options.fetch,
+          timeoutMs: providers.openAiTimeoutMs,
+        })
+        : createUnavailableRecipeProvider(reasonFor(providers.openAiApiKey)),
   };
 };

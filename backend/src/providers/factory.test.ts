@@ -46,6 +46,17 @@ describe('createProviders', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it('selects the Gemini recipe adapter when configured', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({
+      title: 'Ceci croccanti', description: 'Ricetta semplice.', ingredients: [{ name: 'Ceci', amount: '240 g' }],
+      steps: ['Scola i ceci.'], diets: ['vegan'], allergens: [],
+    }) }] } }] })));
+    const providers = createProviders({ providers: { recipeProvider: 'gemini', geminiApiKey: 'gemini-test-key', geminiModel: 'gemini-test' } }, { fetch });
+
+    await expect(providers.recipes.generate({ ingredients: ['Ceci'], constraints: [] })).resolves.toMatchObject({ title: 'Ceci croccanti' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it('injects the same fetch implementation into the Resend adapter', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(JSON.stringify({ id: 'email-1' })));
     const providers = createProviders({ providers: {

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export interface ProviderConfig {
+  recipeProvider?: 'openai' | 'gemini';
   resendApiKey?: string;
   resendFrom?: string;
   resendTimeoutMs?: number;
@@ -8,6 +9,8 @@ export interface ProviderConfig {
   usdaTimeoutMs?: number;
   openAiApiKey?: string;
   openAiModel?: string;
+  geminiApiKey?: string;
+  geminiModel?: string;
   openAiTimeoutMs?: number;
 }
 
@@ -50,6 +53,7 @@ const optionalEnvironmentEmail = () => z.preprocess(
 
 const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  RECIPE_PROVIDER: z.enum(['openai', 'gemini']).default('openai'),
   DATABASE_URL: requiredEnvironmentValue('DATABASE_URL'),
   REDIS_URL: requiredEnvironmentValue('REDIS_URL'),
   APP_ORIGIN: z.string().url('APP_ORIGIN must be a valid URL'),
@@ -70,6 +74,8 @@ const environmentSchema = z.object({
   USDA_API_KEY: optionalEnvironmentString(),
   OPENAI_API_KEY: optionalEnvironmentString(),
   OPENAI_MODEL: z.string().min(1).default('gpt-5.5'),
+  GEMINI_API_KEY: optionalEnvironmentString(),
+  GEMINI_MODEL: z.string().min(1).default('gemini-3.5-flash-lite'),
   GOOGLE_CLIENT_ID: optionalEnvironmentString(),
 });
 
@@ -95,6 +101,7 @@ export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
     logLevel: parsed.LOG_LEVEL,
     syncMaxClientClockSkewMs: parsed.SYNC_MAX_CLIENT_CLOCK_SKEW_SECONDS * 1000,
     providers: {
+      recipeProvider: parsed.RECIPE_PROVIDER,
       resendApiKey: parsed.RESEND_API_KEY,
       resendFrom: parsed.RESEND_FROM_EMAIL ?? parsed.RESEND_FROM,
       resendTimeoutMs: parsed.RESEND_TIMEOUT_MS,
@@ -102,6 +109,8 @@ export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
       usdaTimeoutMs: parsed.USDA_TIMEOUT_MS,
       openAiApiKey: parsed.OPENAI_API_KEY,
       openAiModel: parsed.OPENAI_MODEL,
+      geminiApiKey: parsed.GEMINI_API_KEY,
+      geminiModel: parsed.GEMINI_MODEL,
       openAiTimeoutMs: parsed.OPENAI_TIMEOUT_MS,
     },
     googleClientId: parsed.GOOGLE_CLIENT_ID,

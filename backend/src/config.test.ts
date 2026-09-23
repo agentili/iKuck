@@ -87,6 +87,24 @@ describe('loadConfig', () => {
     })).toThrow();
   });
 
+  it('selects Gemini configuration for recipe generation', () => {
+    expect(loadConfig({
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://ikuck:***@postgres:5432/ikuck',
+      REDIS_URL: 'redis://redis:6379',
+      APP_ORIGIN: 'https://app.ikuck.it:30443',
+      RECIPE_PROVIDER: 'gemini',
+      GEMINI_API_KEY: 'gemini-test-key',
+      GEMINI_MODEL: 'gemini-test',
+    })).toMatchObject({
+      providers: {
+        recipeProvider: 'gemini',
+        geminiApiKey: 'gemini-test-key',
+        geminiModel: 'gemini-test',
+      },
+    });
+  });
+
   it('treats blank optional provider settings as absent', () => {
     const config = loadConfig({
       NODE_ENV: 'production',

@@ -13,6 +13,9 @@ Copia `deploy/.env.example` in `deploy/.env` sul VPS e sostituisci tutti i place
 | `POSTGRES_USER` | sì | utente database |
 | `POSTGRES_PASSWORD` | sì | password nuova, senza caratteri riservati da URL (`@`, `:`, `/`, `?`, `#`) |
 | `GOOGLE_CLIENT_ID` | no | client ID Web per Google Identity Services |
+| `RECIPE_PROVIDER` | no | `openai` (default) oppure `gemini` |
+| `GEMINI_API_KEY` | no | abilita il provider ricette Gemini |
+| `GEMINI_MODEL` | no | modello Gemini scelto nel piano disponibile |
 | `RESEND_API_KEY` | no | abilita l'invio email solo insieme a un mittente |
 | `RESEND_FROM_EMAIL` | no | mittente verificato Resend; `RESEND_FROM` resta accettato per compatibilità |
 | `USDA_API_KEY` | no | abilita l'arricchimento nutrizionale USDA |

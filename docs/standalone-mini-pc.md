@@ -44,6 +44,8 @@ Modifica almeno:
 
 `IKUCK_PORT` può restare `8080`. Se la porta è già occupata, scegline un’altra, per esempio `8180`, e aggiorna anche `APP_ORIGIN`.
 
+Per provare le ricette AI in modalità standalone puoi configurare `RECIPE_PROVIDER=gemini`, `GEMINI_API_KEY` e `GEMINI_MODEL` nel file env. La chiave resta solo nel backend; il pannello richiede un account verificato, il consenso esplicito e almeno un ingrediente nella dispensa. Il limite applicativo è di cinque generazioni per account ogni giorno UTC.
+
 ## 4. Avviare i container
 
 Dal repository:
