@@ -75,7 +75,7 @@ describe('RecipeDetailPage integration', () => {
     renderRoute('/recipes/not-real');
 
     expect(screen.getByRole('heading', { name: 'Ricetta non trovata' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Torna alla dispensa' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'Torna alle ricette' })).toHaveAttribute('href', '/');
   });
 
   it('adds only missing non-optional ingredients to the shopping list', async () => {

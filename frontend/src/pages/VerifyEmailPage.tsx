@@ -57,7 +57,7 @@ export default function VerifyEmailPage() {
           <>
             <h1 className="text-3xl font-black text-gray-950">Link non valido</h1>
             <p className="mt-3 text-gray-600">{INVALID_LINK_MESSAGE}</p>
-            <Link to="/" className="mt-6 inline-flex min-h-11 items-center rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900">Torna alla dispensa</Link>
+            <Link to="/" className="mt-6 inline-flex min-h-11 items-center rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900">Torna alle ricette</Link>
           </>
         )}
       </section>

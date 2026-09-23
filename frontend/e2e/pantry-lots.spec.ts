@@ -11,7 +11,7 @@ test.afterEach(async ({ page }) => {
 });
 
 test('adds and retains optional lot quantity and expiry details', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/pantry');
   await page.evaluate(() => indexedDB.deleteDatabase('ikuck-local-v2'));
   await page.reload();
 

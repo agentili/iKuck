@@ -9,6 +9,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import ShoppingListPage from './pages/ShoppingListPage';
 import ActivityPage from './pages/ActivityPage';
+import PantryPage from './pages/PantryPage';
 import NotFoundPage from './pages/NotFoundPage';
 import { listenForReconnect, syncVerifiedSession, type SyncSession } from './sync/syncQueue';
 import { hydrateShoppingListStore } from './store/shoppingListStore';
@@ -65,6 +66,7 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/recipes/:recipeId" element={<RecipeDetailPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/pantry" element={<PantryPage />} />
           <Route path="/shopping-list" element={<ShoppingListPage />} />
           <Route path="/activity" element={<ActivityPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />

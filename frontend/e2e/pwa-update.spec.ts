@@ -126,8 +126,8 @@ test('updates the service worker without losing IndexedDB data', async ({ page, 
     },
   });
 
-  await page.goto(`${pwaServer.url}/`);
-  await expect(page.getByRole('heading', { name: /Cosa c’è in dispensa/i })).toBeVisible();
+  await page.goto(`${pwaServer.url}/pantry`);
+  await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
   await page.getByLabel('Ingredienti presenti').fill('pasta, pomodoro');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
   await expect(page.getByRole('list', { name: 'La tua dispensa' }).getByText('Pasta', { exact: true })).toBeVisible();
@@ -153,11 +153,11 @@ test('updates the service worker without losing IndexedDB data', async ({ page, 
   await page.getByText('Diagnostica applicazione').click();
   await expect(page.getByText('build-b', { exact: true })).toBeVisible();
 
-  await page.goto(`${pwaServer.url}/`);
+  await page.goto(`${pwaServer.url}/pantry`);
   await expect(page.getByRole('list', { name: 'La tua dispensa' }).getByText('Pasta', { exact: true })).toBeVisible();
 
   await context.setOffline(true);
   await page.reload();
-  await expect(page.getByRole('heading', { name: /Cosa c’è in dispensa/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
   await context.setOffline(false);
 });

@@ -105,8 +105,39 @@ describe('App synchronization lifecycle', () => {
     window.history.pushState({}, '', '/');
   });
 
+  it('opens the pantry as a dedicated primary section', async () => {
+    usePantryStore.setState({ hasHydrated: true, pantryItems: [], pantryLots: [] });
+    window.history.pushState({}, '', '/pantry');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
+    expect(screen.getByLabelText('Ingredienti presenti')).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Dispensa' })).toHaveAttribute('href', '/pantry');
+    expect(screen.getByRole('link', { name: 'Dispensa' })).toHaveAttribute('aria-current', 'page');
+
+    window.history.pushState({}, '', '/');
+  });
+
+  it('keeps Home focused on recipes and sends pantry editing to its section', async () => {
+    usePantryStore.setState({
+      hasHydrated: true,
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+      pantryLots: [],
+    });
+    window.history.pushState({}, '', '/');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
+    expect(screen.queryByLabelText('Ingredienti presenti')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Gestisci la dispensa' })).toHaveAttribute('href', '/pantry');
+    expect(screen.getByRole('button', { name: 'Trova ricette' })).toBeEnabled();
+  });
+
   it.each([
-    ['/', /Cosa c’è in dispensa/],
+    ['/', 'Cosa cuciniamo oggi?'],
+    ['/pantry', 'La tua dispensa'],
     ['/recipes/pasta-tonno-pomodoro', 'Pasta tonno e pomodoro'],
     ['/profile', 'Accedi al tuo profilo'],
     ['/shopping-list', 'Lista della spesa'],

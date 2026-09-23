@@ -300,13 +300,17 @@ details:not([open]) > :not(summary) {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+.app-navigation-label-compact {
+  display: none;
+}
+
 .app-overlay {
-  bottom: calc(4.75rem + env(safe-area-inset-bottom));
+  bottom: calc(max(5rem, 7em) + env(safe-area-inset-bottom));
 }
 
 @media (max-width: 639px) {
   .app-shell {
-    padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+    padding-bottom: calc(max(5rem, 7em) + env(safe-area-inset-bottom));
   }
 
   .app-navigation {
@@ -315,7 +319,7 @@ details:not([open]) > :not(summary) {
 
   .app-navigation > ul {
     width: 100%;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .ik-page {
@@ -328,6 +332,18 @@ details:not([open]) > :not(summary) {
 }
 
 @media (max-width: 359px) {
+  .app-navigation a {
+    font-size: 0.625rem;
+  }
+
+  .app-navigation-label-full {
+    display: none;
+  }
+
+  .app-navigation-label-compact {
+    display: inline;
+  }
+
   .ik-ingredient-entry {
     flex-direction: column;
   }

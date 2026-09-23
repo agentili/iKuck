@@ -43,6 +43,13 @@ export default defineConfig({
         categories: ['food', 'lifestyle'],
         shortcuts: [
           {
+            name: 'Dispensa',
+            short_name: 'Dispensa',
+            description: 'Gestisci ingredienti, lotti e scadenze offline.',
+            url: '/pantry',
+            icons: [{ src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
+          },
+          {
             name: 'Lista della spesa',
             short_name: 'Spesa',
             description: 'Apri la lista della spesa offline.',

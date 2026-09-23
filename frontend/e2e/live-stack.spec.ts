@@ -34,7 +34,7 @@ test('registers, verifies, logs in, synchronizes and logs out against the live s
   await page.getByRole('button', { name: 'Accedi al profilo' }).click();
   await expect(page.getByRole('heading', { name: 'Il tuo profilo' })).toBeVisible();
 
-  await page.goto('/');
+  await page.goto('/pantry');
   await page.getByLabel('Ingredienti presenti').fill('pasta');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
   await page.getByRole('link', { name: 'Profilo' }).click();

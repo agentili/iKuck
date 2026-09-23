@@ -23,7 +23,7 @@ export default function NotFoundPage({ resource = 'recipe' }: NotFoundPageProps)
       </p>
       <Link to="/" className="mx-auto mt-7 inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white hover:bg-emerald-800">
         <ArrowLeft size={18} aria-hidden="true" />
-        {isRecipe ? 'Torna alla dispensa' : 'Torna alla home'}
+        {isRecipe ? 'Torna alle ricette' : 'Torna alla home'}
       </Link>
     </main>
   );

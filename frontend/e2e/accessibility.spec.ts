@@ -42,15 +42,21 @@ test.afterEach(async ({ page }) => {
 
 test('guest home passes the critical and serious axe gate', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: /Cosa c’è in dispensa/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
   await auditPage(page, 'guest home');
 });
 
 test('verified home passes the critical and serious axe gate', async ({ page }) => {
   await installVerifiedBackend(page);
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: /Cosa c’è in dispensa/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
   await auditPage(page, 'verified home');
+});
+
+test('pantry passes the critical and serious axe gate', async ({ page }) => {
+  await page.goto('/pantry');
+  await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
+  await auditPage(page, 'pantry');
 });
 
 test('profile passes the critical and serious axe gate', async ({ page }) => {
@@ -108,6 +114,26 @@ test('supports a 320px viewport and a 200% text-zoom equivalent without horizont
   await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
   const zoomOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
   expect(zoomOverflow).toBe(false);
+
+  const zoomNavigationBox = await page.getByRole('navigation', { name: 'Navigazione principale' }).boundingBox();
+  expect(zoomNavigationBox).not.toBeNull();
+  expect(zoomNavigationBox!.height).toBeLessThanOrEqual(144);
+});
+
+test('keeps pantry recipe action compact at 200% text zoom', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto('/pantry');
+  await page.getByLabel('Ingredienti presenti').fill('pasta');
+  await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+
+  await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+  const recipeAction = page.getByRole('link', { name: 'Vai alle ricette' });
+  await recipeAction.scrollIntoViewIfNeeded();
+  const recipeActionBox = await recipeAction.boundingBox();
+
+  expect(recipeActionBox).not.toBeNull();
+  expect(recipeActionBox!.height).toBeLessThanOrEqual(128);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
 });
 
 test('keeps primary navigation fixed and touch-friendly on mobile', async ({ page }) => {
@@ -118,7 +144,7 @@ test('keeps primary navigation fixed and touch-friendly on mobile', async ({ pag
   const navigation = page.getByRole('navigation', { name: 'Navigazione principale' });
   expect(await navigation.evaluate((element) => window.getComputedStyle(element).position)).toBe('fixed');
 
-  for (const name of ['Home', 'Lista', 'Attività', 'Profilo']) {
+  for (const name of ['Home', 'Dispensa', 'Lista', 'Attività', 'Profilo']) {
     const box = await navigation.getByRole('link', { name }).boundingBox();
     expect(box, `${name} should have a measurable touch target`).not.toBeNull();
     expect(box!.width).toBeGreaterThanOrEqual(44);
@@ -135,7 +161,7 @@ test('keeps primary navigation fixed and touch-friendly on mobile', async ({ pag
 test('keeps common mobile actions comfortably tappable', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
 
-  await page.goto('/');
+  await page.goto('/pantry');
   await page.getByLabel('Ingredienti presenti').fill('pasta');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
   const removeIngredientBox = await page.getByRole('button', { name: 'Rimuovi Pasta' }).boundingBox();
@@ -149,7 +175,7 @@ test('keeps common mobile actions comfortably tappable', async ({ page }) => {
   expect(detailsBox!.height).toBeGreaterThanOrEqual(44);
 
   await page.goto('/profile');
-  const backBox = await page.getByRole('link', { name: /Torna alla dispensa/ }).boundingBox();
+  const backBox = await page.getByRole('link', { name: /Torna alle ricette/ }).boundingBox();
   expect(backBox).not.toBeNull();
   expect(backBox!.height).toBeGreaterThanOrEqual(44);
 });

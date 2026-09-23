@@ -24,6 +24,6 @@ describe('NotFoundPage', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Ricetta non trovata' })).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Torna alla dispensa' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'Torna alle ricette' })).toHaveAttribute('href', '/');
   });
 });

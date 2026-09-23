@@ -35,7 +35,7 @@ test('guest pantry survives reload while the API is offline', async ({ page }) =
     status: 200,
     json: { authenticated: false },
   }));
-  await page.goto('/');
+  await page.goto('/pantry');
   await clearLocalDatabase(page);
   await page.reload();
 
@@ -70,7 +70,7 @@ test('verified users explicitly import the local pantry into the account', async
     await route.fulfill({ status: 200, json: { changes: [], nextCursor: 1 } });
   });
 
-  await page.goto('/');
+  await page.goto('/pantry');
   await clearLocalDatabase(page);
   await page.reload();
   await page.getByLabel('Ingredienti presenti').fill('pasta');

@@ -1,8 +1,8 @@
 import { MemoryRouter } from 'react-router-dom';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { vi } from 'vitest';
-import { DEFAULT_STAPLE_IDS } from '../domain/ingredients';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_STAPLE_IDS, parseIngredientInput } from '../domain/ingredients';
 import { DEFAULT_DIET_PROFILE } from '../domain/dietary';
 import HomePage from '../pages/HomePage';
 import { usePantryStore } from '../store/localPantryStore';
@@ -11,175 +11,104 @@ import { useDietProfileStore } from '../store/dietProfileStore';
 import { useShoppingListStore } from '../store/shoppingListStore';
 import { reportPersistenceMemoryOnly, usePersistenceStatusStore } from '../store/persistenceStatusStore';
 
-const renderHome = async () => {
+const hydratePantryStoreMock = vi.hoisted(() => vi.fn());
+
+vi.mock('../store/localPantryStore', async () => {
+  const actual = await vi.importActual<typeof import('../store/localPantryStore')>('../store/localPantryStore');
+  return { ...actual, hydratePantryStore: hydratePantryStoreMock };
+});
+
+const seedPantry = (value: string): void => {
+  act(() => {
+    usePantryStore.setState({
+      hasHydrated: true,
+      pantryItems: parseIngredientInput(value),
+      pantryLots: [],
+      stapleIds: [...DEFAULT_STAPLE_IDS],
+    });
+  });
+};
+
+const renderHome = (): void => {
   render(
     <MemoryRouter>
       <HomePage />
     </MemoryRouter>,
   );
+};
 
-  await screen.findByLabelText('Ingredienti presenti');
-  await waitFor(() => expect(usePantryStore.getState().hasHydrated).toBe(true));
-  act(() => {
+describe('HomePage recipe search', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    hydratePantryStoreMock.mockReset();
+    hydratePantryStoreMock.mockResolvedValue(undefined);
+    usePersistenceStatusStore.getState().reset();
     usePantryStore.setState({
       hasHydrated: true,
       pantryItems: [],
       pantryLots: [],
       stapleIds: [...DEFAULT_STAPLE_IDS],
     });
-  });
-  return screen.getByLabelText('Ingredienti presenti');
-};
-
-const openHomeDisclosure = async (user: ReturnType<typeof userEvent.setup>, name: string): Promise<HTMLDetailsElement> => {
-  const summary = screen.getByText(name, { exact: true });
-  const disclosure = summary.closest('details');
-  if (disclosure === null) throw new Error(`${name} must be a disclosure`);
-  if (!disclosure.hasAttribute('open')) await user.click(summary);
-  return disclosure;
-};
-
-describe('HomePage integration', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    usePersistenceStatusStore.getState().reset();
-    usePantryStore.setState({
-      hasHydrated: false,
-      pantryItems: [],
-      stapleIds: [...DEFAULT_STAPLE_IDS],
-    });
     useActivityStore.setState({ events: [], preferences: [] });
     useShoppingListStore.setState({ hasHydrated: true, items: [] });
     useDietProfileStore.setState({
-      hasHydrated: false,
+      hasHydrated: true,
       profile: { ...DEFAULT_DIET_PROFILE, updatedAt: '2026-09-13T12:00:00.000Z' },
     });
   });
 
-  it('keeps the full account flow out of the recipe search page', async () => {
-    await renderHome();
+  it('keeps recipe search focused and routes pantry editing to its dedicated section', () => {
+    seedPantry('pasta');
+    renderHome();
 
-    expect(screen.queryByRole('region', { name: 'Account' })).not.toBeInTheDocument();
-  });
-
-  it('keeps private AI recipes out of the main cooking flow', async () => {
-    await renderHome();
-
+    expect(screen.getByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
+    expect(screen.queryByLabelText('Ingredienti presenti')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Gestisci la dispensa' })).toHaveAttribute('href', '/pantry');
+    expect(screen.getByRole('button', { name: 'Trova ricette' })).toBeEnabled();
     expect(screen.queryByRole('region', { name: 'Ricette AI private' })).not.toBeInTheDocument();
   });
 
-  it('places ingredient entry and selected items before the primary recipe action', async () => {
-    const user = userEvent.setup();
-    const input = await renderHome();
+  it('explains the empty pantry and disables search until ingredients are saved', () => {
+    renderHome();
 
-    const pantry = screen.getByRole('region', { name: 'La tua dispensa' });
-    const searchOptions = screen.getByRole('region', { name: 'Opzioni ricette' });
-
-    expect(pantry.compareDocumentPosition(searchOptions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-
-    await user.type(input, 'pasta, tonno');
-    await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
-
-    const selectedIngredients = within(pantry).getByRole('list', { name: 'La tua dispensa' });
-    expect(within(selectedIngredients).getByText('Pasta')).toBeVisible();
-    expect(within(selectedIngredients).getByText('Tonno')).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Apri la dispensa' })).toHaveAttribute('href', '/pantry');
+    expect(screen.getByRole('button', { name: 'Trova ricette' })).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Aggiungi almeno un ingrediente nella dispensa');
   });
 
-  it('keeps pantry exploration and configuration out of the initial action flow', async () => {
+  it('finds recipes from saved pantry items only after an explicit request', async () => {
     const user = userEvent.setup();
-    await renderHome();
-
-    const ideas = screen.getByText('Idee per ampliare la dispensa', { exact: true }).closest('details');
-    const configuration = screen.getByText('Personalizza la dispensa', { exact: true }).closest('details');
-
-    expect(ideas).not.toBeNull();
-    expect(configuration).not.toBeNull();
-    expect(ideas).not.toHaveAttribute('open');
-    expect(configuration).not.toHaveAttribute('open');
-    expect(screen.getByRole('button', { name: 'Trova ricette' }).compareDocumentPosition(ideas!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-
-    await openHomeDisclosure(user, 'Idee per ampliare la dispensa');
-    expect(screen.getByRole('region', { name: 'Potresti aggiungere' })).toBeVisible();
-
-    await openHomeDisclosure(user, 'Personalizza la dispensa');
-    expect(screen.getByText('Filtri alimentari', { exact: true })).toBeVisible();
-  });
-
-  it('shows an accessible persistence warning with an explicit retry action', async () => {
-    const retry = vi.fn(async () => undefined);
-    reportPersistenceMemoryOnly('pantry', new Error('IndexedDB unavailable'), retry);
-
-    await renderHome();
-
-    expect(screen.getByRole('alert')).toHaveTextContent('disponibili solo in memoria');
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Riprova' }));
-    expect(retry).toHaveBeenCalledOnce();
-  });
-
-  it('adds comma-separated ingredients and searches only on request', async () => {
-    const user = userEvent.setup();
-    const input = await renderHome();
+    seedPantry('pasta, tonno, passata');
+    renderHome();
 
     expect(screen.queryByRole('heading', { name: 'Ricette per te' })).not.toBeInTheDocument();
-    await user.type(input, 'pasta, tonno, passata');
-    await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
-
-    const pantry = screen.getByRole('list', { name: 'La tua dispensa' });
-    expect(within(pantry).getByText('Pasta')).toBeInTheDocument();
-    expect(within(pantry).getByText('Tonno')).toBeInTheDocument();
-    expect(within(pantry).getByText('Passata di pomodoro')).toBeInTheDocument();
-    expect(screen.queryByText('Pasta tonno e pomodoro')).not.toBeInTheDocument();
-
     await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
 
-    expect(screen.getByRole('heading', { name: 'Ricette per te' })).toBeInTheDocument();
-    expect(screen.getByText('Pasta tonno e pomodoro')).toBeInTheDocument();
-    expect(screen.getByText('Hai tutto')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' })).toHaveAttribute(
-      'href',
-      '/recipes/pasta-tonno-pomodoro',
-    );
+    expect(screen.getByRole('heading', { name: 'Ricette per te' })).toBeVisible();
+    expect(screen.getByText('Pasta tonno e pomodoro')).toBeVisible();
+    expect(screen.getByText('Hai tutto')).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' })).toHaveAttribute('href', '/recipes/pasta-tonno-pomodoro');
   });
 
-  it('shows one named missing ingredient only in extended mode', async () => {
+  it('separates recipes ready now from recipes needing one purchase', async () => {
     const user = userEvent.setup();
-    const input = await renderHome();
+    seedPantry('pasta, tonno, passata, uova, pancetta');
+    renderHome();
 
-    await user.type(input, 'pasta, uova, pancetta');
-    await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
-    await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
-    expect(screen.queryByText('Carbonara semplice')).not.toBeInTheDocument();
-
-    await user.click(screen.getByLabelText('Anche con 1 ingrediente in più'));
-    expect(screen.queryByText('Carbonara semplice')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
-
-    expect(screen.getByText('Carbonara semplice')).toBeInTheDocument();
-    expect(screen.getByText('Ti manca solo: Parmigiano')).toBeInTheDocument();
-  });
-
-  it('separates recipes that are ready from recipes needing one purchase', async () => {
-    const user = userEvent.setup();
-    const input = await renderHome();
-
-    await user.type(input, 'pasta, tonno, passata, uova, pancetta');
-    await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
     await user.click(screen.getByLabelText('Anche con 1 ingrediente in più'));
     await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
 
     const readyRecipes = screen.getByRole('region', { name: 'Pronte da cucinare' });
     const onePurchaseRecipes = screen.getByRole('region', { name: 'Con un solo acquisto' });
-
     expect(within(readyRecipes).getByRole('article', { name: 'Pasta tonno e pomodoro' })).toHaveAttribute('data-availability', 'ready');
     expect(within(onePurchaseRecipes).getByRole('article', { name: 'Carbonara semplice' })).toHaveAttribute('data-availability', 'one-missing');
   });
 
-  it('adds the named missing ingredient to the shopping list from a one-purchase recipe', async () => {
+  it('adds a one-purchase recipe ingredient to the shopping list', async () => {
     const user = userEvent.setup();
-    const input = await renderHome();
+    seedPantry('pasta, uova, pancetta');
+    renderHome();
 
-    await user.type(input, 'pasta, uova, pancetta');
-    await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
     await user.click(screen.getByLabelText('Anche con 1 ingrediente in più'));
     await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
 
@@ -193,116 +122,42 @@ describe('HomePage integration', () => {
     expect(within(carbonara).getByRole('link', { name: 'Apri lista della spesa' })).toHaveAttribute('href', '/shopping-list');
   });
 
-  it('offers known ingredients while the current token is typed', async () => {
+  it('updates visible results when the saved pantry changes', async () => {
     const user = userEvent.setup();
-    const input = await renderHome();
+    seedPantry('pasta');
+    renderHome();
 
-    await user.type(input, 'pom');
-
-    const suggestions = screen.getByRole('listbox', { name: 'Ingredienti suggeriti' });
-    expect(within(suggestions).getByRole('option', { name: 'Pomodoro' })).toBeInTheDocument();
-    await user.click(within(suggestions).getByRole('option', { name: 'Pomodoro' }));
-    expect(within(screen.getByRole('list', { name: 'La tua dispensa' })).getByText('Pomodoro')).toBeInTheDocument();
-  });
-
-  it('offers useful ingredients that can be added directly', async () => {
-    const user = userEvent.setup();
-    await renderHome();
-
-    const suggestions = screen.getByRole('region', { name: 'Potresti aggiungere' });
-    expect(within(suggestions).getByRole('button', { name: 'Aggiungi Cipolla' })).toBeInTheDocument();
-
-    await user.click(within(suggestions).getByRole('button', { name: 'Aggiungi Cipolla' }));
-
-    expect(within(screen.getByRole('list', { name: 'La tua dispensa' })).getByText('Cipolla')).toBeInTheDocument();
-    expect(within(suggestions).queryByRole('button', { name: 'Aggiungi Cipolla' })).not.toBeInTheDocument();
-  });
-
-  it('can refresh all five pantry suggestions', async () => {
-    const user = userEvent.setup();
-    await renderHome();
-
-    const suggestions = screen.getByRole('region', { name: 'Potresti aggiungere' });
-    const initial = within(suggestions).getAllByRole('button', { name: /^Aggiungi / }).map((button) => button.textContent);
-
-    await user.click(within(suggestions).getByRole('button', { name: 'Cambia tutti i suggerimenti' }));
-
-    const refreshed = within(suggestions).getAllByRole('button', { name: /^Aggiungi / }).map((button) => button.textContent);
-    expect(initial).toHaveLength(5);
-    expect(refreshed).toHaveLength(5);
-    expect(refreshed).not.toEqual(initial);
-  });
-
-  it('can replace one pantry suggestion without adding it', async () => {
-    const user = userEvent.setup();
-    await renderHome();
-
-    const suggestions = screen.getByRole('region', { name: 'Potresti aggiungere' });
-    await user.click(within(suggestions).getByRole('button', { name: 'Sostituisci Cipolla' }));
-
-    expect(within(suggestions).queryByRole('button', { name: 'Aggiungi Cipolla' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('list', { name: 'La tua dispensa' })).not.toBeInTheDocument();
-    expect(within(suggestions).getAllByRole('button', { name: /^Aggiungi / })).toHaveLength(5);
-  });
-
-  it('keeps an unknown ingredient and explains that it is not matched', async () => {
-    const user = userEvent.setup();
-    const input = await renderHome();
-
-    await user.type(input, 'Tempeh');
-    await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
-
-    expect(screen.getByText('Tempeh')).toBeInTheDocument();
-    expect(screen.getByText('Non ancora usato nelle ricette')).toBeInTheDocument();
-  });
-
-  it('lets the user change default staples', async () => {
-    const user = userEvent.setup();
-    await renderHome();
-
-    await user.click(screen.getByText('Ingredienti di base'));
-    const salt = screen.getByLabelText('Sale');
-    expect(salt).toBeChecked();
-    await user.click(salt);
-    expect(salt).not.toBeChecked();
-  });
-
-  it('recalculates visible recipes after a pantry change without a second search', async () => {
-    const user = userEvent.setup();
-    const input = await renderHome();
-
-    await user.type(input, 'pasta');
-    await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
     await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
     expect(screen.queryByText('Pasta tonno e pomodoro')).not.toBeInTheDocument();
 
-    await user.type(input, 'tonno, passata');
-    await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
+    act(() => {
+      usePantryStore.setState({ pantryItems: parseIngredientInput('pasta, tonno, passata') });
+    });
 
-    expect(await screen.findByText('Pasta tonno e pomodoro')).toBeInTheDocument();
+    expect(await screen.findByText('Pasta tonno e pomodoro')).toBeVisible();
   });
 
-  it('recalculates visible recipes when the diet profile changes', async () => {
+  it('updates visible results when dietary preferences change', async () => {
     const user = userEvent.setup();
-    const input = await renderHome();
+    seedPantry('pasta, tonno, passata');
+    renderHome();
 
-    await user.type(input, 'pasta, tonno, passata');
-    await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
     await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
-    expect(await screen.findByText('Pasta tonno e pomodoro')).toBeInTheDocument();
+    expect(await screen.findByText('Pasta tonno e pomodoro')).toBeVisible();
 
-    await user.selectOptions(screen.getByLabelText('Dieta'), 'vegan');
+    act(() => {
+      useDietProfileStore.setState((state) => ({ profile: { ...state.profile, diet: 'vegan' } }));
+    });
 
     await waitFor(() => expect(screen.queryByText('Pasta tonno e pomodoro')).not.toBeInTheDocument());
-    expect(screen.getByRole('heading', { name: 'Ricette per te' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Ricette per te' })).toBeVisible();
   });
 
-  it('uses favorites and ratings to reorder already visible recipes', async () => {
+  it('reorders visible recipes using saved preferences', async () => {
     const user = userEvent.setup();
-    const input = await renderHome();
+    seedPantry('pasta, tonno, passata, ceci, aglio, melanzane, basilico, uova');
+    renderHome();
 
-    await user.type(input, 'pasta, tonno, passata, ceci, aglio, melanzane, basilico, uova');
-    await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
     await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
     await waitFor(() => expect(screen.getAllByRole('link', { name: /^Apri / })).toHaveLength(4));
 
@@ -318,10 +173,9 @@ describe('HomePage integration', () => {
 
   it('keeps results visible and varies their order with Altre idee', async () => {
     const user = userEvent.setup();
-    const input = await renderHome();
+    seedPantry('pasta, tonno, passata, ceci, aglio, melanzane, basilico, uova');
+    renderHome();
 
-    await user.type(input, 'pasta, tonno, passata, ceci, aglio, melanzane, basilico, uova');
-    await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
     await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
     await waitFor(() => expect(screen.getAllByRole('link', { name: /^Apri / })).toHaveLength(4));
     const initialOrder = screen.getAllByRole('link', { name: /^Apri / }).map((link) => link.getAttribute('href'));
@@ -332,6 +186,16 @@ describe('HomePage integration', () => {
       const nextOrder = screen.getAllByRole('link', { name: /^Apri / }).map((link) => link.getAttribute('href'));
       expect(nextOrder).not.toEqual(initialOrder);
     });
-    expect(screen.getByRole('heading', { name: 'Ricette per te' })).toBeInTheDocument();
+  });
+
+  it('shows an accessible persistence warning with an explicit retry action', async () => {
+    const retry = vi.fn(async () => undefined);
+    reportPersistenceMemoryOnly('pantry', new Error('IndexedDB unavailable'), retry);
+    seedPantry('pasta');
+    renderHome();
+
+    expect(screen.getByRole('alert')).toHaveTextContent('disponibili solo in memoria');
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Riprova' }));
+    expect(retry).toHaveBeenCalledOnce();
   });
 });

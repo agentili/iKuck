@@ -44,15 +44,30 @@ test.afterEach(async ({ page }) => {
   assertOfflineBackendClean(page);
 });
 
-test('user adds pantry items, requests recipes and opens one', async ({ page }) => {
-  await page.goto('/');
+const resetPantry = async (page: Page): Promise<void> => {
+  await page.goto('/pantry');
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
+  await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
+};
 
-  await expect(page.getByRole('heading', { name: /Cosa c’è in dispensa/i })).toBeVisible();
+const openHomeRecipes = async (page: Page): Promise<void> => {
+  await page.getByRole('link', { name: 'Vai alle ricette' }).click();
+  await expect(page.getByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
+};
+
+const openPantry = async (page: Page): Promise<void> => {
+  await page.getByRole('link', { name: 'Dispensa', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
+};
+
+test('user adds pantry items, requests recipes and opens one', async ({ page }) => {
+  await resetPantry(page);
+
   await page.getByLabel('Ingredienti presenti').fill('pasta, tonno, passata');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
   await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
+  await openHomeRecipes(page);
   await page.getByRole('button', { name: 'Trova ricette' }).click();
   await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
   await expect(page.getByText('Hai tutto').first()).toBeVisible();
@@ -63,14 +78,13 @@ test('user adds pantry items, requests recipes and opens one', async ({ page }) 
 });
 
 test('pantry survives reload and extended mode names one missing ingredient', async ({ page }) => {
-  await page.goto('/');
-  await page.evaluate(() => window.localStorage.clear());
-  await page.reload();
+  await resetPantry(page);
 
   await page.getByLabel('Ingredienti presenti').fill('pasta, uova, pancetta');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
   await page.reload();
   await expect(page.getByText('Pancetta', { exact: true })).toBeVisible();
+  await openHomeRecipes(page);
   await page.getByLabel('Anche con 1 ingrediente in più').check();
   await page.getByRole('button', { name: 'Trova ricette' }).click();
   await expect(page.getByText('Ti manca solo: Parmigiano')).toBeVisible();
@@ -78,9 +92,7 @@ test('pantry survives reload and extended mode names one missing ingredient', as
 
 test('the core flow works at 320px using only the keyboard', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
-  await page.goto('/');
-  await page.evaluate(() => window.localStorage.clear());
-  await page.reload();
+  await resetPantry(page);
 
   await expect(page.getByLabel('Ingredienti presenti')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Profilo' })).toBeVisible();
@@ -93,6 +105,15 @@ test('the core flow works at 320px using only the keyboard', async ({ page }) =>
   await page.keyboard.press('Enter');
   await expect(page.getByText('Passata di pomodoro', { exact: true })).toBeVisible();
 
+  const recipesLink = page.getByRole('link', { name: 'Vai alle ricette' });
+  for (let step = 0; step < 60; step += 1) {
+    if (await recipesLink.evaluate((element) => element === document.activeElement)) break;
+    await page.keyboard.press('Tab');
+  }
+  await expect(recipesLink).toBeFocused();
+  await page.keyboard.press('Enter');
+
+  await expect(page.getByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
   const searchButton = page.getByRole('button', { name: 'Trova ricette' });
   for (let step = 0; step < 60; step += 1) {
     if (await searchButton.evaluate((element) => element === document.activeElement)) break;
@@ -123,19 +144,16 @@ test('keeps recipe search above the mobile navigation before optional content', 
   expect(navigationBox).not.toBeNull();
   expect(searchBox!.y + searchBox!.height).toBeLessThanOrEqual(navigationBox!.y - 16);
 
-  const optionalSummaries = page.locator('summary');
-  await expect(optionalSummaries.filter({ hasText: 'Idee per ampliare la dispensa' })).toHaveCount(1);
-  await expect(optionalSummaries.filter({ hasText: 'Personalizza la dispensa' })).toHaveCount(1);
+  await expect(page.getByRole('link', { name: 'Apri la dispensa' })).toBeVisible();
 });
 
 test('keeps recipe search unobscured after adding pantry ingredients on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
-  await page.evaluate(() => window.localStorage.clear());
-  await page.reload();
+  await resetPantry(page);
 
   await page.getByLabel('Ingredienti presenti').fill('pasta, tonno, pomodoro');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await openHomeRecipes(page);
 
   const searchButton = page.getByRole('button', { name: 'Trova ricette' });
   const navigation = page.getByRole('navigation', { name: 'Navigazione principale' });
@@ -146,9 +164,7 @@ test('keeps recipe search unobscured after adding pantry ingredients on mobile',
 });
 
 test('suggested ingredients can be added without typing', async ({ page }) => {
-  await page.goto('/');
-  await page.evaluate(() => window.localStorage.clear());
-  await page.reload();
+  await resetPantry(page);
 
   await page.getByText('Idee per ampliare la dispensa', { exact: true }).click();
   const suggestions = page.getByRole('region', { name: 'Potresti aggiungere' });
@@ -160,23 +176,24 @@ test('suggested ingredients can be added without typing', async ({ page }) => {
 });
 
 test('local suggestions refresh after pantry and diet changes', async ({ page }) => {
-  await page.goto('/');
-  await page.evaluate(() => window.localStorage.clear());
-  await page.reload();
+  await resetPantry(page);
 
-  const pantry = page.getByRole('list', { name: 'La tua dispensa' });
-  const ingredientInput = page.getByLabel('Ingredienti presenti');
-  await ingredientInput.fill('pasta');
+  await page.getByLabel('Ingredienti presenti').fill('pasta');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await openHomeRecipes(page);
   await page.getByRole('button', { name: 'Trova ricette' }).click();
   await expect(page.getByRole('heading', { name: 'Ricette per te' })).toBeVisible();
   await expect(page.getByText('Pasta tonno e pomodoro')).toHaveCount(0);
 
-  await ingredientInput.fill('tonno, passata, ceci, aglio, melanzane, basilico, uova');
+  await openPantry(page);
+  await page.getByLabel('Ingredienti presenti').fill('tonno, passata, ceci, aglio, melanzane, basilico, uova');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
-  await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
-
+  const pantry = page.getByRole('list', { name: 'La tua dispensa' });
   const pantryAfterUpdate = await pantry.innerText();
+
+  await openHomeRecipes(page);
+  await page.getByRole('button', { name: 'Trova ricette' }).click();
+  await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
   const initialOrder = await page.getByRole('link', { name: /^Apri / }).evaluateAll(
     (links) => links.map((link) => link.getAttribute('href')),
   );
@@ -184,40 +201,62 @@ test('local suggestions refresh after pantry and diet changes', async ({ page })
   await expect.poll(async () => page.getByRole('link', { name: /^Apri / }).evaluateAll(
     (links) => links.map((link) => link.getAttribute('href')),
   )).not.toEqual(initialOrder);
-  expect(await pantry.innerText()).toBe(pantryAfterUpdate);
 
+  await openPantry(page);
+  expect(await pantry.innerText()).toBe(pantryAfterUpdate);
   await page.getByText('Personalizza la dispensa', { exact: true }).click();
   await page.getByText('Filtri alimentari', { exact: true }).click();
   await page.getByLabel('Dieta').selectOption('vegan');
-  await expect(page.getByText('Pasta tonno e pomodoro')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Ricette per te' })).toBeVisible();
 
+  await openHomeRecipes(page);
+  await page.getByRole('button', { name: 'Trova ricette' }).click();
+  await expect(page.getByText('Pasta tonno e pomodoro')).toHaveCount(0);
+
+  await openPantry(page);
   await page.reload();
   await expect(page.getByRole('list', { name: 'La tua dispensa' }).getByText('Pasta', { exact: true })).toBeVisible();
   await expect(page.getByText('Tonno', { exact: true })).toBeVisible();
 });
 
 test('diet and allergen filters block recipes and explain nutrition estimates', async ({ page }) => {
-  await page.goto('/');
-  await page.evaluate(() => window.localStorage.clear());
-  await page.reload();
+  await resetPantry(page);
 
   await page.getByLabel('Ingredienti presenti').fill('pasta, tonno, passata');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await openHomeRecipes(page);
   await page.getByRole('button', { name: 'Trova ricette' }).click();
   await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
 
+  await openPantry(page);
   await page.getByText('Personalizza la dispensa', { exact: true }).click();
   await page.getByText('Filtri alimentari', { exact: true }).click();
   await page.getByLabel('Dieta').selectOption('vegetarian');
+  await openHomeRecipes(page);
+  await page.getByRole('button', { name: 'Trova ricette' }).click();
   await expect(page.getByText('Pasta tonno e pomodoro')).toHaveCount(0);
+
+  await openPantry(page);
+  await page.getByText('Personalizza la dispensa', { exact: true }).click();
+  await page.getByText('Filtri alimentari', { exact: true }).click();
   await page.getByLabel('Dieta').selectOption('omnivore');
+  await openHomeRecipes(page);
+  await page.getByRole('button', { name: 'Trova ricette' }).click();
   await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
 
-  const fishExclusion = page.getByLabel('Escludi pesce');
-  await fishExclusion.check();
+  await openPantry(page);
+  await page.getByText('Personalizza la dispensa', { exact: true }).click();
+  await page.getByText('Filtri alimentari', { exact: true }).click();
+  await page.getByLabel('Escludi pesce').check();
+  await openHomeRecipes(page);
+  await page.getByRole('button', { name: 'Trova ricette' }).click();
   await expect(page.getByText('Pasta tonno e pomodoro')).toHaveCount(0);
-  await fishExclusion.uncheck();
+
+  await openPantry(page);
+  await page.getByText('Personalizza la dispensa', { exact: true }).click();
+  await page.getByText('Filtri alimentari', { exact: true }).click();
+  await page.getByLabel('Escludi pesce').uncheck();
+  await openHomeRecipes(page);
+  await page.getByRole('button', { name: 'Trova ricette' }).click();
   await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
 
   await page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' }).click();
@@ -228,22 +267,22 @@ test('diet and allergen filters block recipes and explain nutrition estimates', 
 
 test('nutrition filters persist and keep the narrow layout without overflow', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
-  await page.goto('/');
-  await page.evaluate(() => window.localStorage.clear());
-  await page.reload();
+  await resetPantry(page);
 
   await page.getByLabel('Ingredienti presenti').fill('pasta, tonno, passata');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
-  await page.getByRole('button', { name: 'Trova ricette' }).click();
-  await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
-
   await page.getByText('Personalizza la dispensa', { exact: true }).click();
   await page.getByText('Filtri alimentari', { exact: true }).click();
   await page.getByLabel('Calorie massime per porzione').fill('400');
-  await expect(page.getByText('Pasta tonno e pomodoro')).toHaveCount(0);
   await page.getByLabel('Escludi pesce').check();
   await expect(page.getByLabel('Escludi pesce')).toBeChecked();
   await waitForDietProfilePersistence(page);
+
+  await openHomeRecipes(page);
+  await page.getByRole('button', { name: 'Trova ricette' }).click();
+  await expect(page.getByText('Pasta tonno e pomodoro')).toHaveCount(0);
+
+  await openPantry(page);
   await page.reload();
   await page.getByText('Personalizza la dispensa', { exact: true }).click();
   await page.getByText('Filtri alimentari', { exact: true }).click();
@@ -310,7 +349,7 @@ test('manifest is available and the application works offline after first load',
   expect(manifest.id).toBe('/');
   expect(manifest.start_url).toBe('/');
   expect(manifest.shortcuts.map((shortcut: { url: string }) => shortcut.url)).toEqual(
-    expect.arrayContaining(['/shopping-list', '/activity']),
+    expect.arrayContaining(['/pantry', '/shopping-list', '/activity']),
   );
   expect(manifest.icons).toEqual(expect.arrayContaining([
     expect.objectContaining({ sizes: '192x192', purpose: 'any' }),
@@ -322,7 +361,7 @@ test('manifest is available and the application works offline after first load',
   await page.waitForFunction(() => 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null);
   await context.setOffline(true);
   await page.reload();
-  await expect(page.getByRole('heading', { name: /Cosa c’è in dispensa/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
   await context.setOffline(false);
 });
 
@@ -395,9 +434,7 @@ test('verified users can consent to private AI recipes without changing pantry l
     await route.continue();
   });
 
-  await page.goto('/');
-  await page.evaluate(() => window.localStorage.clear());
-  await page.reload();
+  await resetPantry(page);
   await page.getByLabel('Ingredienti presenti').fill('ceci, pomodoro');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
   await page.getByText('Personalizza la dispensa', { exact: true }).click();
@@ -424,7 +461,7 @@ test('verified users can consent to private AI recipes without changing pantry l
   expect(generationBodies).toHaveLength(1);
   expect(generationBodies[0]).toMatchObject({ ingredients: ['Ceci', 'Pomodoro'] });
 
-  await page.getByRole('link', { name: 'Home' }).click();
+  await openPantry(page);
   await page.getByText('Personalizza la dispensa', { exact: true }).click();
   await page.getByText('Dettagli lotti', { exact: true }).click();
   expect(await page.getByRole('list', { name: 'La tua dispensa' }).innerText()).toBe(pantryBefore);

@@ -20,6 +20,7 @@ describe('AppHeader', () => {
     const navigation = screen.getByRole('navigation', { name: 'Navigazione principale' });
     expect(navigation).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'Dispensa' })).not.toHaveAttribute('aria-current');
     expect(screen.getByRole('link', { name: 'Lista' })).not.toHaveAttribute('aria-current');
     expect(screen.getByRole('link', { name: 'Attività' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Profilo' })).not.toHaveAttribute('aria-current');

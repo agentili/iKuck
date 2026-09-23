@@ -13,16 +13,18 @@ test.describe('production target smoke checks', () => {
 
   test('serves the guest flow and keeps primary navigation reachable', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: /Cosa c’è in dispensa/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Profilo' })).toBeVisible();
 
+    await page.getByRole('link', { name: 'Dispensa' }).click();
+    await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
     await page.getByLabel('Ingredienti presenti').fill('pasta');
     await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
     await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
 
-    await page.getByRole('link', { name: 'Lista della spesa' }).click();
+    await page.getByRole('link', { name: 'Lista' }).click();
     await expect(page.getByRole('heading', { name: 'Lista della spesa' })).toBeVisible();
-    await page.getByRole('link', { name: 'Torna alla dispensa' }).click();
+    await page.getByRole('link', { name: 'Torna alle ricette' }).click();
 
     await page.getByRole('link', { name: 'Attività' }).click();
     await expect(page.getByRole('heading', { name: 'La tua attività' })).toBeVisible();
@@ -41,7 +43,7 @@ test.describe('production target smoke checks', () => {
     await page.getByRole('button', { name: 'Accedi al profilo' }).click();
     await expect(page.getByRole('heading', { name: 'Il tuo profilo' })).toBeVisible();
 
-    await page.goto('/');
+    await page.goto('/pantry');
     await page.getByLabel('Ingredienti presenti').fill('pasta');
     await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
     await page.getByRole('link', { name: 'Profilo' }).click();
@@ -49,7 +51,7 @@ test.describe('production target smoke checks', () => {
     await page.getByRole('button', { name: 'Conferma importazione' }).click();
     await expect(page.getByText(/Sincronizzazione completata/)).toBeVisible();
 
-    await page.goto('/');
+    await page.goto('/pantry');
     await page.getByText('Personalizza la dispensa', { exact: true }).click();
     await page.getByText('Filtri alimentari', { exact: true }).click();
     await page.getByLabel('Dieta').selectOption('vegetarian');
