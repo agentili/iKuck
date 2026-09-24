@@ -123,6 +123,19 @@ Le chiavi dei provider esterni non devono mai essere inserite nel frontend, nei 
 
 Le sessioni usano un cookie volutamente non persistente: chiudere il browser richiede un nuovo accesso. Se il browser resta aperto, la sessione viene comunque rifiutata dal backend dopo la sua scadenza server-side.
 
+## Versione PWA
+
+La versione applicativa della PWA è quella in `frontend/package.json`. Ogni build pubblica anche `/version.json` con versione e identificativo della build; `VITE_BUILD_ID` può essere impostato al commit CI o al tag di release e, se assente, viene rilevato dal repository Git quando disponibile. `version.json` è incluso nel precache Workbox, così un nuovo identificativo forza l’aggiornamento controllato del service worker; l’app mantiene il prompt di aggiornamento prima di attivare la nuova shell.
+
+Per una build riproducibile di release:
+
+```sh
+cd frontend
+VITE_BUILD_ID=$(git rev-parse --short=12 HEAD) npm run build
+```
+
+In Docker il valore viene passato come build argument tramite `VITE_BUILD_ID` nei compose standalone e production.
+
 ## Audit e piani di risanamento
 
 L'audit tecnico datato è in [docs/audits/2026-09-14-repository-audit.md](docs/audits/2026-09-14-repository-audit.md). Lo stato corrente, l'ordine dei piani, i tag e le prove sono mantenuti nell'[indice del piano di risanamento](docs/superpowers/plans/2026-09-14-remediation-index.md). Le prove locali, disposable e production sono separate nella [guida production readiness](docs/production-readiness.md); ciò che non è stato eseguito resta esplicitamente non verificato.

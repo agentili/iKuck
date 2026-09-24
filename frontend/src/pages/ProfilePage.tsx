@@ -8,15 +8,13 @@ import GoogleSignInButton from '../components/account/GoogleSignInButton';
 import AiRecipePanel from '../components/ai/AiRecipePanel';
 import { usePantryStore } from '../store/localPantryStore';
 import { useDietProfileStore } from '../store/dietProfileStore';
+import { appVersion, buildId } from '../version';
 
 interface ProfileResponse {
   profile: {
     displayName: string | null;
   };
 }
-
-const appVersion = import.meta.env.VITE_APP_VERSION ?? '0.1.0';
-const buildId = import.meta.env.VITE_BUILD_ID ?? 'local';
 
 const operationError = (error: unknown): string => {
   if (error instanceof ApiClientError && error.code === 'network_error') {

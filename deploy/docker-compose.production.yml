@@ -91,6 +91,7 @@ services:
       dockerfile: deploy/Caddy.Dockerfile
       args:
         VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+        VITE_BUILD_ID: ${VITE_BUILD_ID:-local}
     restart: unless-stopped
     cpus: "0.50"
     mem_limit: 128m

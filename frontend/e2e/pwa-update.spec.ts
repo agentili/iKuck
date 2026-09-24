@@ -127,6 +127,9 @@ test('updates the service worker without losing IndexedDB data', async ({ page, 
   });
 
   await page.goto(`${pwaServer.url}/pantry`);
+  const versionAResponse = await page.request.get(`${pwaServer.url}/version.json`);
+  expect(versionAResponse.ok()).toBe(true);
+  await expect(versionAResponse.json()).resolves.toEqual({ name: 'iKuck', version: '0.2.0', buildId: 'build-a' });
   await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
   await page.getByLabel('Ingredienti presenti').fill('pasta, pomodoro');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();

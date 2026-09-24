@@ -1,12 +1,46 @@
 /// <reference types="vitest/config" />
-import { defineConfig } from 'vite';
+import { execFileSync } from 'node:child_process';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const appVersion = process.env.npm_package_version ?? '0.1.0';
+
+const createVersionMetadata = (version: string, rawBuildId: string | undefined) => ({
+  name: 'iKuck' as const,
+  version,
+  buildId: rawBuildId?.trim() || 'local',
+});
+
+const resolveBuildId = (): string => {
+  const configuredBuildId = process.env.VITE_BUILD_ID?.trim();
+  if (configuredBuildId !== undefined && configuredBuildId.length > 0) return configuredBuildId;
+  const githubSha = process.env.GITHUB_SHA?.trim();
+  if (githubSha !== undefined && githubSha.length > 0) return githubSha.slice(0, 12);
+  try {
+    return execFileSync('git', ['rev-parse', '--short=12', 'HEAD'], { encoding: 'utf8' }).trim() || 'local';
+  } catch {
+    return 'local';
+  }
+};
+
+const versionMetadata = createVersionMetadata(appVersion, resolveBuildId());
+
+const versionMetadataPlugin: Plugin = {
+  name: 'ikuck-version-metadata',
+  generateBundle() {
+    this.emitFile({
+      type: 'asset',
+      fileName: 'version.json',
+      source: `${JSON.stringify(versionMetadata, null, 2)}\n`,
+    });
+  },
+};
+
 export default defineConfig({
   define: {
-    'import.meta.env.VITE_APP_VERSION': JSON.stringify(process.env.npm_package_version ?? '0.1.0'),
-    'import.meta.env.VITE_BUILD_ID': JSON.stringify(process.env.VITE_BUILD_ID ?? 'local'),
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(versionMetadata.version),
+    'import.meta.env.VITE_BUILD_ID': JSON.stringify(versionMetadata.buildId),
   },
   server: {
     proxy: {
@@ -18,6 +52,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    versionMetadataPlugin,
     VitePWA({
       injectRegister: null,
       registerType: 'prompt',
@@ -93,7 +128,7 @@ export default defineConfig({
       },
       workbox: {
         clientsClaim: true,
-        globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,json,png,svg,woff2}'],
         navigateFallback: '/index.html',
       },
     }),
