@@ -125,7 +125,7 @@ Le sessioni usano un cookie volutamente non persistente: chiudere il browser ric
 
 ## Versione PWA
 
-La versione applicativa della PWA è quella in `frontend/package.json`. Ogni build pubblica anche `/version.json` con versione e identificativo della build; `VITE_BUILD_ID` può essere impostato al commit CI o al tag di release e, se assente, viene rilevato dal repository Git quando disponibile. `version.json` è incluso nel precache Workbox, così un nuovo identificativo forza l’aggiornamento controllato del service worker; l’app mantiene il prompt di aggiornamento prima di attivare la nuova shell.
+La versione applicativa della PWA è quella in `frontend/package.json`. Il progetto segue il versionamento semantico: si parte da `1.0.0`, si incrementa la versione minor (`1.1.0`, `1.2.0`, …) per nuove feature compatibili e la patch (`1.0.1`, `1.0.2`, …) per bugfix compatibili; una major viene riservata alle modifiche incompatibili. Ogni build pubblica anche `/version.json` con versione e identificativo della build; `VITE_BUILD_ID` può essere impostato al commit CI o al tag di release e, se assente, viene rilevato dal repository Git quando disponibile. `version.json` è incluso nel precache Workbox, così un nuovo identificativo forza l’aggiornamento controllato del service worker; l’app mantiene il prompt di aggiornamento prima di attivare la nuova shell.
 
 Per una build riproducibile di release:
 

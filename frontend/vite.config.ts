@@ -4,7 +4,7 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-const appVersion = process.env.npm_package_version ?? '0.1.0';
+const appVersion = process.env.npm_package_version ?? '1.0.0';
 
 const createVersionMetadata = (version: string, rawBuildId: string | undefined) => ({
   name: 'iKuck' as const,
