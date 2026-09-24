@@ -43,8 +43,14 @@ try {
   Remove-Item -LiteralPath $temporaryRoot -Force -Recurse
   New-Item -ItemType Directory -Path $temporaryRoot -Force | Out-Null
   New-TestProject -WithNodeModules:$true
-  $fakeNpm = Join-Path $temporaryRoot 'fake-npm.cmd'
-  Set-Content -LiteralPath $fakeNpm -Value "@echo off`r`nexit /b 17`r`n" -NoNewline
+  $fakeNpmName = if ($IsWindows) { 'fake-npm.cmd' } else { 'fake-npm' }
+  $fakeNpm = Join-Path $temporaryRoot $fakeNpmName
+  if ($IsWindows) {
+    Set-Content -LiteralPath $fakeNpm -Value "@echo off`r`nexit /b 17`r`n" -NoNewline
+  } else {
+    Set-Content -LiteralPath $fakeNpm -Value "#!/bin/sh`nexit 17`n" -NoNewline
+    & chmod +x $fakeNpm
+  }
   $failureResult = Invoke-VerifySubprocess -Arguments @('-NoProfile', '-File', $verifyScript, '-RepositoryRoot', $temporaryRoot, '-NpmExecutable', $fakeNpm)
   if ($failureResult.ExitCode -ne 17 -or $failureResult.Output -notmatch 'frontend lint') {
     throw "The verifier did not propagate the npm exit code. Output: $($failureResult.Output)"
