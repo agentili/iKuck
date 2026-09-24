@@ -1,5 +1,5 @@
-import { Link, useLocation } from 'react-router-dom';
 import { Clock3, Home, PackageOpen, ShoppingBasket, UserRound, WifiOff } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../auth/authStore';
 
 const primaryLinks = [
@@ -14,7 +14,7 @@ export default function AppHeader() {
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
   const connection = useAuthStore((state) => state.connection);
-  const accountStatus = user === null ? (connection === 'offline' ? 'Offline' : 'Ospite') : 'Connesso';
+  const accountStatus = connection === 'offline' ? 'Offline' : 'Ospite';
 
   return (
     <header className="ik-app-header sticky top-0 z-40 border-b border-gray-200 bg-white">
@@ -46,10 +46,16 @@ export default function AppHeader() {
             })}
           </ul>
         </nav>
-        <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${connection === 'offline' ? 'bg-amber-100 text-amber-950' : 'bg-gray-100 text-gray-600'}`} aria-label="Stato account">
-          {connection === 'offline' && <WifiOff size={14} aria-hidden="true" />}
-          {accountStatus}
-        </span>
+        {user === null ? (
+          <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${connection === 'offline' ? 'bg-amber-100 text-amber-950' : 'bg-gray-100 text-gray-600'}`} aria-label="Stato account">
+            {connection === 'offline' && <WifiOff size={14} aria-hidden="true" />}
+            {accountStatus}
+          </span>
+        ) : (
+          <span role="img" aria-label="Profilo connesso" className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-emerald-700 text-white">
+            <UserRound size={17} aria-hidden="true" />
+          </span>
+        )}
       </div>
     </header>
   );

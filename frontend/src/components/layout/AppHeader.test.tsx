@@ -26,7 +26,7 @@ describe('AppHeader', () => {
     expect(screen.getByRole('link', { name: 'Profilo' })).not.toHaveAttribute('aria-current');
   });
 
-  it('keeps account status compact in the header', () => {
+  it('shows an accessible profile icon instead of connected text for authenticated users', () => {
     useAuthStore.setState({
       user: { id: 'user-1', email: 'ale@example.com', emailVerifiedAt: '2026-09-12T10:00:00.000Z' },
       connection: 'online',
@@ -34,7 +34,8 @@ describe('AppHeader', () => {
 
     render(<MemoryRouter><AppHeader /></MemoryRouter>);
 
-    expect(screen.getByText('Connesso')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Profilo connesso' })).toBeInTheDocument();
+    expect(screen.queryByText('Connesso')).not.toBeInTheDocument();
     expect(screen.queryByText('ale@example.com')).not.toBeInTheDocument();
   });
 });
