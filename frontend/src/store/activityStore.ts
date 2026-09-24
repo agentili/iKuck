@@ -11,7 +11,7 @@ import {
   writeRecipePreferences,
 } from '../storage/activityStorage';
 import {
-  GUEST_SYNC_SCOPE,
+  getMutationScope,
   enqueueEntityMutation,
   registerActivitySnapshotListener,
   waitForPendingQueueWrites,
@@ -84,7 +84,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     const events = [...get().events, event];
     set({ events });
     void trackPersistence('activity', () => persistEvents(events));
-    void trackSync('activity', () => enqueueEntityMutation(GUEST_SYNC_SCOPE, 'cook_event', event.id, 'upsert', event));
+    void trackSync('activity', () => enqueueEntityMutation(getMutationScope('cook_event'), 'cook_event', event.id, 'upsert', event));
     return event.id;
   },
   removeCookEvent: (id) => {
@@ -93,7 +93,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     const events = get().events.filter((event) => event.id !== id);
     set({ events });
     void trackPersistence('activity', () => persistEvents(events));
-    void trackSync('activity', () => enqueueEntityMutation(GUEST_SYNC_SCOPE, 'cook_event', id, 'delete', null));
+    void trackSync('activity', () => enqueueEntityMutation(getMutationScope('cook_event'), 'cook_event', id, 'delete', null));
     return true;
   },
   restoreCookEvent: (event) => {
@@ -102,7 +102,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     const events = [...get().events, event];
     set({ events });
     void trackPersistence('activity', () => persistEvents(events));
-    void trackSync('activity', () => enqueueEntityMutation(GUEST_SYNC_SCOPE, 'cook_event', event.id, 'upsert', event));
+    void trackSync('activity', () => enqueueEntityMutation(getMutationScope('cook_event'), 'cook_event', event.id, 'upsert', event));
     return true;
   },
   clearActivity: () => {
@@ -111,7 +111,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     set({ events: [] });
     void trackPersistence('activity', () => persistEvents([]));
     for (const event of events) {
-      void trackSync('activity', () => enqueueEntityMutation(GUEST_SYNC_SCOPE, 'cook_event', event.id, 'delete', null));
+      void trackSync('activity', () => enqueueEntityMutation(getMutationScope('cook_event'), 'cook_event', event.id, 'delete', null));
     }
     return events.length;
   },
@@ -125,7 +125,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
       const preferences = get().preferences.filter((preference) => preference.recipeId !== recipeId);
       set({ preferences });
       void trackPersistence('activity', () => persistPreferences(preferences));
-      void trackSync('activity', () => enqueueEntityMutation(GUEST_SYNC_SCOPE, 'recipe_preference', recipeId, 'delete', null));
+      void trackSync('activity', () => enqueueEntityMutation(getMutationScope('recipe_preference'), 'recipe_preference', recipeId, 'delete', null));
       return true;
     }
     const now = new Date().toISOString();
@@ -137,7 +137,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     const preferences = [...get().preferences.filter((item) => item.recipeId !== recipeId), preference];
     set({ preferences });
     void trackPersistence('activity', () => persistPreferences(preferences));
-    void trackSync('activity', () => enqueueEntityMutation(GUEST_SYNC_SCOPE, 'recipe_preference', recipeId, 'upsert', preference));
+    void trackSync('activity', () => enqueueEntityMutation(getMutationScope('recipe_preference'), 'recipe_preference', recipeId, 'upsert', preference));
     return true;
   },
   removeRecipePreference: (recipeId) => get().setRecipePreference(recipeId, false, null, null),

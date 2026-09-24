@@ -7,6 +7,7 @@ import { registerHealthRoute } from './routes/health.js';
 import { type ProfileRouteDependencies, registerProfileRoutes } from './routes/profile.js';
 import { type SyncRouteDependencies, registerSyncRoutes } from './routes/sync.js';
 import { SyncPayloadError } from './routes/sync.js';
+import { SyncMembershipRequiredError } from './sync/repository.js';
 import { type PantryLotRouteDependencies, registerPantryLotRoutes } from './routes/pantryLots.js';
 import { type ShoppingListRouteDependencies, registerShoppingListRoutes } from './routes/shoppingList.js';
 import { type ActivityRouteDependencies, registerActivityRoutes } from './routes/activity.js';
@@ -14,6 +15,7 @@ import { type RecipePreferenceRouteDependencies, registerRecipePreferenceRoutes 
 import { type DietProfileRouteDependencies, registerDietProfileRoutes } from './routes/dietProfile.js';
 import { type RecipeNutritionRouteDependencies, registerRecipeNutritionRoutes } from './routes/recipeNutrition.js';
 import { type AiRecipeRouteDependencies, registerAiRecipeRoutes } from './routes/aiRecipes.js';
+import { type HouseRouteDependencies, registerHouseRoutes } from './routes/house.js';
 
 export type { PlatformDependencies } from './platform.js';
 
@@ -28,6 +30,7 @@ export interface ExtendedPlatformDependencies extends PlatformDependencies {
   dietProfile?: DietProfileRouteDependencies;
   recipeNutrition?: RecipeNutritionRouteDependencies;
   aiRecipes?: AiRecipeRouteDependencies;
+  house?: HouseRouteDependencies;
 }
 
 export const createApp = (
@@ -39,7 +42,7 @@ export const createApp = (
     ...(options.trustProxy === undefined ? {} : { trustProxy: options.trustProxy }),
   });
   app.setErrorHandler((error, _request, reply) => {
-    if (error instanceof SyncPayloadError) {
+    if (error instanceof SyncPayloadError || error instanceof SyncMembershipRequiredError) {
       return reply.code(error.status).send({ code: error.code, message: error.message });
     }
     if (error instanceof AuthServiceError) {
@@ -62,5 +65,6 @@ export const createApp = (
   if (dependencies.dietProfile !== undefined) app.register(registerDietProfileRoutes(dependencies.dietProfile));
   if (dependencies.recipeNutrition !== undefined) app.register(registerRecipeNutritionRoutes(dependencies.recipeNutrition));
   if (dependencies.aiRecipes !== undefined) app.register(registerAiRecipeRoutes(dependencies.aiRecipes));
+  if (dependencies.house !== undefined) app.register(registerHouseRoutes(dependencies.house));
   return app;
 };

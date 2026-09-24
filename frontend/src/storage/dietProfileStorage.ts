@@ -1,9 +1,11 @@
 import type { DietProfile } from '@ikuck/shared/contracts';
 import { normalizeDietProfile } from '../domain/dietary';
 import { isIndexedDbAvailable, readKeyValue, writeKeyValue } from './indexedDb';
+import { getPersonalDataScope, scopeStorageKey } from '../sync/scopeContext';
 
 export const DIET_PROFILE_DATABASE_KEY = 'diet-profile';
 export const DIET_PROFILE_STORAGE_KEY = 'ikuck-diet-profile-v1';
+const scopedKey = (base: string): string => getPersonalDataScope() === 'guest' ? base : scopeStorageKey(getPersonalDataScope(), base);
 
 interface PersistedDietProfile {
   profile: DietProfile;
@@ -30,13 +32,13 @@ const serialize = (profile: DietProfile): string => JSON.stringify({
   version: 1,
 } satisfies PersistedDietProfile);
 
-const readFallback = (): DietProfile => parse(window.localStorage.getItem(DIET_PROFILE_STORAGE_KEY));
+const readFallback = (): DietProfile => parse(window.localStorage.getItem(scopedKey(DIET_PROFILE_STORAGE_KEY)));
 
 export async function readDietProfile(): Promise<DietProfile> {
   if (!isIndexedDbAvailable()) return readFallback();
 
   try {
-    return parse(await readKeyValue<string>(DIET_PROFILE_DATABASE_KEY));
+    return parse(await readKeyValue<string>(scopedKey(DIET_PROFILE_DATABASE_KEY)));
   } catch {
     return readFallback();
   }
@@ -45,14 +47,14 @@ export async function readDietProfile(): Promise<DietProfile> {
 export async function writeDietProfile(profile: DietProfile): Promise<void> {
   const serialized = serialize(profile);
   if (!isIndexedDbAvailable()) {
-    window.localStorage.setItem(DIET_PROFILE_STORAGE_KEY, serialized);
+    window.localStorage.setItem(scopedKey(DIET_PROFILE_STORAGE_KEY), serialized);
     return;
   }
 
   try {
-    await writeKeyValue(DIET_PROFILE_DATABASE_KEY, serialized);
+    await writeKeyValue(scopedKey(DIET_PROFILE_DATABASE_KEY), serialized);
   } catch (error) {
-    window.localStorage.setItem(DIET_PROFILE_STORAGE_KEY, serialized);
+    window.localStorage.setItem(scopedKey(DIET_PROFILE_STORAGE_KEY), serialized);
     throw error;
   }
 }

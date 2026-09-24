@@ -8,6 +8,8 @@ import { createDrizzleAuthRepository } from './auth/repository.js';
 import { createProviders } from './providers/factory.js';
 import { createDrizzleProfileRepository } from './profile/repository.js';
 import { createDrizzleSyncRepository } from './sync/repository.js';
+import { createDrizzleHouseRepository } from './house/repository.js';
+import { createHouseService } from './house/service.js';
 import { createRedisGenerationRateLimiter } from './ai/rateLimit.js';
 import { createGoogleIdentityProvider } from './auth/google.js';
 import { createRedisAuthRateLimiter } from './auth/rateLimit.js';
@@ -23,9 +25,15 @@ export const start = async () => {
     appOrigin: config.appOrigin,
     autoVerifyEmail: config.nodeEnvironment === 'development',
   });
+  const houseRepository = createDrizzleHouseRepository(database.db);
   const sync = createDrizzleSyncRepository(database.db, {
     maxClientClockSkewMs: config.syncMaxClientClockSkewMs,
+    scopeResolver: async (userId) => {
+      const membership = await houseRepository.getMembershipForUser(userId);
+      return membership === null ? null : { kind: 'house', id: membership.houseId };
+    },
   });
+  const houseService = createHouseService({ repository: houseRepository, syncRepository: sync });
   const profile = createDrizzleProfileRepository(database.db, sync);
   const app = createApp(
     {
@@ -45,6 +53,7 @@ export const start = async () => {
         secureCookies: config.nodeEnvironment === 'production',
       },
       sync: { repository: sync, authService: auth, appOrigin: config.appOrigin },
+      house: { service: houseService, authService: auth, appOrigin: config.appOrigin },
       pantryLots: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       shoppingList: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       activity: { repository: sync, authService: auth, appOrigin: config.appOrigin },

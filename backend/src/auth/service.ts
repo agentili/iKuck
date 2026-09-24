@@ -23,7 +23,15 @@ export type AuthErrorCode =
   | 'google_account_already_linked'
   | 'google_email_mismatch'
   | 'rate_limited'
-  | 'rate_limit_unavailable';
+  | 'rate_limit_unavailable'
+  | 'house_not_found'
+  | 'house_membership_exists'
+  | 'house_membership_required'
+  | 'house_admin_required'
+  | 'house_last_admin_required'
+  | 'house_email_not_registered'
+  | 'house_user_already_member'
+  | 'house_user_already_in_house';
 
 export class AuthServiceError extends Error {
   constructor(

@@ -29,6 +29,13 @@
       "when": 1726147380000,
       "tag": "0003_google_identities",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1726147440000,
+      "tag": "0004_houses_and_scoped_sync",
+      "breakpoints": true
     }
   ]
 }

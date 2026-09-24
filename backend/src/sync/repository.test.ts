@@ -77,6 +77,62 @@ describe('sync repository', () => {
     });
   });
 
+  it('shares house-scoped mutations between members while keeping personal data isolated', async () => {
+    const members = new Set(['user-1', 'user-2']);
+    const repository = createMemorySyncRepository({
+      scopeResolver: async (userId) => members.has(userId) ? { kind: 'house', id: 'house-1' } : null,
+    });
+    await repository.applyMutation('user-1', mutation('2026-09-12T12:00:00.000Z', 'house-mutation', 'Dispensa condivisa'));
+    await repository.applyMutation('user-1', {
+      ...mutation('2026-09-12T12:00:00.000Z', 'personal-mutation', 'Profilo personale'),
+      entityType: 'diet_profile',
+      entityId: 'profile',
+      payload: {
+        diet: 'vegan',
+        excludedAllergens: [],
+        nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null },
+        updatedAt: '2026-09-12T12:00:00.000Z',
+      },
+    });
+
+    await expect(repository.readEntity('user-2', 'pantry_item', 'tomato')).resolves.toMatchObject({ payload: { label: 'Dispensa condivisa' } });
+    await expect(repository.readEntity('user-2', 'diet_profile', 'profile')).resolves.toBeNull();
+    await expect(repository.readEntity('user-1', 'diet_profile', 'profile')).resolves.toMatchObject({ payload: { diet: 'vegan' } });
+  });
+
+  it('imports only shared personal data into the current house and removes the source rows', async () => {
+    let member = false;
+    const repository = createMemorySyncRepository({
+      scopeResolver: async () => member ? { kind: 'house', id: 'house-1' } : { kind: 'user', id: 'user-1' },
+    });
+    await repository.applyMutation('user-1', mutation('2026-09-12T12:00:00.000Z', 'personal-pantry', 'Personal pantry'));
+    await repository.applyMutation('user-1', {
+      ...mutation('2026-09-12T12:00:00.000Z', 'personal-diet', 'Personal diet'),
+      entityType: 'diet_profile',
+      entityId: 'profile',
+      payload: {
+        diet: 'vegan',
+        excludedAllergens: [],
+        nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null },
+        updatedAt: '2026-09-12T12:00:00.000Z',
+      },
+    });
+
+    member = true;
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1');
+
+    await expect(repository.readEntity('user-1', 'pantry_item', 'tomato')).resolves.toMatchObject({ payload: { label: 'Personal pantry' } });
+    await expect(repository.readEntity('user-1', 'diet_profile', 'profile')).resolves.toMatchObject({ payload: { diet: 'vegan' } });
+    await expect(repository.readAll('user-1')).resolves.toHaveLength(2);
+  });
+
+  it('rejects shared mutations when the authenticated user has no house membership', async () => {
+    const repository = createMemorySyncRepository({ scopeResolver: async () => null });
+
+    await expect(repository.applyMutation('removed-user', mutation('2026-09-12T12:00:00.000Z', 'removed-mutation', 'No access')))
+      .rejects.toMatchObject({ code: 'house_membership_required', status: 403 });
+  });
+
   it('honors a larger configured tolerance', async () => {
     const serverNow = new Date('2026-09-13T12:00:00.000Z');
     const repository = createMemorySyncRepository({

@@ -186,6 +186,9 @@ export default function ProfilePage() {
           </div>
           <button type="button" onClick={() => { void handleLogout(); }} className="rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900">Esci</button>
         </div>
+        <div className="mt-4">
+          <Link to="/house" className="inline-flex min-h-11 items-center rounded-xl border-2 border-emerald-200 bg-emerald-50 px-4 py-2 font-bold text-emerald-900 hover:border-emerald-500">La mia casa</Link>
+        </div>
 
         {message !== null && <p role="status" className="mt-5 rounded-xl bg-emerald-50 p-3 font-semibold text-emerald-900">{message}</p>}
         {error !== null && <p role="alert" className="mt-5 rounded-xl bg-rose-50 p-3 font-semibold text-rose-900">{error}</p>}

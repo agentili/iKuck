@@ -26,6 +26,9 @@ function Assert-Condition {
 
 $caddyfile = Get-Content -Raw -LiteralPath $CaddyfilePath
 Assert-Condition ($caddyfile -match 'Content-Security-Policy') 'Caddyfile must define Content-Security-Policy.'
+Assert-Condition ($caddyfile -match 'frame-src https://accounts\.google\.com/gsi/') 'CSP must allow the Google Identity Services button iframe.'
+Assert-Condition ($caddyfile -match 'connect-src [^\"]*https://accounts\.google\.com/gsi/') 'CSP must allow Google Identity Services endpoints.'
+Assert-Condition ($caddyfile -match 'style-src [^\"]*https://accounts\.google\.com/gsi/style') 'CSP must allow Google Identity Services styles.'
 Assert-Condition ($caddyfile -notmatch 'unsafe-eval') 'CSP must not allow unsafe-eval.'
 Assert-Condition ($caddyfile -match 'X-Content-Type-Options') 'Caddyfile must define X-Content-Type-Options.'
 Assert-Condition ($caddyfile -match 'X-Frame-Options') 'Caddyfile must define a frame policy.'

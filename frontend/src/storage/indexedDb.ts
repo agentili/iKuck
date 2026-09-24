@@ -1,12 +1,13 @@
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import type { SyncScope } from '../sync/scopeContext';
+
+export type { SyncScope } from '../sync/scopeContext';
 
 export const LOCAL_DATABASE_NAME = 'ikuck-local-v2';
 export const LOCAL_DATABASE_VERSION = 2;
 export const KEY_VALUE_STORE = 'keyValue';
 export const SYNC_QUEUE_STORE = 'syncQueue';
 export const SYNC_META_STORE = 'syncMeta';
-
-export type SyncScope = 'guest' | `account:${string}`;
 
 interface LocalDatabaseSchema extends DBSchema {
   keyValue: {

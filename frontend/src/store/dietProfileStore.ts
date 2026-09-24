@@ -8,7 +8,7 @@ import {
 } from '../domain/dietary';
 import { readDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
 import {
-  GUEST_SYNC_SCOPE,
+  getMutationScope,
   enqueueEntityMutation,
   registerDietProfileSnapshotListener,
   waitForPendingQueueWrites,
@@ -38,7 +38,7 @@ const persistProfile = (profile: DietProfile): Promise<void> => {
 
 const persistAndQueue = (profile: DietProfile): void => {
   void trackPersistence('diet', () => persistProfile(profile));
-  void trackSync('diet', () => enqueueEntityMutation(GUEST_SYNC_SCOPE, 'diet_profile', 'profile', 'upsert', profile));
+  void trackSync('diet', () => enqueueEntityMutation(getMutationScope('diet_profile'), 'diet_profile', 'profile', 'upsert', profile));
 };
 
 export const useDietProfileStore = create<DietProfileState>((set) => ({

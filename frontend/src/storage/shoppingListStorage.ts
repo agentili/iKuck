@@ -1,9 +1,17 @@
 import type { ShoppingListItem } from '@ikuck/shared/contracts';
 import { isShoppingListItem } from '../domain/shoppingList';
 import { isIndexedDbAvailable, readKeyValue, writeKeyValue } from './indexedDb';
+import { getActiveDataScope, scopeStorageKey } from '../sync/scopeContext';
 
 export const SHOPPING_LIST_STORAGE_KEY = 'ikuck-shopping-list-v1';
 export const SHOPPING_LIST_DATABASE_KEY = 'shopping-list';
+
+const scopedStorageKey = (): string => getActiveDataScope() === 'guest'
+  ? SHOPPING_LIST_STORAGE_KEY
+  : scopeStorageKey(getActiveDataScope(), SHOPPING_LIST_STORAGE_KEY);
+const scopedDatabaseKey = (): string => getActiveDataScope() === 'guest'
+  ? SHOPPING_LIST_DATABASE_KEY
+  : scopeStorageKey(getActiveDataScope(), SHOPPING_LIST_DATABASE_KEY);
 
 interface PersistedShoppingList {
   items: ShoppingListItem[];
@@ -33,13 +41,13 @@ const parse = (raw: string | null): ShoppingListItem[] => {
   }
 };
 
-const readFallback = (): ShoppingListItem[] => parse(window.localStorage.getItem(SHOPPING_LIST_STORAGE_KEY));
+const readFallback = (): ShoppingListItem[] => parse(window.localStorage.getItem(scopedStorageKey()));
 
 export async function readShoppingList(): Promise<ShoppingListItem[]> {
   if (!isIndexedDbAvailable()) return readFallback();
 
   try {
-    return parse(await readKeyValue<string>(SHOPPING_LIST_DATABASE_KEY));
+    return parse(await readKeyValue<string>(scopedDatabaseKey()));
   } catch {
     return readFallback();
   }
@@ -48,14 +56,14 @@ export async function readShoppingList(): Promise<ShoppingListItem[]> {
 export async function writeShoppingList(items: readonly ShoppingListItem[]): Promise<void> {
   const serialized = serialize(items);
   if (!isIndexedDbAvailable()) {
-    window.localStorage.setItem(SHOPPING_LIST_STORAGE_KEY, serialized);
+    window.localStorage.setItem(scopedStorageKey(), serialized);
     return;
   }
 
   try {
-    await writeKeyValue(SHOPPING_LIST_DATABASE_KEY, serialized);
+    await writeKeyValue(scopedDatabaseKey(), serialized);
   } catch (error) {
-    window.localStorage.setItem(SHOPPING_LIST_STORAGE_KEY, serialized);
+    window.localStorage.setItem(scopedStorageKey(), serialized);
     throw error;
   }
 }

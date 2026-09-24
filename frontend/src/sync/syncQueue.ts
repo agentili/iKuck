@@ -39,6 +39,7 @@ import {
 import { readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
 import { readDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
 import { assertSyncMutation, isPantryItemPayload, isStaplePreferencePayload } from './validation';
+import { getActiveDataScope, getPersonalDataScope } from './scopeContext';
 
 const DEVICE_ID_META_KEY = 'deviceId';
 const MAX_MUTATIONS_PER_REQUEST = 100;
@@ -50,6 +51,19 @@ export type { SyncScope } from '../storage/indexedDb';
 export const GUEST_SYNC_SCOPE: SyncScope = 'guest';
 
 export const getAccountSyncScope = (userId: string): SyncScope => `account:${userId}`;
+
+const SHARED_ENTITY_TYPES = new Set<SyncEntityType>([
+  'pantry_item',
+  'pantry_lot',
+  'staple_preference',
+  'shopping_list_item',
+  'cook_event',
+  'generated_recipe',
+]);
+
+export const getMutationScope = (entityType: SyncEntityType): SyncScope => (
+  SHARED_ENTITY_TYPES.has(entityType) ? getActiveDataScope() : getPersonalDataScope()
+);
 
 const cursorMetaKey = (scope: SyncScope): string => `syncCursor:${scope}`;
 

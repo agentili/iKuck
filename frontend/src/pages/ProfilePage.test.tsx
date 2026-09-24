@@ -57,6 +57,7 @@ describe('ProfilePage', () => {
     expect(await screen.findByRole('heading', { name: 'Il tuo profilo' })).toBeInTheDocument();
     expect(screen.getByText('ale@example.com')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Importa i dati locali' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'La mia casa' })).toHaveAttribute('href', '/house');
     expect(screen.getByRole('button', { name: 'Esporta i miei dati' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Elimina account' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Accedi con Google' })).not.toBeInTheDocument();

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AiConsent, CookEvent, DietProfile, GeneratedRecipe, PantryLot, RecipePreference, ShoppingListItem, SyncMutation } from '@ikuck/shared/contracts';
+import type { AiConsent, CookEvent, DietProfile, GeneratedRecipe, HouseMember, HouseRole, HouseState, HouseSummary, PantryLot, RecipePreference, ShoppingListItem, SyncMutation } from '@ikuck/shared/contracts';
 import { describe, expect, it } from 'vitest';
 
 const migrationPath = join(
@@ -127,6 +127,25 @@ describe('shared contracts and account migration', () => {
     };
 
     expect(JSON.parse(JSON.stringify({ consent, recipe }))).toEqual({ consent, recipe });
+  });
+
+  it('keeps house state contracts limited to membership data', () => {
+    const role: HouseRole = 'admin';
+    const summary: HouseSummary = { id: 'house-1', name: 'Casa', createdAt: '2026-09-13T12:00:00.000Z' };
+    const member: HouseMember = {
+      userId: 'user-1',
+      email: 'admin@example.com',
+      displayName: 'Admin',
+      role,
+      joinedAt: '2026-09-13T12:00:00.000Z',
+    };
+    const state: HouseState = {
+      house: summary,
+      membership: { role, joinedAt: member.joinedAt },
+      members: [member],
+    };
+
+    expect(JSON.parse(JSON.stringify(state))).toEqual(state);
   });
 
   it('contains the account and sync tables in the first feature migration', () => {

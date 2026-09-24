@@ -27,6 +27,28 @@ export interface AccountSummary {
   emailVerifiedAt: string;
 }
 
+export type HouseRole = 'admin' | 'member';
+
+export interface HouseSummary {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface HouseMember {
+  userId: string;
+  email: string;
+  displayName: string | null;
+  role: HouseRole;
+  joinedAt: string;
+}
+
+export interface HouseState {
+  house: HouseSummary | null;
+  membership: { role: HouseRole; joinedAt: string } | null;
+  members: HouseMember[];
+}
+
 export type DietType = 'omnivore' | 'vegetarian' | 'pescatarian' | 'vegan';
 
 export type EuAllergen =

@@ -1,11 +1,15 @@
 import type { CookEvent, RecipePreference } from '@ikuck/shared/contracts';
 import { isCookEvent, isRecipePreference } from '../domain/activity';
 import { isIndexedDbAvailable, readKeyValue, writeKeyValue } from './indexedDb';
+import { getActiveDataScope, getPersonalDataScope, scopeStorageKey } from '../sync/scopeContext';
 
 export const ACTIVITY_DATABASE_KEY = 'activity';
 export const PREFERENCES_DATABASE_KEY = 'recipe-preferences';
 export const ACTIVITY_STORAGE_KEY = 'ikuck-activity-v1';
 export const PREFERENCES_STORAGE_KEY = 'ikuck-recipe-preferences-v1';
+
+const scopedKey = (base: string): string => getActiveDataScope() === 'guest' ? base : scopeStorageKey(getActiveDataScope(), base);
+const personalScopedKey = (base: string): string => getPersonalDataScope() === 'guest' ? base : scopeStorageKey(getPersonalDataScope(), base);
 
 const normalizeById = <T extends { id: string }>(items: readonly unknown[], guard: (value: unknown) => value is T): T[] => {
   const unique = new Map<string, T>();
@@ -41,47 +45,47 @@ const serializeCollection = <T>(items: readonly T[], normalize: (values: readonl
 });
 
 export async function readCookEvents(): Promise<CookEvent[]> {
-  if (!isIndexedDbAvailable()) return parseCollection(window.localStorage.getItem(ACTIVITY_STORAGE_KEY), normalizeCookEvents);
+  if (!isIndexedDbAvailable()) return parseCollection(window.localStorage.getItem(scopedKey(ACTIVITY_STORAGE_KEY)), normalizeCookEvents);
   try {
-    return parseCollection(await readKeyValue<string>(ACTIVITY_DATABASE_KEY), normalizeCookEvents);
+    return parseCollection(await readKeyValue<string>(scopedKey(ACTIVITY_DATABASE_KEY)), normalizeCookEvents);
   } catch {
-    return parseCollection(window.localStorage.getItem(ACTIVITY_STORAGE_KEY), normalizeCookEvents);
+    return parseCollection(window.localStorage.getItem(scopedKey(ACTIVITY_STORAGE_KEY)), normalizeCookEvents);
   }
 }
 
 export async function writeCookEvents(events: readonly CookEvent[]): Promise<void> {
   const serialized = serializeCollection(events, normalizeCookEvents);
   if (!isIndexedDbAvailable()) {
-    window.localStorage.setItem(ACTIVITY_STORAGE_KEY, serialized);
+    window.localStorage.setItem(scopedKey(ACTIVITY_STORAGE_KEY), serialized);
     return;
   }
   try {
-    await writeKeyValue(ACTIVITY_DATABASE_KEY, serialized);
+    await writeKeyValue(scopedKey(ACTIVITY_DATABASE_KEY), serialized);
   } catch (error) {
-    window.localStorage.setItem(ACTIVITY_STORAGE_KEY, serialized);
+    window.localStorage.setItem(scopedKey(ACTIVITY_STORAGE_KEY), serialized);
     throw error;
   }
 }
 
 export async function readRecipePreferences(): Promise<RecipePreference[]> {
-  if (!isIndexedDbAvailable()) return parseCollection(window.localStorage.getItem(PREFERENCES_STORAGE_KEY), normalizeRecipePreferences);
+  if (!isIndexedDbAvailable()) return parseCollection(window.localStorage.getItem(personalScopedKey(PREFERENCES_STORAGE_KEY)), normalizeRecipePreferences);
   try {
-    return parseCollection(await readKeyValue<string>(PREFERENCES_DATABASE_KEY), normalizeRecipePreferences);
+    return parseCollection(await readKeyValue<string>(personalScopedKey(PREFERENCES_DATABASE_KEY)), normalizeRecipePreferences);
   } catch {
-    return parseCollection(window.localStorage.getItem(PREFERENCES_STORAGE_KEY), normalizeRecipePreferences);
+    return parseCollection(window.localStorage.getItem(personalScopedKey(PREFERENCES_STORAGE_KEY)), normalizeRecipePreferences);
   }
 }
 
 export async function writeRecipePreferences(preferences: readonly RecipePreference[]): Promise<void> {
   const serialized = serializeCollection(preferences, normalizeRecipePreferences);
   if (!isIndexedDbAvailable()) {
-    window.localStorage.setItem(PREFERENCES_STORAGE_KEY, serialized);
+    window.localStorage.setItem(personalScopedKey(PREFERENCES_STORAGE_KEY), serialized);
     return;
   }
   try {
-    await writeKeyValue(PREFERENCES_DATABASE_KEY, serialized);
+    await writeKeyValue(personalScopedKey(PREFERENCES_DATABASE_KEY), serialized);
   } catch (error) {
-    window.localStorage.setItem(PREFERENCES_STORAGE_KEY, serialized);
+    window.localStorage.setItem(personalScopedKey(PREFERENCES_STORAGE_KEY), serialized);
     throw error;
   }
 }

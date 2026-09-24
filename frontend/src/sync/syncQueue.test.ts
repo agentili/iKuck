@@ -21,6 +21,7 @@ import {
   getSyncStatus,
   getAccountSyncScope,
   getDeviceId,
+  getMutationScope,
   importLocalData,
   readQueuedMutations,
   readSyncCursor,
@@ -46,8 +47,9 @@ const sampleMutation = (mutationId = 'mutation-1', clientUpdatedAt = '2026-09-12
 });
 
 const responseFor = (body: SyncChangeSet) => new Response(JSON.stringify(body), { status: 200 });
-const accountScope = getAccountSyncScope(session.userId);
+import { getPersonalDataScope, setActiveDataScope, setPersonalDataScope } from './scopeContext';
 
+const accountScope = getAccountSyncScope(session.userId);
 describe('sync queue', () => {
   beforeEach(async () => {
     await deleteLocalDatabase();
@@ -79,6 +81,22 @@ describe('sync queue', () => {
     await expect(readQueueValues<{ mutationId: string }>('account:user-b')).resolves.toEqual([
       expect.objectContaining({ mutationId: 'user-b-mutation' }),
     ]);
+  });
+
+  it('maps shared and personal entity types to the correct active scopes', () => {
+    setActiveDataScope('house:house-a');
+    setPersonalDataScope('account:user-1');
+
+    expect(getMutationScope('pantry_lot')).toBe('house:house-a');
+    expect(getMutationScope('shopping_list_item')).toBe('house:house-a');
+    expect(getMutationScope('cook_event')).toBe('house:house-a');
+    expect(getMutationScope('generated_recipe')).toBe('house:house-a');
+    expect(getMutationScope('recipe_preference')).toBe('account:user-1');
+    expect(getMutationScope('diet_profile')).toBe('account:user-1');
+    expect(getMutationScope('ai_consent')).toBe('account:user-1');
+
+    setActiveDataScope('guest');
+    expect(getPersonalDataScope()).toBe('guest');
   });
 
   it('accepts valid contract fixtures and rejects invalid mutations before enqueue', async () => {

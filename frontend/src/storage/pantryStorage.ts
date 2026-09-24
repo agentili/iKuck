@@ -7,10 +7,17 @@ import {
   readKeyValue,
   writeKeyValue,
 } from './indexedDb';
+import { getActiveDataScope, scopeStorageKey } from '../sync/scopeContext';
 
 export const PANTRY_STORAGE_KEY = 'ikuck-pantry-v1';
 export const LEGACY_PANTRY_STORAGE_KEY = 'iricetto-pantry-v1';
 export const PANTRY_DATABASE_KEY = 'pantry';
+const scopedPantryStorageKey = (): string => getActiveDataScope() === 'guest'
+  ? PANTRY_STORAGE_KEY
+  : scopeStorageKey(getActiveDataScope(), PANTRY_STORAGE_KEY);
+const scopedPantryDatabaseKey = (): string => getActiveDataScope() === 'guest'
+  ? PANTRY_DATABASE_KEY
+  : scopeStorageKey(getActiveDataScope(), PANTRY_DATABASE_KEY);
 
 export interface PantrySnapshot {
   pantryItems: ParsedIngredient[];
@@ -150,29 +157,30 @@ function readLocalStorageSource(): LocalStorageSource | null {
 }
 
 const readLocalStorageSnapshot = (): PantrySnapshot | null => {
-  const raw = window.localStorage.getItem(PANTRY_STORAGE_KEY);
+  const raw = window.localStorage.getItem(scopedPantryStorageKey());
   if (raw === null) return null;
 
   const snapshot = parsePantrySnapshot(raw);
   if (snapshot === null) {
-    window.localStorage.removeItem(PANTRY_STORAGE_KEY);
+    window.localStorage.removeItem(scopedPantryStorageKey());
   }
   return snapshot;
 };
 
 const writeLocalStorageSnapshot = (serialized: string): void => {
   try {
-    window.localStorage.setItem(PANTRY_STORAGE_KEY, serialized);
+    window.localStorage.setItem(scopedPantryStorageKey(), serialized);
   } catch {
     // IndexedDB remains the primary store when localStorage is unavailable.
   }
 };
 
 function readLocalStorageFallback(name: string): string | null {
-  const primaryRaw = window.localStorage.getItem(name);
+  const scopedName = name === PANTRY_STORAGE_KEY ? scopedPantryStorageKey() : name;
+  const primaryRaw = window.localStorage.getItem(scopedName);
   if (primaryRaw !== null) return primaryRaw;
 
-  if (name !== PANTRY_STORAGE_KEY) return null;
+  if (name !== PANTRY_STORAGE_KEY || getActiveDataScope() !== 'guest') return null;
 
   const legacyRaw = window.localStorage.getItem(LEGACY_PANTRY_STORAGE_KEY);
   if (legacyRaw !== null) {
@@ -183,7 +191,7 @@ function readLocalStorageFallback(name: string): string | null {
 }
 
 export async function migrateLegacyPantry(): Promise<boolean> {
-  if (!isIndexedDbAvailable()) return false;
+  if (getActiveDataScope() !== 'guest' || !isIndexedDbAvailable()) return false;
 
   const existing = await readKeyValue<string>(PANTRY_DATABASE_KEY);
   if (existing !== null) {
@@ -210,7 +218,7 @@ export async function readPantrySnapshot(): Promise<PantrySnapshot | null> {
   const localSnapshot = readLocalStorageSnapshot();
   try {
     await migrateLegacyPantry();
-    const raw = await readKeyValue<string>(PANTRY_DATABASE_KEY);
+    const raw = await readKeyValue<string>(scopedPantryDatabaseKey());
     const indexedSnapshot = raw === null ? null : parsePantrySnapshot(raw);
     return localSnapshot ?? indexedSnapshot;
   } catch {
@@ -226,7 +234,7 @@ export async function writePantrySnapshot(snapshot: PantrySnapshot): Promise<voi
 
   if (!isIndexedDbAvailable()) return;
 
-  await writeKeyValue(PANTRY_DATABASE_KEY, serialized);
+  await writeKeyValue(scopedPantryDatabaseKey(), serialized);
 }
 
 export const pantryStorage: StateStorage = {
@@ -238,9 +246,9 @@ export const pantryStorage: StateStorage = {
     const localSnapshot = readLocalStorageSnapshot();
     try {
       await migrateLegacyPantry();
-      const raw = await readKeyValue<string>(PANTRY_DATABASE_KEY);
+      const raw = await readKeyValue<string>(scopedPantryDatabaseKey());
       if (raw !== null && parsePantrySnapshot(raw) === null) {
-        await deleteKeyValue(PANTRY_DATABASE_KEY);
+        await deleteKeyValue(scopedPantryDatabaseKey());
         return localSnapshot === null ? null : serializeSnapshot(localSnapshot);
       }
       const indexedSnapshot = raw === null ? null : parsePantrySnapshot(raw);
@@ -262,7 +270,7 @@ export const pantryStorage: StateStorage = {
 
     try {
       const parsed = parsePantrySnapshot(value);
-      await writeKeyValue(PANTRY_DATABASE_KEY, parsed === null ? value : serializeSnapshot(parsed));
+      await writeKeyValue(scopedPantryDatabaseKey(), parsed === null ? value : serializeSnapshot(parsed));
     } catch {
       // The synchronous localStorage mirror keeps the latest state available.
     }
@@ -274,9 +282,9 @@ export const pantryStorage: StateStorage = {
     }
 
     try {
-      await deleteKeyValue(PANTRY_DATABASE_KEY);
+      await deleteKeyValue(scopedPantryDatabaseKey());
     } finally {
-      window.localStorage.removeItem(name);
+      window.localStorage.removeItem(scopedPantryStorageKey());
     }
   },
 };

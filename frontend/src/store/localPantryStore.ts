@@ -5,7 +5,7 @@ import { aggregatePantryLots, validatePantryLotDetails, type PantryQuantityAggre
 import type { ParsedIngredient } from '../domain/types';
 import type { PantryLot, PantryLotPayload } from '@ikuck/shared/contracts';
 import {
-  GUEST_SYNC_SCOPE,
+  getMutationScope,
   enqueuePantryMutation,
   registerPantrySnapshotListener,
 } from '../sync/syncQueue';
@@ -68,7 +68,7 @@ const queuePantryMutation = (
   operation: Parameters<typeof enqueuePantryMutation>[3],
   payload: Parameters<typeof enqueuePantryMutation>[4],
 ): void => {
-  void trackSync('pantry', () => enqueuePantryMutation(GUEST_SYNC_SCOPE, entityType, entityId, operation, payload));
+  void trackSync('pantry', () => enqueuePantryMutation(getMutationScope(entityType), entityType, entityId, operation, payload));
 };
 
 export const usePantryStore = create<PantryState>()(

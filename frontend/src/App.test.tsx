@@ -142,6 +142,7 @@ describe('App synchronization lifecycle', () => {
     ['/profile', 'Accedi al tuo profilo'],
     ['/shopping-list', 'Lista della spesa'],
     ['/activity', 'La tua attività'],
+    ['/house', 'La mia casa'],
     ['/verify-email', 'Link non valido'],
     ['/reset-password', 'Reimposta la password'],
   ])('maps %s to its page without changing the route', async (path, heading) => {

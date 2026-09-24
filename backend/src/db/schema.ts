@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
+  check,
   index,
   jsonb,
   pgTable,
@@ -34,6 +35,28 @@ export const userProfiles = pgTable('user_profiles', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const houses = pgTable('houses', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: text('name').notNull(),
+  createdByUserId: uuid('created_by_user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const houseMemberships = pgTable('house_memberships', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  houseId: uuid('house_id').notNull().references(() => houses.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  role: text('role').notNull(),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  userUnique: uniqueIndex('house_memberships_user_unique').on(table.userId),
+  houseUserUnique: uniqueIndex('house_memberships_house_user_unique').on(table.houseId, table.userId),
+  houseIndex: index('house_memberships_house_index').on(table.houseId),
+  roleCheck: check('house_memberships_role_check', sql`${table.role} in ('admin', 'member')`),
+}));
 
 export const accountIdentities = pgTable('account_identities', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -89,6 +112,8 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
 export const syncItems = pgTable('sync_items', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  scopeType: text('scope_type').notNull().default('user'),
+  scopeId: text('scope_id').notNull(),
   entityType: text('entity_type').notNull(),
   entityId: text('entity_id').notNull(),
   deviceId: text('device_id').notNull(),
@@ -101,15 +126,19 @@ export const syncItems = pgTable('sync_items', {
     .default(sql`nextval('sync_server_sequence')`),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
-  entityUnique: uniqueIndex('sync_items_entity_unique').on(table.userId, table.entityType, table.entityId),
-  userSequenceIndex: index('sync_items_user_sequence_index').on(table.userId, table.serverSequence),
+  entityUnique: uniqueIndex('sync_items_scope_entity_unique').on(table.scopeType, table.scopeId, table.entityType, table.entityId),
+  scopeSequenceIndex: index('sync_items_scope_sequence_index').on(table.scopeType, table.scopeId, table.serverSequence),
+  scopeTypeCheck: check('sync_items_scope_type_check', sql`${table.scopeType} in ('user', 'house')`),
 }));
 
 export const processedSyncMutations = pgTable('processed_sync_mutations', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  scopeType: text('scope_type').notNull().default('user'),
+  scopeId: text('scope_id').notNull(),
   mutationId: text('mutation_id').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
-  mutationUnique: uniqueIndex('processed_sync_mutations_unique').on(table.userId, table.mutationId),
+  mutationUnique: uniqueIndex('processed_sync_mutations_scope_unique').on(table.scopeType, table.scopeId, table.mutationId),
+  scopeTypeCheck: check('processed_sync_mutations_scope_type_check', sql`${table.scopeType} in ('user', 'house')`),
 }));

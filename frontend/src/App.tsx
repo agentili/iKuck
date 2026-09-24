@@ -5,6 +5,7 @@ import AppHeader from './components/layout/AppHeader';
 import HomePage from './pages/HomePage';
 import RecipeDetailPage from './pages/RecipeDetailPage';
 import ProfilePage from './pages/ProfilePage';
+import HousePage from './pages/HousePage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import ShoppingListPage from './pages/ShoppingListPage';
@@ -66,6 +67,7 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/recipes/:recipeId" element={<RecipeDetailPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/house" element={<HousePage />} />
           <Route path="/pantry" element={<PantryPage />} />
           <Route path="/shopping-list" element={<ShoppingListPage />} />
           <Route path="/activity" element={<ActivityPage />} />

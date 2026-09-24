@@ -8,7 +8,7 @@ import {
   writeShoppingList,
 } from '../storage/shoppingListStorage';
 import {
-  GUEST_SYNC_SCOPE,
+  getMutationScope,
   enqueueEntityMutation,
   registerShoppingListSnapshotListener,
   waitForPendingQueueWrites,
@@ -68,8 +68,7 @@ const persistAndQueue = (
   operation: 'upsert' | 'delete' = 'upsert',
 ): void => {
   void trackPersistence('shopping-list', () => persistItems(items));
-  void trackSync('shopping-list', () => enqueueEntityMutation(
-    GUEST_SYNC_SCOPE,
+  void trackSync('shopping-list', () => enqueueEntityMutation(getMutationScope('shopping_list_item'),
     'shopping_list_item',
     changed.id,
     operation,
@@ -156,7 +155,7 @@ export const useShoppingListStore = create<ShoppingListState>((set, get) => ({
     void trackPersistence('shopping-list', () => persistItems(items));
     for (const item of removed) {
       void trackSync('shopping-list', () => enqueueEntityMutation(
-        GUEST_SYNC_SCOPE,
+        getMutationScope('shopping_list_item'),
         'shopping_list_item',
         item.id,
         'delete',
