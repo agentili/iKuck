@@ -169,10 +169,10 @@ describe('App synchronization lifecycle', () => {
     render(<App />);
 
     expect(await screen.findByRole('heading', { name: 'Il tuo profilo' })).toBeVisible();
-    expect(syncVerifiedSession).toHaveBeenCalledWith(
+    await waitFor(() => expect(syncVerifiedSession).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'user-1', csrfToken: 'csrf-1' }),
       expect.anything(),
-    );
+    ));
     vi.unstubAllGlobals();
   });
 });

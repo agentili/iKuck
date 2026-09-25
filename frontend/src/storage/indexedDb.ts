@@ -119,10 +119,26 @@ export async function deleteQueueValue(mutationId: string, scope: SyncScope): Pr
   await transaction.done;
 }
 
+export async function deleteQueueScope(scope: SyncScope): Promise<void> {
+  const database = await openLocalDatabase();
+  const transaction = database.transaction(SYNC_QUEUE_STORE, 'readwrite');
+  const queue = transaction.objectStore(SYNC_QUEUE_STORE);
+  const values = await queue.index('byScope').getAll(scope) as Array<{ mutationId?: unknown }>;
+  for (const value of values) {
+    if (typeof value.mutationId === 'string') await queue.delete(value.mutationId);
+  }
+  await transaction.done;
+}
+
 export async function readMeta<T>(key: string): Promise<T | null> {
   const database = await openLocalDatabase();
   const value = await database.get(SYNC_META_STORE, key);
   return (value as T | undefined) ?? null;
+}
+
+export async function deleteMeta(key: string): Promise<void> {
+  const database = await openLocalDatabase();
+  await database.delete(SYNC_META_STORE, key);
 }
 
 export async function writeMeta<T>(key: string, value: T): Promise<void> {

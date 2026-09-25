@@ -38,6 +38,7 @@ const waitForDietProfilePersistence = async (page: Page): Promise<void> => {
 test.beforeEach(async ({ context, page }) => {
   await context.clearCookies();
   await installOfflineBackend(page);
+  await page.route('**/v1/house', (route) => route.fulfill({ status: 200, json: null }));
 });
 
 test.afterEach(async ({ page }) => {

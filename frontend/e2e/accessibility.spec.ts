@@ -23,6 +23,7 @@ const installVerifiedBackend = async (page: Page): Promise<void> => {
     responses: {
       'GET /v1/auth/session': { json: verifiedSession },
       'GET /v1/profile': { json: { profile: { displayName: 'A11y' } } },
+      'GET /v1/house': { json: null },
       'GET /v1/sync': { json: { changes: [], nextCursor: 0 } },
       'POST /v1/sync': { json: { accepted: [], changes: [], nextCursor: 0 } },
       'GET /v1/ai-recipes/consent': { json: { consent: { enabled: false, updatedAt: null } } },

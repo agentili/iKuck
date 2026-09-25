@@ -4,6 +4,7 @@ import {
   PANTRY_STORAGE_KEY,
   migrateLegacyPantry,
   readPantrySnapshot,
+  clearPantrySnapshot,
   writePantrySnapshot,
 } from './pantryStorage';
 import * as indexedDb from './indexedDb';
@@ -132,5 +133,17 @@ describe('pantry storage', () => {
         expect.objectContaining({ id: 'lot-2', quantity: null, unit: null, expiresAt: null }),
       ],
     });
+  });
+
+  it('clears a scoped pantry snapshot after a successful house import', async () => {
+    await writePantrySnapshot({
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+      stapleIds: [],
+    });
+
+    await clearPantrySnapshot('guest');
+
+    await expect(readPantrySnapshot()).resolves.toBeNull();
+    expect(window.localStorage.getItem(PANTRY_STORAGE_KEY)).toBeNull();
   });
 });

@@ -4,7 +4,7 @@ import type { ShoppingListItem, ShoppingListItemPayload, SyncChange, SyncMutatio
 import { AuthServiceError, type AuthService } from '../auth/service.js';
 import { isShoppingListItem, parseShoppingListItemDetails, parseShoppingListItemPatch } from '../shopping/validation.js';
 import type { SyncRepository } from '../sync/repository.js';
-import { ensureCsrf, ensureSameOrigin, requireSession } from './auth.js';
+import { ensureCsrf, ensureSameOrigin, requireVerifiedSession } from './auth.js';
 
 export interface ShoppingListRouteDependencies {
   repository: SyncRepository;
@@ -53,13 +53,13 @@ const readItem = async (repository: SyncRepository, userId: string, itemId: stri
 
 export const registerShoppingListRoutes = ({ repository, authService, appOrigin }: ShoppingListRouteDependencies): FastifyPluginAsync => async (app) => {
   app.get('/v1/shopping-list', async (request) => {
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     return { items: await readItems(repository, session.userId) };
   });
 
   app.post('/v1/shopping-list', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     const details = parseDetails(request.body);
     const now = new Date().toISOString();
@@ -70,7 +70,7 @@ export const registerShoppingListRoutes = ({ repository, authService, appOrigin 
 
   app.patch('/v1/shopping-list/:itemId', async (request) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     const existing = await readItem(repository, session.userId, (request.params as { itemId: string }).itemId);
     const details = { ...existing, ...parsePatch(request.body), updatedAt: new Date().toISOString() };
@@ -90,7 +90,7 @@ export const registerShoppingListRoutes = ({ repository, authService, appOrigin 
 
   app.delete('/v1/shopping-list/:itemId', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     const existing = await readItem(repository, session.userId, (request.params as { itemId: string }).itemId);
     await repository.applyMutation(session.userId, createMutation(existing, 'delete'));

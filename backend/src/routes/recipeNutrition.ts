@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { AuthServiceError, type AuthService } from '../auth/service.js';
 import { estimateRecipeNutrition, type RecipeNutritionLookup } from '../nutrition/recipeNutrition.js';
 import type { NutritionProvider } from '../providers/types.js';
-import { ensureCsrf, ensureSameOrigin, requireSession } from './auth.js';
+import { ensureCsrf, ensureSameOrigin, requireVerifiedSession } from './auth.js';
 
 export interface RecipeNutritionRouteDependencies {
   provider: NutritionProvider;
@@ -25,7 +25,7 @@ const invalidPayload = (): AuthServiceError => new AuthServiceError('invalid_pay
 export const registerRecipeNutritionRoutes = ({ provider, authService, appOrigin }: RecipeNutritionRouteDependencies): FastifyPluginAsync => async (app) => {
   app.post('/v1/recipes/nutrition', async (request) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     const parsed = requestSchema.safeParse(request.body);
     if (!parsed.success) throw invalidPayload();

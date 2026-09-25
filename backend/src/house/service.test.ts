@@ -20,6 +20,86 @@ describe('house service', () => {
     expect(member.email).toBe('member@example.com');
   });
 
+  it('automatically merges the creator and each new member pantry into the house', async () => {
+    const repository = createMemoryHouseRepository([
+      { id: 'admin-1', email: 'admin@example.com', displayName: 'Admin', emailVerifiedAt: new Date() },
+      { id: 'member-1', email: 'member@example.com', displayName: 'Member', emailVerifiedAt: new Date() },
+    ]);
+    const mergeUserPantryToHouse = vi.fn<SyncRepository['mergeUserPantryToHouse']>().mockResolvedValue({
+      addedLots: 0,
+      mergedLots: 0,
+      mergedGroups: 0,
+      importedStaples: 0,
+    });
+    const syncRepository = { mergeUserPantryToHouse } as unknown as SyncRepository;
+    const service = createHouseService({ repository, syncRepository });
+
+    await service.createHouse('admin-1', 'Casa');
+    await service.addMember('admin-1', 'member@example.com');
+
+    expect(mergeUserPantryToHouse).toHaveBeenNthCalledWith(1, 'admin-1', 'house-1');
+    expect(mergeUserPantryToHouse).toHaveBeenNthCalledWith(2, 'member-1', 'house-1');
+  });
+
+  it('keeps a created membership retryable when the first pantry merge fails', async () => {
+    const repository = createMemoryHouseRepository([
+      { id: 'admin-1', email: 'admin@example.com', displayName: 'Admin', emailVerifiedAt: new Date() },
+    ]);
+    const mergeUserPantryToHouse = vi.fn<SyncRepository['mergeUserPantryToHouse']>()
+      .mockRejectedValueOnce(new Error('temporary merge failure'))
+      .mockResolvedValueOnce({ addedLots: 0, mergedLots: 0, mergedGroups: 0, importedStaples: 0 });
+    const service = createHouseService({ repository, syncRepository: { mergeUserPantryToHouse } as unknown as SyncRepository });
+
+    await expect(service.createHouse('admin-1', 'Casa')).rejects.toThrow('temporary merge failure');
+    await expect(repository.getMembershipForUser('admin-1')).resolves.toMatchObject({ houseId: 'house-1' });
+    await expect(service.getState('admin-1')).resolves.toMatchObject({ house: { id: 'house-1' } });
+    expect(mergeUserPantryToHouse).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a member pantry merge on the member state read after an add failure', async () => {
+    const repository = createMemoryHouseRepository([
+      { id: 'admin-1', email: 'admin@example.com', displayName: 'Admin', emailVerifiedAt: new Date() },
+      { id: 'member-1', email: 'member@example.com', displayName: 'Member', emailVerifiedAt: new Date() },
+    ]);
+    const mergeUserPantryToHouse = vi.fn<SyncRepository['mergeUserPantryToHouse']>()
+      .mockResolvedValueOnce({ addedLots: 0, mergedLots: 0, mergedGroups: 0, importedStaples: 0 })
+      .mockRejectedValueOnce(new Error('temporary member merge failure'))
+      .mockResolvedValueOnce({ addedLots: 0, mergedLots: 0, mergedGroups: 0, importedStaples: 0 });
+    const service = createHouseService({ repository, syncRepository: { mergeUserPantryToHouse } as unknown as SyncRepository });
+
+    await service.createHouse('admin-1', 'Casa');
+    await expect(service.addMember('admin-1', 'member@example.com')).rejects.toThrow('temporary member merge failure');
+    await expect(repository.getMembershipForUser('member-1')).resolves.toMatchObject({ houseId: 'house-1' });
+    await expect(service.getState('member-1')).resolves.toMatchObject({ house: { id: 'house-1' } });
+    expect(mergeUserPantryToHouse).toHaveBeenCalledTimes(3);
+  });
+  it('automatically merges guest pantry data into the member house', async () => {
+    const repository = createMemoryHouseRepository([
+      { id: 'admin-1', email: 'admin@example.com', displayName: 'Admin', emailVerifiedAt: new Date() },
+    ]);
+    const mergeGuestPantryToHouse = vi.fn<SyncRepository['mergeGuestPantryToHouse']>().mockResolvedValue({
+      addedLots: 1,
+      mergedLots: 0,
+      mergedGroups: 0,
+      importedStaples: 1,
+    });
+    const syncRepository = { mergeGuestPantryToHouse } as unknown as SyncRepository;
+    const service = createHouseService({ repository, syncRepository });
+    await service.createHouse('admin-1', 'Casa');
+
+    await service.mergeGuestPantry('admin-1', {
+      deviceId: 'device-1',
+      lots: [],
+      stapleIds: ['salt'],
+    });
+
+    expect(mergeGuestPantryToHouse).toHaveBeenCalledWith('admin-1', 'house-1', {
+      deviceId: 'device-1',
+      lots: [],
+      stapleIds: ['salt'],
+    });
+  });
+
   it('returns a typed error without changing membership when the email is not registered', async () => {
     const repository = createMemoryHouseRepository([
       { id: 'admin-1', email: 'admin@example.com', displayName: 'Admin', emailVerifiedAt: new Date() },

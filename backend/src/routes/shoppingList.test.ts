@@ -11,6 +11,7 @@ const createSessionService = (userId: string) => ({
     id: `session-${userId}`,
     userId,
     email: `${userId}@example.com`,
+    emailVerifiedAt: new Date('2026-09-24T00:00:00.000Z'),
     csrfTokenHash: hashOpaqueToken('csrf-token'),
     expiresAt: new Date('2026-10-12T12:00:00.000Z'),
   }),

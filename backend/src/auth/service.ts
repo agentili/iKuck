@@ -48,6 +48,7 @@ export interface AuthenticatedSession {
   id: string;
   userId: string;
   email: string;
+  emailVerifiedAt: Date | null;
   csrfTokenHash: string;
   expiresAt: Date;
 }
@@ -112,6 +113,7 @@ const toSession = (session: SessionRecord): AuthenticatedSession => ({
   id: session.id,
   userId: session.userId,
   email: session.email,
+  emailVerifiedAt: session.emailVerifiedAt,
   csrfTokenHash: session.csrfTokenHash,
   expiresAt: session.expiresAt,
 });

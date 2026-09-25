@@ -78,6 +78,17 @@ export const requireSession = async (
   return { token, session };
 };
 
+export const requireVerifiedSession = async (
+  request: FastifyRequest,
+  service: AuthService,
+): Promise<{ token: string; session: AuthenticatedSession }> => {
+  const result = await requireSession(request, service);
+  if (result.session.emailVerifiedAt === null || result.session.emailVerifiedAt === undefined) {
+    throw new AuthServiceError('email_not_verified', 403, 'Email verification is required');
+  }
+  return result;
+};
+
 export const ensureCsrf = (request: FastifyRequest, csrfTokenHash: string): void => {
   const csrfToken = request.headers['x-csrf-token'];
   if (typeof csrfToken !== 'string' || hashOpaqueToken(csrfToken) !== csrfTokenHash) {

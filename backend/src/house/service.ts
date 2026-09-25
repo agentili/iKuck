@@ -1,4 +1,5 @@
-import type { HouseMember, HouseRole, HouseState } from '@ikuck/shared/contracts';
+import type { PantryLot, HouseMember, HouseRole, HouseState } from '@ikuck/shared/contracts';
+import type { PantryMergeSummary } from '@ikuck/shared/pantryMerge';
 import { AuthServiceError } from '../auth/service.js';
 import type { SyncRepository } from '../sync/repository.js';
 import type { HouseRepository } from './repository.js';
@@ -12,6 +13,7 @@ export interface HouseService {
   removeMember: (adminUserId: string, userId: string) => Promise<void>;
   leaveHouse: (userId: string) => Promise<void>;
   importPersonalData: (userId: string) => Promise<void>;
+  mergeGuestPantry: (userId: string, input: { deviceId: string; lots: PantryLot[]; stapleIds: string[] }) => Promise<PantryMergeSummary>;
 }
 
 interface HouseServiceOptions {
@@ -36,6 +38,17 @@ const mapAddMemberResult = (result: Awaited<ReturnType<HouseRepository['addExist
   throw new AuthServiceError('house_user_already_in_house', 409, 'The account already belongs to another house');
 };
 
+const mergeUserPantry = async (syncRepository: SyncRepository | undefined, userId: string, houseId: string): Promise<void> => {
+  if (syncRepository === undefined) return;
+  if (syncRepository.mergeUserPantryToHouse !== undefined) {
+    await syncRepository.mergeUserPantryToHouse(userId, houseId);
+    return;
+  }
+  if (syncRepository.migrateUserSharedDataToHouse !== undefined) {
+    await syncRepository.migrateUserSharedDataToHouse(userId, houseId);
+  }
+};
+
 export const createHouseService = ({ repository, syncRepository, clock = () => new Date() }: HouseServiceOptions): HouseService => ({
   createHouse: async (userId, rawName) => {
     const nameResult = houseNameSchema.safeParse(rawName);
@@ -44,18 +57,28 @@ export const createHouseService = ({ repository, syncRepository, clock = () => n
       throw new AuthServiceError('house_membership_exists', 409, 'The account already belongs to a house');
     }
     const created = await repository.createHouse({ name: nameResult.data, userId, now: clock() });
+    await mergeUserPantry(syncRepository, userId, created.house.id);
     const state = await repository.getStateForUser(userId);
     if (state === null) throw new AuthServiceError('house_not_found', 500, 'Created house could not be loaded');
     return { state, membership: { role: created.membership.role, joinedAt: created.membership.joinedAt.toISOString() } };
   },
 
-  getState: (userId) => repository.getStateForUser(userId),
+  getState: async (userId) => {
+    const state = await repository.getStateForUser(userId);
+    if (state?.house !== null && state?.house !== undefined) {
+      await mergeUserPantry(syncRepository, userId, state.house.id);
+      return repository.getStateForUser(userId);
+    }
+    return state;
+  },
 
   addMember: async (adminUserId, rawEmail) => {
     const emailResult = memberEmailSchema.safeParse(rawEmail);
     if (!emailResult.success) throw invalidPayload('Member email is invalid');
-    await requireState(repository, adminUserId);
-    return mapAddMemberResult(await repository.addExistingMember({ adminUserId, email: emailResult.data, now: clock() }));
+    const state = await requireState(repository, adminUserId);
+    const member = mapAddMemberResult(await repository.addExistingMember({ adminUserId, email: emailResult.data, now: clock() }));
+    await mergeUserPantry(syncRepository, member.userId, state.house?.id ?? '');
+    return member;
   },
 
   changeRole: async (adminUserId, userId, rawRole) => {
@@ -102,6 +125,15 @@ export const createHouseService = ({ repository, syncRepository, clock = () => n
     }
     const state = await requireState(repository, userId);
     if (state.house === null) throw new AuthServiceError('house_not_found', 404, 'House not found');
-    await syncRepository.migrateUserSharedDataToHouse(userId, state.house.id);
+    await mergeUserPantry(syncRepository, userId, state.house.id);
+  },
+
+  mergeGuestPantry: async (userId, input) => {
+    if (syncRepository?.mergeGuestPantryToHouse === undefined) {
+      throw new AuthServiceError('house_not_found', 500, 'House data import is unavailable');
+    }
+    const state = await requireState(repository, userId);
+    if (state.house === null) throw new AuthServiceError('house_not_found', 404, 'House not found');
+    return syncRepository.mergeGuestPantryToHouse(userId, state.house.id, input);
   },
 });

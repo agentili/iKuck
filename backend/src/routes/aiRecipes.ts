@@ -8,7 +8,7 @@ import { AuthServiceError, type AuthService } from '../auth/service.js';
 import { dietProfilePayloadSchema } from '../diet/validation.js';
 import type { RecipeGenerationProvider } from '../providers/types.js';
 import type { SyncRepository } from '../sync/repository.js';
-import { ensureCsrf, ensureSameOrigin, requireSession } from './auth.js';
+import { ensureCsrf, ensureSameOrigin, requireVerifiedSession } from './auth.js';
 
 export interface AiRecipeRouteDependencies {
   provider: RecipeGenerationProvider;
@@ -96,13 +96,13 @@ export const registerAiRecipeRoutes = ({
   appOrigin,
 }: AiRecipeRouteDependencies): FastifyPluginAsync => async (app) => {
   app.get('/v1/ai-recipes/consent', async (request) => {
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     return { consent: await readConsent(repository, session.userId) };
   });
 
   app.put('/v1/ai-recipes/consent', async (request) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     const now = new Date().toISOString();
     const consent: AiConsent = { enabled: parseConsent(request.body), updatedAt: now };
@@ -111,13 +111,13 @@ export const registerAiRecipeRoutes = ({
   });
 
   app.get('/v1/ai-recipes', async (request) => {
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     return { recipes: await readRecipes(repository, session.userId) };
   });
 
   app.post('/v1/ai-recipes', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     const parsed = generationRequestSchema.safeParse(request.body);
     if (!parsed.success) throw invalidPayload();
@@ -176,7 +176,7 @@ export const registerAiRecipeRoutes = ({
 
   app.delete('/v1/ai-recipes/:recipeId', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     const recipeId = (request.params as { recipeId: string }).recipeId;
     const existing = await readRecipe(repository, session.userId, recipeId);

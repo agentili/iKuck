@@ -9,12 +9,142 @@ const sessionService = {
     id: 'session-1',
     userId: 'user-1',
     email: 'user@example.com',
+    emailVerifiedAt: new Date('2026-09-24T00:00:00.000Z'),
     csrfTokenHash: hashOpaqueToken('csrf-token'),
     expiresAt: new Date('2026-10-12T12:00:00.000Z'),
   }),
 } as unknown as AuthService;
 
 describe('sync routes', () => {
+  it('rejects stale house-scoped mutations after membership is removed', async () => {
+    let member = true;
+    const repository = createMemorySyncRepository({
+      scopeResolver: async () => member ? { kind: 'house', id: 'house-1' } : null,
+    });
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository, authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+    });
+    const headers = {
+      cookie: 'ikuck_session=session-token',
+      origin: 'http://127.0.0.1:5173',
+      'x-csrf-token': 'csrf-token',
+    };
+    const baseMutation = {
+      mutationId: 'stale-house-mutation',
+      deviceId: 'device-1',
+      entityType: 'pantry_item' as const,
+      entityId: 'stale-item',
+      operation: 'upsert' as const,
+      payload: { id: 'stale-item', label: 'Stale', known: true },
+      clientUpdatedAt: '2026-09-24T12:00:00.000Z',
+      syncScope: 'house:house-1' as const,
+    };
+    const accepted = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers,
+      payload: { deviceId: 'device-1', cursor: 0, mutations: [baseMutation] },
+    });
+    expect(accepted.statusCode).toBe(200);
+    member = false;
+
+    const rejected = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers,
+      payload: {
+        deviceId: 'device-1',
+        cursor: accepted.json<{ nextCursor: number }>().nextCursor,
+        mutations: [{ ...baseMutation, mutationId: 'stale-house-mutation-2' }],
+      },
+    });
+
+    expect(rejected.statusCode).toBe(403);
+    expect(rejected.json()).toEqual({ code: 'house_membership_required', message: 'House membership is required for shared data' });
+    await expect(repository.readEntity('user-1', 'pantry_item', 'stale-item')).resolves.toBeNull();
+    await app.close();
+  });
+
+  it('rejects shared mutations without an explicit scope marker', async () => {
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository: createMemorySyncRepository({ scopeResolver: async () => ({ kind: 'house', id: 'house-1' }) }), authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers: { cookie: 'ikuck_session=session-token', origin: 'http://127.0.0.1:5173', 'x-csrf-token': 'csrf-token' },
+      payload: {
+        deviceId: 'device-1',
+        cursor: 0,
+        mutations: [{
+          mutationId: 'missing-scope', deviceId: 'device-1', entityType: 'pantry_item', entityId: 'item-1',
+          operation: 'upsert', payload: { id: 'item-1', label: 'Item', known: true }, clientUpdatedAt: '2026-09-24T12:00:00.000Z',
+        }],
+      },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ code: 'sync_scope_required', message: 'A scope is required for shared data mutations' });
+    await app.close();
+  });
+
+  it('rejects a read-only house sync after membership is removed', async () => {
+    let member = true;
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: {
+        repository: createMemorySyncRepository({ scopeResolver: async () => member ? { kind: 'house', id: 'house-1' } : null }),
+        authService: sessionService,
+        appOrigin: 'http://127.0.0.1:5173',
+      },
+    });
+    member = false;
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers: { cookie: 'ikuck_session=session-token', origin: 'http://127.0.0.1:5173', 'x-csrf-token': 'csrf-token' },
+      payload: { deviceId: 'device-1', cursor: 0, syncScope: 'house:house-1', mutations: [] },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ code: 'house_membership_required', message: 'House membership is required for shared data' });
+    await app.close();
+  });
+
+  it('rejects a house scope for personal sync entities', async () => {
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository: createMemorySyncRepository({ scopeResolver: async () => ({ kind: 'house', id: 'house-1' }) }), authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers: { cookie: 'ikuck_session=session-token', origin: 'http://127.0.0.1:5173', 'x-csrf-token': 'csrf-token' },
+      payload: {
+        deviceId: 'device-1',
+        cursor: 0,
+        mutations: [{
+          mutationId: 'personal-house-scope', deviceId: 'device-1', entityType: 'cook_event', entityId: 'event-1',
+          operation: 'delete', payload: null, clientUpdatedAt: '2026-09-24T12:00:00.000Z', syncScope: 'house:house-1',
+        }],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ code: 'sync_scope_invalid', message: 'House scope is only valid for shared data' });
+    await app.close();
+  });
+
   it('accepts authenticated mutations and returns a cursor', async () => {
     const app = createApp({
       database: { ping: async () => undefined },
@@ -42,6 +172,7 @@ describe('sync routes', () => {
           operation: 'upsert',
           payload: { id: 'tomato', label: 'Pomodoro', known: true },
           clientUpdatedAt: '2026-09-12T12:00:00.000Z',
+          syncScope: 'account:user-1',
         }],
       },
     });
@@ -387,7 +518,7 @@ describe('sync routes', () => {
       payload: {
         deviceId: 'device-1', cursor: 0, mutations: [{
           mutationId: 'mutation-error', deviceId: 'device-1', entityType: 'pantry_item', entityId: 'item-1',
-          operation: 'upsert', payload: { id: 'item-1', label: 'Item', known: true }, clientUpdatedAt: '2026-09-13T12:00:00.000Z',
+          operation: 'upsert', payload: { id: 'item-1', label: 'Item', known: true }, clientUpdatedAt: '2026-09-13T12:00:00.000Z', syncScope: 'account:user-1',
         }],
       },
     });

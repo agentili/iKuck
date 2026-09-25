@@ -1,17 +1,17 @@
 import type { ShoppingListItem } from '@ikuck/shared/contracts';
 import { isShoppingListItem } from '../domain/shoppingList';
-import { isIndexedDbAvailable, readKeyValue, writeKeyValue } from './indexedDb';
-import { getActiveDataScope, scopeStorageKey } from '../sync/scopeContext';
+import { deleteKeyValue, isIndexedDbAvailable, readKeyValue, writeKeyValue } from './indexedDb';
+import { getPersonalDataScope, scopeStorageKey, type SyncScope } from '../sync/scopeContext';
 
 export const SHOPPING_LIST_STORAGE_KEY = 'ikuck-shopping-list-v1';
 export const SHOPPING_LIST_DATABASE_KEY = 'shopping-list';
 
-const scopedStorageKey = (): string => getActiveDataScope() === 'guest'
+const scopedStorageKey = (scope: SyncScope = getPersonalDataScope()): string => scope === 'guest'
   ? SHOPPING_LIST_STORAGE_KEY
-  : scopeStorageKey(getActiveDataScope(), SHOPPING_LIST_STORAGE_KEY);
-const scopedDatabaseKey = (): string => getActiveDataScope() === 'guest'
+  : scopeStorageKey(scope, SHOPPING_LIST_STORAGE_KEY);
+const scopedDatabaseKey = (scope: SyncScope = getPersonalDataScope()): string => scope === 'guest'
   ? SHOPPING_LIST_DATABASE_KEY
-  : scopeStorageKey(getActiveDataScope(), SHOPPING_LIST_DATABASE_KEY);
+  : scopeStorageKey(scope, SHOPPING_LIST_DATABASE_KEY);
 
 interface PersistedShoppingList {
   items: ShoppingListItem[];
@@ -41,29 +41,34 @@ const parse = (raw: string | null): ShoppingListItem[] => {
   }
 };
 
-const readFallback = (): ShoppingListItem[] => parse(window.localStorage.getItem(scopedStorageKey()));
+const readFallback = (scope: SyncScope = getPersonalDataScope()): ShoppingListItem[] => parse(window.localStorage.getItem(scopedStorageKey(scope)));
 
-export async function readShoppingList(): Promise<ShoppingListItem[]> {
-  if (!isIndexedDbAvailable()) return readFallback();
+export async function readShoppingList(scope: SyncScope = getPersonalDataScope()): Promise<ShoppingListItem[]> {
+  if (!isIndexedDbAvailable()) return readFallback(scope);
 
   try {
-    return parse(await readKeyValue<string>(scopedDatabaseKey()));
+    return parse(await readKeyValue<string>(scopedDatabaseKey(scope)));
   } catch {
-    return readFallback();
+    return readFallback(scope);
   }
 }
 
-export async function writeShoppingList(items: readonly ShoppingListItem[]): Promise<void> {
+export async function writeShoppingList(items: readonly ShoppingListItem[], scope: SyncScope = getPersonalDataScope()): Promise<void> {
   const serialized = serialize(items);
   if (!isIndexedDbAvailable()) {
-    window.localStorage.setItem(scopedStorageKey(), serialized);
+    window.localStorage.setItem(scopedStorageKey(scope), serialized);
     return;
   }
 
   try {
-    await writeKeyValue(scopedDatabaseKey(), serialized);
+    await writeKeyValue(scopedDatabaseKey(scope), serialized);
   } catch (error) {
-    window.localStorage.setItem(scopedStorageKey(), serialized);
+    window.localStorage.setItem(scopedStorageKey(scope), serialized);
     throw error;
   }
+}
+
+export async function clearShoppingList(scope: SyncScope): Promise<void> {
+  if (isIndexedDbAvailable()) await deleteKeyValue(scopedDatabaseKey(scope));
+  window.localStorage.removeItem(scopedStorageKey(scope));
 }

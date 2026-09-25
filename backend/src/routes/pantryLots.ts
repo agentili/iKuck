@@ -4,7 +4,7 @@ import type { PantryLot, PantryLotPayload, SyncChange, SyncMutation } from '@iku
 import { AuthServiceError, type AuthService } from '../auth/service.js';
 import { isPantryLot, parsePantryLotDetails, parsePantryLotPatch } from '../pantry/validation.js';
 import type { SyncRepository } from '../sync/repository.js';
-import { ensureCsrf, ensureSameOrigin, requireSession } from './auth.js';
+import { ensureCsrf, ensureSameOrigin, requireVerifiedSession } from './auth.js';
 
 export interface PantryLotRouteDependencies {
   repository: SyncRepository;
@@ -53,13 +53,13 @@ const readLot = async (repository: SyncRepository, userId: string, lotId: string
 
 export const registerPantryLotRoutes = ({ repository, authService, appOrigin }: PantryLotRouteDependencies): FastifyPluginAsync => async (app) => {
   app.get('/v1/pantry-lots', async (request) => {
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     return { lots: await readLots(repository, session.userId) };
   });
 
   app.post('/v1/pantry-lots', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     const details = parseDetails(request.body);
     const now = new Date().toISOString();
@@ -70,7 +70,7 @@ export const registerPantryLotRoutes = ({ repository, authService, appOrigin }: 
 
   app.patch('/v1/pantry-lots/:lotId', async (request) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     const existing = await readLot(repository, session.userId, (request.params as { lotId: string }).lotId);
     const details = { ...existing, ...parsePatch(request.body), updatedAt: new Date().toISOString() };
@@ -89,7 +89,7 @@ export const registerPantryLotRoutes = ({ repository, authService, appOrigin }: 
 
   app.delete('/v1/pantry-lots/:lotId', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     const existing = await readLot(repository, session.userId, (request.params as { lotId: string }).lotId);
     await repository.applyMutation(session.userId, createMutation(existing, 'delete'));

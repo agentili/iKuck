@@ -30,6 +30,13 @@ describe('HousePage', () => {
     expect(screen.getByRole('button', { name: 'Crea casa' })).toBeInTheDocument();
   });
 
+  it('states that only pantry data is shared', () => {
+    render(<MemoryRouter><HousePage /></MemoryRouter>);
+
+    expect(screen.getByText(/La casa condividerà la dispensa.*ingredienti, lotti e ingredienti di base/)).toBeInTheDocument();
+    expect(screen.getByText(/Lista della spesa, attività, ricette generate e dati del profilo restano personali/)).toBeInTheDocument();
+  });
+
   it('shows admin membership controls and sends the normalized form value', async () => {
     useHouseStore.setState({
       state: {

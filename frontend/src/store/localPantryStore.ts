@@ -15,10 +15,12 @@ import {
   createPresencePantryLot,
   derivePantryItems,
   normalizePantrySnapshot,
+  setPantryPersistenceSuspended,
   writePantrySnapshot,
 } from '../storage/pantryStorage';
 import type { PantrySnapshot } from '../storage/pantryStorage';
 import { trackPersistence, trackSync } from './persistenceStatusStore';
+import { getActiveDataScope, getPersonalDataScope, subscribeActiveDataScope } from '../sync/scopeContext';
 
 export { LEGACY_PANTRY_STORAGE_KEY, PANTRY_STORAGE_KEY } from '../storage/pantryStorage';
 
@@ -42,6 +44,10 @@ export interface PantryState {
 
 let markHydrated: (() => void) | null = null;
 let hydrationPromise: Promise<void> | null = null;
+let hydrationGeneration = 0;
+let hydrationScopeInFlight: ReturnType<typeof getActiveDataScope> | null = null;
+let hydrationGenerationInFlight = 0;
+let hydratedScope: ReturnType<typeof getActiveDataScope> | null = null;
 let applyRemoteSnapshot: ((snapshot: PantrySnapshot) => void) | null = null;
 
 const createLotId = (ingredientId: string, existingLots: readonly PantryLot[]): string => {
@@ -59,7 +65,8 @@ const normalizeStateSnapshot = (state: Pick<PantryState, 'pantryItems' | 'staple
 });
 
 const persistSnapshot = (snapshot: PantrySnapshot): void => {
-  void trackPersistence('pantry', () => writePantrySnapshot(snapshot));
+  const scope = getActiveDataScope();
+  void trackPersistence('pantry', () => writePantrySnapshot(snapshot, scope));
 };
 
 const queuePantryMutation = (
@@ -68,7 +75,9 @@ const queuePantryMutation = (
   operation: Parameters<typeof enqueuePantryMutation>[3],
   payload: Parameters<typeof enqueuePantryMutation>[4],
 ): void => {
-  void trackSync('pantry', () => enqueuePantryMutation(getMutationScope(entityType), entityType, entityId, operation, payload));
+  const activeScope = getActiveDataScope();
+  const personalScope = getPersonalDataScope();
+  void trackSync('pantry', () => enqueuePantryMutation(getMutationScope(entityType, activeScope, personalScope), entityType, entityId, operation, payload));
 };
 
 export const usePantryStore = create<PantryState>()(
@@ -210,11 +219,17 @@ export const usePantryStore = create<PantryState>()(
         Reflect.deleteProperty(persistedState, 'hasHydrated');
         return persistedState;
       },
-      onRehydrateStorage: () => () => {
-        const current = usePantryStore.getState();
-        const normalized = normalizeStateSnapshot(current);
-        usePantryStore.setState({ pantryItems: normalized.pantryItems, pantryLots: normalized.pantryLots ?? [] });
-        markHydrated?.();
+      onRehydrateStorage: () => {
+        const callbackScope = hydrationScopeInFlight;
+        const callbackGeneration = hydrationGenerationInFlight;
+        return () => {
+          if (callbackScope === null || callbackScope !== getActiveDataScope() || callbackGeneration !== hydrationGeneration) return;
+          const current = usePantryStore.getState();
+          const normalized = normalizeStateSnapshot(current);
+          usePantryStore.setState({ pantryItems: normalized.pantryItems, pantryLots: normalized.pantryLots ?? [] });
+          hydratedScope = callbackScope;
+          markHydrated?.();
+        };
       },
     },
   ),
@@ -233,24 +248,55 @@ registerPantrySnapshotListener((snapshot) => {
   applyRemoteSnapshot?.(snapshot);
 });
 
-export async function hydratePantryStore(): Promise<void> {
-  if (usePantryStore.getState().hasHydrated) return;
-
-  if (hydrationPromise === null) {
-    hydrationPromise = Promise.resolve(usePantryStore.persist.rehydrate())
-      .catch(() => undefined)
-      .then(() => {
-        const current = usePantryStore.getState();
-        const normalized = normalizeStateSnapshot(current);
-        usePantryStore.setState({ pantryItems: normalized.pantryItems, pantryLots: normalized.pantryLots ?? [] });
-        if (!usePantryStore.getState().hasHydrated) {
-          usePantryStore.setState({ hasHydrated: true });
-        }
-      })
-      .finally(() => {
-        hydrationPromise = null;
-      });
+subscribeActiveDataScope(() => {
+  hydrationGeneration += 1;
+  hydratedScope = null;
+  setPantryPersistenceSuspended(true);
+  try {
+    usePantryStore.setState({
+      hasHydrated: false,
+      pantryItems: [],
+      stapleIds: [...DEFAULT_STAPLE_IDS],
+      pantryLots: [],
+    });
+  } finally {
+    setPantryPersistenceSuspended(false);
   }
+});
 
-  await hydrationPromise;
+export async function hydratePantryStore(): Promise<void> {
+  for (;;) {
+    const activeScope = getActiveDataScope();
+    const activeGeneration = hydrationGeneration;
+    if (usePantryStore.getState().hasHydrated && hydratedScope === activeScope) return;
+
+    if (hydrationPromise === null) {
+      const hydrationScope = activeScope;
+      const hydrationGenerationAtStart = activeGeneration;
+      hydrationScopeInFlight = hydrationScope;
+      hydrationGenerationInFlight = hydrationGenerationAtStart;
+      const currentPromise = Promise.resolve(usePantryStore.persist.rehydrate())
+        .catch(() => undefined)
+        .then(() => {
+          if (getActiveDataScope() !== hydrationScope || hydrationGeneration !== hydrationGenerationAtStart) return;
+          const current = usePantryStore.getState();
+          const normalized = normalizeStateSnapshot(current);
+          usePantryStore.setState({ pantryItems: normalized.pantryItems, pantryLots: normalized.pantryLots ?? [] });
+          if (!usePantryStore.getState().hasHydrated) {
+            usePantryStore.setState({ hasHydrated: true });
+          }
+          hydratedScope = hydrationScope;
+        })
+        .finally(() => {
+          hydrationPromise = null;
+          hydrationScopeInFlight = null;
+        });
+      hydrationPromise = currentPromise;
+    }
+
+    const pendingHydration = hydrationPromise;
+    if (pendingHydration !== null) await pendingHydration;
+    if (getActiveDataScope() === activeScope && hydrationGeneration === activeGeneration
+      && usePantryStore.getState().hasHydrated && hydratedScope === activeScope) return;
+  }
 }

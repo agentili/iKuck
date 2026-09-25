@@ -1,4 +1,6 @@
-export type SyncScope = 'guest' | `account:${string}` | `house:${string}`;
+import type { SyncMutationScope } from '@ikuck/shared/contracts';
+
+export type SyncScope = 'guest' | SyncMutationScope;
 
 const ACTIVE_SCOPE_KEY = 'ikuck-active-data-scope';
 const PERSONAL_SCOPE_KEY = 'ikuck-personal-data-scope';
@@ -13,31 +15,43 @@ const readStoredScope = (key: string): SyncScope | null => {
 let sharedScope: SyncScope = readStoredScope(ACTIVE_SCOPE_KEY) ?? 'guest';
 let personalScope: SyncScope = readStoredScope(PERSONAL_SCOPE_KEY)
   ?? (sharedScope === 'guest' || sharedScope.startsWith('account:') ? sharedScope : 'guest');
-const listeners = new Set<(scope: SyncScope) => void>();
+const activeListeners = new Set<(scope: SyncScope) => void>();
+const personalListeners = new Set<(scope: SyncScope) => void>();
 
 export const getActiveDataScope = (): SyncScope => sharedScope;
 export const getSharedDataScope = (): SyncScope => sharedScope;
 export const getPersonalDataScope = (): SyncScope => personalScope;
 
 export const setActiveDataScope = (scope: SyncScope): void => {
-  const changed = sharedScope !== scope;
+  const activeChanged = sharedScope !== scope;
+  const previousPersonalScope = personalScope;
   sharedScope = scope;
   if (scope === 'guest' || scope.startsWith('account:')) personalScope = scope;
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(ACTIVE_SCOPE_KEY, scope);
     window.localStorage.setItem(PERSONAL_SCOPE_KEY, personalScope);
   }
-  if (changed) for (const listener of listeners) listener(scope);
+  if (activeChanged) for (const listener of activeListeners) listener(scope);
+  if (previousPersonalScope !== personalScope) {
+    for (const listener of personalListeners) listener(personalScope);
+  }
 };
 
 export const setPersonalDataScope = (scope: SyncScope): void => {
+  const changed = personalScope !== scope;
   personalScope = scope;
   if (typeof window !== 'undefined') window.localStorage.setItem(PERSONAL_SCOPE_KEY, scope);
+  if (changed) for (const listener of personalListeners) listener(scope);
 };
 
 export const subscribeActiveDataScope = (listener: (scope: SyncScope) => void): (() => void) => {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+  activeListeners.add(listener);
+  return () => activeListeners.delete(listener);
+};
+
+export const subscribePersonalDataScope = (listener: (scope: SyncScope) => void): (() => void) => {
+  personalListeners.add(listener);
+  return () => personalListeners.delete(listener);
 };
 
 export const scopeStorageKey = (scope: SyncScope, key: string): string => `ikuck:${scope}:${key}`;

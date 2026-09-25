@@ -4,6 +4,7 @@ import { deleteLocalDatabase, readMeta } from '../../storage/indexedDb';
 import * as activityStorage from '../../storage/activityStorage';
 import { readCookEvents, readRecipePreferences } from '../../storage/activityStorage';
 import { GUEST_SYNC_SCOPE, readQueuedMutations } from '../../sync/syncQueue';
+import { setActiveDataScope, setPersonalDataScope } from '../../sync/scopeContext';
 import { usePantryStore } from '../localPantryStore';
 import {
   hydrateActivityStore,
@@ -29,6 +30,36 @@ describe('activity store', () => {
     await hydrateActivityStore();
 
     expect(useActivityStore.getState()).toMatchObject({ hasHydrated: true, events: [], preferences: [] });
+  });
+
+  it('retries both personal hydrations after the account changes in flight', async () => {
+    const accountA = 'account:activity-a' as const;
+    const accountB = 'account:activity-b' as const;
+    let releaseOld: (() => void) | undefined;
+    const oldRequest = new Promise<void>((resolve) => { releaseOld = resolve; });
+    const eventsSpy = vi.spyOn(activityStorage, 'readCookEvents').mockImplementation(async (scope) => {
+      if (scope === accountA) await oldRequest;
+      return [];
+    });
+    const preferencesSpy = vi.spyOn(activityStorage, 'readRecipePreferences').mockImplementation(async (scope) => {
+      if (scope === accountA) await oldRequest;
+      return [];
+    });
+
+    setActiveDataScope(accountA);
+    const firstHydration = hydrateActivityStore();
+    await vi.waitFor(() => expect(eventsSpy).toHaveBeenCalledWith(accountA));
+    setPersonalDataScope(accountB);
+    const secondHydration = hydrateActivityStore();
+    releaseOld?.();
+    await Promise.all([firstHydration, secondHydration]);
+
+    expect(eventsSpy).toHaveBeenCalledWith(accountB);
+    expect(preferencesSpy).toHaveBeenCalledWith(accountB);
+    expect(useActivityStore.getState().hasHydrated).toBe(true);
+    eventsSpy.mockRestore();
+    preferencesSpy.mockRestore();
+    setActiveDataScope('guest');
   });
 
   it('records cooking without changing the pantry lots', async () => {

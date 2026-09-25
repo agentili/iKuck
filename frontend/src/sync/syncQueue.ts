@@ -1,6 +1,7 @@
 import type {
   CookEvent,
   DietProfile,
+  HouseState,
   RecipePreference,
   ShoppingListItem,
   SyncChange,
@@ -9,8 +10,11 @@ import type {
   SyncMutation,
   SyncOperation,
 } from '@ikuck/shared/contracts';
+import type { PantryMergeSummary } from '@ikuck/shared/pantryMerge';
 import { ApiClientError, apiRequest, type ApiRequest } from '../api/apiClient';
 import {
+  deleteMeta,
+  deleteQueueScope,
   deleteQueueValue,
   readMeta,
   readQueueValues,
@@ -20,6 +24,7 @@ import {
 } from '../storage/indexedDb';
 import {
   createPresencePantryLot,
+  clearPantrySnapshot,
   derivePantryItems,
   isPantryLot,
   normalizePantrySnapshot,
@@ -31,15 +36,17 @@ import { isCookEvent, isRecipePreference } from '../domain/activity';
 import { DEFAULT_DIET_PROFILE, isDietProfile, normalizeDietProfile } from '../domain/dietary';
 import { isShoppingListItem } from '../domain/shoppingList';
 import {
+  clearCookEvents,
+  clearRecipePreferences,
   readCookEvents,
   readRecipePreferences,
   writeCookEvents,
   writeRecipePreferences,
 } from '../storage/activityStorage';
-import { readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
+import { clearShoppingList, readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
 import { readDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
 import { assertSyncMutation, isPantryItemPayload, isStaplePreferencePayload } from './validation';
-import { getActiveDataScope, getPersonalDataScope } from './scopeContext';
+import { getActiveDataScope, getPersonalDataScope, setActiveDataScope, setPersonalDataScope } from './scopeContext';
 
 const DEVICE_ID_META_KEY = 'deviceId';
 const MAX_MUTATIONS_PER_REQUEST = 100;
@@ -56,16 +63,37 @@ const SHARED_ENTITY_TYPES = new Set<SyncEntityType>([
   'pantry_item',
   'pantry_lot',
   'staple_preference',
-  'shopping_list_item',
-  'cook_event',
-  'generated_recipe',
 ]);
 
-export const getMutationScope = (entityType: SyncEntityType): SyncScope => (
-  SHARED_ENTITY_TYPES.has(entityType) ? getActiveDataScope() : getPersonalDataScope()
+export const getMutationScope = (
+  entityType: SyncEntityType,
+  activeScope: SyncScope = getActiveDataScope(),
+  personalScope: SyncScope = getPersonalDataScope(),
+): SyncScope => (
+  SHARED_ENTITY_TYPES.has(entityType) ? activeScope : personalScope
 );
 
 const cursorMetaKey = (scope: SyncScope): string => `syncCursor:${scope}`;
+
+const guestSnapshotFingerprint = (snapshot: PantrySnapshot): string => {
+  const normalized = normalizePantrySnapshot(snapshot);
+  return JSON.stringify({
+    pantryItems: [...normalized.pantryItems].sort((left, right) => left.id.localeCompare(right.id)),
+    pantryLots: [...(normalized.pantryLots ?? [])].sort((left, right) => left.id.localeCompare(right.id)),
+    stapleIds: [...normalized.stapleIds].sort(),
+  });
+};
+
+export async function clearDataScope(scope: SyncScope): Promise<void> {
+  await Promise.all([
+    clearPantrySnapshot(scope),
+    clearShoppingList(scope),
+    clearCookEvents(scope),
+    clearRecipePreferences(scope),
+  ]);
+  await deleteQueueScope(scope);
+  await deleteMeta(cursorMetaKey(scope));
+}
 
 export interface SyncSession {
   userId: string;
@@ -83,6 +111,7 @@ interface SyncRequestOptions {
   request?: ApiRequest;
   session: SyncSession;
   isSessionCurrent?: () => boolean;
+  onMembershipLost?: () => void;
 }
 
 interface SyncPage extends SyncChangeSet {
@@ -109,6 +138,15 @@ export class SyncSessionChangedError extends Error {
   constructor() {
     super('The active session changed while synchronizing');
     this.name = 'SyncSessionChangedError';
+  }
+}
+
+export class SyncScopeChangedError extends Error {
+  readonly code = 'scope_changed';
+
+  constructor() {
+    super('The active data scope changed while synchronizing');
+    this.name = 'SyncScopeChangedError';
   }
 }
 
@@ -305,9 +343,143 @@ export async function importLocalData(session: SyncSession): Promise<SyncResult>
   return syncNow({ session });
 }
 
-const toMutation = ({ createdAt, ...mutation }: QueuedMutation): SyncMutation => {
+class ScopeInitializationCancelledError extends Error {
+  constructor() {
+    super('Session scope initialization was cancelled');
+    this.name = 'ScopeInitializationCancelledError';
+  }
+}
+
+const PANTRY_MERGE_ENTITY_TYPES = new Set<SyncEntityType>([
+  'pantry_item',
+  'pantry_lot',
+  'staple_preference',
+]);
+
+const clearQueueScope = async (scope: SyncScope, mutationIds?: ReadonlySet<string>): Promise<void> => {
+  const queued = await readQueueValues<QueuedMutation>(scope);
+  for (const mutation of queued) {
+    if (PANTRY_MERGE_ENTITY_TYPES.has(mutation.entityType)
+      && (mutationIds === undefined || mutationIds.has(mutation.mutationId))) {
+      await deleteQueueValue(mutation.mutationId, scope);
+    }
+  }
+};
+
+export async function mergeGuestPantryIntoHouse(
+  session: SyncSession,
+  houseId: string,
+  request: ApiRequest = apiRequest,
+  isCurrent: () => boolean = () => true,
+): Promise<PantryMergeSummary> {
+  ensureVerifiedSession(session);
+  void houseId;
+  await waitForPendingQueueWrites();
+  if (!isCurrent()) throw new ScopeInitializationCancelledError();
+  const submittedSnapshot = normalizePantrySnapshot(await readPantrySnapshot(GUEST_SYNC_SCOPE) ?? { pantryItems: [], stapleIds: [] });
+  if (!isCurrent()) throw new ScopeInitializationCancelledError();
+  const submittedFingerprint = guestSnapshotFingerprint(submittedSnapshot);
+  const submittedQueue = await readQueueValues<QueuedMutation>(GUEST_SYNC_SCOPE);
+  if (!isCurrent()) throw new ScopeInitializationCancelledError();
+  const submittedPantryMutationIds = new Set(
+    submittedQueue.filter((mutation) => PANTRY_MERGE_ENTITY_TYPES.has(mutation.entityType)).map((mutation) => mutation.mutationId),
+  );
+  const deviceId = await getDeviceId();
+  if (!isCurrent()) throw new ScopeInitializationCancelledError();
+  const response = await request<{ summary: PantryMergeSummary }>('/v1/house/pantry/merge', {
+    method: 'POST',
+    csrfToken: session.csrfToken,
+    body: {
+      deviceId,
+      lots: submittedSnapshot.pantryLots ?? [],
+      stapleIds: submittedSnapshot.stapleIds,
+    },
+  });
+  if (!isCurrent()) throw new ScopeInitializationCancelledError();
+  await waitForPendingQueueWrites();
+  if (!isCurrent()) throw new ScopeInitializationCancelledError();
+  const currentSnapshot = normalizePantrySnapshot(await readPantrySnapshot(GUEST_SYNC_SCOPE) ?? { pantryItems: [], stapleIds: [] });
+  if (!isCurrent()) throw new ScopeInitializationCancelledError();
+  const currentQueue = await readQueueValues<QueuedMutation>(GUEST_SYNC_SCOPE);
+  if (!isCurrent()) throw new ScopeInitializationCancelledError();
+  const hasConcurrentPantryMutation = currentQueue.some((mutation) => PANTRY_MERGE_ENTITY_TYPES.has(mutation.entityType)
+    && !submittedPantryMutationIds.has(mutation.mutationId));
+  if (guestSnapshotFingerprint(currentSnapshot) === submittedFingerprint) {
+    await clearQueueScope(GUEST_SYNC_SCOPE, submittedPantryMutationIds);
+    if (!hasConcurrentPantryMutation) await clearPantrySnapshot(GUEST_SYNC_SCOPE);
+  }
+  return response.summary;
+}
+
+export interface SessionScopeInitialization {
+  state: HouseState | null;
+  mergeSummary: PantryMergeSummary | null;
+}
+
+export async function initializeSessionScope(
+  session: SyncSession,
+  request: ApiRequest = apiRequest,
+  isCurrent: () => boolean = () => true,
+): Promise<SessionScopeInitialization> {
+  ensureVerifiedSession(session);
+  const ensureCurrent = (): void => {
+    if (!isCurrent()) throw new ScopeInitializationCancelledError();
+  };
+  const accountScope = getAccountSyncScope(session.userId);
+  const previousActiveScope = getActiveDataScope();
+  try {
+    const state = await request<HouseState | null>('/v1/house');
+    ensureCurrent();
+    const nextActiveScope: SyncScope = state?.house?.id === undefined ? accountScope : `house:${state.house.id}`;
+    if (previousActiveScope.startsWith('house:')
+      && previousActiveScope !== nextActiveScope
+      && getActiveDataScope() === previousActiveScope) {
+      await clearDataScope(previousActiveScope);
+      ensureCurrent();
+    }
+    ensureCurrent();
+    setActiveDataScope(GUEST_SYNC_SCOPE);
+    setPersonalDataScope(accountScope);
+    let mergeSummary: PantryMergeSummary | null = null;
+    if (state?.house !== null && state?.house !== undefined) {
+      mergeSummary = await mergeGuestPantryIntoHouse(session, state.house.id, request, isCurrent);
+      ensureCurrent();
+      setActiveDataScope(`house:${state.house.id}`);
+    } else {
+      ensureCurrent();
+      setActiveDataScope(accountScope);
+      setPersonalDataScope(accountScope);
+    }
+    return { state, mergeSummary };
+  } catch (error) {
+    if (!isCurrent()) throw error;
+    if (previousActiveScope.startsWith('house:')
+      && getActiveDataScope() === previousActiveScope) {
+      await clearDataScope(previousActiveScope).catch(() => undefined);
+      ensureCurrent();
+    }
+    ensureCurrent();
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
+    throw error;
+  }
+}
+
+const toMutation = ({ createdAt, scope, ...mutation }: QueuedMutation): SyncMutation => {
   void createdAt;
-  return mutation;
+  return {
+    ...mutation,
+    syncScope: scope === 'guest' ? undefined : scope,
+  };
+};
+
+const syncQueueScopes = (accountScope: SyncScope, activeScope: SyncScope): SyncScope[] => (
+  activeScope.startsWith('house:') ? [accountScope, activeScope] : [accountScope]
+);
+
+const readPendingSyncMutations = async (accountScope: SyncScope, activeScope: SyncScope): Promise<QueuedMutation[]> => {
+  const values = await Promise.all(syncQueueScopes(accountScope, activeScope).map((scope) => readQueueValues<QueuedMutation>(scope)));
+  return values.flat().sort(compareMutations);
 };
 
 export async function readQueuedMutations(scope: SyncScope): Promise<SyncMutation[]> {
@@ -319,6 +491,12 @@ export async function readSyncCursor(scope: SyncScope): Promise<number> {
   const cursor = await readMeta<number>(cursorMetaKey(scope));
   return cursor ?? 0;
 }
+
+const isMergePreservingPantryItemTombstone = (change: SyncChange): boolean => change.operation === 'delete'
+  && change.entityType === 'pantry_item'
+  && change.deviceId === 'house-pantry-merge'
+  && change.syncScope?.startsWith('house:') === true
+  && change.mutationId.startsWith('house-pantry-merge:delete:pantry_item:');
 
 const applyChangeToSnapshot = (snapshot: PantrySnapshot, change: SyncChange): PantrySnapshot => {
   const normalizedSnapshot = normalizePantrySnapshot(snapshot);
@@ -334,12 +512,15 @@ const applyChangeToSnapshot = (snapshot: PantrySnapshot, change: SyncChange): Pa
   }
 
   if (change.entityType === 'pantry_item') {
+    const pantryLotsForIngredient = (normalizedSnapshot.pantryLots ?? []).filter((lot) => lot.ingredientId === change.entityId);
+    const pantryLots = change.operation === 'delete' && !isMergePreservingPantryItemTombstone(change)
+      ? (normalizedSnapshot.pantryLots ?? []).filter((lot) => lot.ingredientId !== change.entityId)
+      : (normalizedSnapshot.pantryLots ?? []);
     const pantryItems = normalizedSnapshot.pantryItems.filter((item) => item.id !== change.entityId);
-    const pantryLots = (normalizedSnapshot.pantryLots ?? []).filter((lot) => lot.ingredientId !== change.entityId);
     if (change.operation === 'upsert' && isPantryItemPayload(change.payload)
       && change.payload.id === change.entityId) {
       pantryItems.push(change.payload);
-      pantryLots.push(createPresencePantryLot(change.payload));
+      if (pantryLotsForIngredient.length === 0) pantryLots.push(createPresencePantryLot(change.payload));
     }
     return { ...normalizedSnapshot, pantryItems: derivePantryItems(pantryLots), pantryLots };
   }
@@ -349,37 +530,50 @@ const applyChangeToSnapshot = (snapshot: PantrySnapshot, change: SyncChange): Pa
   return enabled ? { ...normalizedSnapshot, stapleIds: [...stapleIds, change.entityId] } : { ...normalizedSnapshot, stapleIds };
 };
 
-const applyServerChanges = async (changes: SyncChange[]): Promise<void> => {
+const applyServerChanges = async (
+  changes: SyncChange[],
+  activeScope: SyncScope,
+  personalScope: SyncScope,
+): Promise<void> => {
   if (changes.length === 0) return;
 
   const pantryChanges = changes.filter((change) => change.entityType === 'pantry_item'
     || change.entityType === 'pantry_lot'
     || change.entityType === 'staple_preference');
-  if (pantryChanges.length > 0) {
-    let snapshot = await readPantrySnapshot() ?? { pantryItems: [], stapleIds: [] };
-    for (const change of pantryChanges) {
+  const pantryChangesByScope = new Map<SyncScope, SyncChange[]>();
+  for (const change of pantryChanges) {
+    const targetScope = change.syncScope?.startsWith('account:') ? personalScope : activeScope;
+    const scopedChanges = pantryChangesByScope.get(targetScope) ?? [];
+    scopedChanges.push(change);
+    pantryChangesByScope.set(targetScope, scopedChanges);
+  }
+  for (const [targetScope, scopedChanges] of pantryChangesByScope) {
+    let snapshot = await readPantrySnapshot(targetScope) ?? { pantryItems: [], stapleIds: [] };
+    for (const change of scopedChanges) {
       snapshot = applyChangeToSnapshot(snapshot, change);
     }
-    await writePantrySnapshot(snapshot);
-    for (const listener of pantrySnapshotListeners) listener(snapshot);
+    await writePantrySnapshot(snapshot, targetScope);
+    if (targetScope === activeScope) {
+      for (const listener of pantrySnapshotListeners) listener(snapshot);
+    }
   }
 
   const shoppingChanges = changes.filter((change) => change.entityType === 'shopping_list_item');
   if (shoppingChanges.length > 0) {
-    let items = await readShoppingList();
+    let items = await readShoppingList(personalScope);
     for (const change of shoppingChanges) {
       items = items.filter((item) => item.id !== change.entityId);
       if (change.operation === 'upsert' && isShoppingListItem(change.payload)) items.push(change.payload);
     }
-    await writeShoppingList(items);
+    await writeShoppingList(items, personalScope);
     for (const listener of shoppingListListeners) listener(items);
   }
 
   const activityChanges = changes.filter((change) => change.entityType === 'cook_event'
     || change.entityType === 'recipe_preference');
   if (activityChanges.length > 0) {
-    let events = await readCookEvents();
-    let preferences = await readRecipePreferences();
+    let events = await readCookEvents(personalScope);
+    let preferences = await readRecipePreferences(personalScope);
     let hasEventChanges = false;
     let hasPreferenceChanges = false;
     for (const change of activityChanges) {
@@ -393,15 +587,15 @@ const applyServerChanges = async (changes: SyncChange[]): Promise<void> => {
         if (change.operation === 'upsert' && isRecipePreference(change.payload)) preferences.push(change.payload);
       }
     }
-    if (hasEventChanges) await writeCookEvents(events);
-    if (hasPreferenceChanges) await writeRecipePreferences(preferences);
+    if (hasEventChanges) await writeCookEvents(events, personalScope);
+    if (hasPreferenceChanges) await writeRecipePreferences(preferences, personalScope);
     const snapshot = { events, preferences };
     for (const listener of activitySnapshotListeners) listener(snapshot);
   }
 
   const dietProfileChanges = changes.filter((change) => change.entityType === 'diet_profile');
   if (dietProfileChanges.length > 0) {
-    let profile = await readDietProfile();
+    let profile = await readDietProfile(personalScope);
     let hasProfileChange = false;
     for (const change of dietProfileChanges) {
       if (change.entityId !== 'profile') continue;
@@ -413,7 +607,7 @@ const applyServerChanges = async (changes: SyncChange[]): Promise<void> => {
       }
     }
     if (hasProfileChange) {
-      await writeDietProfile(profile);
+      await writeDietProfile(profile, personalScope);
       for (const listener of dietProfileSnapshotListeners) listener(profile);
     }
   }
@@ -444,30 +638,41 @@ export function registerDietProfileSnapshotListener(listener: (profile: DietProf
 
 export async function syncNow({ fetch, request = apiRequest, session, isSessionCurrent }: SyncRequestOptions): Promise<SyncResult> {
   ensureVerifiedSession(session);
-  const scope = getAccountSyncScope(session.userId);
-  const inFlight = syncPromises.get(scope);
+  const accountScope = getAccountSyncScope(session.userId);
+  const activeScope = getActiveDataScope();
+  const personalScope = getPersonalDataScope();
+  const cursorScope = activeScope.startsWith('house:') ? activeScope : accountScope;
+  const syncKey = `${accountScope}|${activeScope}`;
+  const inFlight = syncPromises.get(syncKey);
   if (inFlight !== undefined) return inFlight;
+
+  const contextError = (): Error | null => {
+    if (isSessionCurrent !== undefined && !isSessionCurrent()) return new SyncSessionChangedError();
+    if (getActiveDataScope() !== activeScope || getPersonalDataScope() !== personalScope) return new SyncScopeChangedError();
+    return null;
+  };
 
   const operation = (async () => {
     await waitForPendingQueueWrites();
+    const initialContextError = contextError();
+    if (initialContextError !== null) throw initialContextError;
     const deviceId = await getDeviceId();
-    let cursor = await readSyncCursor(scope);
+    let cursor = await readSyncCursor(cursorScope);
     let uploaded = 0;
     let downloaded = 0;
 
     for (let page = 0; page < MAX_SYNC_PAGES; page += 1) {
-      const queued = (await readQueueValues<QueuedMutation>(scope)).sort(compareMutations);
+      const queued = await readPendingSyncMutations(accountScope, activeScope);
       const batch = queued.slice(0, MAX_MUTATIONS_PER_REQUEST);
       const result = await request<SyncPage>('/v1/sync', {
         method: 'POST',
         csrfToken: session.csrfToken,
         fetch,
-        body: { deviceId, cursor, mutations: batch.map(toMutation) },
+        body: { syncScope: cursorScope === GUEST_SYNC_SCOPE ? undefined : cursorScope, deviceId, cursor, mutations: batch.map(toMutation) },
       });
 
-      if (isSessionCurrent !== undefined && !isSessionCurrent()) {
-        throw new SyncSessionChangedError();
-      }
+      const responseContextError = contextError();
+      if (responseContextError !== null) throw responseContextError;
 
       const serverHasMore = result.hasMore ?? result.changes.length >= SERVER_CHANGE_PAGE_SIZE;
       if (result.nextCursor < cursor || (result.changes.length > 0 && result.nextCursor <= cursor)
@@ -475,33 +680,32 @@ export async function syncNow({ fetch, request = apiRequest, session, isSessionC
         throw new SyncCursorStalledError();
       }
 
-      await applyServerChanges(result.changes);
-      if (isSessionCurrent !== undefined && !isSessionCurrent()) {
-        throw new SyncSessionChangedError();
-      }
-      await writeMeta(cursorMetaKey(scope), Math.max(cursor, result.nextCursor));
-      for (const mutation of batch) {
-        await deleteQueueValue(mutation.mutationId, scope);
-      }
+      await applyServerChanges(result.changes, activeScope, personalScope);
+      const appliedContextError = contextError();
+      if (appliedContextError !== null) throw appliedContextError;
+      const nextCursor = Math.max(cursor, result.nextCursor);
+      await writeMeta(cursorMetaKey(cursorScope), nextCursor);
+      if (cursorScope !== accountScope) await writeMeta(cursorMetaKey(accountScope), nextCursor);
+      for (const mutation of batch) await deleteQueueValue(mutation.mutationId, mutation.scope);
 
       uploaded += batch.length;
       downloaded += result.changes.length;
       cursor = Math.max(cursor, result.nextCursor);
-      const pending = (await readQueueValues<QueuedMutation>(scope)).length;
+      const pending = (await readPendingSyncMutations(accountScope, activeScope)).length;
       if (pending === 0 && !serverHasMore) {
         return { uploaded, downloaded, pending, complete: true };
       }
     }
 
-    const pending = (await readQueueValues<QueuedMutation>(scope)).length;
+    const pending = (await readPendingSyncMutations(accountScope, activeScope)).length;
     return { uploaded, downloaded, pending, complete: false };
   })().finally(() => {
-    if (syncPromises.get(scope) === operation) {
-      syncPromises.delete(scope);
+    if (syncPromises.get(syncKey) === operation) {
+      syncPromises.delete(syncKey);
     }
   });
 
-  syncPromises.set(scope, operation);
+  syncPromises.set(syncKey, operation);
   return operation;
 }
 
@@ -510,12 +714,21 @@ export async function syncVerifiedSession(
   options: Omit<SyncRequestOptions, 'session'> = {},
 ): Promise<SyncResult | null> {
   const scope = getAccountSyncScope(session.userId);
+  const activeScope = getActiveDataScope();
   setSyncStatus(scope, { state: 'syncing', error: null });
   try {
     const result = await syncNow({ ...options, session });
     setSyncStatus(scope, { state: 'success', error: null });
     return result;
   } catch (error) {
+    if (error instanceof ApiClientError
+      && (error.code === 'house_membership_required' || error.code === 'sync_scope_required')
+      && activeScope.startsWith('house:')) {
+      await clearDataScope(activeScope).catch(() => undefined);
+      setActiveDataScope(scope);
+      setPersonalDataScope(scope);
+      options.onMembershipLost?.();
+    }
     setSyncStatus(scope, { state: 'error', error });
     return null;
   }

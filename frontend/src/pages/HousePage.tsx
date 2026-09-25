@@ -98,7 +98,7 @@ export default function HousePage() {
         {houseState === null ? (
           <form className="mt-7 grid gap-3" onSubmit={handleCreate}>
             <h2 className="text-xl font-black text-gray-950">Crea una casa</h2>
-            <p className="text-gray-600">La casa condividerà dispensa, lista, attività e ricette AI generate. I tuoi dati personali resteranno personali.</p>
+            <p className="text-gray-600">La casa condividerà la dispensa: ingredienti, lotti e ingredienti di base. Lista della spesa, attività, ricette generate e dati del profilo restano personali.</p>
             <label className="grid gap-1 text-sm font-semibold text-gray-800">
               Nome della casa
               <input value={houseName} onChange={(event) => setHouseName(event.target.value)} maxLength={80} required className="min-h-11 rounded-xl border-2 border-gray-200 bg-gray-50 px-3 outline-none focus:border-gray-900" />
@@ -146,9 +146,9 @@ export default function HousePage() {
             )}
 
             <div className="mt-7 grid gap-3 border-t border-gray-200 pt-6">
-              <h2 className="text-xl font-black text-gray-950">I miei dati personali</h2>
-              <p className="text-gray-600">L’importazione è esplicita: unisce alla casa solo i dati condivisibili e non trasferisce dieta, allergeni, consenso o preferenze personali.</p>
-              <button type="button" disabled={isLoading || csrfToken === null} onClick={() => { if (window.confirm('Importare i dati condivisibili nella casa? Questa operazione non mantiene una copia personale separata.')) void run(() => importPersonalData(csrfToken ?? ''), 'Dati condivisibili importati.'); }} className="min-h-11 w-fit rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-2 font-bold text-amber-950 disabled:opacity-60">Importa i miei dati personali</button>
+              <h2 className="text-xl font-black text-gray-950">Dispensa condivisa</h2>
+              <p className="text-gray-600">Quando una persona entra nella casa, ingredienti, lotti e ingredienti di base vengono uniti automaticamente. Dieta, allergeni, consenso e preferenze personali restano separati.</p>
+              <button type="button" disabled={isLoading || csrfToken === null} onClick={() => void run(() => importPersonalData(csrfToken ?? ''), 'Unione della dispensa completata.')} className="min-h-11 w-fit rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-2 font-bold text-amber-950 disabled:opacity-60">Riprova unione della dispensa</button>
             </div>
 
             <div className="mt-7 border-t border-gray-200 pt-6">

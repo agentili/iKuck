@@ -20,6 +20,7 @@ export interface SessionRecord {
   id: string;
   userId: string;
   email: string;
+  emailVerifiedAt: Date | null;
   csrfTokenHash: string;
   expiresAt: Date;
 }
@@ -133,6 +134,7 @@ export const createDrizzleAuthRepository = (database: ApplicationDatabase['db'])
       id: result.session.id,
       userId: result.session.userId,
       email: result.user.email,
+      emailVerifiedAt: result.user.emailVerifiedAt,
       csrfTokenHash: result.session.csrfTokenHash,
       expiresAt: result.session.expiresAt,
     };

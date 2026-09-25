@@ -1,8 +1,13 @@
-import type { HouseMember, HouseRole, HouseState } from '@ikuck/shared/contracts';
+import type { HouseMember, HouseRole, HouseState, PantryLot } from '@ikuck/shared/contracts';
+import type { PantryMergeSummary } from '@ikuck/shared/pantryMerge';
 import { apiRequest, type ApiRequest } from '../api/apiClient';
 
 interface AddMemberResponse {
   member: HouseMember;
+}
+
+export interface PantryMergeResponse {
+  summary: PantryMergeSummary;
 }
 
 export const fetchHouseState = (request: ApiRequest = apiRequest): Promise<HouseState | null> => request<HouseState | null>('/v1/house');
@@ -21,6 +26,18 @@ export const addHouseMember = (email: string, csrfToken: string, request: ApiReq
 
 export const importPersonalHouseData = (csrfToken: string, request: ApiRequest = apiRequest): Promise<void> => request<void>('/v1/house/import-personal-data', {
   method: 'POST',
+  csrfToken,
+});
+
+export const mergeGuestPantry = (
+  deviceId: string,
+  lots: PantryLot[],
+  stapleIds: string[],
+  csrfToken: string,
+  request: ApiRequest = apiRequest,
+): Promise<PantryMergeResponse> => request<PantryMergeResponse>('/v1/house/pantry/merge', {
+  method: 'POST',
+  body: { deviceId, lots, stapleIds },
   csrfToken,
 });
 

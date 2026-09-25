@@ -4,7 +4,7 @@ import type { RecipePreference, RecipePreferencePayload, SyncChange, SyncMutatio
 import { AuthServiceError, type AuthService } from '../auth/service.js';
 import { isEmptyRecipePreference, isRecipePreference, parseRecipePreferenceDetails } from '../activity/validation.js';
 import type { SyncRepository } from '../sync/repository.js';
-import { ensureCsrf, ensureSameOrigin, requireSession } from './auth.js';
+import { ensureCsrf, ensureSameOrigin, requireVerifiedSession } from './auth.js';
 
 export interface RecipePreferenceRouteDependencies {
   repository: SyncRepository;
@@ -50,13 +50,13 @@ const readPreference = async (repository: SyncRepository, userId: string, recipe
 
 export const registerRecipePreferenceRoutes = ({ repository, authService, appOrigin }: RecipePreferenceRouteDependencies): FastifyPluginAsync => async (app) => {
   app.get('/v1/recipes/preferences', async (request) => {
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     return { preferences: await readPreferences(repository, session.userId) };
   });
 
   app.put('/v1/recipes/preferences/:recipeId', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     const recipeId = (request.params as { recipeId: string }).recipeId;
     const details = parseDetails(request.body);
@@ -78,7 +78,7 @@ export const registerRecipePreferenceRoutes = ({ repository, authService, appOri
 
   app.delete('/v1/recipes/preferences/:recipeId', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     const recipeId = (request.params as { recipeId: string }).recipeId;
     const existing = await readPreference(repository, session.userId, recipeId);

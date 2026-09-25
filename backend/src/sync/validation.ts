@@ -11,6 +11,7 @@ const mutationMetadata = {
   deviceId: z.string().min(1).max(128),
   entityId: z.string().min(1).max(128),
   clientUpdatedAt: z.string().datetime({ offset: true }),
+  syncScope: z.string().regex(/^(account|house):[^:]+$/).optional(),
 };
 
 const exactKeys = (value: unknown, keys: readonly string[]): boolean => {
@@ -102,7 +103,7 @@ export class SyncMutationValidationError extends Error {
 
 export const parseSyncMutation = (value: unknown): SyncMutation | null => {
   const result = syncMutationSchema.safeParse(value);
-  return result.success ? result.data : null;
+  return result.success ? result.data as SyncMutation : null;
 };
 
 export const assertSyncMutation = (value: unknown): SyncMutation => {

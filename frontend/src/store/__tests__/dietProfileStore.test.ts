@@ -4,6 +4,7 @@ import { deleteLocalDatabase, readMeta } from '../../storage/indexedDb';
 import * as dietProfileStorage from '../../storage/dietProfileStorage';
 import { readDietProfile } from '../../storage/dietProfileStorage';
 import { GUEST_SYNC_SCOPE, readQueuedMutations } from '../../sync/syncQueue';
+import { setActiveDataScope, setPersonalDataScope } from '../../sync/scopeContext';
 import { hydrateDietProfileStore, useDietProfileStore, waitForPendingDietProfileWrites } from '../dietProfileStore';
 import { usePersistenceStatusStore } from '../persistenceStatusStore';
 
@@ -33,6 +34,33 @@ describe('diet profile store', () => {
     await hydrateDietProfileStore();
 
     expect(useDietProfileStore.getState()).toMatchObject({ hasHydrated: true, profile: { diet: 'omnivore', excludedAllergens: [] } });
+  });
+
+  it('retries the profile hydration after the account changes in flight', async () => {
+    const accountA = 'account:diet-a' as const;
+    const accountB = 'account:diet-b' as const;
+    let releaseOld: (() => void) | undefined;
+    const oldRequest = new Promise<void>((resolve) => { releaseOld = resolve; });
+    const readSpy = vi.spyOn(dietProfileStorage, 'readDietProfile').mockImplementation(async (scope) => {
+      if (scope === accountA) await oldRequest;
+      return {
+        ...profile,
+        diet: scope === accountA ? 'vegetarian' : 'vegan',
+        updatedAt: '2026-09-24T10:00:00.000Z',
+      };
+    });
+
+    setActiveDataScope(accountA);
+    const firstHydration = hydrateDietProfileStore();
+    await vi.waitFor(() => expect(readSpy).toHaveBeenCalledWith(accountA));
+    setPersonalDataScope(accountB);
+    const secondHydration = hydrateDietProfileStore();
+    releaseOld?.();
+    await Promise.all([firstHydration, secondHydration]);
+
+    expect(useDietProfileStore.getState()).toMatchObject({ hasHydrated: true, profile: { diet: 'vegan' } });
+    readSpy.mockRestore();
+    setActiveDataScope('guest');
   });
 
   it('updates the profile immediately and queues one synchronized resource', async () => {

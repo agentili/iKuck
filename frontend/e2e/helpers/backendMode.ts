@@ -7,7 +7,7 @@ interface OfflineBackendState {
 
 export interface OfflineApiResponse {
   status?: number;
-  json: Record<string, unknown>;
+  json: unknown;
 }
 
 export interface OfflineBackendOptions {

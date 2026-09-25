@@ -3,6 +3,7 @@ import { vi } from 'vitest';
 import * as pantryStorage from '../../storage/pantryStorage';
 import { deleteLocalDatabase, readKeyValue, writeKeyValue } from '../../storage/indexedDb';
 import { GUEST_SYNC_SCOPE, readQueuedMutations, syncNow, waitForPendingQueueWrites } from '../../sync/syncQueue';
+import { setActiveDataScope } from '../../sync/scopeContext';
 import { hydratePantryStore, usePantryStore } from '../localPantryStore';
 import { usePersistenceStatusStore } from '../persistenceStatusStore';
 
@@ -10,6 +11,7 @@ describe('pantry store', () => {
   beforeEach(async () => {
     await deleteLocalDatabase();
     window.localStorage.clear();
+    setActiveDataScope('guest');
     usePersistenceStatusStore.getState().reset();
     usePantryStore.setState({
       hasHydrated: false,
@@ -26,6 +28,66 @@ describe('pantry store', () => {
 
     expect(state.pantryItems).toEqual([]);
     expect(state.stapleIds).toEqual([...DEFAULT_STAPLE_IDS]);
+  });
+
+  it('rehydrates the pantry from the newly active house scope', async () => {
+    setActiveDataScope('guest');
+    await pantryStorage.writePantrySnapshot({
+      pantryItems: [{ id: 'guest-item', label: 'Guest', known: false }],
+      stapleIds: [],
+    });
+    await hydratePantryStore();
+
+    setActiveDataScope('house:house-a');
+    await pantryStorage.writePantrySnapshot({
+      pantryItems: [{ id: 'house-item', label: 'House', known: false }],
+      stapleIds: [],
+    });
+    await hydratePantryStore();
+
+    expect(usePantryStore.getState().pantryItems).toEqual([{ id: 'house-item', label: 'House', known: false }]);
+    expect(usePantryStore.getState().hasHydrated).toBe(true);
+    setActiveDataScope('guest');
+  });
+
+  it('retries hydration for the new scope after an older hydration is still in flight', async () => {
+    let releaseFirst: (() => void) | undefined;
+    let calls = 0;
+    const rehydrate = vi.spyOn(usePantryStore.persist, 'rehydrate').mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) await new Promise<void>((resolve) => { releaseFirst = resolve; });
+    });
+    const firstHydration = hydratePantryStore();
+    await vi.waitFor(() => expect(calls).toBe(1));
+
+    setActiveDataScope('house:hydration-race');
+    const secondHydration = hydratePantryStore();
+    releaseFirst?.();
+    await Promise.all([firstHydration, secondHydration]);
+
+    expect(calls).toBe(2);
+    expect(usePantryStore.getState().hasHydrated).toBe(true);
+    rehydrate.mockRestore();
+    setActiveDataScope('guest');
+  });
+
+  it('preserves an existing persisted house pantry while switching away and back', async () => {
+    const houseScope = 'house:house-persisted' as const;
+    await pantryStorage.writePantrySnapshot({
+      pantryItems: [{ id: 'house-item', label: 'House', known: true }],
+      stapleIds: [],
+      pantryLots: [{
+        id: 'house-lot', ingredientId: 'house-item', label: 'House', known: true, quantity: 500, unit: 'g',
+        expiresAt: null, createdAt: '2026-09-12T12:00:00.000Z', updatedAt: '2026-09-12T12:00:00.000Z',
+      }],
+    }, houseScope);
+    setActiveDataScope(houseScope);
+    await hydratePantryStore();
+    setActiveDataScope('account:user-1');
+    setActiveDataScope(houseScope);
+    await hydratePantryStore();
+
+    expect(usePantryStore.getState().pantryLots).toEqual([expect.objectContaining({ id: 'house-lot', quantity: 500 })]);
   });
 
   it('exposes hydration state and becomes ready after IndexedDB rehydration', async () => {

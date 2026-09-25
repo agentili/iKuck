@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import type { HouseMember, HouseRole, HouseState, HouseSummary } from '@ikuck/shared/contracts';
 import type { ApplicationDatabase } from '../db/client.js';
 import { houseMemberships, houses, processedSyncMutations, syncItems, userProfiles, users } from '../db/schema.js';
@@ -244,6 +244,7 @@ export const createDrizzleHouseRepository = (database: ApplicationDatabase['db']
     addExistingMember: async ({ adminUserId, email, now }) => database.transaction(async (transaction) => {
       const [adminMembershipRow] = await transaction.select().from(houseMemberships).where(eq(houseMemberships.userId, adminUserId)).limit(1);
       if (adminMembershipRow?.role !== 'admin') return { kind: 'admin_required' as const };
+      await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${adminMembershipRow.houseId} FOR UPDATE`);
       const [target] = await transaction.select({ user: users, profile: userProfiles })
         .from(users)
         .leftJoin(userProfiles, eq(userProfiles.userId, users.id))
@@ -274,6 +275,7 @@ export const createDrizzleHouseRepository = (database: ApplicationDatabase['db']
     updateMemberRole: async ({ adminUserId, userId, role, now }) => database.transaction(async (transaction) => {
       const [admin] = await transaction.select().from(houseMemberships).where(eq(houseMemberships.userId, adminUserId)).limit(1);
       if (admin?.role !== 'admin') return 'admin_required' as const;
+      await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${admin.houseId} FOR UPDATE`);
       const [target] = await transaction.select().from(houseMemberships).where(and(eq(houseMemberships.userId, userId), eq(houseMemberships.houseId, admin.houseId))).limit(1);
       if (target === undefined) return 'not_found' as const;
       if (target.role === 'admin' && role === 'member') {
@@ -289,6 +291,7 @@ export const createDrizzleHouseRepository = (database: ApplicationDatabase['db']
     removeMember: async ({ adminUserId, userId }) => database.transaction(async (transaction) => {
       const [admin] = await transaction.select().from(houseMemberships).where(eq(houseMemberships.userId, adminUserId)).limit(1);
       if (admin?.role !== 'admin') return 'admin_required' as const;
+      await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${admin.houseId} FOR UPDATE`);
       const [target] = await transaction.select().from(houseMemberships).where(and(eq(houseMemberships.userId, userId), eq(houseMemberships.houseId, admin.houseId))).limit(1);
       if (target === undefined) return 'not_found' as const;
       if (target.role === 'admin') {
@@ -304,6 +307,7 @@ export const createDrizzleHouseRepository = (database: ApplicationDatabase['db']
     leaveHouse: async ({ userId }) => database.transaction(async (transaction) => {
       const [membership] = await transaction.select().from(houseMemberships).where(eq(houseMemberships.userId, userId)).limit(1);
       if (membership === undefined) return 'not_found' as const;
+      await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${membership.houseId} FOR UPDATE`);
       const members = await transaction.select({ id: houseMemberships.id, role: houseMemberships.role })
         .from(houseMemberships)
         .where(eq(houseMemberships.houseId, membership.houseId));

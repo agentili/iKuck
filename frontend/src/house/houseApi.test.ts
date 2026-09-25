@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { HouseState } from '@ikuck/shared/contracts';
+import type { HouseState, PantryLot } from '@ikuck/shared/contracts';
 import type { ApiRequest, ApiRequestOptions } from '../api/apiClient';
 import { addHouseMember, changeHouseMemberRole, createHouse, fetchHouseState, importPersonalHouseData, leaveHouse, removeHouseMember } from './houseApi';
 
@@ -26,5 +26,22 @@ describe('house api', () => {
     expect(request).toHaveBeenNthCalledWith(5, '/v1/house/members/user%2F1', { method: 'PATCH', body: { role: 'admin' }, csrfToken: 'csrf' });
     expect(request).toHaveBeenNthCalledWith(6, '/v1/house/members/user%2F1', { method: 'DELETE', csrfToken: 'csrf' });
     expect(request).toHaveBeenNthCalledWith(7, '/v1/house/leave', { method: 'POST', csrfToken: 'csrf' });
+  });
+
+  it('posts a device pantry snapshot with csrf and returns the server summary', async () => {
+    const request = vi.fn(async <T>(): Promise<T> => ({
+      summary: { addedLots: 1, mergedLots: 2, mergedGroups: 1, importedStaples: 1 },
+    } as T));
+    const lots: PantryLot[] = [];
+
+    const { mergeGuestPantry } = await import('./houseApi');
+    const result = await mergeGuestPantry('device-1', lots, ['salt'], 'csrf', request as unknown as ApiRequest);
+
+    expect(result).toEqual({ summary: { addedLots: 1, mergedLots: 2, mergedGroups: 1, importedStaples: 1 } });
+    expect(request).toHaveBeenCalledWith('/v1/house/pantry/merge', {
+      method: 'POST',
+      body: { deviceId: 'device-1', lots, stapleIds: ['salt'] },
+      csrfToken: 'csrf',
+    });
   });
 });

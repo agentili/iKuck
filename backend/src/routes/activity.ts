@@ -4,7 +4,7 @@ import type { CookEvent, CookEventPayload, SyncChange, SyncMutation } from '@iku
 import { AuthServiceError, type AuthService } from '../auth/service.js';
 import { isCookEvent, parseCookEventDetails } from '../activity/validation.js';
 import type { SyncRepository } from '../sync/repository.js';
-import { ensureCsrf, ensureSameOrigin, requireSession } from './auth.js';
+import { ensureCsrf, ensureSameOrigin, requireVerifiedSession } from './auth.js';
 
 export interface ActivityRouteDependencies {
   repository: SyncRepository;
@@ -51,13 +51,13 @@ const readEvent = async (repository: SyncRepository, userId: string, eventId: st
 
 export const registerActivityRoutes = ({ repository, authService, appOrigin }: ActivityRouteDependencies): FastifyPluginAsync => async (app) => {
   app.get('/v1/activity', async (request) => {
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     return { events: await readEvents(repository, session.userId) };
   });
 
   app.post('/v1/activity', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     const details = parseDetails(request.body);
     const now = new Date().toISOString();
@@ -68,7 +68,7 @@ export const registerActivityRoutes = ({ repository, authService, appOrigin }: A
 
   app.delete('/v1/activity/:eventId', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     const event = await readEvent(repository, session.userId, (request.params as { eventId: string }).eventId);
     await repository.applyMutation(session.userId, createMutation(event, 'delete'));
@@ -77,7 +77,7 @@ export const registerActivityRoutes = ({ repository, authService, appOrigin }: A
 
   app.delete('/v1/activity', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     const events = await readEvents(repository, session.userId);
     await Promise.all(events.map((event) => repository.applyMutation(session.userId, createMutation(event, 'delete'))));

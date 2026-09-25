@@ -9,8 +9,11 @@ import { createAuthService } from '../auth/service.js';
 import { createDrizzleAuthRepository } from '../auth/repository.js';
 import { createCache } from '../cache/client.js';
 import { createDatabase } from '../db/client.js';
+import { createDrizzleHouseRepository } from '../house/repository.js';
+import { createHouseService } from '../house/service.js';
 import { createDrizzleProfileRepository } from '../profile/repository.js';
 import { createDrizzleSyncRepository } from '../sync/repository.js';
+import type { PantryLot } from '@ikuck/shared/contracts';
 import { hashOpaqueToken } from '../auth/tokens.js';
 import { createRedisGenerationRateLimiter } from '../ai/rateLimit.js';
 import type { RecipeGenerationProvider } from '../providers/types.js';
@@ -26,6 +29,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
   let app: ReturnType<typeof createApp>;
   const sentEmails: Array<{ to: string; subject: string; html: string }> = [];
   let tokenNumber = 0;
+  const tokenRun = Date.now();
 
   beforeAll(async () => {
     if (database === null || cache === null) throw new Error('Integration services are not configured');
@@ -48,7 +52,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       },
       appOrigin,
       tokenFactory: () => {
-        const raw = `integration-token-${tokenNumber += 1}-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`;
+        const raw = `integration-token-${tokenRun}-${tokenNumber += 1}-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`;
         return { raw, hash: hashOpaqueToken(raw) };
       },
     });
@@ -228,6 +232,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       operation: 'upsert' as const,
       payload: { id: 'pasta', label: 'Pasta', known: true },
       clientUpdatedAt: '2026-09-12T12:00:00.000Z',
+      syncScope: `account:${loginBody.user.id}` as const,
     };
     const sync = await app.inject({
       method: 'POST',
@@ -286,6 +291,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
           operation: 'upsert',
           payload: lot,
           clientUpdatedAt: lot.updatedAt,
+          syncScope: `account:${loginBody.user.id}` as const,
         }],
       },
     });
@@ -525,6 +531,477 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     await migrate(database.db, {
       migrationsFolder: join(dirname(fileURLToPath(import.meta.url)), '..', 'db', 'migrations'),
     });
+  });
+
+  it('merges two verified accounts and a guest device into one house pantry idempotently', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const now = new Date('2026-09-24T12:00:00.000Z');
+    const suffix = Date.now();
+    const admin = await authRepository.createUser({ email: `integration-house-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    const member = await authRepository.createUser({ email: `integration-house-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    const lot = (id: string, quantity: number, updatedAt: string): PantryLot => ({
+      id,
+      ingredientId: 'pasta',
+      label: 'Pasta',
+      known: true,
+      quantity,
+      unit: 'g',
+      expiresAt: '2026-10-01',
+      createdAt: updatedAt,
+      updatedAt,
+    });
+
+    await syncRepository.applyMutation(admin.id, {
+      mutationId: `integration-house-admin-lot-${suffix}`,
+      deviceId: 'admin-device',
+      entityType: 'pantry_lot',
+      entityId: 'admin-pasta',
+      operation: 'upsert',
+      payload: lot('admin-pasta', 1000, '2026-09-24T10:00:00.000Z'),
+      clientUpdatedAt: '2026-09-24T10:00:00.000Z',
+    });
+    await syncRepository.applyMutation(member.id, {
+      mutationId: `integration-house-member-lot-${suffix}`,
+      deviceId: 'member-device',
+      entityType: 'pantry_lot',
+      entityId: 'member-pasta',
+      operation: 'upsert',
+      payload: lot('member-pasta', 500, '2026-09-24T10:01:00.000Z'),
+      clientUpdatedAt: '2026-09-24T10:01:00.000Z',
+    });
+
+    const created = await service.createHouse(admin.id, `Casa integrazione ${suffix}`);
+    await service.addMember(admin.id, member.email);
+    const firstGuestMerge = await service.mergeGuestPantry(member.id, {
+      deviceId: 'member-device',
+      lots: [lot('guest-pasta', 250, '2026-09-24T10:02:00.000Z')],
+      stapleIds: ['salt'],
+    });
+    const retryGuestMerge = await service.mergeGuestPantry(member.id, {
+      deviceId: 'member-device',
+      lots: [lot('guest-pasta', 250, '2026-09-24T10:02:00.000Z')],
+      stapleIds: ['salt'],
+    });
+
+    expect(created.state.house?.id).toBeDefined();
+    expect(firstGuestMerge).toMatchObject({ mergedLots: 1, mergedGroups: 1, importedStaples: 1 });
+    expect(retryGuestMerge).toMatchObject({ addedLots: 0, mergedLots: 0, importedStaples: 0 });
+    const houseRows = await syncRepository.readAll(admin.id);
+    expect(houseRows).toContainEqual(expect.objectContaining({
+      entityType: 'pantry_lot',
+      payload: expect.objectContaining({ quantity: 1750, unit: 'g' }),
+    }));
+    expect(houseRows).toContainEqual(expect.objectContaining({
+      entityType: 'staple_preference',
+      entityId: 'salt',
+      payload: { enabled: true },
+    }));
+  });
+
+  it('deduplicates guest lot revisions and keeps the newer account revision in PostgreSQL', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const now = new Date('2026-09-24T12:00:00.000Z');
+    const suffix = Date.now();
+    const admin = await authRepository.createUser({ email: `integration-revision-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    const member = await authRepository.createUser({ email: `integration-revision-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    const created = await service.createHouse(admin.id, `Casa revision ${suffix}`);
+    await service.addMember(admin.id, member.email);
+    const lot = (id: string, quantity: number, updatedAt: string): PantryLot => ({
+      id,
+      ingredientId: 'revision-pasta',
+      label: 'Revision pasta',
+      known: true,
+      quantity,
+      unit: 'g',
+      expiresAt: '2026-10-01',
+      createdAt: '2026-09-24T10:00:00.000Z',
+      updatedAt,
+    });
+
+    await syncRepository.applyMutation(member.id, {
+      mutationId: `integration-revision-account-${suffix}`,
+      deviceId: `revision-device-${suffix}`,
+      entityType: 'pantry_lot',
+      entityId: `revision-lot-${suffix}`,
+      operation: 'upsert',
+      payload: lot(`revision-lot-${suffix}`, 200, '2026-09-24T10:02:00.000Z'),
+      clientUpdatedAt: '2026-09-24T10:02:00.000Z',
+      syncScope: `account:${member.id}`,
+    });
+    await syncRepository.mergeUserPantryToHouse(member.id, created.state.house!.id);
+    await syncRepository.mergeGuestPantryToHouse(member.id, created.state.house!.id, {
+      deviceId: `revision-device-${suffix}`,
+      lots: [lot(`revision-lot-${suffix}`, 100, '2026-09-24T10:01:00.000Z')],
+      stapleIds: [],
+    });
+
+    const duplicateLotId = `duplicate-lot-${suffix}`;
+    const duplicateLot = (quantity: number, updatedAt: string): PantryLot => ({
+      ...lot(duplicateLotId, quantity, updatedAt),
+      ingredientId: 'duplicate-pasta',
+      label: 'Duplicate pasta',
+    });
+    await syncRepository.mergeGuestPantryToHouse(member.id, created.state.house!.id, {
+      deviceId: `duplicate-device-${suffix}`,
+      lots: [duplicateLot(100, '2026-09-24T10:00:00+02:00'), duplicateLot(250, '2026-09-24T09:30:00Z')],
+      stapleIds: [],
+    });
+
+    const guestFirstId = `guest-first-lot-${suffix}`;
+    const guestFirstLot = (quantity: number, updatedAt: string): PantryLot => ({
+      id: guestFirstId,
+      ingredientId: 'guest-first-pasta',
+      label: 'Guest first pasta',
+      known: true,
+      quantity,
+      unit: 'g',
+      expiresAt: '2026-10-02',
+      createdAt: '2026-09-24T10:00:00.000Z',
+      updatedAt,
+    });
+    await syncRepository.mergeGuestPantryToHouse(member.id, created.state.house!.id, {
+      deviceId: `guest-first-device-${suffix}`,
+      lots: [guestFirstLot(100, '2026-09-24T10:05:00.000Z')],
+      stapleIds: [],
+    });
+    await syncRepository.applyMutation(member.id, {
+      mutationId: `integration-guest-first-account-${suffix}`,
+      deviceId: `guest-first-device-${suffix}`,
+      entityType: 'pantry_lot',
+      entityId: guestFirstId,
+      operation: 'upsert',
+      payload: guestFirstLot(200, '2026-09-24T10:06:00.000Z'),
+      clientUpdatedAt: '2026-09-24T10:06:00.000Z',
+      syncScope: `account:${member.id}`,
+    });
+    await syncRepository.mergeUserPantryToHouse(member.id, created.state.house!.id);
+
+    const rekeyLotId = `rekey-lot-${suffix}`;
+    const rekeyLot = (quantity: number, updatedAt: string): PantryLot => ({
+      id: rekeyLotId,
+      ingredientId: 'rekey-pasta',
+      label: 'Rekey pasta',
+      known: true,
+      quantity,
+      unit: 'g',
+      expiresAt: '2026-10-03',
+      createdAt: '2026-09-24T10:00:00.000Z',
+      updatedAt,
+    });
+    await syncRepository.applyMutation(member.id, {
+      mutationId: `integration-rekey-account-${suffix}`,
+      deviceId: `rekey-account-device-${suffix}`,
+      entityType: 'pantry_lot',
+      entityId: rekeyLotId,
+      operation: 'upsert',
+      payload: rekeyLot(100, '2026-09-24T10:07:00.000Z'),
+      clientUpdatedAt: '2026-09-24T10:07:00.000Z',
+      syncScope: `account:${member.id}`,
+    });
+    await syncRepository.mergeUserPantryToHouse(member.id, created.state.house!.id);
+    await syncRepository.mergeGuestPantryToHouse(member.id, created.state.house!.id, {
+      deviceId: `rekey-guest-device-${suffix}`,
+      lots: [rekeyLot(50, '2026-09-24T10:08:00.000Z')],
+      stapleIds: [],
+    });
+    await syncRepository.mergeGuestPantryToHouse(member.id, created.state.house!.id, {
+      deviceId: `rekey-guest-device-${suffix}`,
+      lots: [rekeyLot(60, '2026-09-24T10:09:00.000Z')],
+      stapleIds: [],
+    });
+
+    const rows = await syncRepository.readAll(admin.id);
+    expect(rows.filter((row) => row.entityType === 'pantry_lot' && row.payload !== null)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ payload: expect.objectContaining({ id: `revision-lot-${suffix}`, quantity: 200 }) }),
+      expect.objectContaining({ payload: expect.objectContaining({ id: duplicateLotId, quantity: 250 }) }),
+      expect.objectContaining({ payload: expect.objectContaining({ id: guestFirstId, quantity: 200 }) }),
+    ]));
+    expect(rows.filter((row) => row.entityType === 'pantry_lot' && row.payload !== null
+      && (row.payload as { id?: string }).id === duplicateLotId)).toHaveLength(1);
+    const rekeyRows = rows.filter((row) => row.entityType === 'pantry_lot' && row.payload !== null
+      && (row.payload as { ingredientId?: string }).ingredientId === 'rekey-pasta');
+    expect(rekeyRows).toHaveLength(1);
+    expect(rekeyRows[0]).toMatchObject({ payload: expect.objectContaining({ quantity: 160 }) });
+  });
+
+  it('preserves a personal source edit committed while a database merge is pending', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const now = new Date('2026-09-24T12:00:00.000Z');
+    const suffix = Date.now();
+    const admin = await authRepository.createUser({ email: `integration-pending-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    const member = await authRepository.createUser({ email: `integration-pending-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    const created = await service.createHouse(admin.id, `Casa pending ${suffix}`);
+    await service.addMember(admin.id, member.email);
+    const lotId = `pending-lot-${suffix}`;
+    const lot = (quantity: number, updatedAt: string): PantryLot => ({
+      id: lotId,
+      ingredientId: 'pending-pasta',
+      label: 'Pending pasta',
+      known: true,
+      quantity,
+      unit: 'g',
+      expiresAt: '2026-10-01',
+      createdAt: '2026-09-24T10:00:00.000Z',
+      updatedAt,
+    });
+    await syncRepository.applyMutation(member.id, {
+      mutationId: `integration-pending-before-${suffix}`,
+      deviceId: `pending-device-${suffix}`,
+      entityType: 'pantry_lot',
+      entityId: lotId,
+      operation: 'upsert',
+      payload: lot(100, '2026-09-24T10:01:00.000Z'),
+      clientUpdatedAt: '2026-09-24T10:01:00.000Z',
+      syncScope: `account:${member.id}`,
+    });
+
+    await database.db.execute(sql`DROP TRIGGER IF EXISTS sync_items_test_pause_house_merge ON sync_items`);
+    await database.db.execute(sql`DROP FUNCTION IF EXISTS sync_items_test_pause_house_merge()`);
+    await database.db.execute(sql`
+      CREATE FUNCTION sync_items_test_pause_house_merge()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $$ BEGIN
+        IF NEW.scope_type = 'house' AND NEW.entity_type = 'pantry_lot' THEN PERFORM pg_sleep(0.25); END IF;
+        RETURN NEW;
+      END; $$
+    `);
+    await database.db.execute(sql`
+      CREATE TRIGGER sync_items_test_pause_house_merge
+      BEFORE INSERT ON sync_items
+      FOR EACH ROW EXECUTE FUNCTION sync_items_test_pause_house_merge()
+    `);
+
+    try {
+      const mergePromise = syncRepository.mergeUserPantryToHouse(member.id, created.state.house!.id);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await syncRepository.applyMutation(member.id, {
+        mutationId: `integration-pending-after-${suffix}`,
+        deviceId: `pending-device-${suffix}`,
+        entityType: 'pantry_lot',
+        entityId: lotId,
+        operation: 'upsert',
+        payload: lot(250, '2026-09-24T10:02:00.000Z'),
+        clientUpdatedAt: '2026-09-24T10:02:00.000Z',
+        syncScope: `account:${member.id}`,
+      });
+      await mergePromise;
+    } finally {
+      await database.db.execute(sql`DROP TRIGGER IF EXISTS sync_items_test_pause_house_merge ON sync_items`);
+      await database.db.execute(sql`DROP FUNCTION IF EXISTS sync_items_test_pause_house_merge()`);
+    }
+
+    await syncRepository.mergeUserPantryToHouse(member.id, created.state.house!.id);
+    await expect(syncRepository.readEntity(member.id, 'pantry_lot', lotId)).resolves.toMatchObject({
+      payload: expect.objectContaining({ quantity: 250 }),
+    });
+  });
+
+  it('serializes membership removal behind an in-flight shared sync mutation', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const suffix = Date.now();
+    const now = new Date('2026-09-24T13:00:00.000Z');
+    const admin = await authRepository.createUser({ email: `integration-toctou-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    const member = await authRepository.createUser({ email: `integration-toctou-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    const created = await service.createHouse(admin.id, `Casa TOCTOU ${suffix}`);
+    await service.addMember(admin.id, member.email);
+    const houseId = created.state.house!.id;
+
+    await database.db.execute(sql`DROP TRIGGER IF EXISTS sync_items_test_pause_membership_race ON processed_sync_mutations`);
+    await database.db.execute(sql`DROP FUNCTION IF EXISTS sync_items_test_pause_membership_race()`);
+    await database.db.execute(sql`
+      CREATE FUNCTION sync_items_test_pause_membership_race()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $$ BEGIN
+        IF NEW.scope_type = 'house' THEN PERFORM pg_sleep(0.5); END IF;
+        RETURN NEW;
+      END; $$
+    `);
+    await database.db.execute(sql`
+      CREATE TRIGGER sync_items_test_pause_membership_race
+      BEFORE INSERT ON processed_sync_mutations
+      FOR EACH ROW EXECUTE FUNCTION sync_items_test_pause_membership_race()
+    `);
+
+    try {
+      const applyPromise = syncRepository.applyMutation(member.id, {
+        mutationId: `toctou-mutation-${suffix}`,
+        deviceId: `toctou-device-${suffix}`,
+        entityType: 'pantry_item',
+        entityId: `toctou-item-${suffix}`,
+        operation: 'upsert',
+        payload: { id: `toctou-item-${suffix}`, label: 'TOCTOU', known: true },
+        clientUpdatedAt: '2026-09-24T13:01:00.000Z',
+        syncScope: `house:${houseId}`,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      let removeFinished = false;
+      const removePromise = service.removeMember(admin.id, member.id).then(() => { removeFinished = true; });
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(removeFinished).toBe(false);
+      await expect(applyPromise).resolves.toMatchObject({ applied: true });
+      await removePromise;
+    } finally {
+      await database.db.execute(sql`DROP TRIGGER IF EXISTS sync_items_test_pause_membership_race ON processed_sync_mutations`);
+      await database.db.execute(sql`DROP FUNCTION IF EXISTS sync_items_test_pause_membership_race()`);
+    }
+  });
+
+  it('rejects a read-only house scope after membership removal in PostgreSQL', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const suffix = Date.now();
+    const now = new Date('2026-09-24T14:00:00.000Z');
+    const admin = await authRepository.createUser({ email: `integration-read-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    const member = await authRepository.createUser({ email: `integration-read-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    const created = await service.createHouse(admin.id, `Casa read ${suffix}`);
+    await service.addMember(admin.id, member.email);
+    const houseScope = `house:${created.state.house!.id}` as const;
+
+    await expect(syncRepository.readChanges(member.id, 0, 100, houseScope)).resolves.toEqual([]);
+    await expect(service.removeMember(admin.id, member.id)).resolves.toBeUndefined();
+    await expect(syncRepository.readChanges(member.id, 0, 100, houseScope))
+      .rejects.toMatchObject({ code: 'house_membership_required' });
+  });
+
+  it('serializes concurrent guest merges so neither source is lost', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const now = new Date('2026-09-24T12:00:00.000Z');
+    const suffix = Date.now();
+    const admin = await authRepository.createUser({ email: `integration-concurrent-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    const member = await authRepository.createUser({ email: `integration-concurrent-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    await service.createHouse(admin.id, `Casa concurrente ${suffix}`);
+    await service.addMember(admin.id, member.email);
+    const lot = (id: string, quantity: number): PantryLot => ({
+      id,
+      ingredientId: 'pasta',
+      label: 'Pasta',
+      known: true,
+      quantity,
+      unit: 'g',
+      expiresAt: '2026-10-01',
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    });
+
+    await Promise.all([
+      service.mergeGuestPantry(admin.id, { deviceId: `admin-device-${suffix}`, lots: [lot('same-lot', 100)], stapleIds: [] }),
+      service.mergeGuestPantry(member.id, { deviceId: `member-device-${suffix}`, lots: [lot('same-lot', 200)], stapleIds: [] }),
+    ]);
+
+    const houseRows = await syncRepository.readAll(admin.id);
+    expect(houseRows.filter((row) => row.entityType === 'pantry_lot'))
+      .toContainEqual(expect.objectContaining({ payload: expect.objectContaining({ quantity: 300, unit: 'g' }) }));
+  });
+  it('serializes a shared mutation with a concurrent pantry merge without losing either write', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const now = new Date('2026-09-24T12:00:00.000Z');
+    const suffix = Date.now();
+    const admin = await authRepository.createUser({ email: `integration-mutation-race-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    const member = await authRepository.createUser({ email: `integration-mutation-race-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    await service.createHouse(admin.id, `Casa mutation race ${suffix}`);
+    await service.addMember(admin.id, member.email);
+    const lot = (id: string, quantity: number): PantryLot => ({
+      id,
+      ingredientId: 'pasta',
+      label: 'Pasta',
+      known: true,
+      quantity,
+      unit: 'g',
+      expiresAt: '2026-10-01',
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    });
+
+    await Promise.all([
+      service.mergeGuestPantry(admin.id, { deviceId: `admin-device-${suffix}`, lots: [lot('merge-lot', 100)], stapleIds: [] }),
+      syncRepository.applyMutation(member.id, {
+        mutationId: `integration-mutation-race-${suffix}`,
+        deviceId: `member-device-${suffix}`,
+        entityType: 'pantry_lot',
+        entityId: 'sync-lot',
+        operation: 'upsert',
+        payload: lot('sync-lot', 50),
+        clientUpdatedAt: now.toISOString(),
+      }),
+    ]);
+
+    const houseLots = (await syncRepository.readAll(admin.id)).flatMap((row) => {
+      if (row.entityType !== 'pantry_lot' || row.payload === null || row.payload === undefined) return [];
+      const quantity = (row.payload as { quantity?: unknown }).quantity;
+      return typeof quantity === 'number' ? [quantity] : [];
+    });
+    expect(houseLots.reduce((total, quantity) => total + quantity, 0)).toBe(150);
   });
 
   it('does not depend on migration source files at runtime', async () => {

@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AuthService } from '../auth/service.js';
-import { clearSessionCookie, ensureCsrf, ensureSameOrigin, requireSession } from './auth.js';
+import { clearSessionCookie, ensureCsrf, ensureSameOrigin, requireVerifiedSession } from './auth.js';
 import type { ProfileRepository } from '../profile/repository.js';
 
 export interface ProfileRouteDependencies {
@@ -21,25 +21,25 @@ const parseProfile = (body: unknown): { displayName: string | null } => {
 
 export const registerProfileRoutes = ({ repository, authService, appOrigin, secureCookies }: ProfileRouteDependencies): FastifyPluginAsync => async (app) => {
   app.get('/v1/profile', async (request) => {
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     return { profile: await repository.getProfile(session.userId) };
   });
 
   app.patch('/v1/profile', async (request) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     return { profile: await repository.updateProfile(session.userId, parseProfile(request.body).displayName) };
   });
 
   app.get('/v1/profile/export', async (request) => {
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     return repository.exportAccount(session.userId);
   });
 
   app.delete('/v1/profile', async (request, reply) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     await repository.deleteAccount(session.userId);
     reply.header('set-cookie', clearSessionCookie(secureCookies));

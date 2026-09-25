@@ -13,6 +13,7 @@ const authFor = (userId: string, email: string): AuthService => ({
     id: `session-${userId}`,
     userId,
     email,
+    emailVerifiedAt: new Date('2026-09-24T00:00:00.000Z'),
     csrfTokenHash: hashOpaqueToken('csrf-token'),
     expiresAt: new Date('2026-10-12T12:00:00.000Z'),
   }),
@@ -60,6 +61,37 @@ describe('house routes', () => {
     expect(stateResponse.json().members).toHaveLength(2);
   });
 
+  it('rejects unverified sessions from house data and pantry merge routes', async () => {
+    const repository = createMemoryHouseRepository([
+      { id: 'member-1', email: 'member@example.com', displayName: 'Member', emailVerifiedAt: null },
+    ]);
+    const authService = authFor('member-1', 'member@example.com');
+    authService.authenticate = async () => ({
+      id: 'session-member-1',
+      userId: 'member-1',
+      email: 'member@example.com',
+      emailVerifiedAt: null,
+      csrfTokenHash: hashOpaqueToken('csrf-token'),
+      expiresAt: new Date('2026-10-12T12:00:00.000Z'),
+    });
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      house: { service: createHouseService({ repository }), authService, appOrigin: origin },
+    });
+
+    const stateResponse = await app.inject({ method: 'GET', url: '/v1/house', headers });
+    const mergeResponse = await app.inject({
+      method: 'POST',
+      url: '/v1/house/pantry/merge',
+      headers,
+      payload: { deviceId: 'device-1', lots: [], stapleIds: [] },
+    });
+
+    expect(stateResponse.statusCode).toBe(403);
+    expect(mergeResponse.statusCode).toBe(403);
+  });
+
   it('returns a negative typed result for an unregistered email', async () => {
     const repository = createMemoryHouseRepository([
       { id: 'admin-1', email: 'admin@example.com', displayName: 'Admin', emailVerifiedAt: new Date() },
@@ -101,6 +133,41 @@ describe('house routes', () => {
 
     expect(response.statusCode).toBe(204);
     expect(migrateUserSharedDataToHouse).toHaveBeenCalledWith('admin-1', 'house-1');
+  });
+
+  it('accepts a verified device pantry snapshot and returns the merge summary', async () => {
+    const repository = createMemoryHouseRepository([
+      { id: 'admin-1', email: 'admin@example.com', displayName: 'Admin', emailVerifiedAt: new Date() },
+    ]);
+    const mergeGuestPantryToHouse = vi.fn<SyncRepository['mergeGuestPantryToHouse']>().mockResolvedValue({
+      addedLots: 2,
+      mergedLots: 1,
+      mergedGroups: 1,
+      importedStaples: 1,
+    });
+    const syncRepository = { mergeGuestPantryToHouse } as unknown as SyncRepository;
+    const authService = authFor('admin-1', 'admin@example.com');
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      house: { service: createHouseService({ repository, syncRepository }), authService, appOrigin: origin },
+    });
+    await app.inject({ method: 'POST', url: '/v1/house', headers, payload: { name: 'Casa' } });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/house/pantry/merge',
+      headers,
+      payload: { deviceId: 'device-1', lots: [], stapleIds: ['salt'] },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ summary: { addedLots: 2, mergedLots: 1, mergedGroups: 1, importedStaples: 1 } });
+    expect(mergeGuestPantryToHouse).toHaveBeenCalledWith('admin-1', 'house-1', {
+      deviceId: 'device-1',
+      lots: [],
+      stapleIds: ['salt'],
+    });
   });
 
   it('allows a member to leave and protects the last admin', async () => {

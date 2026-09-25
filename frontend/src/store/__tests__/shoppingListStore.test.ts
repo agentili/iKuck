@@ -2,7 +2,8 @@ import type { PantryRecipe } from '../../domain/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { deleteLocalDatabase, readKeyValue } from '../../storage/indexedDb';
 import * as shoppingListStorage from '../../storage/shoppingListStorage';
-import { readShoppingList } from '../../storage/shoppingListStorage';
+import { readShoppingList, writeShoppingList } from '../../storage/shoppingListStorage';
+import { setActiveDataScope, setPersonalDataScope } from '../../sync/scopeContext';
 import { GUEST_SYNC_SCOPE, readQueuedMutations, waitForPendingQueueWrites } from '../../sync/syncQueue';
 import { hydrateShoppingListStore, useShoppingListStore } from '../shoppingListStore';
 import { usePersistenceStatusStore } from '../persistenceStatusStore';
@@ -26,6 +27,7 @@ const recipe: PantryRecipe = {
 
 describe('shopping list store', () => {
   beforeEach(async () => {
+    setActiveDataScope('guest');
     await deleteLocalDatabase();
     usePersistenceStatusStore.getState().reset();
     useShoppingListStore.setState({ hasHydrated: false, items: [] });
@@ -35,6 +37,74 @@ describe('shopping list store', () => {
     await hydrateShoppingListStore();
 
     expect(useShoppingListStore.getState()).toMatchObject({ hasHydrated: true, items: [] });
+  });
+
+  it('retries hydration for the newest account after an older request is in flight', async () => {
+    const accountA = 'account:hydration-a' as const;
+    const accountB = 'account:hydration-b' as const;
+    const item = (id: string) => ({
+      id,
+      ingredientId: 'pasta',
+      label: id,
+      quantity: null,
+      unit: null,
+      note: null,
+      purchased: false,
+      sourceRecipeId: null,
+      createdAt: '2026-09-24T10:00:00.000Z',
+      updatedAt: '2026-09-24T10:00:00.000Z',
+    });
+    let releaseOld: (() => void) | undefined;
+    const oldRequest = new Promise<void>((resolve) => { releaseOld = resolve; });
+    const readSpy = vi.spyOn(shoppingListStorage, 'readShoppingList').mockImplementation(async (scope) => {
+      if (scope === accountA) await oldRequest;
+      return [item(scope === accountA ? 'account-a-item' : 'account-b-item')];
+    });
+
+    setActiveDataScope(accountA);
+    const firstHydration = hydrateShoppingListStore();
+    await vi.waitFor(() => expect(readSpy).toHaveBeenCalledWith(accountA));
+    setPersonalDataScope(accountB);
+    const secondHydration = hydrateShoppingListStore();
+    releaseOld?.();
+    await Promise.all([firstHydration, secondHydration]);
+
+    expect(useShoppingListStore.getState()).toMatchObject({ hasHydrated: true, items: [{ id: 'account-b-item' }] });
+    readSpy.mockRestore();
+    setActiveDataScope('guest');
+  });
+
+  it('keeps personal shopping data out of house scope and rehydrates on account change', async () => {
+    const accountScope = 'account:scope-user' as const;
+    const otherAccountScope = 'account:other-user' as const;
+    const houseScope = 'house:scope-house' as const;
+    const item = (id: string, label: string) => ({
+      id,
+      ingredientId: 'pasta',
+      label,
+      quantity: null,
+      unit: null,
+      note: null,
+      purchased: false,
+      sourceRecipeId: null,
+      createdAt: '2026-09-24T10:00:00.000Z',
+      updatedAt: '2026-09-24T10:00:00.000Z',
+    });
+    await writeShoppingList([item('account-item', 'Account item')], accountScope);
+    await writeShoppingList([item('other-account-item', 'Other account item')], otherAccountScope);
+
+    setActiveDataScope(accountScope);
+    await hydrateShoppingListStore();
+    expect(useShoppingListStore.getState().items).toMatchObject([{ id: 'account-item' }]);
+
+    setActiveDataScope(houseScope);
+    expect(useShoppingListStore.getState()).toMatchObject({ hasHydrated: true, items: [{ id: 'account-item' }] });
+
+    setPersonalDataScope(otherAccountScope);
+    expect(useShoppingListStore.getState()).toMatchObject({ hasHydrated: false, items: [] });
+    await hydrateShoppingListStore();
+    expect(useShoppingListStore.getState().items).toMatchObject([{ id: 'other-account-item' }]);
+    setActiveDataScope('guest');
   });
 
   it('adds, edits, toggles, removes and clears items immediately', async () => {

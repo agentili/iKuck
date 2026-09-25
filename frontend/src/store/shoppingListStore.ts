@@ -14,6 +14,7 @@ import {
   waitForPendingQueueWrites,
 } from '../sync/syncQueue';
 import { trackPersistence, trackSync } from './persistenceStatusStore';
+import { getPersonalDataScope, subscribePersonalDataScope, type SyncScope } from '../sync/scopeContext';
 
 export interface ShoppingListItemPatch {
   label?: string;
@@ -35,6 +36,8 @@ export interface ShoppingListState {
 }
 
 let hydrationPromise: Promise<void> | null = null;
+let hydrationGeneration = 0;
+let hydratedScope: SyncScope | null = null;
 let pendingStorageWrites = Promise.resolve();
 
 const createItemId = (): string => {
@@ -44,8 +47,8 @@ const createItemId = (): string => {
   return `shopping:${id}`;
 };
 
-const persistItems = (items: readonly ShoppingListItem[]): Promise<void> => {
-  const operation = pendingStorageWrites.then(() => writeShoppingList(items));
+const persistItems = (items: readonly ShoppingListItem[], scope: SyncScope): Promise<void> => {
+  const operation = pendingStorageWrites.then(() => writeShoppingList(items, scope));
   pendingStorageWrites = operation.catch(() => undefined);
   return operation;
 };
@@ -67,8 +70,9 @@ const persistAndQueue = (
   changed: ShoppingListItem,
   operation: 'upsert' | 'delete' = 'upsert',
 ): void => {
-  void trackPersistence('shopping-list', () => persistItems(items));
-  void trackSync('shopping-list', () => enqueueEntityMutation(getMutationScope('shopping_list_item'),
+  const personalScope = getPersonalDataScope();
+  void trackPersistence('shopping-list', () => persistItems(items, personalScope));
+  void trackSync('shopping-list', () => enqueueEntityMutation(getMutationScope('shopping_list_item', personalScope, personalScope),
     'shopping_list_item',
     changed.id,
     operation,
@@ -152,10 +156,11 @@ export const useShoppingListStore = create<ShoppingListState>((set, get) => ({
     if (removed.length === 0) return 0;
     const items = get().items.filter((item) => !item.purchased);
     set({ items });
-    void trackPersistence('shopping-list', () => persistItems(items));
+    const personalScope = getPersonalDataScope();
+    void trackPersistence('shopping-list', () => persistItems(items, personalScope));
     for (const item of removed) {
       void trackSync('shopping-list', () => enqueueEntityMutation(
-        getMutationScope('shopping_list_item'),
+        getMutationScope('shopping_list_item', personalScope, personalScope),
         'shopping_list_item',
         item.id,
         'delete',
@@ -170,20 +175,42 @@ registerShoppingListSnapshotListener((items) => {
   useShoppingListStore.setState({ items: normalizeShoppingList(items) });
 });
 
+subscribePersonalDataScope(() => {
+  hydrationGeneration += 1;
+  hydratedScope = null;
+  useShoppingListStore.setState({ hasHydrated: false, items: [] });
+});
+
 export async function waitForPendingShoppingListWrites(): Promise<void> {
   await pendingStorageWrites;
   await waitForPendingQueueWrites();
 }
 
 export async function hydrateShoppingListStore(): Promise<void> {
-  if (useShoppingListStore.getState().hasHydrated) return;
-  if (hydrationPromise === null) {
-    hydrationPromise = readShoppingList()
-      .then((items) => useShoppingListStore.setState({ items: normalizeShoppingList(items), hasHydrated: true }))
-      .catch(() => useShoppingListStore.setState({ items: [], hasHydrated: true }))
-      .finally(() => {
-        hydrationPromise = null;
-      });
+  for (;;) {
+    const scope = getPersonalDataScope();
+    const generation = hydrationGeneration;
+    if (useShoppingListStore.getState().hasHydrated && hydratedScope === scope) return;
+    if (hydrationPromise === null) {
+      const currentPromise = readShoppingList(scope)
+        .then((items) => {
+          if (getPersonalDataScope() !== scope || hydrationGeneration !== generation) return;
+          hydratedScope = scope;
+          useShoppingListStore.setState({ items: normalizeShoppingList(items), hasHydrated: true });
+        })
+        .catch(() => {
+          if (getPersonalDataScope() !== scope || hydrationGeneration !== generation) return;
+          hydratedScope = scope;
+          useShoppingListStore.setState({ items: [], hasHydrated: true });
+        })
+        .finally(() => {
+          hydrationPromise = null;
+        });
+      hydrationPromise = currentPromise;
+    }
+    const pendingHydration = hydrationPromise;
+    if (pendingHydration !== null) await pendingHydration;
+    if (getPersonalDataScope() === scope && hydrationGeneration === generation
+      && useShoppingListStore.getState().hasHydrated && hydratedScope === scope) return;
   }
-  await hydrationPromise;
 }

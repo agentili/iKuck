@@ -3,11 +3,13 @@ import type { CookEvent, DietProfile, PantryLot, RecipePreference, ShoppingListI
 import validMutations from '@ikuck/shared/sync-fixtures/valid.json';
 import invalidMutations from '@ikuck/shared/sync-fixtures/invalid.json';
 import type { ApiRequest } from '../api/apiClient';
+import { ApiClientError } from '../api/apiClient';
 import {
   deleteLocalDatabase,
   deleteQueueValue,
   readMeta,
   readQueueValues,
+  writeMeta,
   writeQueueValue,
   type SyncScope,
 } from '../storage/indexedDb';
@@ -23,6 +25,8 @@ import {
   getDeviceId,
   getMutationScope,
   importLocalData,
+  initializeSessionScope,
+  mergeGuestPantryIntoHouse,
   readQueuedMutations,
   readSyncCursor,
   syncNow,
@@ -47,7 +51,7 @@ const sampleMutation = (mutationId = 'mutation-1', clientUpdatedAt = '2026-09-12
 });
 
 const responseFor = (body: SyncChangeSet) => new Response(JSON.stringify(body), { status: 200 });
-import { getPersonalDataScope, setActiveDataScope, setPersonalDataScope } from './scopeContext';
+import { getActiveDataScope, getPersonalDataScope, setActiveDataScope, setPersonalDataScope } from './scopeContext';
 
 const accountScope = getAccountSyncScope(session.userId);
 describe('sync queue', () => {
@@ -88,9 +92,9 @@ describe('sync queue', () => {
     setPersonalDataScope('account:user-1');
 
     expect(getMutationScope('pantry_lot')).toBe('house:house-a');
-    expect(getMutationScope('shopping_list_item')).toBe('house:house-a');
-    expect(getMutationScope('cook_event')).toBe('house:house-a');
-    expect(getMutationScope('generated_recipe')).toBe('house:house-a');
+    expect(getMutationScope('shopping_list_item')).toBe('account:user-1');
+    expect(getMutationScope('cook_event')).toBe('account:user-1');
+    expect(getMutationScope('generated_recipe')).toBe('account:user-1');
     expect(getMutationScope('recipe_preference')).toBe('account:user-1');
     expect(getMutationScope('diet_profile')).toBe('account:user-1');
     expect(getMutationScope('ai_consent')).toBe('account:user-1');
@@ -126,6 +130,18 @@ describe('sync queue', () => {
     expect(requestB).toHaveBeenCalledOnce();
   });
 
+  it('stores a separate cursor for each house while keeping the account high-water mark', async () => {
+    const houseScope = 'house:cursor-house' as const;
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    const request = vi.fn().mockResolvedValue({ changes: [], nextCursor: 12 });
+
+    await syncNow({ session, request });
+
+    await expect(readSyncCursor(houseScope)).resolves.toBe(12);
+    await expect(readSyncCursor(accountScope)).resolves.toBe(12);
+    setActiveDataScope('guest');
+  });
   it('shares one in-flight request for concurrent syncs of the same account', async () => {
     let resolveRequest: ((value: SyncChangeSet) => void) | undefined;
     const requestMock = vi.fn(async () => new Promise<SyncChangeSet>((resolve) => {
@@ -166,6 +182,35 @@ describe('sync queue', () => {
     await expect(readSyncCursor(getAccountSyncScope('user-b'))).resolves.toBe(22);
   });
 
+  it('applies personal shopping and cooking changes to the account while pantry stays house-scoped', async () => {
+    const houseScope = 'house:scope-isolation' as const;
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    const shoppingItem: ShoppingListItem = {
+      id: 'shopping-personal', ingredientId: 'pasta', label: 'Pasta', quantity: 1, unit: 'pack', note: null,
+      purchased: false, sourceRecipeId: null, createdAt: '2026-09-12T12:00:00.000Z', updatedAt: '2026-09-12T12:00:00.000Z',
+    };
+    const cookEvent: CookEvent = {
+      id: 'cook-personal', recipeId: 'recipe-1', recipeTitle: 'Pasta', servings: 2,
+      cookedAt: '2026-09-12T12:00:00.000Z', note: null, createdAt: '2026-09-12T12:00:00.000Z', updatedAt: '2026-09-12T12:00:00.000Z',
+    };
+    const request = vi.fn().mockResolvedValue({
+      changes: [
+        { ...sampleMutation('personal-shopping'), entityType: 'shopping_list_item', entityId: shoppingItem.id, payload: shoppingItem, serverSequence: 1 },
+        { ...sampleMutation('personal-cook'), entityType: 'cook_event', entityId: cookEvent.id, payload: cookEvent, serverSequence: 2 },
+      ],
+      nextCursor: 2,
+    });
+
+    await syncNow({ session, request });
+
+    await expect(readShoppingList(accountScope)).resolves.toEqual([shoppingItem]);
+    await expect(readShoppingList(houseScope)).resolves.toEqual([]);
+    await expect(readCookEvents(accountScope)).resolves.toEqual([cookEvent]);
+    await expect(readCookEvents(houseScope)).resolves.toEqual([]);
+    setActiveDataScope('guest');
+  });
+
   it('does not apply or delete a response after the active session changes', async () => {
     await enqueueMutation(accountScope, sampleMutation('pending-mutation'));
     let isCurrent = true;
@@ -187,6 +232,28 @@ describe('sync queue', () => {
     await expect(readPantrySnapshot()).resolves.toBeNull();
   });
 
+  it('does not apply or advance a response after the active data scope changes', async () => {
+    const firstScope = 'house:inflight-a' as const;
+    const secondScope = 'house:inflight-b' as const;
+    setActiveDataScope(firstScope);
+    let resolveRequest: ((value: SyncChangeSet) => void) | undefined;
+    const request = vi.fn(async () => new Promise<SyncChangeSet>((resolve) => {
+      resolveRequest = resolve;
+    }));
+    const operation = syncNow({ session, request: request as unknown as ApiRequest });
+    await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
+    setActiveDataScope(secondScope);
+    resolveRequest?.({
+      changes: [{ ...sampleMutation('scope-change'), entityId: 'scope-item', serverSequence: 3 }],
+      nextCursor: 3,
+    });
+
+    await expect(operation).rejects.toMatchObject({ code: 'scope_changed' });
+    await expect(readSyncCursor(firstScope)).resolves.toBe(0);
+    await expect(readSyncCursor(secondScope)).resolves.toBe(0);
+    await expect(readPantrySnapshot(secondScope)).resolves.toBeNull();
+    setActiveDataScope('guest');
+  });
   it('records the initial sync error instead of swallowing it', async () => {
     const request = vi.fn().mockRejectedValue(new Error('offline'));
 
@@ -196,6 +263,30 @@ describe('sync queue', () => {
       state: 'error',
       error: expect.objectContaining({ message: 'offline' }),
     });
+  });
+
+  it('purges the stale house scope and switches to the account after membership loss during sync', async () => {
+    const staleScope = 'house:removed-house' as const;
+    setActiveDataScope(staleScope);
+    setPersonalDataScope(accountScope);
+    await writePantrySnapshot({
+      pantryItems: [{ id: 'stale', label: 'Stale', known: true }],
+      stapleIds: ['salt'],
+      pantryLots: [],
+    }, staleScope);
+    await writeQueueValue({ ...sampleMutation('stale-house-mutation'), scope: staleScope });
+    await writeMeta(`syncCursor:${staleScope}`, 42);
+    const request = vi.fn().mockRejectedValue(new ApiClientError(403, 'house_membership_required', 'House membership is required for shared data'));
+    const onMembershipLost = vi.fn();
+
+    await expect(syncVerifiedSession(session, { request, onMembershipLost })).resolves.toBeNull();
+
+    expect(getActiveDataScope()).toBe(accountScope);
+    expect(getPersonalDataScope()).toBe(accountScope);
+    expect(onMembershipLost).toHaveBeenCalledOnce();
+    await expect(readPantrySnapshot(staleScope)).resolves.toBeNull();
+    await expect(readQueuedMutations(staleScope)).resolves.toEqual([]);
+    await expect(readSyncCursor(staleScope)).resolves.toBe(0);
   });
 
   it('syncs a verified session on reconnect and removes the listener', async () => {
@@ -285,6 +376,147 @@ describe('sync queue', () => {
 
     expect(JSON.parse(fetch.mock.calls[0]?.[1]?.body as string).mutations).toEqual([]);
     await expect(readQueuedMutations(GUEST_SYNC_SCOPE)).resolves.toHaveLength(1);
+  });
+
+  it('uploads and removes house-scoped pantry mutations during an account sync', async () => {
+    const houseScope = 'house:house-a' as const;
+    setActiveDataScope(houseScope);
+    await enqueueMutation(houseScope, sampleMutation('house-mutation'));
+    const request = vi.fn().mockResolvedValue({ changes: [], nextCursor: 1 });
+
+    await syncNow({ session, request });
+
+    expect(request).toHaveBeenCalledWith('/v1/sync', expect.objectContaining({
+      body: expect.objectContaining({ mutations: [expect.objectContaining({ mutationId: 'house-mutation' })] }),
+    }));
+    await expect(readQueuedMutations(houseScope)).resolves.toEqual([]);
+    setActiveDataScope('guest');
+  });
+
+  it('uploads the guest pantry once to the house and clears local guest data only after success', async () => {
+    setActiveDataScope('guest');
+    await writePantrySnapshot({
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+      stapleIds: ['salt'],
+      pantryLots: [],
+    });
+    await enqueueMutation(GUEST_SYNC_SCOPE, sampleMutation('guest-pending'));
+    const request = vi.fn().mockResolvedValue({
+      summary: { addedLots: 1, mergedLots: 0, mergedGroups: 0, importedStaples: 1 },
+    });
+
+    await expect(mergeGuestPantryIntoHouse(session, 'house-a', request)).resolves.toEqual({
+      addedLots: 1,
+      mergedLots: 0,
+      mergedGroups: 0,
+      importedStaples: 1,
+    });
+
+    const body = request.mock.calls[0]?.[1]?.body as { deviceId: string; lots: unknown[]; stapleIds: string[] };
+    expect(body).toMatchObject({ lots: expect.arrayContaining([expect.objectContaining({ id: 'pasta' })]), stapleIds: ['salt'] });
+    await expect(readPantrySnapshot()).resolves.toBeNull();
+    await expect(readQueuedMutations(GUEST_SYNC_SCOPE)).resolves.toEqual([]);
+  });
+
+  it('does not treat a client-shaped merge tombstone as preserving pantry lots', async () => {
+    const houseScope = 'house:forged-tombstone' as const;
+    setActiveDataScope(houseScope);
+    await writePantrySnapshot({
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+      stapleIds: [],
+      pantryLots: [{
+        id: 'canonical-lot', ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 500, unit: 'g', expiresAt: null,
+        createdAt: '2026-09-24T10:00:00.000Z', updatedAt: '2026-09-24T10:02:00.000Z',
+      }],
+    }, houseScope);
+    const fetch = vi.fn().mockResolvedValue(responseFor({
+      changes: [{
+        ...sampleMutation('house-pantry-merge:delete:pantry_item:pasta'), entityType: 'pantry_item', entityId: 'pasta', operation: 'delete', payload: null,
+        syncScope: houseScope, serverSequence: 1,
+      }],
+      nextCursor: 1,
+    }));
+
+    await syncNow({ session, fetch });
+
+    await expect(readPantrySnapshot(houseScope)).resolves.toMatchObject({ pantryLots: [] });
+    setActiveDataScope('guest');
+  });
+
+  it('preserves guest data created while a pantry merge request is pending', async () => {
+    setActiveDataScope('guest');
+    await writePantrySnapshot({
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+      stapleIds: [],
+      pantryLots: [],
+    });
+    await enqueueMutation(GUEST_SYNC_SCOPE, sampleMutation('guest-before-merge'));
+    const request = vi.fn(async () => {
+      await enqueueMutation(GUEST_SYNC_SCOPE, sampleMutation('guest-during-merge'));
+      return { summary: { addedLots: 0, mergedLots: 0, mergedGroups: 0, importedStaples: 0 } };
+    });
+
+    await mergeGuestPantryIntoHouse(session, 'house-a', request as unknown as ApiRequest);
+
+    await expect(readPantrySnapshot(GUEST_SYNC_SCOPE)).resolves.not.toBeNull();
+    await expect(readQueuedMutations(GUEST_SYNC_SCOPE)).resolves.toEqual([
+      expect.objectContaining({ mutationId: 'guest-during-merge' }),
+    ]);
+  });
+
+  it('activates the personal account scope and clears stale house state after access is lost', async () => {
+    const staleScope = 'house:stale-house' as const;
+    setActiveDataScope(staleScope);
+    await writePantrySnapshot({
+      pantryItems: [{ id: 'stale', label: 'Stale', known: true }],
+      stapleIds: ['salt'],
+      pantryLots: [],
+    }, staleScope);
+    await writeQueueValue({ ...sampleMutation('stale-house-mutation'), scope: staleScope });
+    await writeMeta(`syncCursor:${staleScope}`, 42);
+    const request = vi.fn().mockResolvedValue(null);
+
+    await initializeSessionScope(session, request);
+
+    expect(getActiveDataScope()).toBe('account:user-1');
+    expect(getPersonalDataScope()).toBe('account:user-1');
+    await expect(readPantrySnapshot(staleScope)).resolves.toBeNull();
+    await expect(readQueuedMutations(staleScope)).resolves.toEqual([]);
+    await expect(readSyncCursor(staleScope)).resolves.toBe(0);
+  });
+
+  it('does not apply a cancelled session scope initialization after an await', async () => {
+    let releaseRequest: (() => void) | undefined;
+    const pendingRequest = new Promise<void>((resolve) => { releaseRequest = resolve; });
+    let current = true;
+    const request = vi.fn(async () => {
+      await pendingRequest;
+      return null;
+    });
+    setActiveDataScope('house:old-house');
+    const initialization = initializeSessionScope(session, request as unknown as ApiRequest, () => current);
+    current = false;
+    setActiveDataScope('account:new-user');
+    setPersonalDataScope('account:new-user');
+    releaseRequest?.();
+
+    await expect(initialization).rejects.toThrow('cancelled');
+    expect(getActiveDataScope()).toBe('account:new-user');
+    expect(getPersonalDataScope()).toBe('account:new-user');
+  });
+
+  it('activates the house scope after loading the authenticated house and merging guest data', async () => {
+    setActiveDataScope('house:stale-house');
+    const request = vi.fn()
+      .mockResolvedValueOnce({ house: { id: 'house-a', name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' }, membership: { role: 'member', joinedAt: '2026-09-24T00:00:00.000Z' }, members: [] })
+      .mockResolvedValueOnce({ summary: { addedLots: 0, mergedLots: 0, mergedGroups: 0, importedStaples: 0 } });
+
+    await initializeSessionScope(session, request);
+
+    expect(request).toHaveBeenNthCalledWith(1, '/v1/house');
+    expect(request).toHaveBeenNthCalledWith(2, '/v1/house/pantry/merge', expect.objectContaining({ method: 'POST' }));
+    expect(getActiveDataScope()).toBe('house:house-a');
+    expect(getPersonalDataScope()).toBe('account:user-1');
   });
 
   it('imports pantry data into the account scope without deleting the guest data', async () => {
@@ -392,6 +624,102 @@ describe('sync queue', () => {
     }));
     await expect(readQueuedMutations(accountScope)).resolves.toEqual([]);
     await expect(readSyncCursor(accountScope)).resolves.toBe(4);
+  });
+
+  it('applies an absorbed-lot tombstone and retains the canonical merged lot offline', async () => {
+    const houseScope = 'house:tombstone-house' as const;
+    setActiveDataScope(houseScope);
+    await writePantrySnapshot({
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+      stapleIds: [],
+      pantryLots: [
+        {
+          id: 'lot-a', ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 300, unit: 'g', expiresAt: '2026-10-01',
+          createdAt: '2026-09-24T10:00:00.000Z', updatedAt: '2026-09-24T10:00:00.000Z',
+        },
+        {
+          id: 'lot-b', ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 200, unit: 'g', expiresAt: '2026-10-01',
+          createdAt: '2026-09-24T10:01:00.000Z', updatedAt: '2026-09-24T10:01:00.000Z',
+        },
+      ],
+    }, houseScope);
+    const fetch = vi.fn().mockResolvedValue(responseFor({
+      changes: [
+        {
+          ...sampleMutation('merged-lot'), entityType: 'pantry_lot', entityId: 'lot-a', operation: 'upsert',
+          payload: {
+            id: 'lot-a', ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 500, unit: 'g', expiresAt: '2026-10-01',
+            createdAt: '2026-09-24T10:00:00.000Z', updatedAt: '2026-09-24T10:02:00.000Z',
+          }, serverSequence: 4,
+        },
+        { ...sampleMutation('absorbed-lot'), entityType: 'pantry_lot', entityId: 'lot-b', operation: 'delete', payload: null, serverSequence: 5 },
+      ],
+      nextCursor: 5,
+    }));
+
+    await syncNow({ session, fetch });
+
+    await expect(readPantrySnapshot(houseScope)).resolves.toMatchObject({
+      pantryLots: [expect.objectContaining({ id: 'lot-a', quantity: 500 })],
+    });
+    setActiveDataScope('guest');
+  });
+  it('removes pantry lots for a normal pantry-item delete', async () => {
+    const houseScope = 'house:legacy-delete-house' as const;
+    setActiveDataScope(houseScope);
+    await writePantrySnapshot({
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+      stapleIds: [],
+      pantryLots: [{
+        id: 'legacy-lot', ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 300, unit: 'g', expiresAt: null,
+        createdAt: '2026-09-24T10:00:00.000Z', updatedAt: '2026-09-24T10:00:00.000Z',
+      }],
+    }, houseScope);
+    const fetch = vi.fn().mockResolvedValue(responseFor({
+      changes: [{
+        ...sampleMutation('legacy-item-delete'), entityType: 'pantry_item', entityId: 'pasta', operation: 'delete', payload: null, serverSequence: 1,
+      }],
+      nextCursor: 1,
+    }));
+
+    await syncNow({ session, fetch });
+
+    await expect(readPantrySnapshot(houseScope)).resolves.toMatchObject({ pantryItems: [], pantryLots: [] });
+    setActiveDataScope('guest');
+  });
+
+  it('preserves the canonical lot for a merge-generated pantry-item tombstone', async () => {
+    const houseScope = 'house:merge-item-tombstone' as const;
+    setActiveDataScope(houseScope);
+    await writePantrySnapshot({
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+      stapleIds: [],
+      pantryLots: [{
+        id: 'canonical-lot', ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 500, unit: 'g', expiresAt: null,
+        createdAt: '2026-09-24T10:00:00.000Z', updatedAt: '2026-09-24T10:02:00.000Z',
+      }],
+    }, houseScope);
+    const fetch = vi.fn().mockResolvedValue(responseFor({
+      changes: [{
+        ...sampleMutation('house-pantry-merge:pantry_lot:canonical-lot'), entityType: 'pantry_lot', entityId: 'canonical-lot',
+        operation: 'upsert', payload: {
+          id: 'canonical-lot', ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 500, unit: 'g', expiresAt: null,
+          createdAt: '2026-09-24T10:00:00.000Z', updatedAt: '2026-09-24T10:02:00.000Z',
+        }, serverSequence: 1,
+      },
+      {
+        ...sampleMutation('house-pantry-merge:delete:pantry_item:pasta'), entityType: 'pantry_item', entityId: 'pasta', operation: 'delete', payload: null,
+        deviceId: 'house-pantry-merge', syncScope: houseScope, serverSequence: 2,
+      }],
+      nextCursor: 2,
+    }));
+
+    await syncNow({ session, fetch });
+
+    await expect(readPantrySnapshot(houseScope)).resolves.toMatchObject({
+      pantryLots: [expect.objectContaining({ id: 'canonical-lot', quantity: 500 })],
+    });
+    setActiveDataScope('guest');
   });
 
   it('applies a remote pantry lot and keeps its quantity and expiry details', async () => {

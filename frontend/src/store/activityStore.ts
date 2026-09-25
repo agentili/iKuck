@@ -17,6 +17,7 @@ import {
   waitForPendingQueueWrites,
 } from '../sync/syncQueue';
 import { trackPersistence, trackSync } from './persistenceStatusStore';
+import { getPersonalDataScope, subscribePersonalDataScope, type SyncScope } from '../sync/scopeContext';
 
 export interface ActivityState {
   hasHydrated: boolean;
@@ -32,6 +33,8 @@ export interface ActivityState {
 }
 
 let hydrationPromise: Promise<void> | null = null;
+let hydrationGeneration = 0;
+let hydratedPersonalScope: SyncScope | null = null;
 let pendingEventWrites = Promise.resolve();
 let pendingPreferenceWrites = Promise.resolve();
 
@@ -42,14 +45,14 @@ const createEventId = (): string => {
   return `event:${id}`;
 };
 
-const persistEvents = (events: readonly CookEvent[]): Promise<void> => {
-  const operation = pendingEventWrites.then(() => writeCookEvents(events));
+const persistEvents = (events: readonly CookEvent[], scope: SyncScope): Promise<void> => {
+  const operation = pendingEventWrites.then(() => writeCookEvents(events, scope));
   pendingEventWrites = operation.catch(() => undefined);
   return operation;
 };
 
-const persistPreferences = (preferences: readonly RecipePreference[]): Promise<void> => {
-  const operation = pendingPreferenceWrites.then(() => writeRecipePreferences(preferences));
+const persistPreferences = (preferences: readonly RecipePreference[], scope: SyncScope): Promise<void> => {
+  const operation = pendingPreferenceWrites.then(() => writeRecipePreferences(preferences, scope));
   pendingPreferenceWrites = operation.catch(() => undefined);
   return operation;
 };
@@ -83,8 +86,9 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     };
     const events = [...get().events, event];
     set({ events });
-    void trackPersistence('activity', () => persistEvents(events));
-    void trackSync('activity', () => enqueueEntityMutation(getMutationScope('cook_event'), 'cook_event', event.id, 'upsert', event));
+    const personalScope = getPersonalDataScope();
+    void trackPersistence('activity', () => persistEvents(events, personalScope));
+    void trackSync('activity', () => enqueueEntityMutation(getMutationScope('cook_event', personalScope, personalScope), 'cook_event', event.id, 'upsert', event));
     return event.id;
   },
   removeCookEvent: (id) => {
@@ -92,8 +96,9 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     if (existing === undefined) return false;
     const events = get().events.filter((event) => event.id !== id);
     set({ events });
-    void trackPersistence('activity', () => persistEvents(events));
-    void trackSync('activity', () => enqueueEntityMutation(getMutationScope('cook_event'), 'cook_event', id, 'delete', null));
+    const personalScope = getPersonalDataScope();
+    void trackPersistence('activity', () => persistEvents(events, personalScope));
+    void trackSync('activity', () => enqueueEntityMutation(getMutationScope('cook_event', personalScope, personalScope), 'cook_event', id, 'delete', null));
     return true;
   },
   restoreCookEvent: (event) => {
@@ -101,17 +106,19 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     if (validateCookEventDetails(event.recipeId, event.recipeTitle, event.servings, event.cookedAt, event.note).length > 0) return false;
     const events = [...get().events, event];
     set({ events });
-    void trackPersistence('activity', () => persistEvents(events));
-    void trackSync('activity', () => enqueueEntityMutation(getMutationScope('cook_event'), 'cook_event', event.id, 'upsert', event));
+    const personalScope = getPersonalDataScope();
+    void trackPersistence('activity', () => persistEvents(events, personalScope));
+    void trackSync('activity', () => enqueueEntityMutation(getMutationScope('cook_event', personalScope, personalScope), 'cook_event', event.id, 'upsert', event));
     return true;
   },
   clearActivity: () => {
     const events = get().events;
     if (events.length === 0) return 0;
     set({ events: [] });
-    void trackPersistence('activity', () => persistEvents([]));
+    const personalScope = getPersonalDataScope();
+    void trackPersistence('activity', () => persistEvents([], personalScope));
     for (const event of events) {
-      void trackSync('activity', () => enqueueEntityMutation(getMutationScope('cook_event'), 'cook_event', event.id, 'delete', null));
+      void trackSync('activity', () => enqueueEntityMutation(getMutationScope('cook_event', personalScope, personalScope), 'cook_event', event.id, 'delete', null));
     }
     return events.length;
   },
@@ -121,11 +128,12 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     if (!preferencePayloadIsValid(payload)) return false;
     const existing = get().getRecipePreference(recipeId);
     if (isEmptyRecipePreference(payload)) {
+      const personalScope = getPersonalDataScope();
       if (existing === undefined) return true;
       const preferences = get().preferences.filter((preference) => preference.recipeId !== recipeId);
       set({ preferences });
-      void trackPersistence('activity', () => persistPreferences(preferences));
-      void trackSync('activity', () => enqueueEntityMutation(getMutationScope('recipe_preference'), 'recipe_preference', recipeId, 'delete', null));
+      void trackPersistence('activity', () => persistPreferences(preferences, personalScope));
+      void trackSync('activity', () => enqueueEntityMutation(getMutationScope('recipe_preference', personalScope, personalScope), 'recipe_preference', recipeId, 'delete', null));
       return true;
     }
     const now = new Date().toISOString();
@@ -136,8 +144,9 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     };
     const preferences = [...get().preferences.filter((item) => item.recipeId !== recipeId), preference];
     set({ preferences });
-    void trackPersistence('activity', () => persistPreferences(preferences));
-    void trackSync('activity', () => enqueueEntityMutation(getMutationScope('recipe_preference'), 'recipe_preference', recipeId, 'upsert', preference));
+    const personalScope = getPersonalDataScope();
+    void trackPersistence('activity', () => persistPreferences(preferences, personalScope));
+    void trackSync('activity', () => enqueueEntityMutation(getMutationScope('recipe_preference', personalScope, personalScope), 'recipe_preference', recipeId, 'upsert', preference));
     return true;
   },
   removeRecipePreference: (recipeId) => get().setRecipePreference(recipeId, false, null, null),
@@ -150,6 +159,14 @@ registerActivitySnapshotListener((snapshot) => {
   });
 });
 
+const resetActivityHydration = (): void => {
+  hydrationGeneration += 1;
+  hydratedPersonalScope = null;
+  useActivityStore.setState({ hasHydrated: false, events: [], preferences: [] });
+};
+
+subscribePersonalDataScope(resetActivityHydration);
+
 export async function waitForPendingActivityWrites(): Promise<void> {
   await pendingEventWrites;
   await pendingPreferenceWrites;
@@ -157,18 +174,34 @@ export async function waitForPendingActivityWrites(): Promise<void> {
 }
 
 export async function hydrateActivityStore(): Promise<void> {
-  if (useActivityStore.getState().hasHydrated) return;
-  if (hydrationPromise === null) {
-    hydrationPromise = Promise.all([readCookEvents(), readRecipePreferences()])
-      .then(([events, preferences]) => useActivityStore.setState({
-        events: normalizeCookEvents(events),
-        preferences: normalizeRecipePreferences(preferences),
-        hasHydrated: true,
-      }))
-      .catch(() => useActivityStore.setState({ events: [], preferences: [], hasHydrated: true }))
-      .finally(() => {
-        hydrationPromise = null;
-      });
+  for (;;) {
+    const personalScope = getPersonalDataScope();
+    const generation = hydrationGeneration;
+    if (useActivityStore.getState().hasHydrated && hydratedPersonalScope === personalScope) return;
+    if (hydrationPromise === null) {
+      const currentPromise = Promise.all([readCookEvents(personalScope), readRecipePreferences(personalScope)])
+        .then(([events, preferences]) => {
+          if (getPersonalDataScope() !== personalScope || hydrationGeneration !== generation) return;
+          hydratedPersonalScope = personalScope;
+          useActivityStore.setState({
+            events: normalizeCookEvents(events),
+            preferences: normalizeRecipePreferences(preferences),
+            hasHydrated: true,
+          });
+        })
+        .catch(() => {
+          if (getPersonalDataScope() !== personalScope || hydrationGeneration !== generation) return;
+          hydratedPersonalScope = personalScope;
+          useActivityStore.setState({ events: [], preferences: [], hasHydrated: true });
+        })
+        .finally(() => {
+          hydrationPromise = null;
+        });
+      hydrationPromise = currentPromise;
+    }
+    const pendingHydration = hydrationPromise;
+    if (pendingHydration !== null) await pendingHydration;
+    if (getPersonalDataScope() === personalScope && hydrationGeneration === generation
+      && useActivityStore.getState().hasHydrated && hydratedPersonalScope === personalScope) return;
   }
-  await hydrationPromise;
 }

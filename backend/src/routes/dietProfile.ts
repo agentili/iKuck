@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { DietProfile, DietProfilePayload } from '@ikuck/shared/contracts';
 import { AuthServiceError, type AuthService } from '../auth/service.js';
-import { ensureCsrf, ensureSameOrigin, requireSession } from './auth.js';
+import { ensureCsrf, ensureSameOrigin, requireVerifiedSession } from './auth.js';
 import type { SyncRepository } from '../sync/repository.js';
 import { DEFAULT_DIET_PROFILE, isDietProfile, parseDietProfilePayload } from '../diet/validation.js';
 
@@ -35,13 +35,13 @@ const parsePayload = (value: unknown): DietProfilePayload => {
 
 export const registerDietProfileRoutes = ({ repository, authService, appOrigin }: DietProfileRouteDependencies): FastifyPluginAsync => async (app) => {
   app.get('/v1/profile/preferences', async (request) => {
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     return { profile: await readProfile(repository, session.userId) };
   });
 
   app.put('/v1/profile/preferences', async (request) => {
     ensureSameOrigin(request, appOrigin);
-    const { session } = await requireSession(request, authService);
+    const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     const updatedAt = new Date().toISOString();
     const profile: DietProfile = { ...parsePayload(request.body), updatedAt };

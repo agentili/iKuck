@@ -2,6 +2,8 @@ export type SyncEntityType = 'pantry_item' | 'pantry_lot' | 'staple_preference' 
 
 export type SyncOperation = 'upsert' | 'delete';
 
+export type SyncMutationScope = `account:${string}` | `house:${string}`;
+
 export interface SyncMutation {
   mutationId: string;
   deviceId: string;
@@ -10,6 +12,7 @@ export interface SyncMutation {
   operation: SyncOperation;
   payload: unknown | null;
   clientUpdatedAt: string;
+  syncScope?: SyncMutationScope;
 }
 
 export interface SyncChange extends SyncMutation {
