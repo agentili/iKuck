@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'node:http';
-import { cp, mkdir, rm, stat } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -130,7 +130,8 @@ test('updates the service worker without losing IndexedDB data', async ({ page, 
   await page.goto(`${pwaServer.url}/pantry`);
   const versionAResponse = await page.request.get(`${pwaServer.url}/version.json`);
   expect(versionAResponse.ok()).toBe(true);
-  await expect(versionAResponse.json()).resolves.toEqual({ name: 'iKuck', version: '1.0.0', buildId: 'build-a' });
+  const packageVersion = (JSON.parse(await readFile(resolve('package.json'), 'utf8')) as { version: string }).version;
+  await expect(versionAResponse.json()).resolves.toEqual({ name: 'iKuck', version: packageVersion, buildId: 'build-a' });
   await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
   await page.getByLabel('Ingredienti presenti').fill('pasta, pomodoro');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
