@@ -9,6 +9,7 @@ import {
   fetchAiConsent,
   fetchAiRecipes,
   generateAiRecipe,
+  saveAiRecipe,
   updateAiConsent,
 } from '../../ai/aiRecipeApi';
 
@@ -17,6 +18,7 @@ vi.mock('../../ai/aiRecipeApi', () => ({
   fetchAiConsent: vi.fn(),
   fetchAiRecipes: vi.fn(),
   generateAiRecipe: vi.fn(),
+  saveAiRecipe: vi.fn(),
   updateAiConsent: vi.fn(),
 }));
 
@@ -55,12 +57,21 @@ const renderPanel = (overrides: Partial<React.ComponentProps<typeof AiRecipePane
   />,
 );
 
+const enableGeneration = async (
+  panel: HTMLElement,
+  userEvents: ReturnType<typeof userEvent.setup>,
+): Promise<void> => {
+  await userEvents.click(await within(panel).findByRole('checkbox', { name: /acconsento all’uso degli ingredienti/i }));
+  await userEvents.click(within(panel).getByRole('button', { name: 'Salva consenso' }));
+};
+
 describe('AiRecipePanel', () => {
   beforeEach(() => {
     vi.mocked(fetchAiConsent).mockReset();
     vi.mocked(fetchAiRecipes).mockReset();
     vi.mocked(updateAiConsent).mockReset();
     vi.mocked(generateAiRecipe).mockReset();
+    vi.mocked(saveAiRecipe).mockReset();
     vi.mocked(deleteAiRecipe).mockReset();
     vi.mocked(fetchAiConsent).mockResolvedValue({ enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' });
     vi.mocked(fetchAiRecipes).mockResolvedValue([]);
@@ -77,7 +88,7 @@ describe('AiRecipePanel', () => {
     expect(fetchAiRecipes).not.toHaveBeenCalled();
   });
 
-  it('saves consent before showing generation and renders a private recipe without changing pantry props', async () => {
+  it('saves consent before showing generation and keeps the generated recipe as an unsaved preview', async () => {
     const userEvents = userEvent.setup();
     vi.mocked(updateAiConsent).mockResolvedValue({ enabled: true, updatedAt: '2026-09-13T12:01:00.000Z' });
     vi.mocked(generateAiRecipe).mockResolvedValue(recipe);
@@ -99,6 +110,82 @@ describe('AiRecipePanel', () => {
       'csrf-token',
     );
     expect(await within(panel).findByRole('heading', { name: 'Ceci croccanti' })).toBeInTheDocument();
+    expect(within(panel).getByText(/non ancora salvata/i)).toBeInTheDocument();
+    expect(saveAiRecipe).not.toHaveBeenCalled();
+    expect(within(panel).queryByRole('button', { name: `Elimina ${recipe.title}` })).not.toBeInTheDocument();
+  });
+
+  it('stores the preview in the account only after the explicit save', async () => {
+    const userEvents = userEvent.setup();
+    vi.mocked(updateAiConsent).mockResolvedValue({ enabled: true, updatedAt: '2026-09-13T12:01:00.000Z' });
+    vi.mocked(generateAiRecipe).mockResolvedValue(recipe);
+    vi.mocked(saveAiRecipe).mockResolvedValue(recipe);
+    renderPanel();
+
+    const panel = screen.getByRole('region', { name: 'Ricette AI private' });
+    await enableGeneration(panel, userEvents);
+    await userEvents.click(await within(panel).findByRole('button', { name: 'Genera ricetta AI' }));
+
+    await userEvents.click(await within(panel).findByRole('button', { name: 'Salva ricetta' }));
+
+    expect(saveAiRecipe).toHaveBeenCalledWith(recipe, 'csrf-token');
+    await waitFor(() => expect(within(panel).queryByRole('button', { name: 'Salva ricetta' })).not.toBeInTheDocument());
+    expect(within(panel).queryByText(/non ancora salvata/i)).not.toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: `Elimina ${recipe.title}` })).toBeInTheDocument();
+  });
+
+  it('discards a generated preview without storing it', async () => {
+    const userEvents = userEvent.setup();
+    vi.mocked(updateAiConsent).mockResolvedValue({ enabled: true, updatedAt: '2026-09-13T12:01:00.000Z' });
+    vi.mocked(generateAiRecipe).mockResolvedValue(recipe);
+    renderPanel();
+
+    const panel = screen.getByRole('region', { name: 'Ricette AI private' });
+    await enableGeneration(panel, userEvents);
+    await userEvents.click(await within(panel).findByRole('button', { name: 'Genera ricetta AI' }));
+    expect(await within(panel).findByRole('heading', { name: 'Ceci croccanti' })).toBeInTheDocument();
+
+    await userEvents.click(within(panel).getByRole('button', { name: 'Scarta' }));
+
+    expect(within(panel).queryByRole('heading', { name: 'Ceci croccanti' })).not.toBeInTheDocument();
+    expect(saveAiRecipe).not.toHaveBeenCalled();
+  });
+
+  it('keeps a preview visible with an error when the explicit save fails', async () => {
+    const userEvents = userEvent.setup();
+    vi.mocked(updateAiConsent).mockResolvedValue({ enabled: true, updatedAt: '2026-09-13T12:01:00.000Z' });
+    vi.mocked(generateAiRecipe).mockResolvedValue(recipe);
+    vi.mocked(saveAiRecipe).mockRejectedValue(new ApiClientError(0, 'network_error', 'offline'));
+    renderPanel();
+
+    const panel = screen.getByRole('region', { name: 'Ricette AI private' });
+    await enableGeneration(panel, userEvents);
+    await userEvents.click(await within(panel).findByRole('button', { name: 'Genera ricetta AI' }));
+
+    await userEvents.click(await within(panel).findByRole('button', { name: 'Salva ricetta' }));
+
+    expect(await within(panel).findByRole('alert')).toHaveTextContent(/non raggiungibile/i);
+    expect(within(panel).getByRole('button', { name: 'Salva ricetta' })).toBeInTheDocument();
+  });
+
+  it('keeps earlier previews when another recipe is generated', async () => {
+    const userEvents = userEvent.setup();
+    const second: GeneratedRecipe = { ...recipe, id: 'recipe-2', title: 'Pomodori ripieni' };
+    vi.mocked(updateAiConsent).mockResolvedValue({ enabled: true, updatedAt: '2026-09-13T12:01:00.000Z' });
+    vi.mocked(generateAiRecipe).mockResolvedValueOnce(recipe).mockResolvedValueOnce(second);
+    renderPanel();
+
+    const panel = screen.getByRole('region', { name: 'Ricette AI private' });
+    await enableGeneration(panel, userEvents);
+    const generateButton = await within(panel).findByRole('button', { name: 'Genera ricetta AI' });
+
+    await userEvents.click(generateButton);
+    expect(await within(panel).findByRole('heading', { name: 'Ceci croccanti' })).toBeInTheDocument();
+    await userEvents.click(generateButton);
+    expect(await within(panel).findByRole('heading', { name: 'Pomodori ripieni' })).toBeInTheDocument();
+
+    expect(within(panel).getAllByRole('button', { name: 'Salva ricetta' })).toHaveLength(2);
+    expect(saveAiRecipe).not.toHaveBeenCalled();
   });
 
   it('keeps saved recipes readable after revocation and translates quota errors', async () => {

@@ -60,6 +60,19 @@ export const generateAiRecipe = async (
   return response.recipe;
 };
 
+export const saveAiRecipe = async (
+  recipe: GeneratedRecipe,
+  csrfToken: string,
+  request: ApiRequest = apiRequest,
+): Promise<GeneratedRecipe> => {
+  const response = await request<GeneratedRecipeResponse>('/v1/ai-recipes/save', {
+    method: 'POST',
+    body: { recipe },
+    csrfToken,
+  });
+  return response.recipe;
+};
+
 export const deleteAiRecipe = async (
   recipeId: string,
   csrfToken: string,

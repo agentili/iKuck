@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { LockKeyhole, Sparkles, Trash2 } from 'lucide-react';
+import { LockKeyhole, Save, Sparkles, Trash2, X } from 'lucide-react';
 import type { DietProfilePayload, GeneratedRecipe } from '@ikuck/shared/contracts';
 import { ApiClientError } from '../../api/apiClient';
 import { type AuthUser } from '../../auth/authStore';
@@ -8,6 +8,7 @@ import {
   fetchAiConsent,
   fetchAiRecipes,
   generateAiRecipe,
+  saveAiRecipe,
   updateAiConsent,
 } from '../../ai/aiRecipeApi';
 import { ALLERGEN_LABELS, DIET_LABELS } from '../../domain/dietary';
@@ -39,14 +40,37 @@ const normalizedIngredients = (ingredients: string[]): string[] => [...new Set(
   ingredients.map((ingredient) => ingredient.trim()).filter((ingredient) => ingredient.length > 0),
 )];
 
+const RecipeBody = ({ recipe }: { recipe: GeneratedRecipe }) => (
+  <>
+    <p data-ai-label className="mt-3 text-xs font-semibold uppercase tracking-wide text-emerald-800">Dieta: {recipe.diets.map((diet) => DIET_LABELS[diet]).join(', ')}</p>
+    <p className="mt-1 text-xs text-gray-600">Allergeni dichiarati: {recipe.allergens.length === 0 ? 'nessuno' : recipe.allergens.map((allergen) => ALLERGEN_LABELS[allergen]).join(', ')}</p>
+    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      <div>
+        <h4 className="font-bold text-gray-950">Ingredienti</h4>
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-700">
+          {recipe.ingredients.map((ingredient) => <li key={`${recipe.id}-${ingredient.name}`}>{ingredient.amount} {ingredient.name}</li>)}
+        </ul>
+      </div>
+      <div>
+        <h4 className="font-bold text-gray-950">Procedimento</h4>
+        <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-gray-700">
+          {recipe.steps.map((step, index) => <li key={`${recipe.id}-step-${index}`}>{step}</li>)}
+        </ol>
+      </div>
+    </div>
+  </>
+);
+
 export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToken }: AiRecipePanelProps) {
   const verified = user !== null && user.emailVerifiedAt.trim().length > 0 && csrfToken !== null;
   const [consent, setConsent] = useState<{ enabled: boolean; updatedAt: string } | null>(null);
   const [consentDraft, setConsentDraft] = useState(false);
   const [recipes, setRecipes] = useState<GeneratedRecipe[]>([]);
+  const [drafts, setDrafts] = useState<GeneratedRecipe[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [savingDraftId, setSavingDraftId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingDeletes, setPendingDeletes] = useState<GeneratedRecipe[]>([]);
   const pantryLabels = normalizedIngredients(ingredients);
@@ -56,6 +80,8 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
     setConsent(null);
     setConsentDraft(false);
     setRecipes([]);
+    setDrafts([]);
+    setSavingDraftId(null);
     setError(null);
     if (!verified) return undefined;
 
@@ -111,17 +137,37 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
   };
 
   const generate = async () => {
-    if (csrfToken === null || consent?.enabled !== true || pantryLabels.length === 0) return;
+    if (csrfToken === null || consent?.enabled !== true || pantryLabels.length === 0 || isGenerating) return;
     setIsGenerating(true);
     setError(null);
     try {
       const recipe = await generateAiRecipe({ ingredients: pantryLabels, constraints: [] }, dietProfile, csrfToken);
-      setRecipes((current) => [recipe, ...current.filter((item) => item.id !== recipe.id)]);
+      setDrafts((current) => [recipe, ...current.filter((item) => item.id !== recipe.id)]);
     } catch (generationError) {
       setError(errorMessage(generationError));
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const saveDraft = async (recipe: GeneratedRecipe) => {
+    if (csrfToken === null || savingDraftId !== null) return;
+    setSavingDraftId(recipe.id);
+    setError(null);
+    try {
+      const saved = await saveAiRecipe(recipe, csrfToken);
+      setDrafts((current) => current.filter((item) => item.id !== saved.id));
+      setRecipes((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
+    } catch (saveError) {
+      setError(errorMessage(saveError));
+    } finally {
+      setSavingDraftId(null);
+    }
+  };
+
+  const discardDraft = (recipeId: string) => {
+    setError(null);
+    setDrafts((current) => current.filter((item) => item.id !== recipeId));
   };
 
   const restorePendingDelete = (recipe: GeneratedRecipe) => {
@@ -192,7 +238,31 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
               {isGenerating ? 'Creo la ricetta…' : 'Genera ricetta AI'}
             </button>
           )}
+          {consent.enabled && pantryLabels.length > 0 && <p className="mt-3 text-xs leading-relaxed text-gray-600">La ricetta generata resta un’anteprima: premi «Salva ricetta» per conservarla nel tuo account.</p>}
           {consent.enabled && pantryLabels.length === 0 && <p className="mt-3 text-sm font-semibold text-gray-700">Aggiungi almeno un ingrediente alla dispensa per generare.</p>}
+        </div>
+      )}
+
+      {drafts.length > 0 && (
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          {drafts.map((recipe) => (
+            <article key={recipe.id} data-ai-draft className="rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50/60 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">Anteprima — non ancora salvata</p>
+              <h3 className="mt-1 text-xl font-black text-gray-950">{recipe.title}</h3>
+              <p className="mt-1 text-sm leading-relaxed text-gray-700">{recipe.description}</p>
+              <RecipeBody recipe={recipe} />
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button type="button" onClick={() => void saveDraft(recipe)} disabled={savingDraftId !== null} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
+                  <Save size={17} aria-hidden="true" />
+                  {savingDraftId === recipe.id ? 'Salvo…' : 'Salva ricetta'}
+                </button>
+                <button type="button" onClick={() => discardDraft(recipe.id)} disabled={savingDraftId !== null} className="inline-flex min-h-11 items-center gap-2 rounded-xl border-2 border-emerald-200 bg-white px-4 py-2 font-bold text-emerald-900 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60">
+                  <X size={17} aria-hidden="true" />
+                  Scarta
+                </button>
+              </div>
+            </article>
+          ))}
         </div>
       )}
 
@@ -209,22 +279,7 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
                   <Trash2 size={18} aria-hidden="true" />
                 </button>
               </div>
-              <p data-ai-label className="mt-3 text-xs font-semibold uppercase tracking-wide text-emerald-800">Dieta: {recipe.diets.map((diet) => DIET_LABELS[diet]).join(', ')}</p>
-              <p className="mt-1 text-xs text-gray-600">Allergeni dichiarati: {recipe.allergens.length === 0 ? 'nessuno' : recipe.allergens.map((allergen) => ALLERGEN_LABELS[allergen]).join(', ')}</p>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <div>
-                  <h4 className="font-bold text-gray-950">Ingredienti</h4>
-                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-700">
-                    {recipe.ingredients.map((ingredient) => <li key={`${recipe.id}-${ingredient.name}`}>{ingredient.amount} {ingredient.name}</li>)}
-                  </ul>
-                </div>
-                <div>
-                  <h4 className="font-bold text-gray-950">Procedimento</h4>
-                  <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-gray-700">
-                    {recipe.steps.map((step, index) => <li key={`${recipe.id}-step-${index}`}>{step}</li>)}
-                  </ol>
-                </div>
-              </div>
+              <RecipeBody recipe={recipe} />
             </article>
           ))}
         </div>

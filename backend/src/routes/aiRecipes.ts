@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AiConsent, DietProfilePayload, GeneratedRecipe, GeneratedRecipeDraft, SyncChange, SyncMutation } from '@ikuck/shared/contracts';
-import { isGeneratedRecipeCompatible, isAiConsent, isGeneratedRecipe, parseGeneratedRecipeDraft } from '../ai/validation.js';
+import { isGeneratedRecipeCompatible, isAiConsent, isGeneratedRecipe, parseGeneratedRecipeDraft, generatedRecipeSchema } from '../ai/validation.js';
 import type { GenerationRateLimiter, GenerationRateReservation } from '../ai/rateLimit.js';
 import { AuthServiceError, type AuthService } from '../auth/service.js';
 import { dietProfilePayloadSchema } from '../diet/validation.js';
@@ -19,6 +19,8 @@ export interface AiRecipeRouteDependencies {
 }
 
 const consentRequestSchema = z.object({ enabled: z.boolean() }).strict();
+
+const saveRequestSchema = z.object({ recipe: generatedRecipeSchema }).strict();
 
 const generationRequestSchema = z.object({
   ingredients: z.array(z.string().trim().min(1).max(120)).min(1).max(30),
@@ -72,6 +74,12 @@ const parseConsent = (body: unknown): boolean => {
   const result = consentRequestSchema.safeParse(body);
   if (!result.success) throw invalidPayload();
   return result.data.enabled;
+};
+
+const parseSavableRecipe = (body: unknown): GeneratedRecipe => {
+  const result = saveRequestSchema.safeParse(body);
+  if (!result.success) throw invalidPayload();
+  return result.data.recipe;
 };
 
 const reserveGeneration = async (limiter: GenerationRateLimiter, userId: string): Promise<GenerationRateReservation> => {
@@ -165,13 +173,22 @@ export const registerAiRecipeRoutes = ({
       updatedAt: now,
     };
     try {
-      await repository.applyMutation(session.userId, createMutation('generated_recipe', recipe.id, 'upsert', recipe, now));
       await reservation.commit();
     } catch (error) {
       await releaseGeneration(reservation);
       throw error;
     }
     return reply.code(201).send({ recipe, quota });
+  });
+
+  app.post('/v1/ai-recipes/save', async (request) => {
+    ensureSameOrigin(request, appOrigin);
+    const { session } = await requireVerifiedSession(request, authService);
+    ensureCsrf(request, session.csrfTokenHash);
+    const recipe = parseSavableRecipe(request.body);
+    const now = new Date().toISOString();
+    await repository.applyMutation(session.userId, createMutation('generated_recipe', recipe.id, 'upsert', recipe, now));
+    return { recipe };
   });
 
   app.delete('/v1/ai-recipes/:recipeId', async (request, reply) => {

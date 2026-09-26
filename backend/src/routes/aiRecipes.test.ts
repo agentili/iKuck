@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AiConsent, DietProfilePayload, GeneratedRecipeDraft } from '@ikuck/shared/contracts';
+import type { AiConsent, DietProfilePayload, GeneratedRecipe, GeneratedRecipeDraft } from '@ikuck/shared/contracts';
 import { createApp } from '../app.js';
 import type { AuthService } from '../auth/service.js';
 import { hashOpaqueToken } from '../auth/tokens.js';
@@ -82,6 +82,13 @@ const generate = (app: ReturnType<typeof createApp>, input: Partial<{ dietProfil
   },
 });
 
+const saveRecipe = (app: ReturnType<typeof createApp>, recipe: unknown) => app.inject({
+  method: 'POST',
+  url: '/v1/ai-recipes/save',
+  headers,
+  payload: { recipe },
+});
+
 describe('AI recipe routes', () => {
   it('returns disabled consent, supports revocation and keeps private recipes removable', async () => {
     const { app } = createAiApp();
@@ -94,6 +101,9 @@ describe('AI recipe routes', () => {
     const generated = await generate(app);
     expect(generated.statusCode).toBe(201);
     expect(generated.json()).toMatchObject({ recipe: { source: 'ai', title: generatedDraft.title } });
+
+    const savedRecipe = await saveRecipe(app, generated.json().recipe);
+    expect(savedRecipe.statusCode).toBe(200);
 
     await expect(consent(app, false)).resolves.toMatchObject({ enabled: false });
     const saved = await app.inject({ method: 'GET', url: '/v1/ai-recipes', headers });
@@ -345,5 +355,85 @@ describe('AI recipe routes', () => {
     expect(limited.statusCode).toBe(503);
     expect(limited.json()).toMatchObject({ code: 'provider_unavailable' });
     await unavailable.app.close();
+  });
+
+  it('keeps a generated preview private until an explicit save', async () => {
+    const { app, repository } = createAiApp();
+    await consent(app, true);
+
+    const generated = await generate(app);
+    expect(generated.statusCode).toBe(201);
+    const draft = generated.json().recipe as GeneratedRecipe;
+
+    const beforeSave = await app.inject({ method: 'GET', url: '/v1/ai-recipes', headers });
+    expect(beforeSave.json()).toEqual({ recipes: [] });
+    const storedBeforeSave = await repository.readAll('user-1');
+    expect(storedBeforeSave.filter((change) => change.entityType === 'generated_recipe')).toEqual([]);
+
+    const saved = await saveRecipe(app, draft);
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toMatchObject({ recipe: { id: draft.id, title: generatedDraft.title, source: 'ai' } });
+
+    const listed = await app.inject({ method: 'GET', url: '/v1/ai-recipes', headers });
+    expect(listed.json().recipes).toHaveLength(1);
+    expect(listed.json().recipes[0]).toMatchObject({ id: draft.id });
+
+    const savedAgain = await saveRecipe(app, draft);
+    expect(savedAgain.statusCode).toBe(200);
+    const listedAgain = await app.inject({ method: 'GET', url: '/v1/ai-recipes', headers });
+    expect(listedAgain.json().recipes).toHaveLength(1);
+    await app.close();
+  });
+
+  it('requires session, same origin and CSRF to save and validates the stored shape', async () => {
+    const { app } = createAiApp();
+    await consent(app, true);
+    const generated = await generate(app);
+    const draft = generated.json().recipe;
+
+    const missingCsrf = await app.inject({
+      method: 'POST',
+      url: '/v1/ai-recipes/save',
+      headers: { cookie: headers.cookie, origin: appOrigin },
+      payload: { recipe: draft },
+    });
+    expect(missingCsrf.statusCode).toBe(403);
+    expect(missingCsrf.json()).toMatchObject({ code: 'csrf_failed' });
+
+    const foreignOrigin = await app.inject({
+      method: 'POST',
+      url: '/v1/ai-recipes/save',
+      headers: { ...headers, origin: 'https://attacker.example' },
+      payload: { recipe: draft },
+    });
+    expect(foreignOrigin.statusCode).toBe(403);
+
+    const anonymous = createAiApp({ authenticated: false });
+    const unauthenticated = await anonymous.app.inject({
+      method: 'POST',
+      url: '/v1/ai-recipes/save',
+      headers,
+      payload: { recipe: draft },
+    });
+    expect(unauthenticated.statusCode).toBe(401);
+    await anonymous.app.close();
+
+    const invalid = await app.inject({
+      method: 'POST',
+      url: '/v1/ai-recipes/save',
+      headers,
+      payload: { recipe: { id: 'not-a-recipe' } },
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toMatchObject({ code: 'invalid_payload' });
+
+    const unexpected = await app.inject({
+      method: 'POST',
+      url: '/v1/ai-recipes/save',
+      headers,
+      payload: { recipe: draft, extra: true },
+    });
+    expect(unexpected.statusCode).toBe(400);
+    await app.close();
   });
 });

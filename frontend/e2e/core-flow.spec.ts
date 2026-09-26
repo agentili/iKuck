@@ -370,6 +370,7 @@ test('verified users can consent to private AI recipes without changing pantry l
   let consentEnabled = false;
   const recipes: Array<Record<string, unknown>> = [];
   const generationBodies: unknown[] = [];
+  const saveBodies: unknown[] = [];
 
   await page.route('**/v1/auth/session', async (route) => {
     await route.fulfill({
@@ -423,8 +424,14 @@ test('verified users can consent to private AI recipes without changing pantry l
         createdAt: '2026-09-13T12:02:00.000Z',
         updatedAt: '2026-09-13T12:02:00.000Z',
       };
-      recipes.unshift(recipe);
       await route.fulfill({ status: 201, json: { recipe, quota: { allowed: true, used: 1, remaining: 4 } } });
+      return;
+    }
+    if (url.pathname === '/v1/ai-recipes/save' && request.method() === 'POST') {
+      const body = request.postDataJSON() as { recipe: Record<string, unknown> };
+      saveBodies.push(body);
+      recipes.unshift(body.recipe);
+      await route.fulfill({ json: { recipe: body.recipe } });
       return;
     }
     if (url.pathname === '/v1/ai-recipes/browser-ai-recipe' && request.method() === 'DELETE') {
@@ -461,6 +468,12 @@ test('verified users can consent to private AI recipes without changing pantry l
   await expect(aiPanel.getByRole('heading', { name: 'Ceci croccanti al pomodoro' })).toBeVisible();
   expect(generationBodies).toHaveLength(1);
   expect(generationBodies[0]).toMatchObject({ ingredients: ['Ceci', 'Pomodoro'] });
+
+  await expect(aiPanel.getByText(/non ancora salvata/i)).toBeVisible();
+  await aiPanel.getByRole('button', { name: 'Salva ricetta' }).click();
+  await expect(aiPanel.getByRole('button', { name: 'Salva ricetta' })).toHaveCount(0);
+  await expect.poll(() => saveBodies.length).toBe(1);
+  expect(saveBodies[0]).toMatchObject({ recipe: { id: 'browser-ai-recipe' } });
 
   await openPantry(page);
   await page.getByText('Personalizza la dispensa', { exact: true }).click();

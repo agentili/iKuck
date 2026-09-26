@@ -425,6 +425,20 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     });
     expect(aiRecipe.statusCode).toBe(201);
     expect(aiRecipe.json<{ recipe: { source: string; title: string } }>().recipe).toMatchObject({ source: 'ai', title: 'Ricetta AI di integrazione' });
+
+    const previewList = await app.inject({ method: 'GET', url: '/v1/ai-recipes', headers: { cookie } });
+    expect(previewList.statusCode).toBe(200);
+    expect(previewList.json<{ recipes: Array<{ title: string }> }>().recipes)
+      .not.toContainEqual(expect.objectContaining({ title: 'Ricetta AI di integrazione' }));
+
+    const savedAiRecipe = await app.inject({
+      method: 'POST',
+      url: '/v1/ai-recipes/save',
+      headers: { origin: appOrigin, cookie, 'x-csrf-token': loginBody.csrfToken },
+      payload: { recipe: aiRecipe.json<{ recipe: unknown }>().recipe },
+    });
+    expect(savedAiRecipe.statusCode).toBe(200);
+
     const aiRecipes = await app.inject({ method: 'GET', url: '/v1/ai-recipes', headers: { cookie } });
     expect(aiRecipes.statusCode).toBe(200);
     expect(aiRecipes.json<{ recipes: Array<{ title: string }> }>().recipes).toContainEqual(expect.objectContaining({ title: 'Ricetta AI di integrazione' }));

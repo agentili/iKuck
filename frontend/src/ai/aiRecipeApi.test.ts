@@ -1,12 +1,25 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ApiRequest } from '../api/apiClient';
-import type { DietProfilePayload } from '@ikuck/shared/contracts';
-import { deleteAiRecipe, fetchAiConsent, fetchAiRecipes, generateAiRecipe, updateAiConsent } from './aiRecipeApi';
+import type { DietProfilePayload, GeneratedRecipe } from '@ikuck/shared/contracts';
+import { deleteAiRecipe, fetchAiConsent, fetchAiRecipes, generateAiRecipe, saveAiRecipe, updateAiConsent } from './aiRecipeApi';
 
 const profile: DietProfilePayload = {
   diet: 'vegan',
   excludedAllergens: [],
   nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null },
+};
+
+const generatedRecipe: GeneratedRecipe = {
+  id: 'recipe-9',
+  source: 'ai',
+  title: 'Ceci al forno',
+  description: 'Semplice.',
+  ingredients: [{ name: 'Ceci', amount: '240 g' }],
+  steps: ['Cuoci.'],
+  diets: ['vegan'],
+  allergens: [],
+  createdAt: '2026-09-13T12:00:00.000Z',
+  updatedAt: '2026-09-13T12:00:00.000Z',
 };
 
 describe('AI recipe API', () => {
@@ -59,6 +72,18 @@ describe('AI recipe API', () => {
     expect(request).toHaveBeenCalledWith('/v1/ai-recipes', {
       method: 'POST',
       body: { ingredients: ['Ceci'], constraints: [], dietProfile: profile },
+      csrfToken: 'csrf-token',
+    });
+  });
+
+  it('stores a generated preview only when the user confirms the explicit save', async () => {
+    const request = vi.fn().mockResolvedValue({ recipe: generatedRecipe }) as unknown as ApiRequest;
+
+    await expect(saveAiRecipe(generatedRecipe, 'csrf-token', request)).resolves.toMatchObject({ id: 'recipe-9' });
+
+    expect(request).toHaveBeenCalledWith('/v1/ai-recipes/save', {
+      method: 'POST',
+      body: { recipe: generatedRecipe },
       csrfToken: 'csrf-token',
     });
   });
