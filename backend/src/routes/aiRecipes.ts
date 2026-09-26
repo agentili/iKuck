@@ -27,6 +27,13 @@ const generationRequestSchema = z.object({
   ingredients: z.array(z.string().trim().min(1).max(120)).min(1).max(AI_RECIPE_MAX_GENERATION_INGREDIENTS),
   constraints: z.array(z.string().trim().min(1).max(240)).max(20),
   dietProfile: dietProfilePayloadSchema,
+  existingRecipes: z.array(z.object({
+    title: z.string().trim().min(1).max(240),
+    ingredients: z.array(z.object({
+      name: z.string().trim().min(1).max(120),
+      amount: z.string().trim().min(1).max(60),
+    })).max(30),
+  })).max(50).optional(),
 }).strict();
 
 const invalidPayload = (): AuthServiceError => new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');
@@ -151,6 +158,7 @@ export const registerAiRecipeRoutes = ({
         ingredients: parsed.data.ingredients,
         constraints: parsed.data.constraints,
         dietProfile: parsed.data.dietProfile as DietProfilePayload,
+        existingRecipes: parsed.data.existingRecipes,
       }));
     } catch {
       await releaseGeneration(reservation);

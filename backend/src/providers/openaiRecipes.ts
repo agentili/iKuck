@@ -61,10 +61,13 @@ export const createOpenAiRecipeProvider = ({ apiKey, model, fetch, timeoutMs = 3
     }
 
     const requestFetch = fetch ?? globalThis.fetch;
+    const existingRecipesText = request.existingRecipes && request.existingRecipes.length > 0
+      ? `\n\nRicette già esistenti da EVITARE (non generare duplicati):\n${request.existingRecipes.map((r, i) => `${i + 1}. ${r.title} — ingredienti: ${r.ingredients.map(ing => `${ing.amount} ${ing.name}`).join(', ')}`).join('\n')}`
+      : '';
     const body = {
       model,
       store: false,
-      instructions: 'Generate one practical recipe. Return only the requested JSON. The recipe diets and allergens must be truthful and must satisfy the supplied dietary profile. Never invent an allergen-free claim when an ingredient implies an allergen.',
+      instructions: `Generate one practical recipe. Return only the requested JSON. The recipe diets and allergens must be truthful and must satisfy the supplied dietary profile. Never invent an allergen-free claim when an ingredient implies an allergen.${existingRecipesText ? ' Do not create a recipe that duplicates any of the existing recipes listed.' : ''}`,
       input: JSON.stringify({ ingredients: request.ingredients, constraints: request.constraints, dietProfile: request.dietProfile ?? null }),
       text: {
         format: {

@@ -3,6 +3,7 @@ import { RefreshCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import LocalRecipeCard from '../components/suggestions/LocalRecipeCard';
 import SuggestionControls from '../components/suggestions/SuggestionControls';
+import AiRecipePanel from '../components/ai/AiRecipePanel';
 import { createSeededRandom, findRecipeSuggestions } from '../domain/suggestions';
 import { aggregatePantryLots } from '../domain/pantryLots';
 import type { RecipeSuggestion } from '../domain/types';
@@ -10,6 +11,7 @@ import { hydratePantryStore, usePantryStore } from '../store/localPantryStore';
 import { useDietProfileStore } from '../store/dietProfileStore';
 import { useActivityStore } from '../store/activityStore';
 import { useShoppingListStore } from '../store/shoppingListStore';
+import { useAuthStore } from '../auth/authStore';
 import {
   persistenceDomains,
   retryPersistence,
@@ -45,6 +47,8 @@ export default function HomePage() {
   const shoppingItems = useShoppingListStore((state) => state.items);
   const addMissingRecipeIngredients = useShoppingListStore((state) => state.addMissingRecipeIngredients);
   const persistenceStatuses = usePersistenceStatusStore((state) => state.statuses);
+  const user = useAuthStore((state) => state.user);
+  const csrfToken = useAuthStore((state) => state.csrfToken);
 
   const persistenceIssue = persistenceDomains
     .map((domain) => ({ domain, status: persistenceStatuses[domain] }))
@@ -171,6 +175,17 @@ export default function HomePage() {
           {hasPantryItems ? 'Gestisci la dispensa' : 'Apri la dispensa'}
         </Link>
       </section>
+
+      {user !== null && user.emailVerifiedAt.trim().length > 0 && csrfToken !== null && (
+        <section aria-labelledby="ai-recipes-title" className="mt-5">
+          <AiRecipePanel
+            ingredients={pantryItems.map((item) => item.label)}
+            dietProfile={dietProfile}
+            user={user}
+            csrfToken={csrfToken}
+          />
+        </section>
+      )}
 
       <div className="mt-5">
         <SuggestionControls allowOneMissing={allowOneMissing} disabled={!hasPantryItems} onAllowOneMissingChange={setAllowOneMissing} onSearch={() => search()} />

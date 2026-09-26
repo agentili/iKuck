@@ -4,6 +4,7 @@ import { apiRequest, type ApiRequest } from '../api/apiClient';
 export interface AiRecipeGenerationInput {
   ingredients: string[];
   constraints: string[];
+  existingRecipes?: Array<{ title: string; ingredients: Array<{ name: string; amount: string }> }>;
 }
 
 interface ConsentResponse {

@@ -5,9 +5,6 @@ import AccountPanel from '../components/account/AccountPanel';
 import { useAuthStore } from '../auth/authStore';
 import { importLocalData } from '../sync/syncQueue';
 import GoogleSignInButton from '../components/account/GoogleSignInButton';
-import AiRecipePanel from '../components/ai/AiRecipePanel';
-import { usePantryStore } from '../store/localPantryStore';
-import { useDietProfileStore } from '../store/dietProfileStore';
 import { appVersion, buildId } from '../version';
 
 interface ProfileResponse {
@@ -30,8 +27,6 @@ export default function ProfilePage() {
   const logout = useAuthStore((state) => state.logout);
   const linkGoogle = useAuthStore((state) => state.linkGoogle);
   const clearSession = useAuthStore((state) => state.clearSession);
-  const pantryItems = usePantryStore((state) => state.pantryItems);
-  const dietProfile = useDietProfileStore((state) => state.profile);
   const [displayName, setDisplayName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -218,15 +213,6 @@ export default function ProfilePage() {
         </div>
 
         <div className="mt-7 border-t border-gray-200 pt-6">
-          <AiRecipePanel
-            ingredients={pantryItems.map((item) => item.label)}
-            dietProfile={dietProfile}
-            user={user}
-            csrfToken={csrfToken}
-          />
-        </div>
-
-        <div className="mt-7 grid gap-3 border-t border-gray-200 pt-6">
           <h2 className="text-xl font-black text-gray-950">Accesso con Google</h2>
           <p className="text-gray-600">Collega lo stesso indirizzo Google verificato per usare il pulsante di accesso rapido.</p>
           <div className="max-w-sm">

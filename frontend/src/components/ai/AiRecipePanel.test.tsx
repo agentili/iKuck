@@ -105,7 +105,7 @@ describe('AiRecipePanel', () => {
 
     await userEvents.click(generateButton);
     expect(generateAiRecipe).toHaveBeenCalledWith(
-      { ingredients: ['Ceci', 'Pomodoro'], constraints: [] },
+      { ingredients: ['Ceci', 'Pomodoro'], constraints: [], existingRecipes: [] },
       profile,
       'csrf-token',
     );

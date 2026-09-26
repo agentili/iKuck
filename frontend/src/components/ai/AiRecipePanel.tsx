@@ -141,7 +141,11 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
     setIsGenerating(true);
     setError(null);
     try {
-      const recipe = await generateAiRecipe({ ingredients: pantryLabels, constraints: [] }, dietProfile, csrfToken);
+      const existingRecipes = [
+        ...recipes.map(r => ({ title: r.title, ingredients: r.ingredients })),
+        ...drafts.map(r => ({ title: r.title, ingredients: r.ingredients })),
+      ];
+      const recipe = await generateAiRecipe({ ingredients: pantryLabels, constraints: [], existingRecipes }, dietProfile, csrfToken);
       setDrafts((current) => [recipe, ...current.filter((item) => item.id !== recipe.id)]);
     } catch (generationError) {
       setError(errorMessage(generationError));

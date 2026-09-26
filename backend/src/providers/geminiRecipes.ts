@@ -60,10 +60,13 @@ export const createGeminiRecipeProvider = ({ apiKey, model, fetch, timeoutMs = 3
     }
 
     const requestFetch = fetch ?? globalThis.fetch;
+    const existingRecipesText = request.existingRecipes && request.existingRecipes.length > 0
+      ? `\n\nRicette già esistenti da EVITARE (non generare duplicati):\n${request.existingRecipes.map((r, i) => `${i + 1}. ${r.title} — ingredienti: ${r.ingredients.map(ing => `${ing.amount} ${ing.name}`).join(', ')}`).join('\n')}`
+      : '';
     const body = {
       contents: [{
         role: 'user',
-        parts: [{ text: `${instruction}\n\n${JSON.stringify({ ingredients: request.ingredients, constraints: request.constraints, dietProfile: request.dietProfile ?? null })}` }],
+        parts: [{ text: `${instruction}${existingRecipesText ? ' Do not create a recipe that duplicates any of the existing recipes listed.' : ''}\n\n${JSON.stringify({ ingredients: request.ingredients, constraints: request.constraints, dietProfile: request.dietProfile ?? null })}` }],
       }],
       generationConfig: {
         responseMimeType: 'application/json',

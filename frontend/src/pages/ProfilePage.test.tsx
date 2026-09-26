@@ -1,5 +1,5 @@
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProfilePage from './ProfilePage';
@@ -64,7 +64,7 @@ describe('ProfilePage', () => {
     expect(screen.getByText('Accesso con Google non disponibile in questo ambiente.')).toBeVisible();
   });
 
-  it('keeps private AI recipes inside the verified profile area', async () => {
+  it('no longer includes the AI recipes panel (moved to home page)', async () => {
     useAuthStore.setState({
       user: verifiedUser,
       csrfToken: 'csrf-1',
@@ -73,11 +73,7 @@ describe('ProfilePage', () => {
     render(<MemoryRouter><ProfilePage /></MemoryRouter>);
 
     await screen.findByRole('heading', { name: 'Il tuo profilo' });
-    const accountData = screen.getByRole('heading', { name: 'I tuoi dati' });
-    const panel = screen.getByRole('region', { name: 'Ricette AI private' });
-
-    expect(accountData.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(panel).getByRole('heading', { name: 'Ricette AI private' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Ricette AI private' })).not.toBeInTheDocument();
   });
 
   it('keeps app version and build diagnostics outside the primary profile header', async () => {

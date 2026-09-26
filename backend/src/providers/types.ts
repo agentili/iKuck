@@ -69,6 +69,7 @@ export interface RecipeGenerationRequest {
   ingredients: string[];
   constraints: string[];
   dietProfile?: DietProfilePayload;
+  existingRecipes?: Array<{ title: string; ingredients: Array<{ name: string; amount: string }> }>;
 }
 
 export type GeneratedRecipeDraft = SharedGeneratedRecipeDraft;
