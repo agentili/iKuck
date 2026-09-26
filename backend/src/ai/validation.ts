@@ -1,4 +1,5 @@
 import type { AiConsent, DietProfilePayload, GeneratedRecipe, GeneratedRecipeDraft } from '@ikuck/shared/contracts';
+import { RECIPE_MAX_INGREDIENTS } from '@ikuck/shared/limits';
 import { z } from 'zod';
 
 const dietTypes = ['omnivore', 'vegetarian', 'pescatarian', 'vegan'] as const;
@@ -27,7 +28,7 @@ export const generatedRecipeDraftSchema = z.object({
   ingredients: z.array(z.object({
     name: z.string().trim().min(1).max(120),
     amount: z.string().trim().min(1).max(80),
-  }).strict()).min(1).max(30),
+  }).strict()).min(1).max(RECIPE_MAX_INGREDIENTS),
   steps: z.array(z.string().trim().min(1).max(500)).min(1).max(20),
   diets: z.array(z.enum(dietTypes)).min(1).max(dietTypes.length).refine(unique, 'Diets must be unique'),
   allergens: z.array(z.enum(euAllergens)).max(euAllergens.length).refine(unique, 'Allergens must be unique'),

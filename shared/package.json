@@ -12,6 +12,10 @@
       "types": "./src/pantryMerge.ts",
       "default": "./src/pantryMerge.ts"
     },
+    "./limits": {
+      "types": "./src/limits.ts",
+      "default": "./src/limits.ts"
+    },
     "./sync-fixtures/valid.json": "./sync-fixtures/valid.json",
     "./sync-fixtures/invalid.json": "./sync-fixtures/invalid.json"
   }

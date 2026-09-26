@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AiConsent, DietProfilePayload, GeneratedRecipe, GeneratedRecipeDraft, SyncChange, SyncMutation } from '@ikuck/shared/contracts';
+import { AI_RECIPE_MAX_GENERATION_INGREDIENTS } from '@ikuck/shared/limits';
 import { isGeneratedRecipeCompatible, isAiConsent, isGeneratedRecipe, parseGeneratedRecipeDraft, generatedRecipeSchema } from '../ai/validation.js';
 import type { GenerationRateLimiter, GenerationRateReservation } from '../ai/rateLimit.js';
 import { AuthServiceError, type AuthService } from '../auth/service.js';
@@ -23,7 +24,7 @@ const consentRequestSchema = z.object({ enabled: z.boolean() }).strict();
 const saveRequestSchema = z.object({ recipe: generatedRecipeSchema }).strict();
 
 const generationRequestSchema = z.object({
-  ingredients: z.array(z.string().trim().min(1).max(120)).min(1).max(30),
+  ingredients: z.array(z.string().trim().min(1).max(120)).min(1).max(AI_RECIPE_MAX_GENERATION_INGREDIENTS),
   constraints: z.array(z.string().trim().min(1).max(240)).max(20),
   dietProfile: dietProfilePayloadSchema,
 }).strict();

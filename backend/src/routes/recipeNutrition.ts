@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import { RECIPE_NUTRITION_MAX_INGREDIENTS } from '@ikuck/shared/limits';
 import { AuthServiceError, type AuthService } from '../auth/service.js';
 import { estimateRecipeNutrition, type RecipeNutritionLookup } from '../nutrition/recipeNutrition.js';
 import type { NutritionProvider } from '../providers/types.js';
@@ -17,7 +18,7 @@ const lookupSchema = z.object({
 }).strict();
 
 const requestSchema = z.object({
-  ingredients: z.array(lookupSchema).min(1).max(30),
+  ingredients: z.array(lookupSchema).min(1).max(RECIPE_NUTRITION_MAX_INGREDIENTS),
 }).strict();
 
 const invalidPayload = (): AuthServiceError => new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');

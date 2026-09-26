@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AiConsent, DietProfilePayload, GeneratedRecipe, GeneratedRecipeDraft } from '@ikuck/shared/contracts';
+import { AI_RECIPE_MAX_GENERATION_INGREDIENTS } from '@ikuck/shared/limits';
 import { createApp } from '../app.js';
 import type { AuthService } from '../auth/service.js';
 import { hashOpaqueToken } from '../auth/tokens.js';
@@ -71,12 +72,15 @@ const consent = async (app: ReturnType<typeof createApp>, enabled: boolean): Pro
   return response.json().consent as AiConsent;
 };
 
-const generate = (app: ReturnType<typeof createApp>, input: Partial<{ dietProfile: DietProfilePayload }> = {}) => app.inject({
+const generate = (
+  app: ReturnType<typeof createApp>,
+  input: Partial<{ dietProfile: DietProfilePayload; ingredients: string[] }> = {},
+) => app.inject({
   method: 'POST',
   url: '/v1/ai-recipes',
   headers,
   payload: {
-    ingredients: ['Ceci', 'Pomodoro'],
+    ingredients: input.ingredients ?? ['Ceci', 'Pomodoro'],
     constraints: ['Una sola padella'],
     dietProfile: input.dietProfile ?? profile,
   },
@@ -161,6 +165,20 @@ describe('AI recipe routes', () => {
     });
     expect(invalid.statusCode).toBe(400);
     expect(invalid.json()).toMatchObject({ code: 'invalid_payload' });
+    await app.close();
+  });
+
+  it('accepts a pantry up to the centralized ingredient limit and rejects longer lists', async () => {
+    const { app } = createAiApp();
+    await consent(app, true);
+
+    const fullPantry = Array.from({ length: AI_RECIPE_MAX_GENERATION_INGREDIENTS }, (_, index) => `Ingrediente ${index + 1}`);
+    const accepted = await generate(app, { ingredients: fullPantry });
+    expect(accepted.statusCode).toBe(201);
+
+    const rejected = await generate(app, { ingredients: [...fullPantry, 'Oltre il limite'] });
+    expect(rejected.statusCode).toBe(400);
+    expect(rejected.json()).toMatchObject({ code: 'invalid_payload' });
     await app.close();
   });
 
