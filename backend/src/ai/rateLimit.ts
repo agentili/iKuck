@@ -24,7 +24,8 @@ interface RedisGenerationRateLimiterOptions {
   clock?: () => Date;
 }
 
-const MAX_GENERATIONS_PER_DAY = 5;
+/** Maximum daily AI recipe generations per user. Set high to effectively disable the limit. */
+const MAX_GENERATIONS_PER_DAY = 10000;
 
 const utcDayKey = (date: Date): string => date.toISOString().slice(0, 10);
 

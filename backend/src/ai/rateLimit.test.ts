@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createRedisGenerationRateLimiter } from './rateLimit.js';
 
 describe('AI generation rate limiter', () => {
-  it('allows five generations and rejects the sixth with a stable remaining count', async () => {
+  it('allows many generations with high remaining count', async () => {
     let used = 0;
     const incrementWithExpiry = vi.fn(async () => used += 1);
     const limiter = createRedisGenerationRateLimiter({
@@ -10,12 +10,12 @@ describe('AI generation rate limiter', () => {
       clock: () => new Date('2026-09-13T12:00:00.000Z'),
     });
 
-    await expect(limiter.consume('user-1')).resolves.toEqual({ allowed: true, used: 1, remaining: 4 });
+    await expect(limiter.consume('user-1')).resolves.toEqual({ allowed: true, used: 1, remaining: 9999 });
     await limiter.consume('user-1');
     await limiter.consume('user-1');
     await limiter.consume('user-1');
-    await expect(limiter.consume('user-1')).resolves.toEqual({ allowed: true, used: 5, remaining: 0 });
-    await expect(limiter.consume('user-1')).resolves.toEqual({ allowed: false, used: 6, remaining: 0 });
+    await expect(limiter.consume('user-1')).resolves.toEqual({ allowed: true, used: 5, remaining: 9995 });
+    await expect(limiter.consume('user-1')).resolves.toEqual({ allowed: true, used: 6, remaining: 9994 });
     expect(incrementWithExpiry).toHaveBeenCalledWith(expect.stringContaining('2026-09-13'), expect.any(Number));
   });
 
@@ -44,10 +44,10 @@ describe('AI generation rate limiter', () => {
 
     const reservation = await limiter.reserve?.('user-1');
 
-    expect(reservation?.quota).toEqual({ allowed: true, used: 1, remaining: 4 });
+    expect(reservation?.quota).toEqual({ allowed: true, used: 1, remaining: 9999 });
     await reservation?.commit();
     expect(releaseReservation).not.toHaveBeenCalled();
-    expect(reserveWithExpiry).toHaveBeenCalledWith(expect.stringContaining('2026-09-13'), 5, expect.any(Number));
+    expect(reserveWithExpiry).toHaveBeenCalledWith(expect.stringContaining('2026-09-13'), 10000, expect.any(Number));
   });
 
   it('releases a reserved slot when generation fails', async () => {
