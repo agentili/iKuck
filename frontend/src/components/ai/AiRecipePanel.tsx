@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { LockKeyhole, Save, Sparkles, Trash2, X } from 'lucide-react';
 import type { DietProfilePayload, GeneratedRecipe } from '@ikuck/shared/contracts';
+import { RECIPE_MAX_INGREDIENTS } from '@ikuck/shared/limits';
 import { ApiClientError } from '../../api/apiClient';
 import { type AuthUser } from '../../auth/authStore';
 import {
@@ -31,6 +32,7 @@ const errorMessage = (error: unknown): string => {
   if (code === 'ai_daily_limit_reached') return 'Hai raggiunto il limite di cinque ricette AI al giorno.';
   if (code === 'ai_consent_required') return 'Salva il consenso prima di generare una ricetta AI.';
   if (code === 'ai_recipe_incompatible') return 'La ricetta generata non rispetta i filtri alimentari attivi.';
+  if (code === 'ai_recipe_not_novel') return 'L’IA ha riproposto un’idea troppo simile: non l’ho mostrata. Riprova per una ricetta diversa.';
   if (code === 'network_error') return 'Servizio non raggiungibile: le ricette AI restano disponibili solo online.';
   if (code === 'provider_unavailable' || code === 'provider_error') return 'Il servizio delle ricette AI non è momentaneamente disponibile.';
   return 'Non è stato possibile completare l’operazione AI. Riprova.';
@@ -39,6 +41,63 @@ const errorMessage = (error: unknown): string => {
 const normalizedIngredients = (ingredients: string[]): string[] => [...new Set(
   ingredients.map((ingredient) => ingredient.trim()).filter((ingredient) => ingredient.length > 0),
 )];
+
+const PROPOSED_RECIPE_HISTORY_LIMIT = 50;
+type ProposedRecipe = Pick<GeneratedRecipe, 'title' | 'ingredients'>;
+
+const proposalHistoryKey = (userId: string): string => `ikuck.ai-recipe-proposals:${userId}`;
+
+const isProposedRecipe = (value: unknown): value is ProposedRecipe => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const candidate = value as { title?: unknown; ingredients?: unknown };
+  return typeof candidate.title === 'string'
+    && candidate.title.trim().length > 0
+    && candidate.title.length <= 120
+    && Array.isArray(candidate.ingredients)
+    && candidate.ingredients.length > 0
+    && candidate.ingredients.length <= RECIPE_MAX_INGREDIENTS
+    && candidate.ingredients.every((ingredient: unknown) => (
+      typeof ingredient === 'object'
+      && ingredient !== null
+      && 'name' in ingredient
+      && typeof ingredient.name === 'string'
+      && ingredient.name.trim().length > 0
+      && ingredient.name.length <= 120
+      && 'amount' in ingredient
+      && typeof ingredient.amount === 'string'
+      && ingredient.amount.trim().length > 0
+      && ingredient.amount.length <= 80
+    ));
+};
+
+const loadProposedRecipes = (userId: string): ProposedRecipe[] => {
+  try {
+    const stored = window.localStorage.getItem(proposalHistoryKey(userId));
+    if (stored === null) return [];
+    const parsed: unknown = JSON.parse(stored);
+    return Array.isArray(parsed)
+      ? parsed.filter(isProposedRecipe).slice(-PROPOSED_RECIPE_HISTORY_LIMIT)
+      : [];
+  } catch {
+    return [];
+  }
+};
+
+const storeProposedRecipes = (userId: string, recipes: ProposedRecipe[]): void => {
+  try {
+    window.localStorage.setItem(proposalHistoryKey(userId), JSON.stringify(recipes.slice(-PROPOSED_RECIPE_HISTORY_LIMIT)));
+  } catch {
+    // The current component state still prevents repeats if browser storage is unavailable.
+  }
+};
+
+const clearProposedRecipes = (userId: string): void => {
+  try {
+    window.localStorage.removeItem(proposalHistoryKey(userId));
+  } catch {
+    // Consent revocation still disables generation if browser storage is unavailable.
+  }
+};
 
 const RecipeBody = ({ recipe }: { recipe: GeneratedRecipe }) => (
   <>
@@ -63,10 +122,12 @@ const RecipeBody = ({ recipe }: { recipe: GeneratedRecipe }) => (
 
 export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToken }: AiRecipePanelProps) {
   const verified = user !== null && user.emailVerifiedAt.trim().length > 0 && csrfToken !== null;
+  const userId = user?.id ?? null;
   const [consent, setConsent] = useState<{ enabled: boolean; updatedAt: string } | null>(null);
   const [consentDraft, setConsentDraft] = useState(false);
   const [recipes, setRecipes] = useState<GeneratedRecipe[]>([]);
   const [drafts, setDrafts] = useState<GeneratedRecipe[]>([]);
+  const [proposedRecipes, setProposedRecipes] = useState<Array<{ title: string; ingredients: GeneratedRecipe['ingredients'] }>>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -81,9 +142,11 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
     setConsentDraft(false);
     setRecipes([]);
     setDrafts([]);
+    setProposedRecipes([]);
     setSavingDraftId(null);
     setError(null);
-    if (!verified) return undefined;
+    if (!verified || userId === null) return undefined;
+    setProposedRecipes(loadProposedRecipes(userId));
 
     setIsLoading(true);
     void Promise.all([fetchAiConsent(), fetchAiRecipes()])
@@ -103,7 +166,7 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
     return () => {
       cancelled = true;
     };
-  }, [verified, user?.id]);
+  }, [verified, userId]);
 
   if (!verified) {
     return (
@@ -122,13 +185,14 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
   }
 
   const saveConsent = async () => {
-    if (csrfToken === null) return;
+    if (csrfToken === null || user === null) return;
     setIsSaving(true);
     setError(null);
     try {
       const nextConsent = await updateAiConsent(consentDraft, csrfToken);
       setConsent(nextConsent);
       setConsentDraft(nextConsent.enabled);
+      if (!nextConsent.enabled) clearProposedRecipes(user.id);
     } catch (saveError) {
       setError(errorMessage(saveError));
     } finally {
@@ -137,15 +201,19 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
   };
 
   const generate = async () => {
-    if (csrfToken === null || consent?.enabled !== true || pantryLabels.length === 0 || isGenerating) return;
+    if (csrfToken === null || user === null || consent?.enabled !== true || pantryLabels.length === 0 || isGenerating) return;
     setIsGenerating(true);
     setError(null);
     try {
-      const existingRecipes = [
-        ...recipes.map(r => ({ title: r.title, ingredients: r.ingredients })),
-        ...drafts.map(r => ({ title: r.title, ingredients: r.ingredients })),
-      ];
-      const recipe = await generateAiRecipe({ ingredients: pantryLabels, constraints: [], existingRecipes }, dietProfile, csrfToken);
+      const recipe = await generateAiRecipe({
+        ingredients: pantryLabels,
+        constraints: [],
+        existingRecipes: proposedRecipes.slice(-50),
+      }, dietProfile, csrfToken);
+      const proposedRecipe = { title: recipe.title, ingredients: recipe.ingredients };
+      const nextProposedRecipes = [...proposedRecipes, proposedRecipe].slice(-PROPOSED_RECIPE_HISTORY_LIMIT);
+      storeProposedRecipes(user.id, nextProposedRecipes);
+      setProposedRecipes(nextProposedRecipes);
       setDrafts((current) => [recipe, ...current.filter((item) => item.id !== recipe.id)]);
     } catch (generationError) {
       setError(errorMessage(generationError));
@@ -225,10 +293,10 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
               checked={consentDraft}
               onChange={(event) => setConsentDraft(event.target.checked)}
               disabled={isSaving}
-              aria-label="Acconsento all’uso degli ingredienti per generare ricette AI"
+              aria-label="Acconsento all’uso degli ingredienti della dispensa, del profilo alimentare e dei titoli e ingredienti delle ricette AI già salvate o proposte per evitare ripetizioni"
               className="mt-0.5 h-5 w-5 accent-emerald-700"
             />
-            <span>Acconsento all’uso degli ingredienti indicati e del mio profilo alimentare per generare ricette AI.</span>
+            <span>Acconsento all’uso degli ingredienti della dispensa, del mio profilo alimentare e dei titoli/ingredienti delle ricette AI salvate o già proposte per evitarne la ripetizione.</span>
           </label>
           <p className="mt-2 text-xs leading-relaxed text-gray-600">Puoi revocare il consenso in qualsiasi momento. Le ricette già salvate restano visibili finché non le elimini.</p>
           {consentDraft !== consent.enabled && (

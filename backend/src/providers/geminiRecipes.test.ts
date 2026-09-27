@@ -34,6 +34,26 @@ describe('Gemini recipe provider', () => {
     expect((body.generationConfig as { responseSchema: unknown }).responseSchema).toBeTypeOf('object');
   });
 
+  it('sends prior proposals to the model with the 30 percent novelty rule', async () => {
+    const fetch = vi.fn().mockResolvedValue(response({
+      candidates: [{ content: { parts: [{ text: JSON.stringify(draft) }] } }],
+    }));
+    const provider = createGeminiRecipeProvider({ apiKey: 'secret-key', model: 'gemini-test', fetch });
+    const existingRecipes = [{
+      title: 'Pasta al pomodoro',
+      ingredients: [{ name: 'Pasta', amount: '80 g' }, { name: 'Pomodoro', amount: '100 g' }],
+    }];
+
+    await provider.generate({ ingredients: ['Ceci'], constraints: [], existingRecipes });
+
+    const [, init] = fetch.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as { contents: Array<{ parts: Array<{ text: string }> }> };
+    const prompt = body.contents[0].parts[0].text;
+    expect(JSON.parse(prompt.slice(prompt.indexOf('{')))).toMatchObject({ existingRecipes });
+    expect(prompt).toMatch(/30%/);
+    expect(prompt).toMatch(/Jaccard/i);
+  });
+
   it('rejects non-success responses and malformed structured output', async () => {
     const failed = createGeminiRecipeProvider({ apiKey: 'secret-key', model: 'gemini-test', fetch: vi.fn().mockResolvedValue(response({}, 500)) });
     await expect(failed.generate({ ingredients: ['Ceci'], constraints: [] })).rejects.toMatchObject({ code: 'provider_error', provider: 'recipes' });

@@ -67,6 +67,7 @@ const enableGeneration = async (
 
 describe('AiRecipePanel', () => {
   beforeEach(() => {
+    localStorage.clear();
     vi.mocked(fetchAiConsent).mockReset();
     vi.mocked(fetchAiRecipes).mockReset();
     vi.mocked(updateAiConsent).mockReset();
@@ -134,21 +135,57 @@ describe('AiRecipePanel', () => {
     expect(within(panel).getByRole('button', { name: `Elimina ${recipe.title}` })).toBeInTheDocument();
   });
 
-  it('discards a generated preview without storing it', async () => {
+  it('keeps proposal history across a panel reload on the same account', async () => {
     const userEvents = userEvent.setup();
+    const second: GeneratedRecipe = { ...recipe, id: 'recipe-2', title: 'Ceci e melanzane speziati' };
+    vi.mocked(fetchAiConsent).mockResolvedValue({ enabled: true, updatedAt: '2026-09-13T12:00:00.000Z' });
+    vi.mocked(generateAiRecipe).mockResolvedValueOnce(recipe).mockResolvedValueOnce(second);
+
+    const firstRender = renderPanel();
+    const firstPanel = screen.getByRole('region', { name: 'Ricette AI private' });
+    await userEvents.click(await within(firstPanel).findByRole('button', { name: 'Genera ricetta AI' }));
+    await within(firstPanel).findByRole('heading', { name: recipe.title });
+    firstRender.unmount();
+
+    const secondRender = renderPanel();
+    const secondPanel = screen.getByRole('region', { name: 'Ricette AI private' });
+    await userEvents.click(await within(secondPanel).findByRole('button', { name: 'Genera ricetta AI' }));
+    await within(secondPanel).findByRole('heading', { name: second.title });
+
+    expect(generateAiRecipe).toHaveBeenNthCalledWith(
+      2,
+      { ingredients: ['Ceci', 'Pomodoro'], constraints: [], existingRecipes: [{ title: recipe.title, ingredients: recipe.ingredients }] },
+      profile,
+      'csrf-token',
+    );
+    secondRender.unmount();
+  });
+
+  it('keeps a discarded proposal in generation history without storing it', async () => {
+    const userEvents = userEvent.setup();
+    const second: GeneratedRecipe = { ...recipe, id: 'recipe-2', title: 'Ceci e peperoni al forno' };
     vi.mocked(updateAiConsent).mockResolvedValue({ enabled: true, updatedAt: '2026-09-13T12:01:00.000Z' });
-    vi.mocked(generateAiRecipe).mockResolvedValue(recipe);
+    vi.mocked(generateAiRecipe).mockResolvedValueOnce(recipe).mockResolvedValueOnce(second);
     renderPanel();
 
     const panel = screen.getByRole('region', { name: 'Ricette AI private' });
     await enableGeneration(panel, userEvents);
-    await userEvents.click(await within(panel).findByRole('button', { name: 'Genera ricetta AI' }));
+    const generateButton = await within(panel).findByRole('button', { name: 'Genera ricetta AI' });
+    await userEvents.click(generateButton);
     expect(await within(panel).findByRole('heading', { name: 'Ceci croccanti' })).toBeInTheDocument();
 
     await userEvents.click(within(panel).getByRole('button', { name: 'Scarta' }));
-
     expect(within(panel).queryByRole('heading', { name: 'Ceci croccanti' })).not.toBeInTheDocument();
     expect(saveAiRecipe).not.toHaveBeenCalled();
+
+    await userEvents.click(generateButton);
+    expect(await within(panel).findByRole('heading', { name: second.title })).toBeInTheDocument();
+    expect(generateAiRecipe).toHaveBeenNthCalledWith(
+      2,
+      { ingredients: ['Ceci', 'Pomodoro'], constraints: [], existingRecipes: [{ title: recipe.title, ingredients: recipe.ingredients }] },
+      profile,
+      'csrf-token',
+    );
   });
 
   it('keeps a preview visible with an error when the explicit save fails', async () => {
@@ -185,7 +222,45 @@ describe('AiRecipePanel', () => {
     expect(await within(panel).findByRole('heading', { name: 'Pomodori ripieni' })).toBeInTheDocument();
 
     expect(within(panel).getAllByRole('button', { name: 'Salva ricetta' })).toHaveLength(2);
+    expect(generateAiRecipe).toHaveBeenNthCalledWith(
+      2,
+      { ingredients: ['Ceci', 'Pomodoro'], constraints: [], existingRecipes: [{ title: recipe.title, ingredients: recipe.ingredients }] },
+      profile,
+      'csrf-token',
+    );
     expect(saveAiRecipe).not.toHaveBeenCalled();
+  });
+
+  it('clears local proposal history when AI consent is revoked', async () => {
+    const userEvents = userEvent.setup();
+    vi.mocked(fetchAiConsent).mockResolvedValue({ enabled: true, updatedAt: '2026-09-13T12:00:00.000Z' });
+    vi.mocked(generateAiRecipe).mockResolvedValue(recipe);
+    vi.mocked(updateAiConsent).mockResolvedValue({ enabled: false, updatedAt: '2026-09-13T12:02:00.000Z' });
+    renderPanel();
+
+    const panel = screen.getByRole('region', { name: 'Ricette AI private' });
+    await userEvents.click(await within(panel).findByRole('button', { name: 'Genera ricetta AI' }));
+    await within(panel).findByRole('heading', { name: recipe.title });
+    expect(localStorage.getItem('ikuck.ai-recipe-proposals:user-1')).not.toBeNull();
+
+    await userEvents.click(within(panel).getByRole('checkbox', { name: /acconsento all’uso degli ingredienti/i }));
+    await userEvents.click(within(panel).getByRole('button', { name: 'Salva consenso' }));
+
+    await waitFor(() => expect(localStorage.getItem('ikuck.ai-recipe-proposals:user-1')).toBeNull());
+    expect(within(panel).getByRole('heading', { name: recipe.title })).toBeInTheDocument();
+  });
+
+  it('explains when a near-duplicate preview was rejected', async () => {
+    const userEvents = userEvent.setup();
+    vi.mocked(fetchAiConsent).mockResolvedValue({ enabled: true, updatedAt: '2026-09-13T12:00:00.000Z' });
+    vi.mocked(generateAiRecipe).mockRejectedValue(new ApiClientError(422, 'ai_recipe_not_novel', 'duplicate'));
+    renderPanel();
+
+    const panel = screen.getByRole('region', { name: 'Ricette AI private' });
+    await userEvents.click(await within(panel).findByRole('button', { name: 'Genera ricetta AI' }));
+
+    expect(await within(panel).findByRole('alert')).toHaveTextContent(/idea troppo simile/i);
+    expect(within(panel).queryByRole('article')).not.toBeInTheDocument();
   });
 
   it('keeps saved recipes readable after revocation and translates quota errors', async () => {

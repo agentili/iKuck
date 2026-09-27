@@ -412,7 +412,8 @@ test('verified users can consent to private AI recipes without changing pantry l
     }
     if (url.pathname === '/v1/ai-recipes' && request.method() === 'POST') {
       generationBodies.push(request.postDataJSON());
-      const recipe = {
+      const generationNumber = generationBodies.length;
+      const recipe = generationNumber === 1 ? {
         id: 'browser-ai-recipe',
         source: 'ai',
         title: 'Ceci croccanti al pomodoro',
@@ -423,8 +424,19 @@ test('verified users can consent to private AI recipes without changing pantry l
         allergens: [],
         createdAt: '2026-09-13T12:02:00.000Z',
         updatedAt: '2026-09-13T12:02:00.000Z',
+      } : {
+        id: 'browser-ai-recipe-2',
+        source: 'ai',
+        title: 'Ceci e melanzane speziati',
+        description: 'Una seconda idea privata.',
+        ingredients: [{ name: 'Ceci', amount: '200 g' }, { name: 'Melanzane', amount: '1' }, { name: 'Cumino', amount: 'q.b.' }],
+        steps: ['Taglia le melanzane.', 'Cuoci con ceci e spezie.'],
+        diets: ['vegan'],
+        allergens: [],
+        createdAt: '2026-09-13T12:03:00.000Z',
+        updatedAt: '2026-09-13T12:03:00.000Z',
       };
-      await route.fulfill({ status: 201, json: { recipe, quota: { allowed: true, used: 1, remaining: 4 } } });
+      await route.fulfill({ status: 201, json: { recipe, quota: { allowed: true, used: generationNumber, remaining: 5 - generationNumber } } });
       return;
     }
     if (url.pathname === '/v1/ai-recipes/save' && request.method() === 'POST') {
@@ -457,8 +469,8 @@ test('verified users can consent to private AI recipes without changing pantry l
   const pantryBefore = await pantry.innerText();
   const lotsBefore = await lots.innerText();
 
-  await page.getByRole('link', { name: 'Profilo' }).click();
-  await expect(page.getByRole('heading', { name: 'Il tuo profilo' })).toBeVisible();
+  await page.getByRole('link', { name: 'Home' }).click();
+  await expect(page.getByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
   const aiPanel = page.getByRole('region', { name: 'Ricette AI private' });
   const consent = aiPanel.getByRole('checkbox', { name: /acconsento all’uso degli ingredienti/i });
   await expect(consent).toBeVisible();
@@ -467,7 +479,7 @@ test('verified users can consent to private AI recipes without changing pantry l
   await aiPanel.getByRole('button', { name: 'Genera ricetta AI' }).click();
   await expect(aiPanel.getByRole('heading', { name: 'Ceci croccanti al pomodoro' })).toBeVisible();
   expect(generationBodies).toHaveLength(1);
-  expect(generationBodies[0]).toMatchObject({ ingredients: ['Ceci', 'Pomodoro'] });
+  expect(generationBodies[0]).toMatchObject({ ingredients: ['Ceci', 'Pomodoro'], existingRecipes: [] });
 
   await expect(aiPanel.getByText(/non ancora salvata/i)).toBeVisible();
   await aiPanel.getByRole('button', { name: 'Salva ricetta' }).click();
@@ -475,13 +487,20 @@ test('verified users can consent to private AI recipes without changing pantry l
   await expect.poll(() => saveBodies.length).toBe(1);
   expect(saveBodies[0]).toMatchObject({ recipe: { id: 'browser-ai-recipe' } });
 
+  await aiPanel.getByRole('button', { name: 'Genera ricetta AI' }).click();
+  await expect(aiPanel.getByRole('heading', { name: 'Ceci e melanzane speziati' })).toBeVisible();
+  expect(generationBodies).toHaveLength(2);
+  expect(generationBodies[1]).toMatchObject({
+    existingRecipes: [{ title: 'Ceci croccanti al pomodoro', ingredients: [{ name: 'Ceci', amount: '240 g' }, { name: 'Pomodoro', amount: '200 g' }] }],
+  });
+
   await openPantry(page);
   await page.getByText('Personalizza la dispensa', { exact: true }).click();
   await page.getByText('Dettagli lotti', { exact: true }).click();
   expect(await page.getByRole('list', { name: 'La tua dispensa' }).innerText()).toBe(pantryBefore);
   expect(await page.getByRole('list', { name: 'Lotti di Ceci' }).innerText()).toBe(lotsBefore);
 
-  await page.getByRole('link', { name: 'Profilo' }).click();
+  await page.getByRole('link', { name: 'Home' }).click();
   await page.reload();
   await expect(page.getByRole('region', { name: 'Ricette AI private' }).getByRole('heading', { name: 'Ceci croccanti al pomodoro' })).toBeVisible();
   const reloadedAiPanel = page.getByRole('region', { name: 'Ricette AI private' });

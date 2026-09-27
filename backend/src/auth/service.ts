@@ -18,6 +18,7 @@ export type AuthErrorCode =
   | 'ai_consent_required'
   | 'ai_daily_limit_reached'
   | 'ai_recipe_incompatible'
+  | 'ai_recipe_not_novel'
   | 'invalid_google_credential'
   | 'google_account_link_required'
   | 'google_account_already_linked'

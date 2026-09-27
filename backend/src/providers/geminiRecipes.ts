@@ -1,4 +1,5 @@
 import { FetchTimeoutError, fetchWithTimeout } from './fetchWithTimeout.js';
+import { RECIPE_GENERATION_INSTRUCTIONS, serializeRecipeGenerationInput } from './recipePrompt.js';
 import {
   ProviderRequestError,
   ProviderTimeoutError,
@@ -51,8 +52,6 @@ const readOutputText = (value: unknown): string | null => {
   return null;
 };
 
-const instruction = 'Generate one practical recipe. Return only the requested JSON. The recipe diets and allergens must be truthful and must satisfy the supplied dietary profile. Never invent an allergen-free claim when an ingredient implies an allergen.';
-
 export const createGeminiRecipeProvider = ({ apiKey, model, fetch, timeoutMs = 30000 }: GeminiRecipeProviderOptions): RecipeGenerationProvider => ({
   generate: async (request): Promise<GeneratedRecipeDraft> => {
     if (apiKey.trim() === '' || model.trim() === '' || request.ingredients.length === 0) {
@@ -60,13 +59,10 @@ export const createGeminiRecipeProvider = ({ apiKey, model, fetch, timeoutMs = 3
     }
 
     const requestFetch = fetch ?? globalThis.fetch;
-    const existingRecipesText = request.existingRecipes && request.existingRecipes.length > 0
-      ? `\n\nRicette già esistenti da EVITARE (non generare duplicati):\n${request.existingRecipes.map((r, i) => `${i + 1}. ${r.title} — ingredienti: ${r.ingredients.map(ing => `${ing.amount} ${ing.name}`).join(', ')}`).join('\n')}`
-      : '';
     const body = {
       contents: [{
         role: 'user',
-        parts: [{ text: `${instruction}${existingRecipesText ? ' Do not create a recipe that duplicates any of the existing recipes listed.' : ''}\n\n${JSON.stringify({ ingredients: request.ingredients, constraints: request.constraints, dietProfile: request.dietProfile ?? null })}` }],
+        parts: [{ text: `${RECIPE_GENERATION_INSTRUCTIONS}\n\n${serializeRecipeGenerationInput(request)}` }],
       }],
       generationConfig: {
         responseMimeType: 'application/json',

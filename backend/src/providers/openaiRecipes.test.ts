@@ -33,6 +33,23 @@ describe('OpenAI recipe provider', () => {
     expect((body.text as { format: { schema: unknown } }).format.schema).toBeTypeOf('object');
   });
 
+  it('sends prior proposals to the model with the 30 percent novelty rule', async () => {
+    const fetch = vi.fn().mockResolvedValue(response({ output_text: JSON.stringify(draft) }));
+    const provider = createOpenAiRecipeProvider({ apiKey: 'secret-key', model: 'gpt-5.5', fetch });
+    const existingRecipes = [{
+      title: 'Pasta al pomodoro',
+      ingredients: [{ name: 'Pasta', amount: '80 g' }, { name: 'Pomodoro', amount: '100 g' }],
+    }];
+
+    await provider.generate({ ingredients: ['Ceci'], constraints: [], existingRecipes });
+
+    const [, init] = fetch.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as { instructions: string; input: string };
+    expect(JSON.parse(body.input)).toMatchObject({ existingRecipes });
+    expect(body.instructions).toMatch(/30%/);
+    expect(body.instructions).toMatch(/Jaccard/i);
+  });
+
   it('rejects non-success responses and malformed structured output', async () => {
     const failed = createOpenAiRecipeProvider({ apiKey: 'secret-key', model: 'gpt-5.5', fetch: vi.fn().mockResolvedValue(response({}, 500)) });
     await expect(failed.generate({ ingredients: ['Ceci'], constraints: [] })).rejects.toMatchObject({ code: 'provider_error', provider: 'recipes' });
