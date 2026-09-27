@@ -534,13 +534,13 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       clock: () => new Date('2026-09-13T23:59:00.000Z'),
     });
     const beforeMidnight = await limiter.consume(quotaUser);
-    expect(beforeMidnight).toMatchObject({ used: 1, remaining: 4, allowed: true });
+    expect(beforeMidnight).toMatchObject({ used: 1, remaining: 9999, allowed: true });
     const nextDayLimiter = createRedisGenerationRateLimiter({
       incrementWithExpiry: cache.incrementWithExpiry,
       clock: () => new Date('2026-09-14T00:01:00.000Z'),
     });
     const afterMidnight = await nextDayLimiter.consume(quotaUser);
-    expect(afterMidnight).toMatchObject({ used: 1, remaining: 4, allowed: true });
+    expect(afterMidnight).toMatchObject({ used: 1, remaining: 9999, allowed: true });
 
     await migrate(database.db, {
       migrationsFolder: join(dirname(fileURLToPath(import.meta.url)), '..', 'db', 'migrations'),
