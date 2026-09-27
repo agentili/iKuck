@@ -74,7 +74,11 @@ const consent = async (app: ReturnType<typeof createApp>, enabled: boolean): Pro
 
 const generate = (
   app: ReturnType<typeof createApp>,
-  input: Partial<{ dietProfile: DietProfilePayload; ingredients: string[] }> = {},
+  input: Partial<{
+    dietProfile: DietProfilePayload;
+    ingredients: string[];
+    existingRecipes: Array<{ title: string; ingredients: Array<{ name: string; amount: string }> }>;
+  }> = {},
 ) => app.inject({
   method: 'POST',
   url: '/v1/ai-recipes',
@@ -83,6 +87,7 @@ const generate = (
     ingredients: input.ingredients ?? ['Ceci', 'Pomodoro'],
     constraints: ['Una sola padella'],
     dietProfile: input.dietProfile ?? profile,
+    existingRecipes: input.existingRecipes ?? [],
   },
 });
 
@@ -179,6 +184,122 @@ describe('AI recipe routes', () => {
     const rejected = await generate(app, { ingredients: [...fullPantry, 'Oltre il limite'] });
     expect(rejected.statusCode).toBe(400);
     expect(rejected.json()).toMatchObject({ code: 'invalid_payload' });
+    await app.close();
+  });
+
+  it('accepts saved-preview ingredient amounts up to the recipe schema limit', async () => {
+    const provider: RecipeGenerationProvider = { generate: vi.fn().mockResolvedValue(generatedDraft) };
+    const { app } = createAiApp({ provider });
+    await consent(app, true);
+    const existingRecipes = [{
+      title: 'Ricetta già proposta',
+      ingredients: [{ name: 'Ingrediente di prova', amount: 'x'.repeat(70) }],
+    }];
+
+    const response = await generate(app, { existingRecipes });
+
+    expect(response.statusCode).toBe(201);
+    expect(provider.generate).toHaveBeenCalledWith(expect.objectContaining({ existingRecipes }));
+    await app.close();
+  });
+
+  it('uses saved and previously proposed recipes as novelty constraints and retries similar output', async () => {
+    const savedRecipe: GeneratedRecipe = {
+      id: 'saved-pasta',
+      title: 'Pasta al pomodoro',
+      description: 'Pasta semplice.',
+      ingredients: [
+        { name: 'Pasta', amount: '80 g' },
+        { name: 'Passata di pomodoro', amount: '100 g' },
+        { name: 'Aglio', amount: '1 spicchio' },
+        { name: 'Olio', amount: 'q.b.' },
+      ],
+      steps: ['Cuoci la pasta.'],
+      diets: ['vegan'],
+      allergens: ['gluten'],
+      source: 'ai',
+      createdAt: '2026-09-01T10:00:00.000Z',
+      updatedAt: '2026-09-01T10:00:00.000Z',
+    };
+    const duplicateDraft: GeneratedRecipeDraft = {
+      title: savedRecipe.title,
+      description: savedRecipe.description,
+      ingredients: savedRecipe.ingredients,
+      steps: savedRecipe.steps,
+      diets: savedRecipe.diets,
+      allergens: savedRecipe.allergens,
+    };
+    const provider: RecipeGenerationProvider = {
+      generate: vi.fn().mockResolvedValueOnce(duplicateDraft).mockResolvedValueOnce(generatedDraft),
+    };
+    const { app, repository } = createAiApp({ provider });
+    await consent(app, true);
+    await saveRecipe(app, savedRecipe);
+    const proposed = { title: 'Zuppa di lenticchie', ingredients: [{ name: 'Lenticchie', amount: '100 g' }] };
+
+    const response = await generate(app, { existingRecipes: [proposed] });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().recipe.title).toBe(generatedDraft.title);
+    expect(provider.generate).toHaveBeenCalledTimes(2);
+    expect(provider.generate).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      existingRecipes: expect.arrayContaining([
+        expect.objectContaining({ title: savedRecipe.title }),
+        expect.objectContaining({ title: proposed.title }),
+      ]),
+    }));
+    expect(provider.generate).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      existingRecipes: expect.arrayContaining([
+        expect.objectContaining({ title: duplicateDraft.title }),
+      ]),
+    }));
+    const stored = await repository.readAll('user-1');
+    expect(stored.filter((change) => change.entityType === 'generated_recipe')).toHaveLength(1);
+    await app.close();
+  });
+
+  it('never returns a similar recipe when all bounded retries repeat existing ideas', async () => {
+    const savedRecipe: GeneratedRecipe = {
+      id: 'saved-pasta',
+      title: 'Pasta al pomodoro',
+      description: 'Pasta semplice.',
+      ingredients: [
+        { name: 'Pasta', amount: '80 g' },
+        { name: 'Pomodoro', amount: '100 g' },
+        { name: 'Aglio', amount: '1 spicchio' },
+        { name: 'Olio', amount: 'q.b.' },
+      ],
+      steps: ['Cuoci la pasta.'],
+      diets: ['vegan'],
+      allergens: ['gluten'],
+      source: 'ai',
+      createdAt: '2026-09-01T10:00:00.000Z',
+      updatedAt: '2026-09-01T10:00:00.000Z',
+    };
+    const similarDraft: GeneratedRecipeDraft = {
+      ...generatedDraft,
+      title: 'Pasta al pomodoro croccante',
+      ingredients: [...savedRecipe.ingredients, { name: 'Pangrattato', amount: '20 g' }],
+      diets: ['vegan'],
+      allergens: ['gluten'],
+    };
+    const provider: RecipeGenerationProvider = { generate: vi.fn().mockResolvedValue(similarDraft) };
+    const release = vi.fn().mockResolvedValue(undefined);
+    const commit = vi.fn().mockResolvedValue(undefined);
+    const { app } = createAiApp({
+      provider,
+      limiter: { consume: vi.fn(), reserve: vi.fn().mockResolvedValue({ quota: { allowed: true, used: 1, remaining: 4 }, release, commit }) },
+    });
+    await consent(app, true);
+    await saveRecipe(app, savedRecipe);
+
+    const response = await generate(app);
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({ code: 'ai_recipe_not_novel' });
+    expect(provider.generate).toHaveBeenCalledTimes(3);
+    expect(commit).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledOnce();
     await app.close();
   });
 

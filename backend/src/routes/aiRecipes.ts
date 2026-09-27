@@ -4,6 +4,13 @@ import { z } from 'zod';
 import type { AiConsent, DietProfilePayload, GeneratedRecipe, GeneratedRecipeDraft, SyncChange, SyncMutation } from '@ikuck/shared/contracts';
 import { AI_RECIPE_MAX_GENERATION_INGREDIENTS } from '@ikuck/shared/limits';
 import { isGeneratedRecipeCompatible, isAiConsent, isGeneratedRecipe, parseGeneratedRecipeDraft, generatedRecipeSchema } from '../ai/validation.js';
+import {
+  MAX_NOVELTY_GENERATION_ATTEMPTS,
+  MAX_NOVELTY_REFERENCES_IN_PROMPT,
+  findRecipeNoveltyConflict,
+  recipeReferenceKey,
+  type RecipeReference,
+} from '../ai/recipeNovelty.js';
 import type { GenerationRateLimiter, GenerationRateReservation } from '../ai/rateLimit.js';
 import { AuthServiceError, type AuthService } from '../auth/service.js';
 import { dietProfilePayloadSchema } from '../diet/validation.js';
@@ -31,7 +38,7 @@ const generationRequestSchema = z.object({
     title: z.string().trim().min(1).max(240),
     ingredients: z.array(z.object({
       name: z.string().trim().min(1).max(120),
-      amount: z.string().trim().min(1).max(60),
+      amount: z.string().trim().min(1).max(80),
     })).max(30),
   })).max(50).optional(),
 }).strict();
@@ -55,6 +62,16 @@ const readRecipes = async (repository: SyncRepository, userId: string): Promise<
     ))
     .map((change) => change.payload)
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+};
+
+const uniqueRecipeReferences = (recipes: RecipeReference[]): RecipeReference[] => {
+  const seen = new Set<string>();
+  return recipes.filter((recipe) => {
+    const key = recipeReferenceKey(recipe);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 };
 
 const readRecipe = async (repository: SyncRepository, userId: string, recipeId: string): Promise<GeneratedRecipe | null> => {
@@ -141,6 +158,17 @@ export const registerAiRecipeRoutes = ({
     const consent = await readConsent(repository, session.userId);
     if (!consent.enabled) throw new AuthServiceError('ai_consent_required', 403, 'AI recipe consent is required');
 
+    const savedRecipes = await readRecipes(repository, session.userId);
+    const proposedReferences = parsed.data.existingRecipes ?? [];
+    const savedReferences: RecipeReference[] = savedRecipes.map(({ title, ingredients }) => ({ title, ingredients }));
+    const knownReferences = uniqueRecipeReferences([...proposedReferences, ...savedReferences]);
+    const basePromptReferences = uniqueRecipeReferences([
+      ...proposedReferences.slice(-20),
+      ...savedReferences.slice(0, 30),
+      ...proposedReferences.slice(-50, -20),
+      ...savedReferences.slice(30, 50),
+    ]).slice(0, MAX_NOVELTY_REFERENCES_IN_PROMPT);
+
     let reservation: GenerationRateReservation;
     try {
       reservation = await reserveGeneration(limiter, session.userId);
@@ -152,27 +180,46 @@ export const registerAiRecipeRoutes = ({
       throw new AuthServiceError('ai_daily_limit_reached', 429, 'Daily AI recipe limit reached');
     }
 
-    let draft: GeneratedRecipeDraft | null;
-    try {
-      draft = parseGeneratedRecipeDraft(await provider.generate({
-        ingredients: parsed.data.ingredients,
-        constraints: parsed.data.constraints,
-        dietProfile: parsed.data.dietProfile as DietProfilePayload,
-        existingRecipes: parsed.data.existingRecipes,
-      }));
-    } catch {
-      await releaseGeneration(reservation);
-      throw new AuthServiceError('provider_unavailable', 503, 'AI recipe provider is unavailable');
+    let draft: GeneratedRecipeDraft | null = null;
+    let noveltyConflict = null;
+    const rejectedRecipes: RecipeReference[] = [];
+    for (let attempt = 0; attempt < MAX_NOVELTY_GENERATION_ATTEMPTS; attempt += 1) {
+      const existingRecipes = uniqueRecipeReferences([
+        ...rejectedRecipes.slice(-10),
+        ...basePromptReferences,
+      ]).slice(0, MAX_NOVELTY_REFERENCES_IN_PROMPT);
+      try {
+        draft = parseGeneratedRecipeDraft(await provider.generate({
+          ingredients: parsed.data.ingredients,
+          constraints: parsed.data.constraints,
+          dietProfile: parsed.data.dietProfile as DietProfilePayload,
+          existingRecipes,
+        }));
+      } catch {
+        await releaseGeneration(reservation);
+        throw new AuthServiceError('provider_unavailable', 503, 'AI recipe provider is unavailable');
+      }
+      if (draft === null) {
+        await releaseGeneration(reservation);
+        throw new AuthServiceError('provider_unavailable', 503, 'AI recipe provider is unavailable');
+      }
+      if (!isGeneratedRecipeCompatible(draft, parsed.data.dietProfile)) {
+        await releaseGeneration(reservation);
+        throw new AuthServiceError('ai_recipe_incompatible', 422, 'Generated recipe does not match the active dietary profile');
+      }
+
+      noveltyConflict = findRecipeNoveltyConflict(draft, knownReferences);
+      if (noveltyConflict === null) break;
+      rejectedRecipes.push({ title: draft.title, ingredients: draft.ingredients });
     }
     if (draft === null) {
       await releaseGeneration(reservation);
       throw new AuthServiceError('provider_unavailable', 503, 'AI recipe provider is unavailable');
     }
-    if (!isGeneratedRecipeCompatible(draft, parsed.data.dietProfile)) {
+    if (noveltyConflict !== null) {
       await releaseGeneration(reservation);
-      throw new AuthServiceError('ai_recipe_incompatible', 422, 'Generated recipe does not match the active dietary profile');
+      throw new AuthServiceError('ai_recipe_not_novel', 422, 'Generated recipe is not sufficiently different from saved or previously proposed recipes');
     }
-
     const now = new Date().toISOString();
     const recipe: GeneratedRecipe = {
       ...draft,
