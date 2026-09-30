@@ -49,6 +49,7 @@ test('shares confirmed dinner recipes with House members while isolating outside
   const syncCalls: Array<{
     userId: string | null;
     scope: string;
+    csrfAuthorized: boolean;
     mutations: Array<Record<string, unknown>>;
     returnedEntityIds: string[];
     unavailable: boolean;
@@ -254,11 +255,18 @@ test('shares confirmed dinner recipes with House members while isolating outside
   await page.route('**/v1/sync', async (route) => {
     const body = route.request().postDataJSON() as { cursor?: number; syncScope?: string; mutations?: Array<Record<string, unknown>> };
     const userId = currentUser?.id ?? null;
+    const csrfAuthorized = currentUser !== null
+      && route.request().headers()['x-csrf-token'] === `csrf-${currentUser.id}`;
     const requestedScope = body.syncScope ?? (userId === null ? 'guest' : `account:${userId}`);
     const mutations = body.mutations ?? [];
     if (apiUnavailable) {
-      syncCalls.push({ userId, scope: requestedScope, mutations, returnedEntityIds: [], unavailable: true });
+      syncCalls.push({ userId, scope: requestedScope, csrfAuthorized, mutations, returnedEntityIds: [], unavailable: true });
       await route.abort('failed');
+      return;
+    }
+    if (!csrfAuthorized) {
+      syncCalls.push({ userId, scope: requestedScope, csrfAuthorized, mutations, returnedEntityIds: [], unavailable: false });
+      await route.fulfill({ status: 403, json: { code: 'csrf_invalid', message: 'CSRF token is invalid' } });
       return;
     }
     for (const mutation of mutations) {
@@ -277,7 +285,7 @@ test('shares confirmed dinner recipes with House members while isolating outside
       .filter(isVisible)
       .filter((change) => change.serverSequence > cursor)
       .sort((left, right) => left.serverSequence - right.serverSequence);
-    syncCalls.push({ userId, scope: requestedScope, mutations, returnedEntityIds: available.map((change) => change.entityId), unavailable: false });
+    syncCalls.push({ userId, scope: requestedScope, csrfAuthorized, mutations, returnedEntityIds: available.map((change) => change.entityId), unavailable: false });
     await route.fulfill({ status: 200, json: { changes: available, nextCursor: Math.max(cursor, nextSequence) } });
   });
 
@@ -364,7 +372,7 @@ test('shares confirmed dinner recipes with House members while isolating outside
   await expect(page.getByText('Condivisa con la Casa')).toBeVisible();
   await expect(page.getByRole('button', { name: /Modifica cena del/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Elimina cena del/ })).toHaveCount(0);
-  expect(syncCalls.filter((call) => call.userId === member.id).flatMap((call) => call.mutations)
+  expect(syncCalls.filter((call) => call.userId === member.id && call.csrfAuthorized).flatMap((call) => call.mutations)
     .some((mutation) => typeof mutation.payload === 'object' && mutation.payload !== null
       && 'text' in mutation.payload && mutation.payload.text === privateText)).toBe(false);
 

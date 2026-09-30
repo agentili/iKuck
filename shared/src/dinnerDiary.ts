@@ -5,7 +5,7 @@ import {
   DIARY_MAX_RECIPES, DIARY_MAX_STEPS, DIARY_NOTE_MAX_LENGTH, DIARY_SERVINGS_MAX,
   DIARY_SERVINGS_MIN, DIARY_STEP_MAX_LENGTH, DIARY_TEXT_MAX_LENGTH, DIARY_TITLE_MAX_LENGTH,
   RECIPE_MAX_INGREDIENTS,
-} from './limits.js';
+} from '@ikuck/shared/limits';
 
 export interface DinnerRecipeLink { recipeId: string; title: string; source: 'catalog' | 'diary' }
 export interface DinnerEntry { id: string; date: string; text: string; servings: number | null; note: string | null; recipes: DinnerRecipeLink[]; authorId: string | null; createdAt: string; updatedAt: string }
