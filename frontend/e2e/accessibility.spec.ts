@@ -166,6 +166,49 @@ test('keeps primary navigation fixed and touch-friendly on mobile', async ({ pag
   expect(navigationBox!.y + navigationBox!.height).toBeLessThanOrEqual(844);
 });
 
+test('keeps mobile navigation labels concise and on one line', async ({ page }) => {
+  const scenarios = [
+    { width: 390, height: 844, zoom: false, labels: ['Home', 'Dispensa', 'Spesa', 'Attività', 'Cene', 'Profilo'] },
+    { width: 320, height: 700, zoom: true, labels: ['Home', 'Disp.', 'Lista', 'Att.', 'Cene', 'Io'] },
+  ];
+
+  for (const scenario of scenarios) {
+    await page.setViewportSize({ width: scenario.width, height: scenario.height });
+    await page.goto('/');
+    if (scenario.zoom) {
+      await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+    }
+
+    const navigation = page.getByRole('navigation', { name: 'Navigazione principale' });
+    const items = await navigation.getByRole('link').evaluateAll((links) => links.map((link) => {
+      const visibleLabels = Array.from(link.querySelectorAll('span'))
+        .filter((label) => window.getComputedStyle(label).display !== 'none');
+      const label = visibleLabels[0];
+      if (label === undefined) return { label: '', wraps: true, accessibleName: link.getAttribute('aria-label') };
+      const styles = window.getComputedStyle(label);
+      const lineHeight = Number.parseFloat(styles.lineHeight);
+      return {
+        label: label.textContent?.trim() ?? '',
+        wraps: label.scrollHeight > lineHeight * 1.5 || label.scrollWidth > label.clientWidth,
+        metrics: {
+          clientWidth: label.clientWidth,
+          scrollWidth: label.scrollWidth,
+          scrollHeight: label.scrollHeight,
+          lineHeight,
+        },
+        accessibleName: link.getAttribute('aria-label'),
+      };
+    }));
+
+    expect(items.map((item) => item.label)).toEqual(scenario.labels);
+    expect(items.every((item) => !item.wraps), JSON.stringify(items)).toBe(true);
+    expect(items.map((item) => item.accessibleName)).toEqual([
+      'Home', 'Dispensa', 'Lista', 'Attività', 'Diario delle cene', 'Profilo',
+    ]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
+  }
+});
+
 test('keeps common mobile actions comfortably tappable', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
 
