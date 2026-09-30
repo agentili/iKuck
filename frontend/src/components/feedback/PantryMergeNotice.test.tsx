@@ -18,4 +18,15 @@ describe('PantryMergeNotice', () => {
     await user.click(screen.getByRole('button', { name: 'Chiudi riepilogo fusione dispensa' }));
     expect(onDismiss).toHaveBeenCalledOnce();
   });
+
+  it('warns that local pantry data was kept when the merge did not complete', () => {
+    const onDismiss = vi.fn();
+
+    render(<PantryMergeNotice summary={null} guestMergeFailed onDismiss={onDismiss} />);
+
+    const notice = screen.getByRole('alert');
+    expect(notice).toHaveTextContent('La dispensa della Casa resta selezionata');
+    expect(notice).toHaveTextContent('La copia locale è stata conservata su questo dispositivo');
+    expect(screen.getByRole('button', { name: 'Chiudi avviso fusione dispensa' })).toBeVisible();
+  });
 });

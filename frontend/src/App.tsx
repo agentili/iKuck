@@ -41,6 +41,7 @@ export default function App() {
   const restoreSession = useAuthStore((state) => state.restoreSession);
   const houseId = useHouseStore((state) => state.state?.house?.id ?? null);
   const pantryMergeSummary = usePantryMergeNoticeStore((state) => state.summary);
+  const pantryMergeFailed = usePantryMergeNoticeStore((state) => state.mergeFailed);
   const previousSessionKey = useRef<string | null>(null);
 
   useEffect(() => {
@@ -87,11 +88,20 @@ export default function App() {
         const current = readVerifiedSession();
         return current?.userId === session.userId && current.csrfToken === session.csrfToken;
       })
-        .then(({ state, mergeSummary }) => {
+        .then(({ state, mergeSummary, guestMergeFailed }) => {
           if (!active) return;
           useHouseStore.setState({ state });
-          if (mergeSummary !== null && (mergeSummary.addedLots > 0 || mergeSummary.mergedLots > 0 || mergeSummary.importedStaples > 0)) {
+          if (guestMergeFailed) {
+            usePantryMergeNoticeStore.getState().showFailure();
+          } else if (mergeSummary !== null && (mergeSummary.addedLots > 0 || mergeSummary.mergedLots > 0 || mergeSummary.importedStaples > 0)) {
             usePantryMergeNoticeStore.getState().show(mergeSummary);
+          } else if (mergeSummary !== null && usePantryMergeNoticeStore.getState().mergeFailed) {
+            usePantryMergeNoticeStore.getState().clear();
+          } else if (
+            usePantryMergeNoticeStore.getState().mergeFailed
+            && (state === null || state.house === null || state.house === undefined)
+          ) {
+            usePantryMergeNoticeStore.getState().clear();
           }
           return hydrateAndSync();
         })
@@ -110,9 +120,10 @@ export default function App() {
     <BrowserRouter>
       <div className="app-shell min-h-screen">
         <AppHeader />
-        {pantryMergeSummary !== null && (
+        {(pantryMergeSummary !== null || pantryMergeFailed) && (
           <PantryMergeNotice
             summary={pantryMergeSummary}
+            guestMergeFailed={pantryMergeFailed}
             onDismiss={() => usePantryMergeNoticeStore.getState().clear()}
           />
         )}

@@ -30,6 +30,108 @@ test.afterEach(async ({ page }) => {
   assertOfflineBackendClean(page);
 });
 
+test('keeps the house pantry visible when the local pantry merge is rejected', async ({ page }) => {
+  const guestLot = {
+    id: 'x'.repeat(161),
+    ingredientId: 'local-pasta',
+    label: 'Pasta locale',
+    known: true,
+    quantity: null,
+    unit: null,
+    expiresAt: null,
+    createdAt: '2026-09-24T10:00:00.000Z',
+    updatedAt: '2026-09-24T10:00:00.000Z',
+  };
+  const houseLot = {
+    id: 'house-rice-lot',
+    ingredientId: 'rice',
+    label: 'Riso',
+    known: true,
+    quantity: null,
+    unit: null,
+    expiresAt: null,
+    createdAt: '2026-09-24T10:00:00.000Z',
+    updatedAt: '2026-09-24T10:00:00.000Z',
+  };
+  const mergeLotIdLengths: number[] = [];
+  const syncScopes: string[] = [];
+  await page.addInitScript((invalidGuestLot) => {
+    window.localStorage.setItem('ikuck-pantry-v1', JSON.stringify({
+      state: { pantryItems: [], stapleIds: [], pantryLots: [invalidGuestLot] },
+      version: 1,
+    }));
+  }, guestLot);
+  await page.route('**/v1/auth/session', (route) => route.fulfill({
+    status: 200,
+    json: {
+      authenticated: true,
+      user: verifiedUser,
+      csrfToken: 'csrf-1',
+      expiresAt: '2026-10-12T10:00:00.000Z',
+    },
+  }));
+  await page.route('**/v1/house', (route) => route.fulfill({
+    status: 200,
+    json: {
+      house: { id: 'house-e2e', name: 'Casa E2E', createdAt: '2026-09-24T10:00:00.000Z' },
+      membership: { role: 'member', joinedAt: '2026-09-24T10:00:00.000Z' },
+      members: [],
+    },
+  }));
+  await page.route('**/v1/house/pantry/merge', async (route) => {
+    const body = route.request().postDataJSON() as { lots: Array<{ id: string }> };
+    mergeLotIdLengths.push(...body.lots.map((lot) => lot.id.length));
+    await route.fulfill({ status: 400, json: { code: 'invalid_payload', message: 'Request payload is invalid' } });
+  });
+  await page.route('**/v1/sync', async (route) => {
+    const body = route.request().postDataJSON() as { syncScope?: string; cursor?: number };
+    syncScopes.push(body.syncScope ?? 'none');
+    const changes = body.syncScope === 'house:house-e2e' && (body.cursor ?? 0) < 1
+      ? [{
+        mutationId: 'server-house-rice',
+        deviceId: 'server',
+        syncScope: 'house:house-e2e',
+        entityType: 'pantry_lot',
+        entityId: houseLot.id,
+        operation: 'upsert',
+        payload: houseLot,
+        clientUpdatedAt: houseLot.updatedAt,
+        serverSequence: 1,
+      }]
+      : [];
+    await route.fulfill({
+      status: 200,
+      json: { changes, nextCursor: changes.length > 0 ? 1 : body.cursor ?? 0 },
+    });
+  });
+
+  await page.goto('/pantry');
+
+  await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
+  await expect(page.getByText('La dispensa della Casa resta selezionata.')).toBeVisible();
+  await expect(page.getByText('Riso', { exact: true })).toBeVisible();
+  await expect.poll(() => mergeLotIdLengths.length).toBeGreaterThan(0);
+  expect(mergeLotIdLengths).toContain(161);
+  await expect.poll(() => syncScopes.includes('house:house-e2e')).toBe(true);
+  const preservedGuestLotIdLength = await page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('ikuck-local-v2', 2);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const raw = await new Promise<unknown>((resolve, reject) => {
+      const request = database.transaction('keyValue', 'readonly').objectStore('keyValue').get('pantry');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    database.close();
+    if (typeof raw !== 'string') return null;
+    const snapshot = JSON.parse(raw) as { state?: { pantryLots?: Array<{ id?: string }> } };
+    return snapshot.state?.pantryLots?.[0]?.id?.length ?? null;
+  });
+  expect(preservedGuestLotIdLength).toBe(161);
+});
+
 test('guest pantry survives reload while the API is offline', async ({ page }) => {
   await page.route('**/v1/auth/session', (route) => route.fulfill({
     status: 200,

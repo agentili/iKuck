@@ -5,13 +5,16 @@ import { useAuthStore } from './auth/authStore';
 import { useActivityStore } from './store/activityStore';
 import { useShoppingListStore } from './store/shoppingListStore';
 import { usePantryStore } from './store/localPantryStore';
+import { useHouseStore } from './house/houseStore';
+import { usePantryMergeNoticeStore } from './store/pantryMergeNoticeStore';
 
 const syncVerifiedSession = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 const listenForReconnect = vi.hoisted(() => vi.fn().mockReturnValue(vi.fn()));
+const initializeSessionScope = vi.hoisted(() => vi.fn());
 
 vi.mock('./sync/syncQueue', async () => {
   const actual = await vi.importActual<typeof import('./sync/syncQueue')>('./sync/syncQueue');
-  return { ...actual, syncVerifiedSession, listenForReconnect };
+  return { ...actual, initializeSessionScope, syncVerifiedSession, listenForReconnect };
 });
 
 const verifiedUser = {
@@ -24,6 +27,10 @@ describe('App synchronization lifecycle', () => {
   beforeEach(() => {
     syncVerifiedSession.mockClear();
     listenForReconnect.mockClear();
+    initializeSessionScope.mockReset();
+    initializeSessionScope.mockResolvedValue({ state: null, mergeSummary: null, guestMergeFailed: false });
+    useHouseStore.getState().clear();
+    usePantryMergeNoticeStore.getState().clear();
     useAuthStore.setState({
       user: null,
       csrfToken: null,
@@ -47,6 +54,69 @@ describe('App synchronization lifecycle', () => {
       expect.objectContaining({ isSessionCurrent: expect.any(Function) }),
     );
     expect(listenForReconnect).toHaveBeenCalledOnce();
+  });
+
+  it('shows the non-destructive warning after a guest pantry merge fails', async () => {
+    initializeSessionScope.mockResolvedValue({
+      state: {
+        house: { id: 'house-a', name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' },
+        membership: { role: 'member', joinedAt: '2026-09-24T00:00:00.000Z' },
+        members: [],
+      },
+      mergeSummary: null,
+      guestMergeFailed: true,
+    });
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
+
+    render(<App />);
+
+    const warning = await screen.findByText('La dispensa della Casa resta selezionata.');
+    expect(warning).toBeVisible();
+    expect(warning.closest('[role="alert"]')).toHaveTextContent('La copia locale è stata conservata su questo dispositivo');
+    await waitFor(() => expect(useHouseStore.getState().state?.house?.id).toBe('house-a'));
+    expect(syncVerifiedSession).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a successful merge summary visible after the house bootstrap refreshes', async () => {
+    const houseState = {
+      house: { id: 'house-a', name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' },
+      membership: { role: 'member' as const, joinedAt: '2026-09-24T00:00:00.000Z' },
+      members: [],
+    };
+    initializeSessionScope.mockResolvedValueOnce({
+      state: houseState,
+      mergeSummary: { addedLots: 2, mergedLots: 0, importedStaples: 0 },
+      guestMergeFailed: false,
+    }).mockResolvedValue({
+      state: houseState,
+      mergeSummary: { addedLots: 0, mergedLots: 0, importedStaples: 0 },
+      guestMergeFailed: false,
+    });
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
+
+    render(<App />);
+
+    const importedLots = await screen.findByText('2 elementi aggiunti');
+    await waitFor(() => expect(initializeSessionScope).toHaveBeenCalledTimes(2));
+    expect(importedLots).toBeVisible();
+  });
+
+  it('clears the merge failure notice when a later bootstrap finds no house', async () => {
+    initializeSessionScope.mockResolvedValueOnce({
+      state: {
+        house: { id: 'house-a', name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' },
+        membership: { role: 'member' as const, joinedAt: '2026-09-24T00:00:00.000Z' },
+        members: [],
+      },
+      mergeSummary: null,
+      guestMergeFailed: true,
+    }).mockResolvedValue({ state: null, mergeSummary: null, guestMergeFailed: false });
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
+
+    render(<App />);
+
+    await screen.findByText('La dispensa della Casa resta selezionata.');
+    await waitFor(() => expect(screen.queryByText('La dispensa della Casa resta selezionata.')).not.toBeInTheDocument());
   });
 
   it('restores the session once when the application mounts', () => {
