@@ -26,6 +26,17 @@ describe('AppHeader', () => {
     expect(screen.getByRole('link', { name: 'Profilo' })).not.toHaveAttribute('aria-current');
   });
 
+  it('marks the dinner diary as an accessible primary destination', () => {
+    render(
+      <MemoryRouter initialEntries={['/dinner-diary']}>
+        <AppHeader />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('link', { name: 'Diario delle cene' })).toHaveAttribute('href', '/dinner-diary');
+    expect(screen.getByRole('link', { name: 'Diario delle cene' })).toHaveAttribute('aria-current', 'page');
+  });
+
   it('shows an accessible profile icon instead of connected text for authenticated users', () => {
     useAuthStore.setState({
       user: { id: 'user-1', email: 'ale@example.com', emailVerifiedAt: '2026-09-12T10:00:00.000Z' },

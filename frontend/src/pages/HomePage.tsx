@@ -5,12 +5,16 @@ import LocalRecipeCard from '../components/suggestions/LocalRecipeCard';
 import SuggestionControls from '../components/suggestions/SuggestionControls';
 import AiRecipePanel from '../components/ai/AiRecipePanel';
 import { createSeededRandom, findRecipeSuggestions } from '../domain/suggestions';
+import { RECIPES } from '../domain/recipes';
+import { toDiaryPantryRecipe } from '../domain/diaryRecipes';
 import { aggregatePantryLots } from '../domain/pantryLots';
 import type { RecipeSuggestion } from '../domain/types';
 import { hydratePantryStore, usePantryStore } from '../store/localPantryStore';
 import { useDietProfileStore } from '../store/dietProfileStore';
 import { useActivityStore } from '../store/activityStore';
 import { useShoppingListStore } from '../store/shoppingListStore';
+import { hydrateDinnerDiaryStore, useDinnerDiaryStore } from '../store/dinnerDiaryStore';
+import { getActiveDataScope } from '../sync/scopeContext';
 import { useAuthStore } from '../auth/authStore';
 import {
   persistenceDomains,
@@ -46,6 +50,13 @@ export default function HomePage() {
   const preferences = useActivityStore((state) => state.preferences);
   const shoppingItems = useShoppingListStore((state) => state.items);
   const addMissingRecipeIngredients = useShoppingListStore((state) => state.addMissingRecipeIngredients);
+  const diaryHasHydrated = useDinnerDiaryStore((state) => state.hasHydrated);
+  const savedDiaryRecipes = useDinnerDiaryStore((state) => state.recipes);
+  const activeScope = getActiveDataScope();
+  const diaryRecipes = useMemo(() => savedDiaryRecipes
+    .filter((recipe) => recipe.scope === activeScope)
+    .map(toDiaryPantryRecipe), [activeScope, savedDiaryRecipes]);
+  const searchableRecipes = useMemo(() => [...RECIPES, ...diaryRecipes], [diaryRecipes]);
   const persistenceStatuses = usePersistenceStatusStore((state) => state.statuses);
   const user = useAuthStore((state) => state.user);
   const csrfToken = useAuthStore((state) => state.csrfToken);
@@ -65,6 +76,7 @@ export default function HomePage() {
   const calculatedSuggestions = useMemo(() => {
     if (!hasSearched) return [];
     return findRecipeSuggestions({
+      recipes: searchableRecipes,
       availableIds: availableIngredientIds,
       allowOneMissing: searchedAllowOneMissing,
       quantitySummaries,
@@ -73,10 +85,11 @@ export default function HomePage() {
       preferences,
       random: createSeededRandom(varietySeed),
     });
-  }, [availableIngredientIds, dietProfile, events, hasSearched, preferences, quantitySummaries, searchedAllowOneMissing, varietySeed]);
+  }, [availableIngredientIds, dietProfile, events, hasSearched, preferences, quantitySummaries, searchedAllowOneMissing, searchableRecipes, varietySeed]);
 
   useEffect(() => {
     void hydratePantryStore();
+    if (!useDinnerDiaryStore.getState().hasHydrated) void hydrateDinnerDiaryStore();
   }, []);
 
   useEffect(() => {
@@ -89,7 +102,7 @@ export default function HomePage() {
     setFocusResultsTitle(false);
   }, [focusResultsTitle, hasSearched]);
 
-  if (!hasHydrated) {
+  if (!hasHydrated || !diaryHasHydrated) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
         <p role="status" className="rounded-2xl border border-gray-200 bg-white px-5 py-4 font-semibold text-gray-700">
@@ -100,6 +113,7 @@ export default function HomePage() {
   }
 
   const calculateSuggestions = (seed: number, extended: boolean): RecipeSuggestion[] => findRecipeSuggestions({
+    recipes: searchableRecipes,
     availableIds: availableIngredientIds,
     allowOneMissing: extended,
     quantitySummaries,

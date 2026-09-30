@@ -89,7 +89,7 @@ export const findRecipeSuggestions = ({
   const available = new Set(availableIds);
   const summariesById = new Map(quantitySummaries.map((summary) => [summary.ingredientId, summary]));
   const eligible = recipes.flatMap((recipe): RecipeSuggestion[] => {
-    if (dietProfile !== undefined && !isRecipeCompatible(recipe.id, dietProfile)) return [];
+    if (dietProfile !== undefined && !isRecipeCompatible(recipe, dietProfile)) return [];
     const missingIngredientIds = recipe.ingredients
       .filter((item) => !item.optional && !available.has(item.ingredientId))
       .map((item) => item.ingredientId);

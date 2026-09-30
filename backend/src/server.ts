@@ -54,6 +54,7 @@ export const start = async () => {
       },
       sync: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       house: { service: houseService, authService: auth, appOrigin: config.appOrigin },
+      dinnerDiary: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       pantryLots: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       shoppingList: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       activity: { repository: sync, authService: auth, appOrigin: config.appOrigin },
@@ -62,6 +63,7 @@ export const start = async () => {
       recipeNutrition: { provider: providers.nutrition, authService: auth, appOrigin: config.appOrigin },
       aiRecipes: {
         provider: providers.recipes,
+        dinnerReconstructionProvider: providers.dinnerReconstruction,
         limiter: createRedisGenerationRateLimiter(cache),
         repository: sync,
         authService: auth,

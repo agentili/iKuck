@@ -141,5 +141,32 @@
     "operation": "delete",
     "payload": null,
     "clientUpdatedAt": "2026-09-13T12:01:00.000Z"
+  },
+  {
+    "mutationId": "valid-dinner-entry",
+    "deviceId": "device-1",
+    "entityType": "dinner_entry",
+    "entityId": "dinner-1",
+    "operation": "upsert",
+    "payload": { "id": "dinner-1", "date": "2026-09-13", "text": "Pasta", "servings": 2, "note": null, "recipes": [], "authorId": null, "createdAt": "2026-09-13T12:00:00.000Z", "updatedAt": "2026-09-13T12:00:00.000Z" },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "valid-saved-recipe",
+    "deviceId": "device-1",
+    "entityType": "saved_recipe",
+    "entityId": "recipe-diary-1",
+    "operation": "upsert",
+    "payload": { "id": "recipe-diary-1", "source": "diary", "title": "Pasta", "description": "", "ingredients": [{ "name": "Pasta", "amount": "", "ingredientId": null, "optional": false, "provenance": "provided" }], "steps": ["Cuocere"], "servings": null, "durationMinutes": null, "diets": null, "allergens": null, "suggestedFields": [], "authorId": null, "createdAt": "2026-09-13T12:00:00.000Z", "updatedAt": "2026-09-13T12:00:00.000Z" },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "valid-dinner-delete",
+    "deviceId": "device-1",
+    "entityType": "dinner_entry",
+    "entityId": "dinner-1",
+    "operation": "delete",
+    "payload": null,
+    "clientUpdatedAt": "2026-09-13T12:01:00.000Z"
   }
 ]

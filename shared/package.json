@@ -16,6 +16,10 @@
       "types": "./src/limits.ts",
       "default": "./src/limits.ts"
     },
+    "./dinnerDiary": {
+      "types": "./src/dinnerDiary.ts",
+      "default": "./src/dinnerDiary.ts"
+    },
     "./sync-fixtures/valid.json": "./sync-fixtures/valid.json",
     "./sync-fixtures/invalid.json": "./sync-fixtures/invalid.json"
   }

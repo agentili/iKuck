@@ -6,6 +6,7 @@ import type {
   NutritionFilter,
 } from '@ikuck/shared/contracts';
 import { getRecipeMetadata } from './recipeMetadata';
+import type { PantryRecipe } from './types';
 
 export const DIET_TYPES: readonly DietType[] = ['omnivore', 'vegetarian', 'pescatarian', 'vegan'];
 export const EU_ALLERGENS: readonly EuAllergen[] = [
@@ -113,13 +114,27 @@ export const normalizeDietProfile = (value: unknown): DietProfile => {
   };
 };
 
-export const isRecipeCompatible = (recipeId: string, profile: DietProfilePayload): boolean => {
-  const recipe = getRecipeMetadata(recipeId);
-  if (recipe === undefined) return false;
-  if (!recipe.diets.includes(profile.diet)) return false;
+export const isRecipeCompatible = (recipeOrId: string | PantryRecipe, profile: DietProfilePayload): boolean => {
+  const recipe = typeof recipeOrId === 'string' ? undefined : recipeOrId;
+  const catalogMetadata = getRecipeMetadata(typeof recipeOrId === 'string' ? recipeOrId : recipeOrId.id);
+  if (catalogMetadata === undefined) {
+    if (recipe?.diary === undefined) return false;
+    const hasNutritionFilter = profile.nutrition.maxCaloriesPerServing !== null || profile.nutrition.minProteinGramsPerServing !== null;
+    const hasDietOrAllergenFilter = profile.diet !== 'omnivore' || profile.excludedAllergens.length > 0;
+    if (!hasNutritionFilter && !hasDietOrAllergenFilter) return true;
+    if (hasNutritionFilter) return false;
+    const metadata = recipe.diary;
+    if (metadata.diets === null || metadata.allergens === null) return false;
+    if (profile.diet !== 'omnivore' && metadata.suggestedFields.includes('diets')) return false;
+    if (profile.excludedAllergens.length > 0 && metadata.suggestedFields.includes('allergens')) return false;
+    if (!metadata.diets.includes(profile.diet)) return false;
+    const excluded = new Set(profile.excludedAllergens);
+    return !metadata.allergens.some((allergen) => excluded.has(allergen));
+  }
+  if (!catalogMetadata.diets.includes(profile.diet)) return false;
   const excluded = new Set(profile.excludedAllergens);
-  if (recipe.allergens.some((allergen) => excluded.has(allergen))) return false;
-  const { nutrition } = recipe;
+  if (catalogMetadata.allergens.some((allergen) => excluded.has(allergen))) return false;
+  const { nutrition } = catalogMetadata;
   if (profile.nutrition.maxCaloriesPerServing !== null
     && (nutrition.caloriesPerServing === null || nutrition.caloriesPerServing > profile.nutrition.maxCaloriesPerServing)) return false;
   if (profile.nutrition.minProteinGramsPerServing !== null

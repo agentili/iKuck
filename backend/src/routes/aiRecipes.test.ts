@@ -6,6 +6,7 @@ import type { AuthService } from '../auth/service.js';
 import { hashOpaqueToken } from '../auth/tokens.js';
 import type { GenerationRateLimiter } from '../ai/rateLimit.js';
 import { createMemorySyncRepository } from '../sync/repository.js';
+import type { DinnerReconstructionProvider } from '../providers/types.js';
 import type { RecipeGenerationProvider } from '../providers/types.js';
 import { ProviderTimeoutError } from '../providers/types.js';
 
@@ -44,6 +45,7 @@ interface AiAppOptions {
   userId?: string;
   authenticated?: boolean;
   provider?: RecipeGenerationProvider;
+  dinnerProvider?: DinnerReconstructionProvider;
   limiter?: GenerationRateLimiter;
 }
 
@@ -51,6 +53,7 @@ const createAiApp = ({
   userId = 'user-1',
   authenticated = true,
   provider = { generate: vi.fn().mockResolvedValue(generatedDraft) },
+  dinnerProvider = { reconstruct: vi.fn().mockResolvedValue([]) },
   limiter = { consume: vi.fn().mockResolvedValue({ allowed: true, used: 1, remaining: 4 }) },
 }: AiAppOptions = {}) => {
   const repository = createMemorySyncRepository();
@@ -61,7 +64,7 @@ const createAiApp = ({
     database: { ping: async () => undefined },
     cache: { ping: async () => undefined },
     auth: { service: authService, appOrigin, secureCookies: false },
-    aiRecipes: { provider, limiter, repository, authService, appOrigin },
+    aiRecipes: { provider, dinnerReconstructionProvider: dinnerProvider, limiter, repository, authService, appOrigin },
   });
   return { app, repository, provider, limiter };
 };

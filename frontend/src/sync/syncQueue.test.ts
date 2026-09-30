@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CookEvent, DietProfile, PantryLot, RecipePreference, ShoppingListItem, SyncChangeSet, SyncMutation } from '@ikuck/shared/contracts';
+import type { DinnerEntry, SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import validMutations from '@ikuck/shared/sync-fixtures/valid.json';
 import invalidMutations from '@ikuck/shared/sync-fixtures/invalid.json';
 import type { ApiRequest } from '../api/apiClient';
@@ -14,11 +15,13 @@ import {
   type SyncScope,
 } from '../storage/indexedDb';
 import { readCookEvents, readRecipePreferences, writeCookEvents, writeRecipePreferences } from '../storage/activityStorage';
+import { clearDinnerDiary, readDinnerEntries, readSavedRecipes, writeDinnerEntries, writeSavedRecipes } from '../storage/dinnerDiaryStorage';
 import { readPantrySnapshot, writePantrySnapshot } from '../storage/pantryStorage';
 import { readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
 import { readDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
 import {
   enqueueMutation,
+  clearDataScope,
   GUEST_SYNC_SCOPE,
   getSyncStatus,
   getAccountSyncScope,
@@ -101,6 +104,70 @@ describe('sync queue', () => {
 
     setActiveDataScope('guest');
     expect(getPersonalDataScope()).toBe('guest');
+  });
+
+  it('maps diary entities to the active shared scope but supports explicit personal history', () => {
+    setActiveDataScope('house:house-a');
+    setPersonalDataScope(accountScope);
+    expect(getMutationScope('dinner_entry')).toBe('house:house-a');
+    expect(getMutationScope('saved_recipe')).toBe('house:house-a');
+    expect(getMutationScope('dinner_entry', accountScope, accountScope)).toBe(accountScope);
+    setActiveDataScope('guest');
+    expect(getMutationScope('saved_recipe')).toBe('guest');
+  });
+
+  it('routes diary changes to isolated personal and House collections, upserts validated matching IDs, and applies tombstones', async () => {
+    const houseScope = 'house:diary-isolation' as const;
+    const entry: DinnerEntry = { id: 'entry-1', date: '2026-09-12', text: 'Cena', servings: 2, note: null, recipes: [], authorId: 'user-1', createdAt: '2026-09-12T12:00:00.000Z', updatedAt: '2026-09-12T12:00:00.000Z' };
+    const recipe: SavedRecipe = { id: 'recipe-1', title: 'Pasta', description: '', ingredients: [{ name: 'Pasta', amount: '200 g', ingredientId: null, optional: false, provenance: 'provided' }], steps: ['Cuocere'], servings: 2, durationMinutes: null, diets: null, allergens: null, suggestedFields: [], source: 'diary', authorId: 'user-1', createdAt: entry.createdAt, updatedAt: entry.updatedAt };
+    await writeDinnerEntries([{ ...entry, id: 'personal-entry' }], accountScope);
+    await writeDinnerEntries([{ ...entry, id: 'entry-delete' }, { ...entry, id: 'entry-invalid' }], houseScope);
+    await writeSavedRecipes([{ ...recipe, id: 'personal-recipe' }], accountScope);
+    await writeSavedRecipes([{ ...recipe, id: 'recipe-invalid' }], houseScope);
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    const changes = [
+      { ...sampleMutation('account-entry'), entityType: 'dinner_entry' as const, entityId: entry.id, payload: entry, syncScope: 'account:user-1' as const, serverSequence: 1 },
+      { ...sampleMutation('house-entry'), entityType: 'dinner_entry' as const, entityId: 'entry-house', payload: { ...entry, id: 'entry-house' }, syncScope: houseScope, serverSequence: 2 },
+      { ...sampleMutation('bad-entry'), entityType: 'dinner_entry' as const, entityId: 'entry-invalid', payload: { ...entry, id: 'wrong-id' }, syncScope: houseScope, serverSequence: 3 },
+      { ...sampleMutation('account-recipe'), entityType: 'saved_recipe' as const, entityId: recipe.id, payload: recipe, syncScope: 'account:user-1' as const, serverSequence: 4 },
+      { ...sampleMutation('house-recipe'), entityType: 'saved_recipe' as const, entityId: 'recipe-house', payload: { ...recipe, id: 'recipe-house' }, syncScope: houseScope, serverSequence: 5 },
+      { ...sampleMutation('delete-entry'), entityType: 'dinner_entry' as const, entityId: 'entry-delete', operation: 'delete' as const, payload: null, syncScope: houseScope, serverSequence: 6 },
+      { ...sampleMutation('bad-recipe'), entityType: 'saved_recipe' as const, entityId: 'recipe-invalid', payload: { ...recipe, id: 'wrong-recipe-id' }, syncScope: houseScope, serverSequence: 7 },
+    ];
+    const fetch = vi.fn().mockResolvedValue(responseFor({ changes, nextCursor: 7 }));
+    await syncNow({ session, fetch });
+    await expect(readDinnerEntries(accountScope)).resolves.toEqual([expect.objectContaining({ id: 'personal-entry' }), entry]);
+    await expect(readDinnerEntries(houseScope)).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'entry-house' }),
+      expect.objectContaining({ id: 'entry-invalid' }),
+    ]));
+    await expect(readSavedRecipes(accountScope)).resolves.toEqual([expect.objectContaining({ id: 'personal-recipe' }), recipe]);
+    await expect(readSavedRecipes(houseScope)).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'recipe-house' }),
+      expect.objectContaining({ id: 'recipe-invalid' }),
+    ]));
+    await clearDinnerDiary(houseScope);
+    setActiveDataScope('guest');
+  });
+
+  it('clears only the revoked diary scope while preserving the account namespace', async () => {
+    const houseScope = 'house:revoked-diary' as const;
+    const entry: DinnerEntry = { id: 'entry-house', date: '2026-09-12', text: 'Casa', servings: null, note: null, recipes: [], authorId: 'user-1', createdAt: '2026-09-12T12:00:00.000Z', updatedAt: '2026-09-12T12:00:00.000Z' };
+    const personalEntry = { ...entry, id: 'entry-personal', text: 'Personale' };
+    const recipe: SavedRecipe = { id: 'recipe-house', title: 'Pasta', description: '', ingredients: [{ name: 'Pasta', amount: '', ingredientId: null, optional: false, provenance: 'provided' }], steps: ['Cuocere'], servings: 2, durationMinutes: null, diets: null, allergens: null, suggestedFields: [], source: 'diary', authorId: 'user-1', createdAt: entry.createdAt, updatedAt: entry.updatedAt };
+    const personalRecipe = { ...recipe, id: 'recipe-personal', title: 'Riso' };
+    await writeDinnerEntries([entry], houseScope);
+    await writeDinnerEntries([personalEntry], accountScope);
+    await writeSavedRecipes([recipe], houseScope);
+    await writeSavedRecipes([personalRecipe], accountScope);
+
+    await clearDataScope(houseScope);
+
+    await expect(readDinnerEntries(houseScope)).resolves.toEqual([]);
+    await expect(readSavedRecipes(houseScope)).resolves.toEqual([]);
+    await expect(readDinnerEntries(accountScope)).resolves.toEqual([personalEntry]);
+    await expect(readSavedRecipes(accountScope)).resolves.toEqual([personalRecipe]);
   });
 
   it('accepts valid contract fixtures and rejects invalid mutations before enqueue', async () => {

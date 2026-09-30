@@ -35,6 +35,50 @@ describe('sync repository', () => {
     });
   });
 
+  it('enforces diary ownership, ignores spoofed authors, and preserves tombstone ownership', async () => {
+    const repository = createMemorySyncRepository({ scopeResolver: async () => ({ kind: 'house', id: 'house-1' }) });
+    const entry = (authorId: string | null, text: string) => ({ id: 'entry-1', date: '2026-09-13', text, servings: null, note: null, recipes: [], authorId, createdAt: '2026-09-13T12:00:00.000Z', updatedAt: '2026-09-13T12:00:00.000Z' });
+    await repository.applyMutation('author', { ...mutation('2026-09-13T12:00:00.000Z', 'create-entry', 'x'), entityType: 'dinner_entry', entityId: 'entry-1', payload: entry('spoof', 'Dinner') });
+    await expect(repository.readEntity('author', 'dinner_entry', 'entry-1')).resolves.toMatchObject({ payload: { authorId: 'author' } });
+    await expect(repository.applyMutation('member', { ...mutation('2026-09-13T12:01:00.000Z', 'member-edit', 'x'), entityType: 'dinner_entry', entityId: 'entry-1', payload: entry('member', 'Hijack') })).rejects.toMatchObject({ code: 'sync_permission_denied', status: 403 });
+    await expect(repository.applyMutation('author', { ...mutation('2026-09-13T12:01:00.000Z', 'author-edit', 'x'), entityType: 'dinner_entry', entityId: 'entry-1', payload: entry('spoof', 'Updated') })).resolves.toMatchObject({ change: { payload: { authorId: 'author', text: 'Updated' } } });
+    await repository.applyMutation('author', { ...mutation('2026-09-13T12:02:00.000Z', 'delete-entry', 'x'), entityType: 'dinner_entry', entityId: 'entry-1', operation: 'delete', payload: null });
+    await expect(repository.readAll('author')).resolves.toContainEqual(expect.objectContaining({ entityType: 'dinner_entry', operation: 'delete', payload: null }));
+    await expect(repository.applyMutation('member', { ...mutation('2026-09-13T12:03:00.000Z', 'reclaim-entry', 'x'), entityType: 'dinner_entry', entityId: 'entry-1', payload: entry('member', 'Reclaim') })).rejects.toMatchObject({ code: 'sync_permission_denied' });
+  });
+
+  it('does not migrate personal dinner history into a house', async () => {
+    let joined = false;
+    const repository = createMemorySyncRepository({ scopeResolver: async () => joined ? { kind: 'house', id: 'house-1' } : { kind: 'user', id: 'user-1' } });
+    const payload = { id: 'entry-1', date: '2026-09-13', text: 'Private', servings: null, note: null, recipes: [], authorId: null, createdAt: '2026-09-13T12:00:00.000Z', updatedAt: '2026-09-13T12:00:00.000Z' };
+    await repository.applyMutation('user-1', { ...mutation('2026-09-13T12:00:00.000Z', 'personal-entry', 'x'), entityType: 'dinner_entry', entityId: 'entry-1', payload });
+    joined = true;
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1');
+    await expect(repository.readEntity('user-1', 'dinner_entry', 'entry-1')).resolves.toMatchObject({ payload: { text: 'Private' } });
+  });
+
+  it('allows a House admin to edit and delete another author’s saved recipe without changing its author', async () => {
+    const repository = createMemorySyncRepository({
+      scopeResolver: async () => ({ kind: 'house', id: 'house-1' }),
+      roleResolver: async (userId) => userId === 'admin' ? 'admin' : 'member',
+    });
+    const recipe = (title: string, authorId: string | null) => ({
+      id: 'recipe-1', title, description: '', ingredients: [{ name: 'Ceci', amount: '240 g', ingredientId: 'chickpeas', optional: false, provenance: 'provided' as const }],
+      steps: ['Scola i ceci.'], servings: 2, durationMinutes: null, diets: null, allergens: null, suggestedFields: [], source: 'diary' as const,
+      authorId, createdAt: '2026-09-13T12:00:00.000Z', updatedAt: '2026-09-13T12:00:00.000Z',
+    });
+    const create = { ...mutation('2026-09-13T12:00:00.000Z', 'recipe-create', 'x'), entityType: 'saved_recipe' as const, entityId: 'recipe-1', payload: recipe('Ricetta', 'spoof') };
+    await repository.applyMutation('author', create);
+    await expect(repository.applyMutation('member', { ...create, mutationId: 'recipe-member-edit', payload: recipe('Hijack', 'member') }))
+      .rejects.toMatchObject({ code: 'sync_permission_denied', status: 403 });
+    const adminEdit = await repository.applyMutation('admin', { ...create, mutationId: 'recipe-admin-edit', payload: recipe('Ricetta corretta', 'admin'), clientUpdatedAt: '2026-09-13T12:01:00.000Z' });
+    expect(adminEdit.change?.payload).toMatchObject({ title: 'Ricetta corretta', authorId: 'author' });
+    await expect(repository.applyMutation('member', { ...create, mutationId: 'recipe-member-delete', operation: 'delete', payload: null, clientUpdatedAt: '2026-09-13T12:02:00.000Z' }))
+      .rejects.toMatchObject({ code: 'sync_permission_denied', status: 403 });
+    const adminDelete = await repository.applyMutation('admin', { ...create, mutationId: 'recipe-admin-delete', operation: 'delete', payload: null, clientUpdatedAt: '2026-09-13T12:03:00.000Z' });
+    expect(adminDelete.change).toMatchObject({ operation: 'delete', payload: null });
+  });
+
   it('applies the same mutation only once and returns a server sequence', async () => {
     const repository = createMemorySyncRepository();
     const first = await repository.applyMutation('user-1', mutation('2026-09-12T12:00:00.000Z', 'mutation-1', 'Pomodoro'));

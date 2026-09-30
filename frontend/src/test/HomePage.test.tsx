@@ -2,6 +2,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { DEFAULT_STAPLE_IDS, parseIngredientInput } from '../domain/ingredients';
 import { DEFAULT_DIET_PROFILE } from '../domain/dietary';
 import HomePage from '../pages/HomePage';
@@ -9,6 +10,8 @@ import { usePantryStore } from '../store/localPantryStore';
 import { useActivityStore } from '../store/activityStore';
 import { useDietProfileStore } from '../store/dietProfileStore';
 import { useShoppingListStore } from '../store/shoppingListStore';
+import { useDinnerDiaryStore } from '../store/dinnerDiaryStore';
+import { getActiveDataScope } from '../sync/scopeContext';
 import { reportPersistenceMemoryOnly, usePersistenceStatusStore } from '../store/persistenceStatusStore';
 
 const hydratePantryStoreMock = vi.hoisted(() => vi.fn());
@@ -27,6 +30,16 @@ const seedPantry = (value: string): void => {
       stapleIds: [...DEFAULT_STAPLE_IDS],
     });
   });
+};
+
+const confirmedDiaryRecipe: SavedRecipe = {
+  id: 'saved-diary-recipe', title: 'Pasta con zucchine della Casa', description: 'Con zucchine fresche.',
+  ingredients: [
+    { name: 'pasta', amount: '160 g', ingredientId: null, optional: false, provenance: 'provided' },
+    { name: 'zucchine', amount: '2', ingredientId: null, optional: false, provenance: 'provided' },
+  ],
+  steps: ['Cuoci la pasta e salta le zucchine.'], servings: 2, durationMinutes: null, diets: null, allergens: null,
+  suggestedFields: [], source: 'diary', authorId: 'user-1', createdAt: '2026-09-29T18:00:00.000Z', updatedAt: '2026-09-29T18:01:00.000Z',
 };
 
 const renderHome = (): void => {
@@ -51,6 +64,7 @@ describe('HomePage recipe search', () => {
     });
     useActivityStore.setState({ events: [], preferences: [] });
     useShoppingListStore.setState({ hasHydrated: true, items: [] });
+    useDinnerDiaryStore.setState({ hasHydrated: true, entries: [], recipes: [], drafts: [], error: null });
     useDietProfileStore.setState({
       hasHydrated: true,
       profile: { ...DEFAULT_DIET_PROFILE, updatedAt: '2026-09-13T12:00:00.000Z' },
@@ -88,6 +102,35 @@ describe('HomePage recipe search', () => {
     expect(screen.getByText('Pasta tonno e pomodoro')).toBeVisible();
     expect(screen.getByText('Hai tutto')).toBeVisible();
     expect(screen.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' })).toHaveAttribute('href', '/recipes/pasta-tonno-pomodoro');
+  });
+
+  it('includes a confirmed diary recipe in Trova ricette and opens its scoped detail', async () => {
+    const user = userEvent.setup();
+    const scope = getActiveDataScope();
+    seedPantry('pasta, zucchine');
+    useDinnerDiaryStore.setState({ recipes: [{ scope, value: confirmedDiaryRecipe }] });
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
+
+    expect(screen.getByRole('article', { name: confirmedDiaryRecipe.title })).toHaveAttribute('data-availability', 'ready');
+    expect(screen.getByRole('link', { name: `Apri ${confirmedDiaryRecipe.title}` })).toHaveAttribute(
+      'href',
+      `/recipes/${confirmedDiaryRecipe.id}?scope=${encodeURIComponent(scope)}`,
+    );
+  });
+
+  it('keeps diary suggestions in the active scope', async () => {
+    const user = userEvent.setup();
+    const activeScope = getActiveDataScope();
+    const otherScope = activeScope === 'guest' ? 'account:other-user' : 'guest';
+    seedPantry('pasta, zucchine');
+    useDinnerDiaryStore.setState({ recipes: [{ scope: otherScope, value: confirmedDiaryRecipe }] });
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
+
+    expect(screen.queryByRole('article', { name: confirmedDiaryRecipe.title })).not.toBeInTheDocument();
   });
 
   it('separates recipes ready now from recipes needing one purchase', async () => {

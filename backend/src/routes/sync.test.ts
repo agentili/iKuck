@@ -15,7 +15,48 @@ const sessionService = {
   }),
 } as unknown as AuthService;
 
+const sessionServiceFor = (userId: string) => ({
+  authenticate: async () => ({
+    id: `session-${userId}`,
+    userId,
+    email: `${userId}@example.com`,
+    emailVerifiedAt: new Date('2026-09-24T00:00:00.000Z'),
+    csrfTokenHash: hashOpaqueToken('csrf-token'),
+    expiresAt: new Date('2026-10-12T12:00:00.000Z'),
+  }),
+}) as unknown as AuthService;
+
 describe('sync routes', () => {
+  it('maps unauthorized House diary edits to a sanitized 403 response', async () => {
+    const repository = createMemorySyncRepository({
+      scopeResolver: async () => ({ kind: 'house', id: 'house-1' }),
+      roleResolver: async () => 'member',
+    });
+    const entry = { id: 'entry-1', date: '2026-09-24', text: 'Cena', servings: null, note: null, recipes: [], authorId: null, createdAt: '2026-09-24T12:00:00.000Z', updatedAt: '2026-09-24T12:00:00.000Z' };
+    await repository.applyMutation('owner', {
+      mutationId: 'owner-create-entry', deviceId: 'device-1', entityType: 'dinner_entry', entityId: entry.id,
+      operation: 'upsert', payload: entry, clientUpdatedAt: entry.updatedAt, syncScope: 'house:house-1',
+    });
+    const memberAuth = sessionServiceFor('member');
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      auth: { service: memberAuth, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository, authService: memberAuth, appOrigin: 'http://127.0.0.1:5173' },
+    });
+    const response = await app.inject({
+      method: 'POST', url: '/v1/sync',
+      headers: { cookie: 'ikuck_session=session-token', origin: 'http://127.0.0.1:5173', 'x-csrf-token': 'csrf-token' },
+      payload: { deviceId: 'device-1', cursor: 0, mutations: [{
+        mutationId: 'member-edit-entry', deviceId: 'device-1', entityType: 'dinner_entry', entityId: entry.id,
+        operation: 'upsert', payload: { ...entry, text: 'Sostituita', authorId: 'member' },
+        clientUpdatedAt: '2026-09-24T12:01:00.000Z', syncScope: 'house:house-1',
+      }] },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ code: 'sync_permission_denied', message: 'You do not have permission to modify this shared record' });
+    await app.close();
+  });
   it('rejects stale house-scoped mutations after membership is removed', async () => {
     let member = true;
     const repository = createMemorySyncRepository({

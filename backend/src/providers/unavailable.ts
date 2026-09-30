@@ -3,6 +3,7 @@ import {
   type NutritionProvider,
   ProviderUnavailableError,
   type RecipeGenerationProvider,
+  type DinnerReconstructionProvider,
 } from './types.js';
 
 export type ProviderUnavailableReason = 'missing_configuration' | 'adapter_not_enabled';
@@ -22,5 +23,11 @@ export const createUnavailableNutritionProvider = (reason: ProviderUnavailableRe
 export const createUnavailableRecipeProvider = (reason: ProviderUnavailableReason): RecipeGenerationProvider => ({
   generate: async () => {
     throw new ProviderUnavailableError('recipes', reason);
+  },
+});
+
+export const createUnavailableDinnerReconstructionProvider = (reason: ProviderUnavailableReason): DinnerReconstructionProvider => ({
+  reconstruct: async () => {
+    throw new ProviderUnavailableError('dinner_reconstruction', reason);
   },
 });

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,12 +10,13 @@ import { createAuthService } from '../auth/service.js';
 import { createDrizzleAuthRepository } from '../auth/repository.js';
 import { createCache } from '../cache/client.js';
 import { createDatabase } from '../db/client.js';
+import { houseMemberships, houses, syncItems, users } from '../db/schema.js';
 import { createDrizzleHouseRepository } from '../house/repository.js';
 import { createHouseService } from '../house/service.js';
 import { createDrizzleProfileRepository } from '../profile/repository.js';
 import { createDrizzleSyncRepository } from '../sync/repository.js';
-import type { PantryLot } from '@ikuck/shared/contracts';
-import { hashOpaqueToken } from '../auth/tokens.js';
+import type { PantryLot, SyncMutation } from '@ikuck/shared/contracts';
+import { hashOpaqueToken, createOpaqueToken } from '../auth/tokens.js';
 import { createRedisGenerationRateLimiter } from '../ai/rateLimit.js';
 import type { RecipeGenerationProvider } from '../providers/types.js';
 
@@ -56,7 +58,13 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
         return { raw, hash: hashOpaqueToken(raw) };
       },
     });
-    const sync = createDrizzleSyncRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const sync = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
     const profile = createDrizzleProfileRepository(database.db, sync);
     const recipeProvider: RecipeGenerationProvider = {
       generate: async () => ({
@@ -74,6 +82,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       auth: { service: auth, appOrigin, secureCookies: false },
       profile: { repository: profile, authService: auth, appOrigin, secureCookies: false },
       sync: { repository: sync, authService: auth, appOrigin },
+      dinnerDiary: { repository: sync, authService: auth, appOrigin },
       pantryLots: { repository: sync, authService: auth, appOrigin },
       shoppingList: { repository: sync, authService: auth, appOrigin },
       activity: { repository: sync, authService: auth, appOrigin },
@@ -81,6 +90,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       dietProfile: { repository: sync, authService: auth, appOrigin },
       aiRecipes: {
         provider: recipeProvider,
+        dinnerReconstructionProvider: { reconstruct: async () => [] },
         limiter: createRedisGenerationRateLimiter(cache),
         repository: sync,
         authService: auth,
@@ -94,6 +104,366 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     await app?.close();
     await cache?.close();
     await database?.close();
+  });
+
+  it('enforces diary sharing and ownership in PostgreSQL without migrating private history', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const ownerId = randomUUID();
+    const memberId = randomUUID();
+    const adminId = randomUUID();
+    const outsiderId = randomUUID();
+    const houseId = randomUUID();
+    const now = new Date();
+    await database.db.insert(users).values([ownerId, memberId, adminId, outsiderId].map((id) => ({
+      id,
+      email: `diary-${id}@example.com`,
+      emailVerifiedAt: now,
+    })));
+    await database.db.insert(houses).values({ id: houseId, name: 'Diary integration house', createdByUserId: adminId });
+    await database.db.insert(houseMemberships).values([
+      { houseId, userId: ownerId, role: 'member' },
+      { houseId, userId: memberId, role: 'member' },
+      { houseId, userId: adminId, role: 'admin' },
+    ]);
+
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const repository = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
+    let clockStep = 0;
+    const mutation = (
+      userId: string,
+      entityType: 'dinner_entry' | 'saved_recipe',
+      entityId: string,
+      payload: unknown | null,
+      operation: 'upsert' | 'delete' = 'upsert',
+      syncScope: NonNullable<SyncMutation['syncScope']> = `house:${houseId}`,
+    ): SyncMutation => ({
+      mutationId: randomUUID(),
+      deviceId: `diary-device-${userId}`,
+      entityType,
+      entityId,
+      operation,
+      payload,
+      clientUpdatedAt: new Date(Date.now() + clockStep++).toISOString(),
+      syncScope,
+    });
+    const timestamp = new Date().toISOString();
+    const entry = {
+      id: 'shared-entry', date: timestamp.slice(0, 10), text: 'Pasta con zucchine', servings: 2, note: null, recipes: [],
+      authorId: 'forged-author', createdAt: timestamp, updatedAt: timestamp,
+    };
+    const createEntry = mutation(ownerId, 'dinner_entry', entry.id, entry);
+    const created = await repository.applyMutation(ownerId, createEntry);
+    expect(created.change?.payload).toMatchObject({ id: entry.id, authorId: ownerId });
+    await expect(repository.readEntity(memberId, 'dinner_entry', entry.id)).resolves.toMatchObject({ payload: { text: entry.text, authorId: ownerId } });
+    await expect(repository.readEntity(outsiderId, 'dinner_entry', entry.id)).resolves.toBeNull();
+    await expect(repository.applyMutation(memberId, mutation(memberId, 'dinner_entry', entry.id, { ...entry, text: 'Hijack', authorId: memberId })))
+      .rejects.toMatchObject({ code: 'sync_permission_denied', status: 403 });
+    await expect(repository.applyMutation(memberId, mutation(memberId, 'dinner_entry', entry.id, null, 'delete')))
+      .rejects.toMatchObject({ code: 'sync_permission_denied', status: 403 });
+
+    const ownUpdate = await repository.applyMutation(ownerId, mutation(ownerId, 'dinner_entry', entry.id, { ...entry, text: 'Cena aggiornata', authorId: 'forged-again' }));
+    expect(ownUpdate.change?.payload).toMatchObject({ text: 'Cena aggiornata', authorId: ownerId });
+
+    const staleRecipeLinkA = { recipeId: 'stale-recipe-link-a', title: 'Link A', source: 'diary' as const };
+    const staleRecipeLinkB = { recipeId: 'stale-recipe-link-b', title: 'Link B', source: 'diary' as const };
+    await repository.applyMutation(ownerId, mutation(ownerId, 'dinner_entry', entry.id, { ...entry, recipes: [staleRecipeLinkA] }));
+    await repository.applyMutation(ownerId, mutation(ownerId, 'dinner_entry', entry.id, { ...entry, recipes: [staleRecipeLinkB] }));
+    await expect(repository.readEntity(ownerId, 'dinner_entry', entry.id)).resolves.toMatchObject({
+      payload: { recipes: expect.arrayContaining([staleRecipeLinkA, staleRecipeLinkB]) },
+    });
+
+    const recipe = {
+      id: 'shared-recipe', title: 'Zucchine e pasta', description: '',
+      ingredients: [{ name: 'Pasta', amount: '160 g', ingredientId: 'pasta', optional: false, provenance: 'provided' }],
+      steps: ['Cuoci la pasta.'], servings: 2, durationMinutes: null, diets: null, allergens: null, suggestedFields: [],
+      source: 'diary', authorId: 'spoofed', createdAt: timestamp, updatedAt: timestamp,
+    };
+    await repository.applyMutation(ownerId, mutation(ownerId, 'saved_recipe', recipe.id, recipe));
+    const adminUpdate = await repository.applyMutation(adminId, mutation(adminId, 'saved_recipe', recipe.id, { ...recipe, title: 'Ricetta aggiornata', authorId: adminId }));
+    expect(adminUpdate.change?.payload).toMatchObject({ title: 'Ricetta aggiornata', authorId: ownerId });
+    await expect(repository.readEntity(memberId, 'saved_recipe', recipe.id)).resolves.toMatchObject({ payload: { title: 'Ricetta aggiornata' } });
+
+    const privateEntryId = 'pre-house-entry';
+    await repository.applyMutation(ownerId, mutation(ownerId, 'dinner_entry', privateEntryId, { ...entry, id: privateEntryId, text: 'Diario privato', authorId: null }, 'upsert', `account:${ownerId}`));
+    await repository.migrateUserSharedDataToHouse(ownerId, houseId);
+    await expect(repository.readEntity(ownerId, 'dinner_entry', privateEntryId)).resolves.toMatchObject({ syncScope: `account:${ownerId}`, payload: { text: 'Diario privato', authorId: ownerId } });
+    await expect(repository.readEntity(memberId, 'dinner_entry', privateEntryId)).resolves.toBeNull();
+    const memberChanges = await repository.readAll(memberId);
+    expect(memberChanges.some((change) => change.entityId === privateEntryId)).toBe(false);
+
+    const authorDelete = await repository.applyMutation(ownerId, mutation(ownerId, 'dinner_entry', entry.id, null, 'delete'));
+    expect(authorDelete.change).toMatchObject({ operation: 'delete', payload: null });
+    await expect(repository.applyMutation(memberId, mutation(memberId, 'dinner_entry', entry.id, { ...entry, authorId: memberId })))
+      .rejects.toMatchObject({ code: 'sync_permission_denied', status: 403 });
+  });
+
+  it('serializes stale personal dinner writes before merging concurrent recipe links in PostgreSQL', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const ownerId = randomUUID();
+    await database.db.insert(users).values({
+      id: ownerId, email: `concurrent-diary-${ownerId}@example.com`, emailVerifiedAt: new Date(),
+    });
+    const repository = createDrizzleSyncRepository(database.db);
+    const entryId = `concurrent-dinner-${randomUUID()}`;
+    const createdAt = new Date(Date.now() - 2_000).toISOString();
+    const entry = {
+      id: entryId, date: createdAt.slice(0, 10), text: 'Cena concorrente', servings: null,
+      note: null, recipes: [], authorId: ownerId, createdAt, updatedAt: createdAt,
+    };
+    await repository.applyMutation(ownerId, {
+      mutationId: randomUUID(), deviceId: 'integration-concurrent-diary', entityType: 'dinner_entry',
+      entityId: entryId, operation: 'upsert', payload: entry, clientUpdatedAt: createdAt,
+      syncScope: `account:${ownerId}`,
+    });
+
+    let releaseRowLock!: () => void;
+    const rowLockReleased = new Promise<void>((resolve) => { releaseRowLock = resolve; });
+    let signalRowLocked!: () => void;
+    const rowLocked = new Promise<void>((resolve) => { signalRowLocked = resolve; });
+    const lockTransaction = database.db.transaction(async (transaction) => {
+      const rows = await transaction.execute(sql`SELECT id FROM ${syncItems} WHERE ${syncItems.scopeType} = 'user'
+        AND ${syncItems.scopeId} = ${ownerId} AND ${syncItems.entityType} = 'dinner_entry'
+        AND ${syncItems.entityId} = ${entryId} FOR UPDATE`);
+      expect(rows.length).toBe(1);
+      signalRowLocked();
+      await rowLockReleased;
+    });
+    await rowLocked;
+
+    const linkA = { recipeId: 'concurrent-link-a', title: 'Link A', source: 'diary' as const };
+    const linkB = { recipeId: 'concurrent-link-b', title: 'Link B', source: 'diary' as const };
+    const writeA = repository.applyMutation(ownerId, {
+      mutationId: randomUUID(), deviceId: 'integration-concurrent-a', entityType: 'dinner_entry',
+      entityId: entryId, operation: 'upsert', payload: { ...entry, recipes: [linkA], updatedAt: new Date().toISOString() },
+      clientUpdatedAt: new Date(Date.now() + 1_000).toISOString(), syncScope: `account:${ownerId}`,
+    });
+    const writeB = repository.applyMutation(ownerId, {
+      mutationId: randomUUID(), deviceId: 'integration-concurrent-b', entityType: 'dinner_entry',
+      entityId: entryId, operation: 'upsert', payload: { ...entry, recipes: [linkB], updatedAt: new Date().toISOString() },
+      clientUpdatedAt: new Date(Date.now() + 1_001).toISOString(), syncScope: `account:${ownerId}`,
+    });
+    try {
+      let blockedWriters = 0;
+      for (let attempt = 0; attempt < 100 && blockedWriters < 2; attempt += 1) {
+        const waiting = await database.db.execute(sql`SELECT pid FROM pg_stat_activity
+          WHERE state = 'active' AND wait_event_type = 'Lock'
+          AND query LIKE '%sync_items%' AND query LIKE '%FOR UPDATE%'`);
+        blockedWriters = waiting.length;
+        if (blockedWriters < 2) await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(blockedWriters).toBe(2);
+      releaseRowLock();
+      const outcomes = await Promise.all([writeA, writeB]);
+      expect(outcomes.every((result) => result.applied)).toBe(true);
+      const stored = await repository.readEntity(ownerId, 'dinner_entry', entryId);
+      expect(stored?.payload).toMatchObject({ recipes: expect.arrayContaining([linkA, linkB]) });
+    } finally {
+      releaseRowLock();
+      await lockTransaction;
+    }
+  });
+
+  it('confirms and reuses a diary recipe through the PostgreSQL-backed route', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const user = await authRepository.createUser({
+      email: `dinner-route-${randomUUID()}@example.com`,
+      passwordHash: null,
+      emailVerifiedAt: new Date(),
+    });
+    const sessionToken = createOpaqueToken();
+    const csrfToken = `integration-csrf-${randomUUID()}`;
+    await authRepository.createSession({
+      userId: user.id,
+      tokenHash: sessionToken.hash,
+      csrfTokenHash: hashOpaqueToken(csrfToken),
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    const requestHeaders = {
+      cookie: `ikuck_session=${sessionToken.raw}`,
+      origin: appOrigin,
+      'x-csrf-token': csrfToken,
+    };
+    const repository = createDrizzleSyncRepository(database.db);
+    const now = new Date(Date.now() - 2_000).toISOString();
+    const entryId = `integration-dinner-${randomUUID()}`;
+    const dinner = {
+      id: entryId,
+      date: now.slice(0, 10),
+      text: 'Pasta con zucchine',
+      servings: 2,
+      note: null,
+      recipes: [],
+      authorId: user.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await repository.applyMutation(user.id, {
+      mutationId: randomUUID(),
+      deviceId: 'integration-dinner-route',
+      entityType: 'dinner_entry',
+      entityId: entryId,
+      operation: 'upsert',
+      payload: dinner,
+      clientUpdatedAt: now,
+      syncScope: `account:${user.id}`,
+    });
+    const recipeDraft = {
+      draftId: 'integration-draft-1',
+      title: 'Pasta con zucchine',
+      description: 'Pasta con zucchine e ricotta.',
+      ingredients: [{ name: 'Pasta', amount: '160 g', ingredientId: null, optional: false, provenance: 'provided' }],
+      steps: ['Cuoci la pasta.', 'Condisci con zucchine.'],
+      servings: 2,
+      durationMinutes: null,
+      diets: null,
+      allergens: null,
+      suggestedFields: [],
+    };
+
+    const confirmed = await app.inject({
+      method: 'POST',
+      url: `/v1/dinner-entries/${entryId}/confirm-recipe`,
+      headers: requestHeaders,
+      payload: { draft: recipeDraft },
+    });
+    expect(confirmed.statusCode).toBe(200);
+    expect(confirmed.json()).toMatchObject({ entry: { id: entryId, recipes: [{ source: 'diary', title: recipeDraft.title }] }, recipe: { title: recipeDraft.title, authorId: user.id } });
+    const firstRecipeId = confirmed.json().recipe.id as string;
+
+    const retried = await app.inject({
+      method: 'POST',
+      url: `/v1/dinner-entries/${entryId}/confirm-recipe`,
+      headers: requestHeaders,
+      payload: { draft: recipeDraft },
+    });
+    expect(retried.statusCode).toBe(200);
+    expect(retried.json().recipe.id).toBe(firstRecipeId);
+    expect(retried.json().entry.recipes).toHaveLength(1);
+
+    const secondEntryId = `integration-dinner-link-${randomUUID()}`;
+    const secondDinner = { ...dinner, id: secondEntryId, recipes: [] };
+    await repository.applyMutation(user.id, {
+      mutationId: randomUUID(),
+      deviceId: 'integration-dinner-route',
+      entityType: 'dinner_entry',
+      entityId: secondEntryId,
+      operation: 'upsert',
+      payload: secondDinner,
+      clientUpdatedAt: now,
+      syncScope: `account:${user.id}`,
+    });
+    const linked = await app.inject({
+      method: 'POST',
+      url: `/v1/dinner-entries/${secondEntryId}/link-recipe`,
+      headers: requestHeaders,
+      payload: { recipeId: firstRecipeId, source: 'diary' },
+    });
+    expect(linked.statusCode).toBe(200);
+    expect(linked.json().entry.recipes).toEqual([{ recipeId: firstRecipeId, title: recipeDraft.title, source: 'diary' }]);
+  });
+
+  it('keeps confirmed recipes in the right PostgreSQL House or personal scope', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const repository = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
+    const createSession = async (label: string) => {
+      const user = await authRepository.createUser({
+        email: `dinner-house-route-${label}-${randomUUID()}@example.com`,
+        passwordHash: null,
+        emailVerifiedAt: new Date(),
+      });
+      const token = createOpaqueToken();
+      const csrfToken = `integration-csrf-${randomUUID()}`;
+      await authRepository.createSession({
+        userId: user.id,
+        tokenHash: token.hash,
+        csrfTokenHash: hashOpaqueToken(csrfToken),
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      return {
+        user,
+        headers: { cookie: `ikuck_session=${token.raw}`, origin: appOrigin, 'x-csrf-token': csrfToken },
+      };
+    };
+    const owner = await createSession('owner');
+    const member = await createSession('member');
+    const outsider = await createSession('outsider');
+    const houseId = randomUUID();
+    await database.db.insert(houses).values({ id: houseId, name: 'Dinner route integration house', createdByUserId: owner.user.id });
+    await database.db.insert(houseMemberships).values([
+      { houseId, userId: owner.user.id, role: 'admin' },
+      { houseId, userId: member.user.id, role: 'member' },
+    ]);
+
+    const houseEntryId = `house-dinner-${randomUUID()}`;
+    const now = new Date(Date.now() - 2_000).toISOString();
+    const dinner = (id: string, text: string) => ({
+      id, date: now.slice(0, 10), text, servings: 2, note: null, recipes: [],
+      authorId: null, createdAt: now, updatedAt: now,
+    });
+    await repository.applyMutation(owner.user.id, {
+      mutationId: randomUUID(), deviceId: 'integration-house-dinner', entityType: 'dinner_entry',
+      entityId: houseEntryId, operation: 'upsert', payload: dinner(houseEntryId, 'Pasta con zucchine'),
+      clientUpdatedAt: now,
+    });
+    const recipeDraft = {
+      draftId: 'house-route-draft-owner', title: 'Pasta con zucchine', description: 'Pasta con zucchine.',
+      ingredients: [{ name: 'Pasta', amount: '160 g', ingredientId: null, optional: false, provenance: 'provided' }],
+      steps: ['Cuoci la pasta.'], servings: 2, durationMinutes: null, diets: null, allergens: null, suggestedFields: [],
+    };
+    const confirmed = await app.inject({
+      method: 'POST', url: `/v1/dinner-entries/${houseEntryId}/confirm-recipe`, headers: owner.headers,
+      payload: { draft: recipeDraft },
+    });
+    expect(confirmed.statusCode).toBe(200);
+    const recipeId = confirmed.json().recipe.id as string;
+    await expect(repository.readEntity(member.user.id, 'saved_recipe', recipeId)).resolves.toMatchObject({
+      syncScope: `house:${houseId}`, payload: { title: recipeDraft.title, authorId: owner.user.id },
+    });
+
+    const forbidden = await app.inject({
+      method: 'POST', url: `/v1/dinner-entries/${houseEntryId}/confirm-recipe`, headers: member.headers,
+      payload: { draft: { ...recipeDraft, draftId: 'house-route-draft-member', title: 'Ricetta non autorizzata' } },
+    });
+    expect(forbidden.statusCode).toBe(403);
+    expect(forbidden.json()).toMatchObject({ code: 'sync_permission_denied' });
+    const notFound = await app.inject({
+      method: 'POST', url: `/v1/dinner-entries/${houseEntryId}/confirm-recipe`, headers: outsider.headers,
+      payload: { draft: { ...recipeDraft, draftId: 'house-route-draft-outsider' } },
+    });
+    expect(notFound.statusCode).toBe(404);
+
+    const privateEntryId = `private-dinner-${randomUUID()}`;
+    await repository.applyMutation(owner.user.id, {
+      mutationId: randomUUID(), deviceId: 'integration-private-dinner', entityType: 'dinner_entry',
+      entityId: privateEntryId, operation: 'upsert', payload: dinner(privateEntryId, 'Cena personale precedente'),
+      clientUpdatedAt: now, syncScope: `account:${owner.user.id}`,
+    });
+    const privateConfirmed = await app.inject({
+      method: 'POST', url: `/v1/dinner-entries/${privateEntryId}/confirm-recipe`, headers: owner.headers,
+      payload: { draft: { ...recipeDraft, draftId: 'private-route-draft-owner' } },
+    });
+    expect(privateConfirmed.statusCode).toBe(200);
+    const privateRecipeId = privateConfirmed.json().recipe.id as string;
+    await expect(repository.readEntity(member.user.id, 'dinner_entry', privateEntryId)).resolves.toBeNull();
+    await expect(repository.readEntity(member.user.id, 'saved_recipe', privateRecipeId)).resolves.toBeNull();
+    const privateAccess = await app.inject({
+      method: 'POST', url: `/v1/dinner-entries/${privateEntryId}/confirm-recipe`, headers: member.headers,
+      payload: { draft: { ...recipeDraft, draftId: 'private-route-draft-member' } },
+    });
+    expect(privateAccess.statusCode).toBe(404);
   });
 
   it('rolls back the user when profile creation fails', async () => {

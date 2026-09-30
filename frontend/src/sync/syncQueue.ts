@@ -11,6 +11,8 @@ import type {
   SyncOperation,
 } from '@ikuck/shared/contracts';
 import type { PantryMergeSummary } from '@ikuck/shared/pantryMerge';
+import type { DinnerEntry, SavedRecipe } from '@ikuck/shared/dinnerDiary';
+import { isDinnerEntry, isSavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { ApiClientError, apiRequest, type ApiRequest } from '../api/apiClient';
 import {
   deleteMeta,
@@ -45,6 +47,7 @@ import {
 } from '../storage/activityStorage';
 import { clearShoppingList, readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
 import { readDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
+import { clearDinnerDiary, readDinnerEntries, readSavedRecipes, writeDinnerEntries, writeSavedRecipes } from '../storage/dinnerDiaryStorage';
 import { assertSyncMutation, isPantryItemPayload, isStaplePreferencePayload } from './validation';
 import { getActiveDataScope, getPersonalDataScope, setActiveDataScope, setPersonalDataScope } from './scopeContext';
 
@@ -63,6 +66,8 @@ const SHARED_ENTITY_TYPES = new Set<SyncEntityType>([
   'pantry_item',
   'pantry_lot',
   'staple_preference',
+  'dinner_entry',
+  'saved_recipe',
 ]);
 
 export const getMutationScope = (
@@ -90,6 +95,7 @@ export async function clearDataScope(scope: SyncScope): Promise<void> {
     clearShoppingList(scope),
     clearCookEvents(scope),
     clearRecipePreferences(scope),
+    clearDinnerDiary(scope),
   ]);
   await deleteQueueScope(scope);
   await deleteMeta(cursorMetaKey(scope));
@@ -170,6 +176,12 @@ const activitySnapshotListeners = new Set<(snapshot: {
   preferences: RecipePreference[];
 }) => void>();
 const dietProfileSnapshotListeners = new Set<(profile: DietProfile) => void>();
+export interface DinnerDiarySnapshot {
+  scope: SyncScope;
+  entries: DinnerEntry[];
+  recipes: SavedRecipe[];
+}
+const dinnerDiarySnapshotListeners = new Set<(snapshot: DinnerDiarySnapshot) => void>();
 
 const idleSyncStatus = (): SyncStatusSnapshot => ({ state: 'idle', error: null });
 
@@ -593,6 +605,38 @@ const applyServerChanges = async (
     for (const listener of activitySnapshotListeners) listener(snapshot);
   }
 
+  const diaryChanges = changes.filter((change) => change.entityType === 'dinner_entry' || change.entityType === 'saved_recipe');
+  const diaryChangesByScope = new Map<SyncScope, SyncChange[]>();
+  for (const change of diaryChanges) {
+    const targetScope = change.syncScope?.startsWith('account:') ? personalScope : activeScope;
+    const scopedChanges = diaryChangesByScope.get(targetScope) ?? [];
+    scopedChanges.push(change);
+    diaryChangesByScope.set(targetScope, scopedChanges);
+  }
+  for (const [targetScope, scopedChanges] of diaryChangesByScope) {
+    let entries = await readDinnerEntries(targetScope);
+    let recipes = await readSavedRecipes(targetScope);
+    for (const change of scopedChanges) {
+      if (change.entityType === 'dinner_entry') {
+        if (change.operation === 'delete') {
+          entries = entries.filter((entry) => entry.id !== change.entityId);
+        } else if (isDinnerEntry(change.payload) && change.payload.id === change.entityId) {
+          entries = [...entries.filter((entry) => entry.id !== change.entityId), change.payload];
+        }
+      } else {
+        if (change.operation === 'delete') {
+          recipes = recipes.filter((recipe) => recipe.id !== change.entityId);
+        } else if (isSavedRecipe(change.payload) && change.payload.id === change.entityId) {
+          recipes = [...recipes.filter((recipe) => recipe.id !== change.entityId), change.payload];
+        }
+      }
+    }
+    await writeDinnerEntries(entries, targetScope);
+    await writeSavedRecipes(recipes, targetScope);
+    const snapshot = { scope: targetScope, entries, recipes };
+    for (const listener of dinnerDiarySnapshotListeners) listener(snapshot);
+  }
+
   const dietProfileChanges = changes.filter((change) => change.entityType === 'diet_profile');
   if (dietProfileChanges.length > 0) {
     let profile = await readDietProfile(personalScope);
@@ -634,6 +678,11 @@ export function registerActivitySnapshotListener(listener: (snapshot: {
 export function registerDietProfileSnapshotListener(listener: (profile: DietProfile) => void): () => void {
   dietProfileSnapshotListeners.add(listener);
   return () => dietProfileSnapshotListeners.delete(listener);
+}
+
+export function registerDinnerDiarySnapshotListener(listener: (snapshot: DinnerDiarySnapshot) => void): () => void {
+  dinnerDiarySnapshotListeners.add(listener);
+  return () => dinnerDiarySnapshotListeners.delete(listener);
 }
 
 export async function syncNow({ fetch, request = apiRequest, session, isSessionCurrent }: SyncRequestOptions): Promise<SyncResult> {

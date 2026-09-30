@@ -5,6 +5,7 @@ import { cookEventSchema, recipePreferenceSchema } from '../activity/validation.
 import { dietProfileSchema } from '../diet/validation.js';
 import { pantryLotSchema } from '../pantry/validation.js';
 import { shoppingListItemSchema } from '../shopping/validation.js';
+import { isDinnerEntry, isSavedRecipe } from '@ikuck/shared/dinnerDiary';
 
 const mutationMetadata = {
   mutationId: z.string().min(1).max(128),
@@ -51,6 +52,8 @@ const payloadSchemas = {
   diet_profile: dietProfileSchema,
   ai_consent: aiConsentSchema,
   generated_recipe: generatedRecipeSchema,
+  dinner_entry: z.custom<unknown>(isDinnerEntry),
+  saved_recipe: z.custom<unknown>(isSavedRecipe),
 } satisfies Record<SyncEntityType, z.ZodTypeAny>;
 
 type EntityPayload = {
@@ -90,6 +93,8 @@ export const syncMutationSchema = z.union([
   buildEntityMutationSchema('diet_profile', payloadSchemas.diet_profile, (entityId) => entityId === 'profile'),
   buildEntityMutationSchema('ai_consent', payloadSchemas.ai_consent, (entityId) => entityId === 'profile'),
   buildEntityMutationSchema('generated_recipe', payloadSchemas.generated_recipe, (entityId, payload) => payload.id === entityId),
+  buildEntityMutationSchema('dinner_entry', payloadSchemas.dinner_entry, (entityId, payload) => typeof payload === 'object' && payload !== null && 'id' in payload && payload.id === entityId),
+  buildEntityMutationSchema('saved_recipe', payloadSchemas.saved_recipe, (entityId, payload) => typeof payload === 'object' && payload !== null && 'id' in payload && payload.id === entityId),
 ]);
 
 export class SyncMutationValidationError extends Error {

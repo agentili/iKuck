@@ -32,7 +32,10 @@ export type AuthErrorCode =
   | 'house_last_admin_required'
   | 'house_email_not_registered'
   | 'house_user_already_member'
-  | 'house_user_already_in_house';
+  | 'house_user_already_in_house'
+  | 'dinner_entry_not_found'
+  | 'dinner_recipe_conflict'
+  | 'dinner_scope_mismatch';
 
 export class AuthServiceError extends Error {
   constructor(

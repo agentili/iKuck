@@ -1,0 +1,185 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { DiaryRecipeDraft } from '@ikuck/shared/dinnerDiary';
+import { createApp } from '../app.js';
+import { hashOpaqueToken } from '../auth/tokens.js';
+import type { GenerationRateLimiter } from '../ai/rateLimit.js';
+import type { AuthService } from '../auth/service.js';
+import type { DinnerReconstructionProvider } from '../providers/types.js';
+import { createMemorySyncRepository } from '../sync/repository.js';
+
+const appOrigin = 'http://127.0.0.1:5173';
+const headers = { cookie: 'ikuck_session=session-token', origin: appOrigin, 'x-csrf-token': 'csrf-token' };
+const recipeDraft: DiaryRecipeDraft = {
+  draftId: 'server-draft-1',
+  title: 'Pasta con zucchine',
+  description: 'Pasta con zucchine e ricotta.',
+  ingredients: [
+    { name: 'Pasta', amount: '80 g', ingredientId: null, optional: false, provenance: 'provided' },
+    { name: 'Ricotta', amount: '', ingredientId: null, optional: false, provenance: 'provided' },
+  ],
+  steps: ['Cuoci la pasta.', 'Condisci con zucchine e ricotta.'],
+  servings: null,
+  durationMinutes: null,
+  diets: null,
+  allergens: null,
+  suggestedFields: ['title', 'description', 'amounts', 'steps', 'servings', 'durationMinutes', 'diets', 'allergens'],
+};
+
+const session = (authenticated: boolean) => authenticated ? ({
+  id: 'session-user-1',
+  userId: 'user-1',
+  email: 'user-1@example.com',
+  emailVerifiedAt: new Date('2026-09-24T00:00:00.000Z'),
+  csrfTokenHash: hashOpaqueToken('csrf-token'),
+  expiresAt: new Date('2026-10-12T12:00:00.000Z'),
+}) : null;
+
+interface TestOptions {
+  authenticated?: boolean;
+  dinnerProvider?: DinnerReconstructionProvider;
+  limiter?: GenerationRateLimiter;
+}
+
+const createTestApp = ({
+  authenticated = true,
+  dinnerProvider = { reconstruct: vi.fn().mockResolvedValue([recipeDraft]) },
+  limiter = { consume: vi.fn().mockResolvedValue({ allowed: true, used: 1, remaining: 9999 }) },
+}: TestOptions = {}) => {
+  const repository = createMemorySyncRepository();
+  const authService = { authenticate: vi.fn().mockResolvedValue(session(authenticated)) } as unknown as AuthService;
+  const app = createApp({
+    database: { ping: async () => undefined },
+    cache: { ping: async () => undefined },
+    auth: { service: authService, appOrigin, secureCookies: false },
+    aiRecipes: {
+      provider: { generate: vi.fn() },
+      dinnerReconstructionProvider: dinnerProvider,
+      limiter,
+      repository,
+      authService,
+      appOrigin,
+    },
+  });
+  return { app, repository, dinnerProvider, limiter };
+};
+
+const enableConsent = async (app: ReturnType<typeof createApp>) => app.inject({
+  method: 'PUT', url: '/v1/ai-recipes/consent', headers, payload: { enabled: true },
+});
+
+const requestDrafts = (app: ReturnType<typeof createApp>, payload: unknown, requestHeaders = headers) => app.inject({
+  method: 'POST', url: '/v1/ai-dinner-reconstruction', headers: requestHeaders, payload,
+});
+
+describe('AI dinner reconstruction route', () => {
+  it('requires consent, sends only dinner text and servings, and returns unpersisted drafts', async () => {
+    const suppliedServingDraft = {
+      ...recipeDraft,
+      servings: 3,
+      suggestedFields: recipeDraft.suggestedFields.filter((field) => field !== 'servings'),
+    };
+    const dinnerProvider = { reconstruct: vi.fn().mockResolvedValue([suppliedServingDraft]) };
+    const { app, repository, limiter } = createTestApp({ dinnerProvider });
+    const payload = { dinnerText: 'Pasta con zucchine, poi insalata.', servings: 3 };
+
+    const denied = await requestDrafts(app, payload);
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json()).toMatchObject({ code: 'ai_consent_required' });
+    expect(dinnerProvider.reconstruct).not.toHaveBeenCalled();
+
+    await expect(enableConsent(app)).resolves.toMatchObject({ statusCode: 200 });
+    const accepted = await requestDrafts(app, payload);
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json()).toMatchObject({ drafts: [suppliedServingDraft], quota: { allowed: true } });
+    expect(dinnerProvider.reconstruct).toHaveBeenCalledOnce();
+    expect(dinnerProvider.reconstruct).toHaveBeenCalledWith(payload);
+    expect(limiter.consume).toHaveBeenCalledWith('user-1');
+    const mutations = await repository.readAll('user-1');
+    expect(mutations.map(({ entityType }) => entityType)).toEqual(['ai_consent']);
+    await app.close();
+  });
+
+  it('requires a verified session, same origin, and CSRF before provider access', async () => {
+    const unauthenticated = createTestApp({ authenticated: false });
+    const missingSession = await requestDrafts(unauthenticated.app, { dinnerText: 'Pasta', servings: null });
+    expect(missingSession.statusCode).toBe(401);
+    expect(unauthenticated.dinnerProvider.reconstruct).not.toHaveBeenCalled();
+    await unauthenticated.app.close();
+
+    const { app, dinnerProvider } = createTestApp();
+    await enableConsent(app);
+    const foreignOrigin = await requestDrafts(app, { dinnerText: 'Pasta', servings: null }, { ...headers, origin: 'https://attacker.example' });
+    expect(foreignOrigin.statusCode).toBe(403);
+    expect(foreignOrigin.json()).toMatchObject({ code: 'csrf_failed' });
+    const missingCsrf = await requestDrafts(app, { dinnerText: 'Pasta', servings: null }, { cookie: headers.cookie, origin: appOrigin });
+    expect(missingCsrf.statusCode).toBe(403);
+    expect(missingCsrf.json()).toMatchObject({ code: 'csrf_failed' });
+    expect(dinnerProvider.reconstruct).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('validates input and enforces the shared AI daily quota', async () => {
+    const limiter = { consume: vi.fn().mockResolvedValue({ allowed: false, used: 10001, remaining: 0 }) };
+    const { app, dinnerProvider } = createTestApp({ limiter });
+    await enableConsent(app);
+
+    const invalid = await requestDrafts(app, { dinnerText: '  ', servings: null });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toMatchObject({ code: 'invalid_payload' });
+    expect(limiter.consume).not.toHaveBeenCalled();
+
+    const exhausted = await requestDrafts(app, { dinnerText: 'Pasta', servings: null });
+    expect(exhausted.statusCode).toBe(429);
+    expect(exhausted.json()).toMatchObject({ code: 'ai_daily_limit_reached' });
+    expect(dinnerProvider.reconstruct).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('releases reserved quota on provider failure and never persists the generated draft', async () => {
+    const release = vi.fn().mockResolvedValue(undefined);
+    const commit = vi.fn().mockResolvedValue(undefined);
+    const limiter = {
+      consume: vi.fn(),
+      reserve: vi.fn().mockResolvedValue({ quota: { allowed: true, used: 1, remaining: 9999 }, release, commit }),
+    };
+    const dinnerProvider = { reconstruct: vi.fn().mockRejectedValue(new Error('upstream failed')) };
+    const { app, repository } = createTestApp({ limiter, dinnerProvider });
+    await enableConsent(app);
+
+    const failed = await requestDrafts(app, { dinnerText: 'Pasta', servings: null });
+    expect(failed.statusCode).toBe(503);
+    expect(failed.json()).toMatchObject({ code: 'provider_unavailable' });
+    expect(release).toHaveBeenCalledOnce();
+    expect(commit).not.toHaveBeenCalled();
+    expect((await repository.readAll('user-1')).map(({ entityType }) => entityType)).toEqual(['ai_consent']);
+    await app.close();
+  });
+
+  it('rejects unmarked provider-proposed servings when the request omitted portions', async () => {
+    const unmarkedDraft = {
+      ...recipeDraft,
+      servings: 4,
+      suggestedFields: recipeDraft.suggestedFields.filter((field) => field !== 'servings'),
+    };
+    const { app } = createTestApp({ dinnerProvider: { reconstruct: vi.fn().mockResolvedValue([unmarkedDraft]) } });
+    await enableConsent(app);
+
+    const failed = await requestDrafts(app, { dinnerText: 'Pasta con zucchine', servings: null });
+
+    expect(failed.statusCode).toBe(503);
+    expect(failed.json()).toMatchObject({ code: 'provider_unavailable' });
+    await app.close();
+  });
+
+  it('rejects invalid provider drafts before returning them', async () => {
+    const invalidDraft = { ...recipeDraft, title: '' };
+    const dinnerProvider = { reconstruct: vi.fn().mockResolvedValue([invalidDraft]) };
+    const { app } = createTestApp({ dinnerProvider });
+    await enableConsent(app);
+
+    const failed = await requestDrafts(app, { dinnerText: 'Pasta', servings: null });
+    expect(failed.statusCode).toBe(503);
+    expect(failed.json()).toMatchObject({ code: 'provider_unavailable' });
+    await app.close();
+  });
+});

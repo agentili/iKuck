@@ -67,6 +67,13 @@ test('profile passes the critical and serious axe gate', async ({ page }) => {
   await auditPage(page, 'profile');
 });
 
+test('dinner diary passes the critical and serious axe gate', async ({ page }) => {
+  await installVerifiedBackend(page);
+  await page.goto('/dinner-diary');
+  await expect(page.getByRole('heading', { name: 'Diario delle cene' })).toBeVisible();
+  await auditPage(page, 'dinner diary');
+});
+
 test('shopping list passes the critical and serious axe gate', async ({ page }) => {
   await page.goto('/shopping-list');
   await expect(page.getByRole('heading', { name: 'Lista della spesa' })).toBeVisible();
