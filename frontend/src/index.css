@@ -304,6 +304,10 @@ details:not([open]) > :not(summary) {
   display: none;
 }
 
+.app-navigation-label-narrow {
+  display: none;
+}
+
 .app-overlay {
   bottom: calc(max(5rem, 7em) + env(safe-area-inset-bottom));
 }
@@ -322,6 +326,23 @@ details:not([open]) > :not(summary) {
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
+  .app-navigation a {
+    padding-inline: 0.25rem;
+    font-size: 0.6875rem;
+  }
+
+  .app-navigation-label-full {
+    display: none;
+  }
+
+  .app-navigation-label-compact {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .ik-page {
     padding-bottom: calc(2rem + env(safe-area-inset-bottom));
   }
@@ -332,16 +353,26 @@ details:not([open]) > :not(summary) {
 }
 
 @media (max-width: 359px) {
-  .app-navigation a {
-    font-size: 0.625rem;
+  .app-navigation > ul {
+    column-gap: 0;
+    padding-inline: 0;
   }
 
-  .app-navigation-label-full {
-    display: none;
+  .app-navigation a {
+    padding-inline: 0;
+    font-size: 0.5625rem;
   }
 
   .app-navigation-label-compact {
-    display: inline;
+    display: none;
+  }
+
+  .app-navigation-label-narrow {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .ik-ingredient-entry {
