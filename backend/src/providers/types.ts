@@ -1,6 +1,7 @@
 import type { DietProfilePayload, GeneratedRecipeDraft as SharedGeneratedRecipeDraft } from '@ikuck/shared/contracts';
+import type { DiaryRecipeDraft } from '@ikuck/shared/dinnerDiary';
 
-export type ProviderName = 'email' | 'nutrition' | 'recipes';
+export type ProviderName = 'email' | 'nutrition' | 'recipes' | 'dinner_reconstruction';
 
 export class ProviderUnavailableError extends Error {
   readonly code = 'provider_unavailable' as const;
@@ -78,8 +79,18 @@ export interface RecipeGenerationProvider {
   generate: (request: RecipeGenerationRequest) => Promise<GeneratedRecipeDraft>;
 }
 
+export interface DinnerReconstructionRequest {
+  dinnerText: string;
+  servings: number | null;
+}
+
+export interface DinnerReconstructionProvider {
+  reconstruct: (request: DinnerReconstructionRequest) => Promise<DiaryRecipeDraft[]>;
+}
+
 export interface ProviderBundle {
   email: EmailProvider;
   nutrition: NutritionProvider;
   recipes: RecipeGenerationProvider;
+  dinnerReconstruction: DinnerReconstructionProvider;
 }

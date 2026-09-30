@@ -70,15 +70,17 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
   hasHydrated: false,
   events: [],
   preferences: [],
-  recordCookEvent: (recipe, servings = recipe.servings, note = null) => {
+  recordCookEvent: (recipe, servings = recipe.servings ?? undefined, note = null) => {
     const cookedAt = new Date().toISOString();
     const normalizedNote = normalizeNote(note);
-    if (validateCookEventDetails(recipe.id, recipe.title, servings, cookedAt, normalizedNote).length > 0) return null;
+    const servingsToRecord = servings ?? recipe.servings;
+    if (servingsToRecord === null || servingsToRecord === undefined) return null;
+    if (validateCookEventDetails(recipe.id, recipe.title, servingsToRecord, cookedAt, normalizedNote).length > 0) return null;
     const event: CookEvent = {
       id: createEventId(),
       recipeId: recipe.id,
       recipeTitle: recipe.title,
-      servings,
+      servings: servingsToRecord,
       cookedAt,
       note: normalizedNote,
       createdAt: cookedAt,

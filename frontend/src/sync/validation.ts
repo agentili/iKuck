@@ -1,5 +1,6 @@
 import type { SyncEntityType, SyncMutation } from '@ikuck/shared/contracts';
 import type { PantryUnit } from '@ikuck/shared/contracts';
+import { isDinnerEntry, isSavedRecipe } from '@ikuck/shared/dinnerDiary';
 
 const PANTRY_UNITS: readonly PantryUnit[] = ['g', 'kg', 'ml', 'l', 'piece', 'pack'];
 const DIET_TYPES = ['omnivore', 'vegetarian', 'pescatarian', 'vegan'] as const;
@@ -10,6 +11,7 @@ const EU_ALLERGENS = [
 const SYNC_ENTITY_TYPES: readonly SyncEntityType[] = [
   'pantry_item', 'pantry_lot', 'staple_preference', 'shopping_list_item', 'cook_event',
   'recipe_preference', 'diet_profile', 'ai_consent', 'generated_recipe',
+  'dinner_entry', 'saved_recipe',
 ];
 
 type RecordValue = Record<string, unknown>;
@@ -176,6 +178,8 @@ const isEntityPayloadValid = (entityType: SyncEntityType, entityId: string, payl
     case 'diet_profile': return entityId === 'profile' && isDietProfilePayload(payload);
     case 'ai_consent': return entityId === 'profile' && isAiConsentPayload(payload);
     case 'generated_recipe': return isGeneratedRecipePayload(payload) && isRecord(payload) && payload.id === entityId;
+    case 'dinner_entry': return isDinnerEntry(payload) && payload.id === entityId;
+    case 'saved_recipe': return isSavedRecipe(payload) && payload.id === entityId;
   }
 };
 

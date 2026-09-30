@@ -7,7 +7,7 @@ import { registerHealthRoute } from './routes/health.js';
 import { type ProfileRouteDependencies, registerProfileRoutes } from './routes/profile.js';
 import { type SyncRouteDependencies, registerSyncRoutes } from './routes/sync.js';
 import { SyncPayloadError, SyncScopeRequiredError } from './routes/sync.js';
-import { SyncMembershipRequiredError, SyncScopeInvalidError } from './sync/repository.js';
+import { SyncDiaryRecipeLimitError, SyncMembershipRequiredError, SyncPermissionDeniedError, SyncScopeInvalidError } from './sync/repository.js';
 import { type PantryLotRouteDependencies, registerPantryLotRoutes } from './routes/pantryLots.js';
 import { type ShoppingListRouteDependencies, registerShoppingListRoutes } from './routes/shoppingList.js';
 import { type ActivityRouteDependencies, registerActivityRoutes } from './routes/activity.js';
@@ -16,6 +16,7 @@ import { type DietProfileRouteDependencies, registerDietProfileRoutes } from './
 import { type RecipeNutritionRouteDependencies, registerRecipeNutritionRoutes } from './routes/recipeNutrition.js';
 import { type AiRecipeRouteDependencies, registerAiRecipeRoutes } from './routes/aiRecipes.js';
 import { type HouseRouteDependencies, registerHouseRoutes } from './routes/house.js';
+import { type DinnerDiaryRecipeRouteDependencies, registerDinnerDiaryRecipeRoutes } from './routes/dinnerDiaryRecipes.js';
 
 export type { PlatformDependencies } from './platform.js';
 
@@ -31,6 +32,7 @@ export interface ExtendedPlatformDependencies extends PlatformDependencies {
   recipeNutrition?: RecipeNutritionRouteDependencies;
   aiRecipes?: AiRecipeRouteDependencies;
   house?: HouseRouteDependencies;
+  dinnerDiary?: DinnerDiaryRecipeRouteDependencies;
 }
 
 export const createApp = (
@@ -42,7 +44,7 @@ export const createApp = (
     ...(options.trustProxy === undefined ? {} : { trustProxy: options.trustProxy }),
   });
   app.setErrorHandler((error, _request, reply) => {
-    if (error instanceof SyncPayloadError || error instanceof SyncScopeInvalidError || error instanceof SyncScopeRequiredError || error instanceof SyncMembershipRequiredError) {
+    if (error instanceof SyncPayloadError || error instanceof SyncScopeInvalidError || error instanceof SyncScopeRequiredError || error instanceof SyncMembershipRequiredError || error instanceof SyncPermissionDeniedError || error instanceof SyncDiaryRecipeLimitError) {
       return reply.code(error.status).send({ code: error.code, message: error.message });
     }
     if (error instanceof AuthServiceError) {
@@ -66,5 +68,6 @@ export const createApp = (
   if (dependencies.recipeNutrition !== undefined) app.register(registerRecipeNutritionRoutes(dependencies.recipeNutrition));
   if (dependencies.aiRecipes !== undefined) app.register(registerAiRecipeRoutes(dependencies.aiRecipes));
   if (dependencies.house !== undefined) app.register(registerHouseRoutes(dependencies.house));
+  if (dependencies.dinnerDiary !== undefined) app.register(registerDinnerDiaryRecipeRoutes(dependencies.dinnerDiary));
   return app;
 };

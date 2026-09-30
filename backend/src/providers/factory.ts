@@ -2,11 +2,13 @@ import type { AppConfig, ProviderConfig } from '../config.js';
 import { createResendEmailProvider } from './resend.js';
 import { createUsdaNutritionProvider } from './usda.js';
 import { createOpenAiRecipeProvider } from './openaiRecipes.js';
+import { createOpenAiDinnerReconstructionProvider } from './openaiDinnerReconstruction.js';
 import { createGeminiRecipeProvider } from './geminiRecipes.js';
 import {
   createUnavailableEmailProvider,
   createUnavailableNutritionProvider,
   createUnavailableRecipeProvider,
+  createUnavailableDinnerReconstructionProvider,
   type ProviderUnavailableReason,
 } from './unavailable.js';
 import type { ProviderBundle } from './types.js';
@@ -53,5 +55,13 @@ export const createProviders = (
           timeoutMs: providers.openAiTimeoutMs,
         })
         : createUnavailableRecipeProvider(reasonFor(providers.openAiApiKey)),
+    dinnerReconstruction: providers.openAiApiKey !== undefined
+      ? createOpenAiDinnerReconstructionProvider({
+        apiKey: providers.openAiApiKey,
+        model: providers.openAiModel ?? 'gpt-5.5',
+        fetch: options.fetch,
+        timeoutMs: providers.openAiTimeoutMs,
+      })
+      : createUnavailableDinnerReconstructionProvider(reasonFor(providers.openAiApiKey)),
   };
 };

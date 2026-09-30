@@ -7,6 +7,9 @@ import { useShoppingListStore } from '../store/shoppingListStore';
 import { usePantryStore } from '../store/localPantryStore';
 import { useActivityStore } from '../store/activityStore';
 import { useAuthStore } from '../auth/authStore';
+import { useDinnerDiaryStore } from '../store/dinnerDiaryStore';
+import { getActiveDataScope } from '../sync/scopeContext';
+import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
 
 const renderRoute = (path: string) => render(
   <MemoryRouter initialEntries={[path]}>
@@ -16,10 +19,21 @@ const renderRoute = (path: string) => render(
   </MemoryRouter>,
 );
 
+const diaryRecipe: SavedRecipe = {
+  id: 'saved-diary-recipe', title: 'Pasta con zucchine della Casa', description: 'Con zucchine fresche.',
+  ingredients: [
+    { name: 'pasta', amount: '160 g', ingredientId: null, optional: false, provenance: 'provided' },
+    { name: 'zucchine', amount: '2', ingredientId: null, optional: false, provenance: 'provided' },
+  ],
+  steps: ['Cuoci la pasta e salta le zucchine.'], servings: null, durationMinutes: null, diets: null, allergens: null,
+  suggestedFields: [], source: 'diary', authorId: 'user-1', createdAt: '2026-09-29T18:00:00.000Z', updatedAt: '2026-09-29T18:01:00.000Z',
+};
+
 const resetFeatureState = () => {
   usePantryStore.setState({ pantryItems: [], pantryLots: [], stapleIds: [] });
   useShoppingListStore.setState({ hasHydrated: true, items: [] });
   useActivityStore.setState({ hasHydrated: true, events: [], preferences: [] });
+  useDinnerDiaryStore.setState({ hasHydrated: true, entries: [], recipes: [], drafts: [], error: null });
   useAuthStore.setState({ user: null, csrfToken: null, expiresAt: null, connection: 'unknown', isLoading: false });
 };
 
@@ -37,6 +51,29 @@ describe('RecipeDetailPage integration', () => {
     expect(screen.getByText('300 g')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Preparazione' })).toBeInTheDocument();
     expect(screen.getAllByRole('listitem').length).toBeGreaterThan(6);
+  });
+
+  it('opens a confirmed diary recipe only from its active scope and labels missing details honestly', () => {
+    const scope = getActiveDataScope();
+    useDinnerDiaryStore.setState({ recipes: [{ scope, value: diaryRecipe }] });
+
+    renderRoute(`/recipes/${diaryRecipe.id}?scope=${encodeURIComponent(scope)}`);
+
+    expect(screen.getByRole('heading', { name: diaryRecipe.title })).toBeInTheDocument();
+    expect(screen.getByText('zucchine')).toBeInTheDocument();
+    expect(screen.getByText('Tempo non indicato')).toBeInTheDocument();
+    expect(screen.getByText('Porzioni non indicate')).toBeInTheDocument();
+    expect(screen.getByText('Difficoltà non specificata')).toBeInTheDocument();
+  });
+
+  it('does not open a diary recipe from a different active scope', () => {
+    const activeScope = getActiveDataScope();
+    const otherScope = activeScope === 'guest' ? 'account:other-user' : 'guest';
+    useDinnerDiaryStore.setState({ recipes: [{ scope: otherScope, value: diaryRecipe }] });
+
+    renderRoute(`/recipes/${diaryRecipe.id}?scope=${encodeURIComponent(otherScope)}`);
+
+    expect(screen.getByRole('heading', { name: 'Ricetta non trovata' })).toBeInTheDocument();
   });
 
   it('marks optional ingredients in the cooking details', () => {

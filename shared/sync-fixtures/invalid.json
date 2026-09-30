@@ -134,5 +134,32 @@
       "updatedAt": "2026-09-13T12:00:00.000Z"
     },
     "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "invalid-diary-draft-preview",
+    "deviceId": "device-1",
+    "entityType": "saved_recipe",
+    "entityId": "draft-1",
+    "operation": "upsert",
+    "payload": { "entryId": "dinner-1", "entryUpdatedAt": "2026-09-13T12:00:00.000Z", "drafts": [] },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "invalid-diary-mismatched-id",
+    "deviceId": "device-1",
+    "entityType": "dinner_entry",
+    "entityId": "other-id",
+    "operation": "upsert",
+    "payload": { "id": "dinner-1", "date": "2026-09-13", "text": "Pasta", "servings": 2, "note": null, "recipes": [], "authorId": null, "createdAt": "2026-09-13T12:00:00.000Z", "updatedAt": "2026-09-13T12:00:00.000Z" },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
+  },
+  {
+    "mutationId": "invalid-diary-extra-key",
+    "deviceId": "device-1",
+    "entityType": "dinner_entry",
+    "entityId": "dinner-1",
+    "operation": "upsert",
+    "payload": { "id": "dinner-1", "date": "2026-09-13", "text": "Pasta", "servings": 2, "note": null, "recipes": [], "authorId": null, "createdAt": "2026-09-13T12:00:00.000Z", "updatedAt": "2026-09-13T12:00:00.000Z", "preview": true },
+    "clientUpdatedAt": "2026-09-13T12:00:00.000Z"
   }
 ]

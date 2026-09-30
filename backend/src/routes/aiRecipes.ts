@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AiConsent, DietProfilePayload, GeneratedRecipe, GeneratedRecipeDraft, SyncChange, SyncMutation } from '@ikuck/shared/contracts';
-import { AI_RECIPE_MAX_GENERATION_INGREDIENTS } from '@ikuck/shared/limits';
+import { AI_RECIPE_MAX_GENERATION_INGREDIENTS, DIARY_MAX_RECIPES, DIARY_SERVINGS_MAX, DIARY_SERVINGS_MIN, DIARY_TEXT_MAX_LENGTH } from '@ikuck/shared/limits';
+import { isDiaryRecipeDraft, type DiaryRecipeDraft } from '@ikuck/shared/dinnerDiary';
 import { isGeneratedRecipeCompatible, isAiConsent, isGeneratedRecipe, parseGeneratedRecipeDraft, generatedRecipeSchema } from '../ai/validation.js';
 import {
   MAX_NOVELTY_GENERATION_ATTEMPTS,
@@ -14,12 +15,13 @@ import {
 import type { GenerationRateLimiter, GenerationRateReservation } from '../ai/rateLimit.js';
 import { AuthServiceError, type AuthService } from '../auth/service.js';
 import { dietProfilePayloadSchema } from '../diet/validation.js';
-import type { RecipeGenerationProvider } from '../providers/types.js';
+import type { DinnerReconstructionProvider, RecipeGenerationProvider } from '../providers/types.js';
 import type { SyncRepository } from '../sync/repository.js';
 import { ensureCsrf, ensureSameOrigin, requireVerifiedSession } from './auth.js';
 
 export interface AiRecipeRouteDependencies {
   provider: RecipeGenerationProvider;
+  dinnerReconstructionProvider: DinnerReconstructionProvider;
   limiter: GenerationRateLimiter;
   repository: SyncRepository;
   authService: AuthService;
@@ -27,6 +29,11 @@ export interface AiRecipeRouteDependencies {
 }
 
 const consentRequestSchema = z.object({ enabled: z.boolean() }).strict();
+
+const dinnerReconstructionRequestSchema = z.object({
+  dinnerText: z.string().max(DIARY_TEXT_MAX_LENGTH).refine((value) => value.trim().length > 0),
+  servings: z.number().int().min(DIARY_SERVINGS_MIN).max(DIARY_SERVINGS_MAX).nullable(),
+}).strict();
 
 const saveRequestSchema = z.object({ recipe: generatedRecipeSchema }).strict();
 
@@ -62,6 +69,19 @@ const readRecipes = async (repository: SyncRepository, userId: string): Promise<
     ))
     .map((change) => change.payload)
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+};
+
+const isValidDinnerDrafts = (value: unknown, requestedServings: number | null): value is DiaryRecipeDraft[] => {
+  if (!Array.isArray(value) || value.length > DIARY_MAX_RECIPES || !value.every(isDiaryRecipeDraft)) return false;
+  const ids = new Set<string>();
+  for (const draft of value) {
+    if (ids.has(draft.draftId)) return false;
+    ids.add(draft.draftId);
+    if ((draft.diets !== null && draft.diets.length === 0) || (draft.allergens !== null && draft.allergens.length === 0)) return false;
+    if (requestedServings !== null && (draft.servings !== requestedServings || draft.suggestedFields.includes('servings'))) return false;
+    if (requestedServings === null && draft.servings !== null && !draft.suggestedFields.includes('servings')) return false;
+  }
+  return true;
 };
 
 const uniqueRecipeReferences = (recipes: RecipeReference[]): RecipeReference[] => {
@@ -123,6 +143,7 @@ const releaseGeneration = async (reservation: GenerationRateReservation): Promis
 
 export const registerAiRecipeRoutes = ({
   provider,
+  dinnerReconstructionProvider,
   limiter,
   repository,
   authService,
@@ -235,6 +256,47 @@ export const registerAiRecipeRoutes = ({
       throw error;
     }
     return reply.code(201).send({ recipe, quota });
+  });
+
+  app.post('/v1/ai-dinner-reconstruction', async (request, reply) => {
+    ensureSameOrigin(request, appOrigin);
+    const { session } = await requireVerifiedSession(request, authService);
+    ensureCsrf(request, session.csrfTokenHash);
+    const parsed = dinnerReconstructionRequestSchema.safeParse(request.body);
+    if (!parsed.success) throw invalidPayload();
+
+    const consent = await readConsent(repository, session.userId);
+    if (!consent.enabled) throw new AuthServiceError('ai_consent_required', 403, 'AI dinner reconstruction consent is required');
+
+    let reservation: GenerationRateReservation;
+    try {
+      reservation = await reserveGeneration(limiter, session.userId);
+    } catch {
+      throw new AuthServiceError('provider_unavailable', 503, 'AI dinner reconstruction provider is unavailable');
+    }
+    const { quota } = reservation;
+    if (!quota.allowed) throw new AuthServiceError('ai_daily_limit_reached', 429, 'Daily AI generation limit reached');
+
+    let drafts: DiaryRecipeDraft[];
+    try {
+      const result = await dinnerReconstructionProvider.reconstruct({
+        dinnerText: parsed.data.dinnerText,
+        servings: parsed.data.servings,
+      });
+      if (!isValidDinnerDrafts(result, parsed.data.servings)) throw new Error('Dinner reconstruction output is invalid');
+      drafts = result;
+    } catch {
+      await releaseGeneration(reservation);
+      throw new AuthServiceError('provider_unavailable', 503, 'AI dinner reconstruction provider is unavailable');
+    }
+
+    try {
+      await reservation.commit();
+    } catch (error) {
+      await releaseGeneration(reservation);
+      throw error;
+    }
+    return reply.code(200).send({ drafts, quota });
   });
 
   app.post('/v1/ai-recipes/save', async (request) => {

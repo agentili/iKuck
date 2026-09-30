@@ -1,17 +1,20 @@
 import { ArrowLeft, ChefHat, Clock, Heart, ShoppingCart, Star, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import type { RecipeNutrition } from '@ikuck/shared/contracts';
 import { ApiClientError, apiRequest } from '../api/apiClient';
 import { getIngredient } from '../domain/ingredients';
 import { ALLERGEN_LABELS } from '../domain/dietary';
 import { getRecipeMetadata } from '../domain/recipeMetadata';
 import { getRecipeById } from '../domain/recipes';
+import { toDiaryPantryRecipe } from '../domain/diaryRecipes';
 import type { RecipeCategory } from '../domain/types';
 import { usePantryStore } from '../store/localPantryStore';
 import { useShoppingListStore } from '../store/shoppingListStore';
 import { useActivityStore } from '../store/activityStore';
 import { useAuthStore } from '../auth/authStore';
+import { useDinnerDiaryStore } from '../store/dinnerDiaryStore';
+import { getActiveDataScope } from '../sync/scopeContext';
 import NotFoundPage from './NotFoundPage';
 import RecipeNutritionSummary from '../components/diet/RecipeNutritionSummary';
 
@@ -23,6 +26,7 @@ const CATEGORY_LABELS: Record<RecipeCategory, string> = {
   eggs: 'Uova',
   legumes: 'Legumi',
   vegetables: 'Verdure',
+  diary: 'Dal diario',
 };
 
 const isRecipeNutrition = (value: unknown): value is RecipeNutrition => {
@@ -36,16 +40,25 @@ const isRecipeNutrition = (value: unknown): value is RecipeNutrition => {
       .every((key) => candidate[key as keyof RecipeNutrition] === null || typeof candidate[key as keyof RecipeNutrition] === 'number');
 };
 
-const gramsPerServingFromAmount = (amount: string, servings: number): number | null => {
+const gramsPerServingFromAmount = (amount: string, servings: number | null): number | null => {
   const match = amount.trim().match(/^(\d+(?:[.,]\d+)?)\s*(kg|g)\b/i);
-  if (match === null || servings <= 0) return null;
+  if (match === null || servings === null || servings <= 0) return null;
   const grams = Number(match[1].replace(',', '.')) * (match[2].toLowerCase() === 'kg' ? 1000 : 1);
   return Number.isFinite(grams) && grams > 0 ? grams / servings : null;
 };
 
 export default function RecipeDetailPage() {
   const { recipeId = '' } = useParams();
-  const recipe = getRecipeById(recipeId);
+  const [searchParams] = useSearchParams();
+  const requestedScope = searchParams.get('scope');
+  const activeScope = getActiveDataScope();
+  const savedDiaryRecipes = useDinnerDiaryStore((state) => state.recipes);
+  const savedDiaryRecipe = requestedScope === activeScope
+    ? savedDiaryRecipes.find((item) => item.scope === activeScope && item.value.id === recipeId)
+    : undefined;
+  const recipe = requestedScope === null
+    ? getRecipeById(recipeId)
+    : savedDiaryRecipe === undefined ? undefined : toDiaryPantryRecipe(savedDiaryRecipe);
   const metadata = recipe === undefined ? undefined : getRecipeMetadata(recipe.id);
   const [shoppingMessage, setShoppingMessage] = useState<string | null>(null);
   const [activityMessage, setActivityMessage] = useState<string | null>(null);
@@ -56,6 +69,7 @@ export default function RecipeDetailPage() {
   const [favorite, setFavorite] = useState(false);
   const [rating, setRating] = useState<number | null>(null);
   const [privateNote, setPrivateNote] = useState('');
+  const [cookedServings, setCookedServings] = useState('');
   const availableIds = usePantryStore((state) => state.getAvailableIngredientIds());
   const addMissingRecipeIngredients = useShoppingListStore((state) => state.addMissingRecipeIngredients);
   const preferences = useActivityStore((state) => state.preferences);
@@ -88,7 +102,12 @@ export default function RecipeDetailPage() {
 
   const markAsCooked = () => {
     if (recipe === undefined) return;
-    const eventId = recordCookEvent(recipe);
+    const servings = recipe.servings ?? Number(cookedServings);
+    if (!Number.isInteger(servings) || servings < 1) {
+      setActivityMessage('Indica un numero di porzioni intero maggiore di zero.');
+      return;
+    }
+    const eventId = recordCookEvent(recipe, servings);
     setActivityMessage(eventId === null ? 'Non è stato possibile aggiornare la cronologia.' : 'Ricetta aggiunta alla cronologia.');
   };
 
@@ -110,7 +129,7 @@ export default function RecipeDetailPage() {
           ingredients: recipe.ingredients
             .filter((item) => !item.optional)
             .map((item) => ({
-              query: getIngredient(item.ingredientId)?.label ?? item.ingredientId,
+              query: item.name ?? getIngredient(item.ingredientId)?.label ?? item.ingredientId,
               grams: gramsPerServingFromAmount(item.amount, recipe.servings),
             })),
         },
@@ -143,17 +162,17 @@ export default function RecipeDetailPage() {
           <div className="flex min-h-11 items-center gap-2 rounded-full bg-white/10 px-4 py-2">
             <Clock size={18} aria-hidden="true" />
             <dt className="sr-only">Tempo</dt>
-            <dd>{recipe.durationMinutes} min</dd>
+            <dd>{recipe.durationMinutes === null ? 'Tempo non indicato' : `${recipe.durationMinutes} min`}</dd>
           </div>
           <div className="flex min-h-11 items-center gap-2 rounded-full bg-white/10 px-4 py-2">
             <Users size={18} aria-hidden="true" />
             <dt className="sr-only">Porzioni</dt>
-            <dd>{recipe.servings} porzioni</dd>
+            <dd>{recipe.servings === null ? 'Porzioni non indicate' : `${recipe.servings} porzioni`}</dd>
           </div>
           <div className="flex min-h-11 items-center gap-2 rounded-full bg-white/10 px-4 py-2">
             <ChefHat size={18} aria-hidden="true" />
             <dt className="sr-only">Difficoltà</dt>
-            <dd>{recipe.difficulty === 'easy' ? 'Facile' : 'Media'}</dd>
+            <dd>{recipe.difficulty === 'easy' ? 'Facile' : recipe.difficulty === 'medium' ? 'Media' : 'Difficoltà non specificata'}</dd>
           </div>
         </dl>
       </header>
@@ -175,7 +194,7 @@ export default function RecipeDetailPage() {
           <ul className="mt-5 divide-y divide-gray-200 rounded-3xl border-2 border-gray-200 bg-white px-5">
             {recipe.ingredients.map((item) => (
               <li key={item.ingredientId} className="flex items-start justify-between gap-4 py-4">
-                <span className="font-semibold text-gray-900">{getIngredient(item.ingredientId)?.label}</span>
+                <span className="font-semibold text-gray-900">{item.name ?? getIngredient(item.ingredientId)?.label ?? item.ingredientId}</span>
                 <span className="text-right text-gray-600">{item.amount}{item.optional ? ' · facoltativo' : ''}</span>
               </li>
             ))}
@@ -197,6 +216,12 @@ export default function RecipeDetailPage() {
 
       <section aria-labelledby="recipe-actions-title" className="rounded-3xl border-2 border-amber-200 bg-amber-50 p-4 sm:p-5">
         <h2 id="recipe-actions-title" className="text-2xl font-black text-gray-950">La tua esperienza</h2>
+        {recipe.servings === null && (
+          <label htmlFor="cooked-servings" className="mt-3 grid max-w-xs gap-2 text-sm font-semibold text-gray-800">
+            Numero di porzioni per la cronologia
+            <input id="cooked-servings" type="number" min="1" step="1" value={cookedServings} onChange={(event) => setCookedServings(event.target.value)} className="min-h-11 rounded-xl border-2 border-gray-300 bg-white px-3 py-2" />
+          </label>
+        )}
         <div className="mt-3 flex flex-wrap gap-3">
           <button type="button" onClick={markAsCooked} className="min-h-11 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800">
             Segna come cucinata

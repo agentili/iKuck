@@ -1,4 +1,4 @@
-import { Clock3, Home, PackageOpen, ShoppingBasket, UserRound, WifiOff } from 'lucide-react';
+import { BookOpen, Clock3, Home, PackageOpen, ShoppingBasket, UserRound, WifiOff } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../auth/authStore';
 
@@ -7,6 +7,7 @@ const primaryLinks = [
   { path: '/pantry', label: 'Dispensa', compactLabel: 'Disp.', icon: PackageOpen },
   { path: '/shopping-list', label: 'Lista', compactLabel: 'Lista', icon: ShoppingBasket },
   { path: '/activity', label: 'Attività', compactLabel: 'Att.', icon: Clock3 },
+  { path: '/dinner-diary', label: 'Diario delle cene', compactLabel: 'Diario', icon: BookOpen },
   { path: '/profile', label: 'Profilo', compactLabel: 'Io', icon: UserRound },
 ] as const;
 
@@ -24,7 +25,7 @@ export default function AppHeader() {
       <div className="mx-auto flex min-h-14 w-full max-w-6xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
         <Link to="/" aria-label="iKuck" className="shrink-0 rounded-lg text-lg font-black tracking-tight text-emerald-800">iKuck</Link>
         <nav aria-label="Navigazione principale" className="app-navigation fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:static sm:ml-auto sm:border-0 sm:bg-transparent sm:shadow-none">
-          <ul className="mx-auto grid max-w-lg grid-cols-5 gap-1 px-2 sm:flex sm:max-w-none sm:justify-end sm:px-0">
+          <ul className="mx-auto grid max-w-lg grid-cols-6 gap-1 px-2 sm:flex sm:max-w-none sm:justify-end sm:px-0">
             {primaryLinks.map(({ path, label, compactLabel, icon: Icon }) => {
               const isCurrent = path === '/'
                 ? location.pathname === '/' || location.pathname.startsWith('/recipes/')

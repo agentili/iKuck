@@ -11,6 +11,7 @@ const CATEGORY_LABELS: Record<RecipeCategory, string> = {
   eggs: 'Uova',
   legumes: 'Legumi',
   vegetables: 'Verdure',
+  diary: 'Dal diario',
 };
 
 interface LocalRecipeCardProps {
@@ -21,8 +22,12 @@ interface LocalRecipeCardProps {
 
 export default function LocalRecipeCard({ suggestion, missingIngredientInShoppingList = false, onAddMissingIngredient }: LocalRecipeCardProps) {
   const missingId = suggestion.missingIngredientIds[0];
-  const missingLabel = missingId ? getIngredient(missingId)?.label ?? missingId : null;
+  const missingLabel = missingId ? getIngredient(missingId)?.label ?? suggestion.recipe.ingredients.find((item) => item.ingredientId === missingId)?.name ?? missingId : null;
   const metadata = getRecipeMetadata(suggestion.recipe.id);
+  const categoryLabel = suggestion.recipe.category === 'diary' ? 'Dal diario' : CATEGORY_LABELS[suggestion.recipe.category];
+  const detailHref = suggestion.recipe.diary === undefined
+    ? `/recipes/${suggestion.recipe.id}`
+    : `/recipes/${encodeURIComponent(suggestion.recipe.diary.savedRecipeId)}?scope=${encodeURIComponent(suggestion.recipe.diary.scope)}`;
   const availability = missingLabel ? 'one-missing' : 'ready';
   const titleId = `recipe-title-${suggestion.recipe.id}`;
 
@@ -44,11 +49,11 @@ export default function LocalRecipeCard({ suggestion, missingIngredientInShoppin
         <div className="flex items-center gap-1.5">
           <dt className="sr-only">Tempo</dt>
           <Clock size={17} aria-hidden="true" />
-          <dd>{suggestion.recipe.durationMinutes} min</dd>
+          <dd>{suggestion.recipe.durationMinutes === null ? 'Tempo non indicato' : `${suggestion.recipe.durationMinutes} min`}</dd>
         </div>
         <div>
           <dt className="sr-only">Categoria</dt>
-          <dd>{CATEGORY_LABELS[suggestion.recipe.category]}</dd>
+          <dd>{categoryLabel}</dd>
         </div>
       </dl>
       <div className="mt-5 flex flex-wrap gap-2">
@@ -64,7 +69,7 @@ export default function LocalRecipeCard({ suggestion, missingIngredientInShoppin
             </button>
           )
         )}
-        <Link to={`/recipes/${suggestion.recipe.id}`} aria-label={`Apri ${suggestion.recipe.title}`} className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border-2 border-gray-900 px-4 py-2 font-bold text-gray-900 hover:bg-gray-900 hover:text-white">
+        <Link to={detailHref} aria-label={`Apri ${suggestion.recipe.title}`} className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border-2 border-gray-900 px-4 py-2 font-bold text-gray-900 hover:bg-gray-900 hover:text-white">
           Apri ricetta
         </Link>
       </div>

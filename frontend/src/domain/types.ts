@@ -1,4 +1,8 @@
-export type RecipeCategory = 'meat' | 'fish' | 'eggs' | 'legumes' | 'vegetables';
+import type { DietType, EuAllergen } from '@ikuck/shared/contracts';
+import type { DiarySuggestedField } from '@ikuck/shared/dinnerDiary';
+import type { SyncScope } from '../sync/scopeContext';
+
+export type RecipeCategory = 'meat' | 'fish' | 'eggs' | 'legumes' | 'vegetables' | 'diary';
 
 export type IngredientCategory =
   | 'staple'
@@ -29,6 +33,15 @@ export interface RecipeIngredient {
   ingredientId: string;
   amount: string;
   optional?: boolean;
+  name?: string;
+}
+
+export interface DiaryRecipeMetadata {
+  scope: SyncScope;
+  savedRecipeId: string;
+  diets: DietType[] | null;
+  allergens: EuAllergen[] | null;
+  suggestedFields: readonly DiarySuggestedField[];
 }
 
 export interface PantryRecipe {
@@ -36,12 +49,14 @@ export interface PantryRecipe {
   title: string;
   description: string;
   category: RecipeCategory;
-  durationMinutes: number;
-  difficulty: 'easy' | 'medium';
-  servings: number;
+  durationMinutes: number | null;
+  difficulty: 'easy' | 'medium' | 'unknown';
+  servings: number | null;
   ingredients: RecipeIngredient[];
   steps: string[];
   tags: string[];
+  source?: 'diary';
+  diary?: DiaryRecipeMetadata;
 }
 
 export interface RecipeSuggestion {
