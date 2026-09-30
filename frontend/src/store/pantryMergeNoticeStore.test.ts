@@ -22,4 +22,13 @@ describe('pantry merge notice store', () => {
     usePantryMergeNoticeStore.getState().clear();
     expect(usePantryMergeNoticeStore.getState().summary).toBeNull();
   });
+
+  it('records and dismisses a failed local pantry merge warning', () => {
+    usePantryMergeNoticeStore.getState().showFailure();
+
+    expect(usePantryMergeNoticeStore.getState()).toMatchObject({ summary: null, mergeFailed: true });
+
+    usePantryMergeNoticeStore.getState().clear();
+    expect(usePantryMergeNoticeStore.getState()).toMatchObject({ summary: null, mergeFailed: false });
+  });
 });

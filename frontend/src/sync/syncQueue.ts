@@ -426,6 +426,7 @@ export async function mergeGuestPantryIntoHouse(
 export interface SessionScopeInitialization {
   state: HouseState | null;
   mergeSummary: PantryMergeSummary | null;
+  guestMergeFailed: boolean;
 }
 
 export async function initializeSessionScope(
@@ -453,8 +454,14 @@ export async function initializeSessionScope(
     setActiveDataScope(GUEST_SYNC_SCOPE);
     setPersonalDataScope(accountScope);
     let mergeSummary: PantryMergeSummary | null = null;
+    let guestMergeFailed = false;
     if (state?.house !== null && state?.house !== undefined) {
-      mergeSummary = await mergeGuestPantryIntoHouse(session, state.house.id, request, isCurrent);
+      try {
+        mergeSummary = await mergeGuestPantryIntoHouse(session, state.house.id, request, isCurrent);
+      } catch {
+        ensureCurrent();
+        guestMergeFailed = true;
+      }
       ensureCurrent();
       setActiveDataScope(`house:${state.house.id}`);
     } else {
@@ -462,7 +469,7 @@ export async function initializeSessionScope(
       setActiveDataScope(accountScope);
       setPersonalDataScope(accountScope);
     }
-    return { state, mergeSummary };
+    return { state, mergeSummary, guestMergeFailed };
   } catch (error) {
     if (!isCurrent()) throw error;
     if (previousActiveScope.startsWith('house:')
