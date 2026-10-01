@@ -145,7 +145,7 @@ const mergeDietProfiles = (left: unknown, right: unknown): DietProfile | null =>
     : right.diet;
   return {
     diet,
-    excludedAllergens: [...new Set([...left.excludedAllergens, ...right.excludedAllergens])],
+    excludedAllergens: [...new Set([...left.excludedAllergens, ...right.excludedAllergens])].sort(),
     nutrition: {
       maxCaloriesPerServing: lowerNonNull(
         left.nutrition.maxCaloriesPerServing,

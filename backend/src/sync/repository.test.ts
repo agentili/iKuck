@@ -572,6 +572,46 @@ describe('sync repository', () => {
     await expect(repository.readAll('user-1')).resolves.toHaveLength(2);
   });
 
+  it('merges house diet restrictions into a deterministic conservative union', async () => {
+    let user2Joined = false;
+    const repository = createMemorySyncRepository({
+      scopeResolver: async (userId) => userId === 'user-1' || user2Joined
+        ? { kind: 'house', id: 'house-1' }
+        : { kind: 'user', id: userId },
+    });
+    const houseProfile = {
+      diet: 'omnivore' as const,
+      excludedAllergens: ['molluscs', 'milk'],
+      nutrition: { maxCaloriesPerServing: 700, minProteinGramsPerServing: 20 },
+      updatedAt: '2026-09-12T12:00:00.000Z',
+    };
+    const personalProfile = {
+      diet: 'vegetarian' as const,
+      excludedAllergens: ['peanuts', 'milk'],
+      nutrition: { maxCaloriesPerServing: 500, minProteinGramsPerServing: 30 },
+      updatedAt: '2026-09-12T12:01:00.000Z',
+    };
+    await repository.applyMutation('user-1', {
+      ...mutation(houseProfile.updatedAt, 'house-diet', 'House diet'),
+      entityType: 'diet_profile', entityId: 'profile', payload: houseProfile,
+    });
+    await repository.applyMutation('user-2', {
+      ...mutation(personalProfile.updatedAt, 'personal-diet', 'Personal diet'),
+      entityType: 'diet_profile', entityId: 'profile', payload: personalProfile,
+    });
+
+    user2Joined = true;
+    await repository.migrateUserSharedDataToHouse('user-2', 'house-1');
+
+    await expect(repository.readEntity('user-1', 'diet_profile', 'profile')).resolves.toMatchObject({
+      payload: {
+        diet: 'vegetarian',
+        excludedAllergens: ['milk', 'molluscs', 'peanuts'],
+        nutrition: { maxCaloriesPerServing: 500, minProteinGramsPerServing: 30 },
+      },
+    });
+  });
+
   it('merges a member pantry into the house, sums compatible lots, unions staples and is idempotent', async () => {
     let userIsMember = false;
     const repository = createMemorySyncRepository({
