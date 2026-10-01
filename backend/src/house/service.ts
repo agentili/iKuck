@@ -2,7 +2,7 @@ import type { PantryLot, HouseMember, HouseRole, HouseState } from '@ikuck/share
 import type { PantryMergeSummary } from '@ikuck/shared/pantryMerge';
 import { AuthServiceError } from '../auth/service.js';
 import type { SyncRepository } from '../sync/repository.js';
-import type { HouseRepository } from './repository.js';
+import { HouseMembershipExistsError, type HouseRepository } from './repository.js';
 import { houseNameSchema, houseRoleSchema, memberEmailSchema } from './validation.js';
 
 export interface HouseService {
@@ -56,7 +56,15 @@ export const createHouseService = ({ repository, syncRepository, clock = () => n
     if (await repository.getMembershipForUser(userId) !== null) {
       throw new AuthServiceError('house_membership_exists', 409, 'The account already belongs to a house');
     }
-    const created = await repository.createHouse({ name: nameResult.data, userId, now: clock() });
+    let created: Awaited<ReturnType<HouseRepository['createHouse']>>;
+    try {
+      created = await repository.createHouse({ name: nameResult.data, userId, now: clock() });
+    } catch (error) {
+      if (error instanceof HouseMembershipExistsError) {
+        throw new AuthServiceError('house_membership_exists', 409, 'The account already belongs to a house');
+      }
+      throw error;
+    }
     await migrateUserHouseData(syncRepository, userId, created.house.id);
     const state = await repository.getStateForUser(userId);
     if (state === null) throw new AuthServiceError('house_not_found', 500, 'Created house could not be loaded');

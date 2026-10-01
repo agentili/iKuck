@@ -2,9 +2,25 @@ import { describe, expect, it, vi } from 'vitest';
 import { AuthServiceError } from '../auth/service.js';
 import type { SyncRepository } from '../sync/repository.js';
 import { createHouseService } from './service.js';
-import { createMemoryHouseRepository } from './repository.js';
+import { createMemoryHouseRepository, HouseMembershipExistsError } from './repository.js';
 
 describe('house service', () => {
+  it('maps a membership conflict detected inside the create transaction to a typed conflict', async () => {
+    const repository = {
+      ...createMemoryHouseRepository([
+        { id: 'admin-1', email: 'admin@example.com', displayName: 'Admin', emailVerifiedAt: new Date() },
+      ]),
+      getMembershipForUser: async () => null,
+      createHouse: async () => { throw new HouseMembershipExistsError(); },
+    };
+    const service = createHouseService({ repository });
+
+    await expect(service.createHouse('admin-1', 'Casa')).rejects.toMatchObject({
+      code: 'house_membership_exists',
+      status: 409,
+    });
+  });
+
   it('creates a house with the creator as admin and adds a registered member directly', async () => {
     const repository = createMemoryHouseRepository([
       { id: 'admin-1', email: 'admin@example.com', displayName: 'Admin', emailVerifiedAt: new Date() },

@@ -5,7 +5,7 @@ import type { DietProfile, DietType, PantryLot, SyncChange, SyncMutation } from 
 import { mergePantryLots, type PantryMergeSummary } from '@ikuck/shared/pantryMerge';
 import { and, asc, eq, gt, inArray, like, or, sql } from 'drizzle-orm';
 import type { ApplicationDatabase } from '../db/client.js';
-import { processedSyncMutations, houseMemberships, houses, syncItems } from '../db/schema.js';
+import { processedSyncMutations, houseMemberships, houses, syncItems, users } from '../db/schema.js';
 import { isDietProfile } from '../diet/validation.js';
 import { assertSyncMutation } from './validation.js';
 
@@ -410,28 +410,43 @@ const entityIdFromKey = (key: string): string => key.slice(key.lastIndexOf(':') 
 const entityKey = (scope: SyncScope, entityType: SyncMutation['entityType'], entityId: string): string =>
   `${scopeKey(scope)}:${entityType}:${entityId}`;
 
+export const resolveScopeForCurrentMembership = (
+  userId: string,
+  entityType: SyncMutation['entityType'],
+  currentHouseId: string | null,
+  requestedScope?: SyncMutation['syncScope'],
+): SyncScope => {
+  const isShared = isSharedEntityType(entityType);
+  if (requestedScope === undefined) {
+    return isShared && currentHouseId !== null ? { kind: 'house', id: currentHouseId } : userScope(userId);
+  }
+  if (requestedScope === `account:${userId}`) {
+    if (isShared && currentHouseId !== null) throw new SyncScopeInvalidError();
+    return userScope(userId);
+  }
+  if (requestedScope.startsWith('house:')) {
+    if (!isShared) throw new SyncScopeInvalidError();
+    if (currentHouseId === null || requestedScope !== `house:${currentHouseId}`) {
+      throw new SyncMembershipRequiredError();
+    }
+    return { kind: 'house', id: currentHouseId };
+  }
+  throw new SyncMembershipRequiredError();
+};
+
 const resolveEntityScope = async (
   userId: string,
   entityType: SyncMutation['entityType'],
   options: ResolvedSyncRepositoryOptions,
   requestedScope?: SyncMutation['syncScope'],
 ): Promise<SyncScope | null> => {
-  if (requestedScope !== undefined) {
-    if (requestedScope === `account:${userId}`) {
-      if (isSharedEntityType(entityType) && options.scopeResolverConfigured) {
-        const currentScope = await options.scopeResolver(userId);
-        if (currentScope?.kind === 'house') throw new SyncScopeInvalidError();
-      }
-      return userScope(userId);
-    }
-    if (requestedScope.startsWith('house:') && !isSharedEntityType(entityType)) throw new SyncScopeInvalidError();
-    if (!requestedScope.startsWith('house:') || !options.scopeResolverConfigured) return null;
-    const currentHouse = await options.scopeResolver(userId);
-    return currentHouse?.kind === 'house' && requestedScope === `house:${currentHouse.id}` ? currentHouse : null;
-  }
-  if (!isSharedEntityType(entityType)) return userScope(userId);
-  if (!options.scopeResolverConfigured) return userScope(userId);
-  return (await options.scopeResolver(userId)) ?? userScope(userId);
+  const currentScope = options.scopeResolverConfigured ? await options.scopeResolver(userId) : null;
+  return resolveScopeForCurrentMembership(
+    userId,
+    entityType,
+    currentScope?.kind === 'house' ? currentScope.id : null,
+    requestedScope,
+  );
 };
 
 const resolveReadScopes = async (
@@ -823,6 +838,37 @@ export const createDrizzleSyncRepository = (
   const options = resolveOptions(repositoryOptions);
   type SyncDatabaseTransaction = Parameters<Parameters<typeof database.transaction>[0]>[0];
 
+  const resolveTransactionScope = async (
+    transaction: SyncDatabaseTransaction,
+    userId: string,
+    mutation: SyncMutation,
+  ): Promise<SyncScope> => {
+    if (!isSharedEntityType(mutation.entityType)) {
+      return resolveScopeForCurrentMembership(userId, mutation.entityType, null, mutation.syncScope);
+    }
+
+    // Serialize scope selection with house creation/member-add so a stale account write cannot race migration.
+    await transaction.execute(sql`SELECT id FROM ${users} WHERE id = ${userId} FOR SHARE`);
+    const [membership] = await transaction.select({ houseId: houseMemberships.houseId })
+      .from(houseMemberships)
+      .where(eq(houseMemberships.userId, userId))
+      .limit(1);
+    const houseId = membership?.houseId ?? null;
+    const scope = resolveScopeForCurrentMembership(userId, mutation.entityType, houseId, mutation.syncScope);
+    if (scope.kind === 'house') {
+      await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${scope.id} FOR UPDATE`);
+      const [currentMembership] = await transaction.select({ id: houseMemberships.id })
+        .from(houseMemberships)
+        .where(and(
+          eq(houseMemberships.userId, userId),
+          eq(houseMemberships.houseId, scope.id),
+        ))
+        .limit(1);
+      if (currentMembership === undefined) throw new SyncMembershipRequiredError();
+    }
+    return scope;
+  };
+
   const mergeDatabasePantryInTransaction = async (
     transaction: SyncDatabaseTransaction,
     userId: string,
@@ -1067,21 +1113,9 @@ export const createDrizzleSyncRepository = (
   return {
     applyMutation: async (userId, mutation) => {
       const prepared = prepareMutation(mutation, options);
-      const scope = await resolveEntityScope(userId, prepared.mutation.entityType, options, prepared.mutation.syncScope);
-      if (scope === null) throw new SyncMembershipRequiredError();
       return database.transaction(async (transaction) => {
         const validMutation = prepared.mutation;
-        if (scope.kind === 'house') {
-          await transaction.execute(sql`SELECT id FROM houses WHERE id = ${scope.id} FOR UPDATE`);
-          const [membership] = await transaction.select({ id: houseMemberships.id })
-            .from(houseMemberships)
-            .where(and(
-              eq(houseMemberships.houseId, scope.id),
-              eq(houseMemberships.userId, userId),
-            ))
-            .limit(1);
-          if (membership === undefined) throw new SyncMembershipRequiredError();
-        }
+        const scope = await resolveTransactionScope(transaction, userId, validMutation);
         const [alreadyProcessed] = await transaction.select({ id: processedSyncMutations.id })
           .from(processedSyncMutations)
           .where(and(

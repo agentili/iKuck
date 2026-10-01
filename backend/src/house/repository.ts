@@ -45,6 +45,15 @@ export interface HouseRepository {
   countAdmins: (houseId: string) => Promise<number>;
 }
 
+export class HouseMembershipExistsError extends Error {
+  readonly code = 'house_membership_exists';
+
+  constructor() {
+    super('The account already belongs to a house');
+    this.name = 'HouseMembershipExistsError';
+  }
+}
+
 export type SeedHouseUser = HouseUserRecord;
 
 const toHouseRecord = (house: typeof houses.$inferSelect): HouseRecord => ({
@@ -111,6 +120,7 @@ export const createMemoryHouseRepository = (seedUsers: readonly SeedHouseUser[] 
   return {
     seedUser,
     createHouse: async ({ name, userId, now }) => {
+      if (membershipsByUser.has(userId)) throw new HouseMembershipExistsError();
       const id = `house-${housesById.size + 1}`;
       const house: HouseRecord = { id, name, createdByUserId: userId, createdAt: now, updatedAt: now };
       const membership: HouseMembershipRecord = {
@@ -203,6 +213,12 @@ export const createMemoryHouseRepository = (seedUsers: readonly SeedHouseUser[] 
 export const createDrizzleHouseRepository = (database: ApplicationDatabase['db']): HouseRepository => {
   return {
     createHouse: async ({ name, userId, now }) => database.transaction(async (transaction) => {
+      await transaction.execute(sql`SELECT id FROM ${users} WHERE id = ${userId} FOR UPDATE`);
+      const [existingMembership] = await transaction.select({ id: houseMemberships.id })
+        .from(houseMemberships)
+        .where(eq(houseMemberships.userId, userId))
+        .limit(1);
+      if (existingMembership !== undefined) throw new HouseMembershipExistsError();
       const [house] = await transaction.insert(houses).values({ name, createdByUserId: userId, createdAt: now, updatedAt: now }).returning();
       const [membership] = await transaction.insert(houseMemberships).values({
         houseId: house.id,
@@ -242,21 +258,30 @@ export const createDrizzleHouseRepository = (database: ApplicationDatabase['db']
       return membership === undefined ? null : toMembershipRecord(membership);
     },
     addExistingMember: async ({ adminUserId, email, now }) => database.transaction(async (transaction) => {
-      const [adminMembershipRow] = await transaction.select().from(houseMemberships).where(eq(houseMemberships.userId, adminUserId)).limit(1);
-      if (adminMembershipRow?.role !== 'admin') return { kind: 'admin_required' as const };
-      await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${adminMembershipRow.houseId} FOR UPDATE`);
+      const [adminMembership] = await transaction.select().from(houseMemberships).where(eq(houseMemberships.userId, adminUserId)).limit(1);
+      if (adminMembership?.role !== 'admin') return { kind: 'admin_required' as const };
       const [target] = await transaction.select({ user: users, profile: userProfiles })
         .from(users)
         .leftJoin(userProfiles, eq(userProfiles.userId, users.id))
         .where(eq(users.email, email))
         .limit(1);
       if (target === undefined) return { kind: 'not_registered' as const };
+      await transaction.execute(sql`SELECT id FROM ${users} WHERE id = ${target.user.id} FOR UPDATE`);
+      await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${adminMembership.houseId} FOR UPDATE`);
+      const [currentAdmin] = await transaction.select({ role: houseMemberships.role })
+        .from(houseMemberships)
+        .where(and(
+          eq(houseMemberships.userId, adminUserId),
+          eq(houseMemberships.houseId, adminMembership.houseId),
+        ))
+        .limit(1);
+      if (currentAdmin?.role !== 'admin') return { kind: 'admin_required' as const };
       const [existing] = await transaction.select().from(houseMemberships).where(eq(houseMemberships.userId, target.user.id)).limit(1);
       if (existing !== undefined) {
-        return existing.houseId === adminMembershipRow.houseId ? { kind: 'already_member' as const } : { kind: 'already_in_house' as const };
+        return existing.houseId === adminMembership.houseId ? { kind: 'already_member' as const } : { kind: 'already_in_house' as const };
       }
       const [membership] = await transaction.insert(houseMemberships).values({
-        houseId: adminMembershipRow.houseId,
+        houseId: adminMembership.houseId,
         userId: target.user.id,
         role: 'member',
         joinedAt: now,
@@ -276,6 +301,11 @@ export const createDrizzleHouseRepository = (database: ApplicationDatabase['db']
       const [admin] = await transaction.select().from(houseMemberships).where(eq(houseMemberships.userId, adminUserId)).limit(1);
       if (admin?.role !== 'admin') return 'admin_required' as const;
       await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${admin.houseId} FOR UPDATE`);
+      const [currentAdmin] = await transaction.select({ id: houseMemberships.id, role: houseMemberships.role })
+        .from(houseMemberships)
+        .where(and(eq(houseMemberships.userId, adminUserId), eq(houseMemberships.houseId, admin.houseId)))
+        .limit(1);
+      if (currentAdmin?.role !== 'admin') return 'admin_required' as const;
       const [target] = await transaction.select().from(houseMemberships).where(and(eq(houseMemberships.userId, userId), eq(houseMemberships.houseId, admin.houseId))).limit(1);
       if (target === undefined) return 'not_found' as const;
       if (target.role === 'admin' && role === 'member') {
@@ -292,6 +322,11 @@ export const createDrizzleHouseRepository = (database: ApplicationDatabase['db']
       const [admin] = await transaction.select().from(houseMemberships).where(eq(houseMemberships.userId, adminUserId)).limit(1);
       if (admin?.role !== 'admin') return 'admin_required' as const;
       await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${admin.houseId} FOR UPDATE`);
+      const [currentAdmin] = await transaction.select({ role: houseMemberships.role })
+        .from(houseMemberships)
+        .where(and(eq(houseMemberships.userId, adminUserId), eq(houseMemberships.houseId, admin.houseId)))
+        .limit(1);
+      if (currentAdmin?.role !== 'admin') return 'admin_required' as const;
       const [target] = await transaction.select().from(houseMemberships).where(and(eq(houseMemberships.userId, userId), eq(houseMemberships.houseId, admin.houseId))).limit(1);
       if (target === undefined) return 'not_found' as const;
       if (target.role === 'admin') {
@@ -308,19 +343,24 @@ export const createDrizzleHouseRepository = (database: ApplicationDatabase['db']
       const [membership] = await transaction.select().from(houseMemberships).where(eq(houseMemberships.userId, userId)).limit(1);
       if (membership === undefined) return 'not_found' as const;
       await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${membership.houseId} FOR UPDATE`);
+      const [currentMembership] = await transaction.select().from(houseMemberships).where(and(
+        eq(houseMemberships.userId, userId),
+        eq(houseMemberships.houseId, membership.houseId),
+      )).limit(1);
+      if (currentMembership === undefined) return 'not_found' as const;
       const members = await transaction.select({ id: houseMemberships.id, role: houseMemberships.role })
         .from(houseMemberships)
-        .where(eq(houseMemberships.houseId, membership.houseId));
+        .where(eq(houseMemberships.houseId, currentMembership.houseId));
       const adminCount = members.filter((member) => member.role === 'admin').length;
-      if (membership.role === 'admin' && adminCount <= 1 && members.length > 1) return 'last_admin_required' as const;
-      await transaction.delete(houseMemberships).where(eq(houseMemberships.id, membership.id));
+      if (currentMembership.role === 'admin' && adminCount <= 1 && members.length > 1) return 'last_admin_required' as const;
+      await transaction.delete(houseMemberships).where(eq(houseMemberships.id, currentMembership.id));
       if (members.length === 1) {
-        await transaction.delete(syncItems).where(and(eq(syncItems.scopeType, 'house'), eq(syncItems.scopeId, membership.houseId)));
+        await transaction.delete(syncItems).where(and(eq(syncItems.scopeType, 'house'), eq(syncItems.scopeId, currentMembership.houseId)));
         await transaction.delete(processedSyncMutations).where(and(
           eq(processedSyncMutations.scopeType, 'house'),
-          eq(processedSyncMutations.scopeId, membership.houseId),
+          eq(processedSyncMutations.scopeId, currentMembership.houseId),
         ));
-        await transaction.delete(houses).where(eq(houses.id, membership.houseId));
+        await transaction.delete(houses).where(eq(houses.id, currentMembership.houseId));
       }
       return 'left' as const;
     }),

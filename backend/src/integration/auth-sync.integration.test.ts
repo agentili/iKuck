@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { createApp } from '../app.js';
 import { createAuthService } from '../auth/service.js';
@@ -1391,6 +1391,46 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
   it('does not depend on migration source files at runtime', async () => {
     const migration = await readFile(join(dirname(fileURLToPath(import.meta.url)), '..', 'db', 'migrations', '0001_accounts_and_sync.sql'), 'utf8');
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS "users"');
+  });
+
+  it('resolves a shared mutation against membership inside PostgreSQL even when its resolver snapshot is stale', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const suffix = `${Date.now()}-${randomUUID()}`;
+    const now = new Date();
+    const admin = await authRepository.createUser({ email: `scope-race-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    const member = await authRepository.createUser({ email: `scope-race-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    await houseRepository.createHouse({ name: `Scope race ${suffix}`, userId: admin.id, now });
+    await houseRepository.addExistingMember({ adminUserId: admin.id, email: member.email, now });
+    const repository = createDrizzleSyncRepository(database.db, { scopeResolver: async () => null });
+    const timestamp = now.toISOString();
+    const staleMutation: SyncMutation = {
+      mutationId: `stale-scope-${suffix}`,
+      deviceId: 'scope-race-device',
+      entityType: 'cook_event',
+      entityId: `event-${suffix}`,
+      operation: 'upsert',
+      payload: {
+        id: `event-${suffix}`, recipeId: `recipe-${suffix}`, recipeTitle: 'Cena', servings: 2,
+        cookedAt: timestamp, note: null, createdAt: timestamp, updatedAt: timestamp,
+      },
+      clientUpdatedAt: timestamp,
+      syncScope: `account:${member.id}`,
+    };
+
+    await expect(repository.applyMutation(member.id, staleMutation)).rejects.toMatchObject({ code: 'sync_scope_invalid' });
+    const accountRows = await database.db.select().from(syncItems).where(and(
+      eq(syncItems.scopeType, 'user'), eq(syncItems.scopeId, member.id), eq(syncItems.entityType, 'cook_event'),
+    ));
+    expect(accountRows).toHaveLength(0);
+
+    const internalMutation = { ...staleMutation, mutationId: `internal-scope-${suffix}`, syncScope: undefined };
+    await repository.applyMutation(member.id, internalMutation);
+    await expect(repository.readEntity(member.id, 'cook_event', `event-${suffix}`)).resolves.toMatchObject({
+      syncScope: expect.stringMatching(/^house:/),
+    });
   });
 
   it('bounds future client clocks and resolves equal timestamps by device id', async () => {

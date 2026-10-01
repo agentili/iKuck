@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createMemorySyncRepository } from './repository.js';
+import { createMemorySyncRepository, resolveScopeForCurrentMembership, SyncMembershipRequiredError, SyncScopeInvalidError } from './repository.js';
 
 const mutation = (clientUpdatedAt: string, mutationId: string, label: string) => ({
   mutationId,
@@ -12,6 +12,17 @@ const mutation = (clientUpdatedAt: string, mutationId: string, label: string) =>
 });
 
 describe('sync repository', () => {
+  it('resolves shared writes from the current membership and rejects stale or personal-in-house scopes', () => {
+    expect(resolveScopeForCurrentMembership('user-1', 'cook_event', 'house-1')).toEqual({ kind: 'house', id: 'house-1' });
+    expect(resolveScopeForCurrentMembership('user-1', 'cook_event', null)).toEqual({ kind: 'user', id: 'user-1' });
+    expect(() => resolveScopeForCurrentMembership('user-1', 'cook_event', 'house-1', 'account:user-1'))
+      .toThrow(SyncScopeInvalidError);
+    expect(() => resolveScopeForCurrentMembership('user-1', 'ai_consent', 'house-1', 'house:house-1'))
+      .toThrow(SyncScopeInvalidError);
+    expect(() => resolveScopeForCurrentMembership('user-1', 'cook_event', null, 'house:house-1'))
+      .toThrow(SyncMembershipRequiredError);
+  });
+
   const pantryLot = (id: string, quantity: number | null, unit: 'g' | 'kg' | null, expiresAt: string | null) => ({
     id,
     ingredientId: 'pasta',
