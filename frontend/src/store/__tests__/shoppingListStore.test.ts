@@ -5,7 +5,7 @@ import * as shoppingListStorage from '../../storage/shoppingListStorage';
 import { readShoppingList, writeShoppingList } from '../../storage/shoppingListStorage';
 import { setActiveDataScope, setPersonalDataScope } from '../../sync/scopeContext';
 import { GUEST_SYNC_SCOPE, readQueuedMutations, waitForPendingQueueWrites } from '../../sync/syncQueue';
-import { hydrateShoppingListStore, useShoppingListStore } from '../shoppingListStore';
+import { hydrateShoppingListStore, useShoppingListStore, waitForPendingShoppingListWrites } from '../shoppingListStore';
 import { usePersistenceStatusStore } from '../persistenceStatusStore';
 
 const recipe: PantryRecipe = {
@@ -27,7 +27,9 @@ const recipe: PantryRecipe = {
 
 describe('shopping list store', () => {
   beforeEach(async () => {
+    await waitForPendingShoppingListWrites();
     setActiveDataScope('guest');
+    setPersonalDataScope('guest');
     await deleteLocalDatabase();
     usePersistenceStatusStore.getState().reset();
     useShoppingListStore.setState({ hasHydrated: false, items: [] });
@@ -64,7 +66,7 @@ describe('shopping list store', () => {
     setActiveDataScope(accountA);
     const firstHydration = hydrateShoppingListStore();
     await vi.waitFor(() => expect(readSpy).toHaveBeenCalledWith(accountA));
-    setPersonalDataScope(accountB);
+    setActiveDataScope(accountB);
     const secondHydration = hydrateShoppingListStore();
     releaseOld?.();
     await Promise.all([firstHydration, secondHydration]);
@@ -74,7 +76,7 @@ describe('shopping list store', () => {
     setActiveDataScope('guest');
   });
 
-  it('keeps personal shopping data out of house scope and rehydrates on account change', async () => {
+  it('keeps an account shopping list out of the house scope and rehydrates on active scope change', async () => {
     const accountScope = 'account:scope-user' as const;
     const otherAccountScope = 'account:other-user' as const;
     const houseScope = 'house:scope-house' as const;
@@ -98,13 +100,35 @@ describe('shopping list store', () => {
     expect(useShoppingListStore.getState().items).toMatchObject([{ id: 'account-item' }]);
 
     setActiveDataScope(houseScope);
-    expect(useShoppingListStore.getState()).toMatchObject({ hasHydrated: true, items: [{ id: 'account-item' }] });
+    expect(useShoppingListStore.getState()).toMatchObject({ hasHydrated: false, items: [] });
+    await hydrateShoppingListStore();
+    expect(useShoppingListStore.getState()).toMatchObject({ hasHydrated: true, items: [] });
 
-    setPersonalDataScope(otherAccountScope);
+    setActiveDataScope(otherAccountScope);
     expect(useShoppingListStore.getState()).toMatchObject({ hasHydrated: false, items: [] });
     await hydrateShoppingListStore();
     expect(useShoppingListStore.getState().items).toMatchObject([{ id: 'other-account-item' }]);
     setActiveDataScope('guest');
+  });
+
+  it('stores and queues shopping-list items in the active house', async () => {
+    const accountScope = 'account:shopping-user' as const;
+    const houseScope = 'house:shopping-home' as const;
+    setPersonalDataScope(accountScope);
+    setActiveDataScope(houseScope);
+
+    const id = useShoppingListStore.getState().addItem({
+      ingredientId: 'pasta', label: 'Pasta', quantity: 1, unit: 'pack', note: null,
+      purchased: false, sourceRecipeId: null,
+    });
+    await waitForPendingShoppingListWrites();
+
+    await expect(readShoppingList(houseScope)).resolves.toEqual([expect.objectContaining({ id })]);
+    await expect(readShoppingList(accountScope)).resolves.toEqual([]);
+    await expect(readQueuedMutations(houseScope)).resolves.toEqual([
+      expect.objectContaining({ entityType: 'shopping_list_item', entityId: id, operation: 'upsert' }),
+    ]);
+    await expect(readQueuedMutations(accountScope)).resolves.toEqual([]);
   });
 
   it('adds, edits, toggles, removes and clears items immediately', async () => {

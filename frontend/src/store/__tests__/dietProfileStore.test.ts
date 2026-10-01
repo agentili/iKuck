@@ -17,6 +17,8 @@ const profile: DietProfilePayload = {
 describe('diet profile store', () => {
   beforeEach(async () => {
     await waitForPendingDietProfileWrites();
+    setActiveDataScope(GUEST_SYNC_SCOPE);
+    setPersonalDataScope(GUEST_SYNC_SCOPE);
     await deleteLocalDatabase();
     usePersistenceStatusStore.getState().reset();
     useDietProfileStore.setState({
@@ -61,6 +63,23 @@ describe('diet profile store', () => {
     expect(useDietProfileStore.getState()).toMatchObject({ hasHydrated: true, profile: { diet: 'vegan' } });
     readSpy.mockRestore();
     setActiveDataScope('guest');
+  });
+
+  it('stores and queues the diet/allergen profile in the active house', async () => {
+    const accountScope = 'account:diet-user' as const;
+    const houseScope = 'house:diet-home' as const;
+    setPersonalDataScope(accountScope);
+    setActiveDataScope(houseScope);
+
+    expect(useDietProfileStore.getState().setDietProfile(profile)).toBe(true);
+    await waitForPendingDietProfileWrites();
+
+    await expect(readDietProfile(houseScope)).resolves.toMatchObject(profile);
+    await expect(readDietProfile(accountScope)).resolves.toMatchObject({ diet: 'omnivore', excludedAllergens: [] });
+    await expect(readQueuedMutations(houseScope)).resolves.toEqual([
+      expect.objectContaining({ entityType: 'diet_profile', entityId: 'profile', operation: 'upsert' }),
+    ]);
+    await expect(readQueuedMutations(accountScope)).resolves.toEqual([]);
   });
 
   it('updates the profile immediately and queues one synchronized resource', async () => {

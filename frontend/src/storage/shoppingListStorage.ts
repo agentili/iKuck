@@ -1,15 +1,15 @@
 import type { ShoppingListItem } from '@ikuck/shared/contracts';
 import { isShoppingListItem } from '../domain/shoppingList';
 import { deleteKeyValue, isIndexedDbAvailable, readKeyValue, writeKeyValue } from './indexedDb';
-import { getPersonalDataScope, scopeStorageKey, type SyncScope } from '../sync/scopeContext';
+import { getActiveDataScope, scopeStorageKey, type SyncScope } from '../sync/scopeContext';
 
 export const SHOPPING_LIST_STORAGE_KEY = 'ikuck-shopping-list-v1';
 export const SHOPPING_LIST_DATABASE_KEY = 'shopping-list';
 
-const scopedStorageKey = (scope: SyncScope = getPersonalDataScope()): string => scope === 'guest'
+const scopedStorageKey = (scope: SyncScope = getActiveDataScope()): string => scope === 'guest'
   ? SHOPPING_LIST_STORAGE_KEY
   : scopeStorageKey(scope, SHOPPING_LIST_STORAGE_KEY);
-const scopedDatabaseKey = (scope: SyncScope = getPersonalDataScope()): string => scope === 'guest'
+const scopedDatabaseKey = (scope: SyncScope = getActiveDataScope()): string => scope === 'guest'
   ? SHOPPING_LIST_DATABASE_KEY
   : scopeStorageKey(scope, SHOPPING_LIST_DATABASE_KEY);
 
@@ -41,9 +41,9 @@ const parse = (raw: string | null): ShoppingListItem[] => {
   }
 };
 
-const readFallback = (scope: SyncScope = getPersonalDataScope()): ShoppingListItem[] => parse(window.localStorage.getItem(scopedStorageKey(scope)));
+const readFallback = (scope: SyncScope = getActiveDataScope()): ShoppingListItem[] => parse(window.localStorage.getItem(scopedStorageKey(scope)));
 
-export async function readShoppingList(scope: SyncScope = getPersonalDataScope()): Promise<ShoppingListItem[]> {
+export async function readShoppingList(scope: SyncScope = getActiveDataScope()): Promise<ShoppingListItem[]> {
   if (!isIndexedDbAvailable()) return readFallback(scope);
 
   try {
@@ -53,7 +53,7 @@ export async function readShoppingList(scope: SyncScope = getPersonalDataScope()
   }
 }
 
-export async function writeShoppingList(items: readonly ShoppingListItem[], scope: SyncScope = getPersonalDataScope()): Promise<void> {
+export async function writeShoppingList(items: readonly ShoppingListItem[], scope: SyncScope = getActiveDataScope()): Promise<void> {
   const serialized = serialize(items);
   if (!isIndexedDbAvailable()) {
     window.localStorage.setItem(scopedStorageKey(scope), serialized);

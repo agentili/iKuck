@@ -15,6 +15,8 @@ import { usePersistenceStatusStore } from '../persistenceStatusStore';
 
 describe('activity store', () => {
   beforeEach(async () => {
+    setActiveDataScope(GUEST_SYNC_SCOPE);
+    setPersonalDataScope(GUEST_SYNC_SCOPE);
     await waitForPendingActivityWrites();
     await deleteLocalDatabase();
     usePersistenceStatusStore.getState().reset();
@@ -32,7 +34,7 @@ describe('activity store', () => {
     expect(useActivityStore.getState()).toMatchObject({ hasHydrated: true, events: [], preferences: [] });
   });
 
-  it('retries both personal hydrations after the account changes in flight', async () => {
+  it('retries both functional hydrations after the active account changes in flight', async () => {
     const accountA = 'account:activity-a' as const;
     const accountB = 'account:activity-b' as const;
     let releaseOld: (() => void) | undefined;
@@ -49,7 +51,7 @@ describe('activity store', () => {
     setActiveDataScope(accountA);
     const firstHydration = hydrateActivityStore();
     await vi.waitFor(() => expect(eventsSpy).toHaveBeenCalledWith(accountA));
-    setPersonalDataScope(accountB);
+    setActiveDataScope(accountB);
     const secondHydration = hydrateActivityStore();
     releaseOld?.();
     await Promise.all([firstHydration, secondHydration]);
@@ -119,6 +121,26 @@ describe('activity store', () => {
 
     expect(useActivityStore.getState().restoreCookEvent(removedEvent)).toBe(true);
     expect(useActivityStore.getState().events).toContainEqual(removedEvent);
+  });
+
+  it('stores and queues cooking events and recipe preferences in the active house', async () => {
+    const accountScope = 'account:user-1' as const;
+    const houseScope = 'house:activity-home' as const;
+    setPersonalDataScope(accountScope);
+    setActiveDataScope(houseScope);
+    useActivityStore.getState().recordCookEvent(RECIPES[0]);
+    useActivityStore.getState().setRecipePreference(RECIPES[0].id, true, 5, null);
+    await waitForPendingActivityWrites();
+
+    await expect(readCookEvents(houseScope)).resolves.toHaveLength(1);
+    await expect(readRecipePreferences(houseScope)).resolves.toHaveLength(1);
+    await expect(readCookEvents(accountScope)).resolves.toEqual([]);
+    await expect(readRecipePreferences(accountScope)).resolves.toEqual([]);
+    await expect(readQueuedMutations(houseScope)).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ entityType: 'cook_event', operation: 'upsert' }),
+      expect.objectContaining({ entityType: 'recipe_preference', operation: 'upsert' }),
+    ]));
+    await expect(readQueuedMutations(accountScope)).resolves.toEqual([]);
   });
 
   it('queues activity and preference changes with stable entity types', async () => {

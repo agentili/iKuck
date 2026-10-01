@@ -19,6 +19,7 @@ import {
   deleteMeta,
   deleteQueueScope,
   deleteQueueValue,
+  moveQueueValues,
   readMeta,
   readQueueValues,
   type SyncScope,
@@ -47,7 +48,7 @@ import {
   writeRecipePreferences,
 } from '../storage/activityStorage';
 import { clearShoppingList, readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
-import { readDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
+import { clearDietProfile, readDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
 import { clearDinnerDiary, readDinnerEntries, readSavedRecipes, writeDinnerEntries, writeSavedRecipes } from '../storage/dinnerDiaryStorage';
 import { assertSyncMutation, isPantryItemPayload, isStaplePreferencePayload } from './validation';
 import { getActiveDataScope, getPersonalDataScope, setActiveDataScope, setPersonalDataScope } from './scopeContext';
@@ -90,6 +91,7 @@ export async function clearDataScope(scope: SyncScope): Promise<void> {
     clearShoppingList(scope),
     clearCookEvents(scope),
     clearRecipePreferences(scope),
+    clearDietProfile(scope),
     clearDinnerDiary(scope),
   ]);
   await deleteQueueScope(scope);
@@ -148,6 +150,15 @@ export class SyncScopeChangedError extends Error {
   constructor() {
     super('The active data scope changed while synchronizing');
     this.name = 'SyncScopeChangedError';
+  }
+}
+
+export class SyncResponseScopeError extends Error {
+  readonly code = 'invalid_response_scope';
+
+  constructor() {
+    super('A server change belongs to a different account or house');
+    this.name = 'SyncResponseScopeError';
   }
 }
 
@@ -458,7 +469,12 @@ export async function initializeSessionScope(
         guestMergeFailed = true;
       }
       ensureCurrent();
-      setActiveDataScope(`house:${state.house.id}`);
+      const houseScope: SyncScope = `house:${state.house.id}`;
+      await waitForPendingQueueWrites();
+      ensureCurrent();
+      await moveQueueValues<QueuedMutation>(accountScope, houseScope, (mutation) => SHARED_ENTITY_TYPES.has(mutation.entityType));
+      ensureCurrent();
+      setActiveDataScope(houseScope);
     } else {
       ensureCurrent();
       setActiveDataScope(accountScope);
@@ -573,24 +589,38 @@ const applyServerChanges = async (
   }
 
   const shoppingChanges = changes.filter((change) => change.entityType === 'shopping_list_item');
-  if (shoppingChanges.length > 0) {
-    let items = await readShoppingList(personalScope);
-    for (const change of shoppingChanges) {
+  const shoppingChangesByScope = new Map<SyncScope, SyncChange[]>();
+  for (const change of shoppingChanges) {
+    const targetScope = change.syncScope?.startsWith('account:') ? personalScope : activeScope;
+    const scopedChanges = shoppingChangesByScope.get(targetScope) ?? [];
+    scopedChanges.push(change);
+    shoppingChangesByScope.set(targetScope, scopedChanges);
+  }
+  for (const [targetScope, scopedChanges] of shoppingChangesByScope) {
+    let items = await readShoppingList(targetScope);
+    for (const change of scopedChanges) {
       items = items.filter((item) => item.id !== change.entityId);
       if (change.operation === 'upsert' && isShoppingListItem(change.payload)) items.push(change.payload);
     }
-    await writeShoppingList(items, personalScope);
-    for (const listener of shoppingListListeners) listener(items);
+    await writeShoppingList(items, targetScope);
+    if (targetScope === activeScope) for (const listener of shoppingListListeners) listener(items);
   }
 
   const activityChanges = changes.filter((change) => change.entityType === 'cook_event'
     || change.entityType === 'recipe_preference');
-  if (activityChanges.length > 0) {
-    let events = await readCookEvents(personalScope);
-    let preferences = await readRecipePreferences(personalScope);
+  const activityChangesByScope = new Map<SyncScope, SyncChange[]>();
+  for (const change of activityChanges) {
+    const targetScope = change.syncScope?.startsWith('account:') ? personalScope : activeScope;
+    const scopedChanges = activityChangesByScope.get(targetScope) ?? [];
+    scopedChanges.push(change);
+    activityChangesByScope.set(targetScope, scopedChanges);
+  }
+  for (const [targetScope, scopedChanges] of activityChangesByScope) {
+    let events = await readCookEvents(targetScope);
+    let preferences = await readRecipePreferences(targetScope);
     let hasEventChanges = false;
     let hasPreferenceChanges = false;
-    for (const change of activityChanges) {
+    for (const change of scopedChanges) {
       if (change.entityType === 'cook_event') {
         hasEventChanges = true;
         events = events.filter((event) => event.id !== change.entityId);
@@ -601,10 +631,12 @@ const applyServerChanges = async (
         if (change.operation === 'upsert' && isRecipePreference(change.payload)) preferences.push(change.payload);
       }
     }
-    if (hasEventChanges) await writeCookEvents(events, personalScope);
-    if (hasPreferenceChanges) await writeRecipePreferences(preferences, personalScope);
-    const snapshot = { events, preferences };
-    for (const listener of activitySnapshotListeners) listener(snapshot);
+    if (hasEventChanges) await writeCookEvents(events, targetScope);
+    if (hasPreferenceChanges) await writeRecipePreferences(preferences, targetScope);
+    if (targetScope === activeScope) {
+      const snapshot = { events, preferences };
+      for (const listener of activitySnapshotListeners) listener(snapshot);
+    }
   }
 
   const diaryChanges = changes.filter((change) => change.entityType === 'dinner_entry' || change.entityType === 'saved_recipe');
@@ -640,10 +672,17 @@ const applyServerChanges = async (
   }
 
   const dietProfileChanges = changes.filter((change) => change.entityType === 'diet_profile');
-  if (dietProfileChanges.length > 0) {
-    let profile = await readDietProfile(personalScope);
+  const dietChangesByScope = new Map<SyncScope, SyncChange[]>();
+  for (const change of dietProfileChanges) {
+    const targetScope = change.syncScope?.startsWith('account:') ? personalScope : activeScope;
+    const scopedChanges = dietChangesByScope.get(targetScope) ?? [];
+    scopedChanges.push(change);
+    dietChangesByScope.set(targetScope, scopedChanges);
+  }
+  for (const [targetScope, scopedChanges] of dietChangesByScope) {
+    let profile = await readDietProfile(targetScope);
     let hasProfileChange = false;
-    for (const change of dietProfileChanges) {
+    for (const change of scopedChanges) {
       if (change.entityId !== 'profile') continue;
       hasProfileChange = true;
       if (change.operation === 'upsert' && isDietProfile(change.payload)) {
@@ -653,8 +692,8 @@ const applyServerChanges = async (
       }
     }
     if (hasProfileChange) {
-      await writeDietProfile(profile, personalScope);
-      for (const listener of dietProfileSnapshotListeners) listener(profile);
+      await writeDietProfile(profile, targetScope);
+      if (targetScope === activeScope) for (const listener of dietProfileSnapshotListeners) listener(profile);
     }
   }
 };
@@ -731,6 +770,11 @@ export async function syncNow({ fetch, request = apiRequest, session, isSessionC
         throw new SyncCursorStalledError();
       }
 
+      if (result.changes.some((change) => (
+        change.syncScope !== undefined && change.syncScope !== accountScope && change.syncScope !== activeScope
+      ) || (change.syncScope?.startsWith('house:') === true && !SHARED_ENTITY_TYPES.has(change.entityType)))) {
+        throw new SyncResponseScopeError();
+      }
       await applyServerChanges(result.changes, activeScope, personalScope);
       const appliedContextError = contextError();
       if (appliedContextError !== null) throw appliedContextError;

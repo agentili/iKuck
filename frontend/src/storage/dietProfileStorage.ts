@@ -1,11 +1,11 @@
 import type { DietProfile } from '@ikuck/shared/contracts';
 import { normalizeDietProfile } from '../domain/dietary';
-import { isIndexedDbAvailable, readKeyValue, writeKeyValue } from './indexedDb';
-import { getPersonalDataScope, scopeStorageKey, type SyncScope } from '../sync/scopeContext';
+import { deleteKeyValue, isIndexedDbAvailable, readKeyValue, writeKeyValue } from './indexedDb';
+import { getActiveDataScope, scopeStorageKey, type SyncScope } from '../sync/scopeContext';
 
 export const DIET_PROFILE_DATABASE_KEY = 'diet-profile';
 export const DIET_PROFILE_STORAGE_KEY = 'ikuck-diet-profile-v1';
-const scopedKey = (base: string, scope: SyncScope = getPersonalDataScope()): string => scope === 'guest' ? base : scopeStorageKey(scope, base);
+const scopedKey = (base: string, scope: SyncScope = getActiveDataScope()): string => scope === 'guest' ? base : scopeStorageKey(scope, base);
 
 interface PersistedDietProfile {
   profile: DietProfile;
@@ -32,9 +32,9 @@ const serialize = (profile: DietProfile): string => JSON.stringify({
   version: 1,
 } satisfies PersistedDietProfile);
 
-const readFallback = (scope: SyncScope = getPersonalDataScope()): DietProfile => parse(window.localStorage.getItem(scopedKey(DIET_PROFILE_STORAGE_KEY, scope)));
+const readFallback = (scope: SyncScope = getActiveDataScope()): DietProfile => parse(window.localStorage.getItem(scopedKey(DIET_PROFILE_STORAGE_KEY, scope)));
 
-export async function readDietProfile(scope: SyncScope = getPersonalDataScope()): Promise<DietProfile> {
+export async function readDietProfile(scope: SyncScope = getActiveDataScope()): Promise<DietProfile> {
   if (!isIndexedDbAvailable()) return readFallback(scope);
 
   try {
@@ -44,7 +44,7 @@ export async function readDietProfile(scope: SyncScope = getPersonalDataScope())
   }
 }
 
-export async function writeDietProfile(profile: DietProfile, scope: SyncScope = getPersonalDataScope()): Promise<void> {
+export async function writeDietProfile(profile: DietProfile, scope: SyncScope = getActiveDataScope()): Promise<void> {
   const serialized = serialize(profile);
   if (!isIndexedDbAvailable()) {
     window.localStorage.setItem(scopedKey(DIET_PROFILE_STORAGE_KEY, scope), serialized);
@@ -57,4 +57,9 @@ export async function writeDietProfile(profile: DietProfile, scope: SyncScope = 
     window.localStorage.setItem(scopedKey(DIET_PROFILE_STORAGE_KEY, scope), serialized);
     throw error;
   }
+}
+
+export async function clearDietProfile(scope: SyncScope): Promise<void> {
+  if (isIndexedDbAvailable()) await deleteKeyValue(scopedKey(DIET_PROFILE_DATABASE_KEY, scope));
+  window.localStorage.removeItem(scopedKey(DIET_PROFILE_STORAGE_KEY, scope));
 }

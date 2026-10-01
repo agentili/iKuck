@@ -174,6 +174,23 @@ describe('sync queue', () => {
     await expect(readSavedRecipes(accountScope)).resolves.toEqual([personalRecipe]);
   });
 
+  it('purges a revoked house diet profile while preserving account diet data', async () => {
+    const staleScope = 'house:revoked-diet' as const;
+    const accountProfile: DietProfile = {
+      diet: 'vegan', excludedAllergens: ['milk'],
+      nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null },
+      updatedAt: '2026-09-12T12:00:00.000Z',
+    };
+    const sharedProfile: DietProfile = { ...accountProfile, diet: 'vegetarian', excludedAllergens: ['fish'] };
+    await writeDietProfile(accountProfile, accountScope);
+    await writeDietProfile(sharedProfile, staleScope);
+
+    await clearDataScope(staleScope);
+
+    await expect(readDietProfile(staleScope)).resolves.toMatchObject({ diet: 'omnivore', excludedAllergens: [] });
+    await expect(readDietProfile(accountScope)).resolves.toEqual(accountProfile);
+  });
+
   it('accepts valid contract fixtures and rejects invalid mutations before enqueue', async () => {
     for (const mutation of validMutations) {
       await expect(enqueueMutation(accountScope, mutation as SyncMutation)).resolves.toBeUndefined();
@@ -253,7 +270,7 @@ describe('sync queue', () => {
     await expect(readSyncCursor(getAccountSyncScope('user-b'))).resolves.toBe(22);
   });
 
-  it('applies personal shopping and cooking changes to the account while pantry stays house-scoped', async () => {
+  it('applies shopping, cooking, and pantry changes to their server-authoritative scopes', async () => {
     const houseScope = 'house:scope-isolation' as const;
     setActiveDataScope(houseScope);
     setPersonalDataScope(accountScope);
@@ -267,18 +284,60 @@ describe('sync queue', () => {
     };
     const request = vi.fn().mockResolvedValue({
       changes: [
-        { ...sampleMutation('personal-shopping'), entityType: 'shopping_list_item', entityId: shoppingItem.id, payload: shoppingItem, serverSequence: 1 },
-        { ...sampleMutation('personal-cook'), entityType: 'cook_event', entityId: cookEvent.id, payload: cookEvent, serverSequence: 2 },
+        { ...sampleMutation('house-shopping'), entityType: 'shopping_list_item', entityId: shoppingItem.id, payload: shoppingItem, syncScope: houseScope, serverSequence: 1 },
+        { ...sampleMutation('house-cook'), entityType: 'cook_event', entityId: cookEvent.id, payload: cookEvent, syncScope: houseScope, serverSequence: 2 },
       ],
       nextCursor: 2,
     });
 
     await syncNow({ session, request });
 
-    await expect(readShoppingList(accountScope)).resolves.toEqual([shoppingItem]);
+    await expect(readShoppingList(houseScope)).resolves.toEqual([shoppingItem]);
+    await expect(readShoppingList(accountScope)).resolves.toEqual([]);
+    await expect(readCookEvents(houseScope)).resolves.toEqual([cookEvent]);
+    await expect(readCookEvents(accountScope)).resolves.toEqual([]);
+    setActiveDataScope('guest');
+  });
+
+  it('applies the shared diet profile only to the active house namespace', async () => {
+    const houseScope = 'house:shared-diet' as const;
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    const profile: DietProfile = {
+      diet: 'vegetarian', excludedAllergens: ['fish'],
+      nutrition: { maxCaloriesPerServing: 700, minProteinGramsPerServing: 20 },
+      updatedAt: '2026-09-12T12:00:00.000Z',
+    };
+    const request = vi.fn().mockResolvedValue({
+      changes: [{ ...sampleMutation('shared-diet'), entityType: 'diet_profile', entityId: 'profile', payload: profile, syncScope: houseScope, serverSequence: 1 }],
+      nextCursor: 1,
+    });
+
+    await syncNow({ session, request });
+
+    await expect(readDietProfile(houseScope)).resolves.toEqual(profile);
+    await expect(readDietProfile(accountScope)).resolves.toMatchObject({ diet: 'omnivore', excludedAllergens: [] });
+    setActiveDataScope('guest');
+  });
+
+  it('rejects foreign-house changes before writing snapshots, acknowledging queues, or advancing cursors', async () => {
+    const houseScope = 'house:own-home' as const;
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    const shoppingItem: ShoppingListItem = {
+      id: 'foreign-item', ingredientId: 'pasta', label: 'Not ours', quantity: 1, unit: 'pack', note: null,
+      purchased: false, sourceRecipeId: null, createdAt: '2026-09-12T12:00:00.000Z', updatedAt: '2026-09-12T12:00:00.000Z',
+    };
+    await enqueueMutation(houseScope, sampleMutation('unsent-house'));
+    const request = vi.fn().mockResolvedValue({
+      changes: [{ ...sampleMutation('foreign-change'), entityType: 'shopping_list_item', entityId: shoppingItem.id, payload: shoppingItem, syncScope: 'house:foreign-home', serverSequence: 1 }],
+      nextCursor: 1,
+    });
+
+    await expect(syncNow({ session, request })).rejects.toMatchObject({ code: 'invalid_response_scope' });
     await expect(readShoppingList(houseScope)).resolves.toEqual([]);
-    await expect(readCookEvents(accountScope)).resolves.toEqual([cookEvent]);
-    await expect(readCookEvents(houseScope)).resolves.toEqual([]);
+    await expect(readQueuedMutations(houseScope)).resolves.toHaveLength(1);
+    await expect(readSyncCursor(houseScope)).resolves.toBe(0);
     setActiveDataScope('guest');
   });
 
@@ -588,6 +647,33 @@ describe('sync queue', () => {
     expect(request).toHaveBeenNthCalledWith(2, '/v1/house/pantry/merge', expect.objectContaining({ method: 'POST' }));
     expect(getActiveDataScope()).toBe('house:house-a');
     expect(getPersonalDataScope()).toBe('account:user-1');
+  });
+
+  it('relocates unsent functional mutations into the confirmed house without moving AI consent', async () => {
+    const houseScope = 'house:queued-home' as const;
+    setActiveDataScope(accountScope);
+    const shoppingItem: ShoppingListItem = {
+      id: 'shopping-pending', ingredientId: 'pasta', label: 'Pasta', quantity: 1, unit: 'pack', note: null,
+      purchased: false, sourceRecipeId: null, createdAt: '2026-09-12T12:00:00.000Z', updatedAt: '2026-09-12T12:00:00.000Z',
+    };
+    await enqueueMutation(accountScope, { ...sampleMutation('pending-shopping'), entityType: 'shopping_list_item', entityId: shoppingItem.id, payload: shoppingItem });
+    await enqueueMutation(accountScope, { ...sampleMutation('pending-consent'), entityType: 'ai_consent', entityId: 'profile', payload: { enabled: true, updatedAt: '2026-09-12T12:00:00.000Z' } });
+    const houseState = { house: { id: 'queued-home', name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' }, membership: { role: 'member' as const, joinedAt: '2026-09-24T00:00:00.000Z' }, members: [] };
+    const request = vi.fn()
+      .mockResolvedValueOnce(houseState)
+      .mockResolvedValueOnce({ summary: { addedLots: 0, mergedLots: 0, mergedGroups: 0, importedStaples: 0 } });
+
+    await initializeSessionScope(session, request);
+    await initializeSessionScope(session, vi.fn()
+      .mockResolvedValueOnce(houseState)
+      .mockResolvedValueOnce({ summary: { addedLots: 0, mergedLots: 0, mergedGroups: 0, importedStaples: 0 } }));
+
+    await expect(readQueuedMutations(houseScope)).resolves.toEqual([
+      expect.objectContaining({ mutationId: 'pending-shopping', entityType: 'shopping_list_item', syncScope: houseScope }),
+    ]);
+    await expect(readQueuedMutations(accountScope)).resolves.toEqual([
+      expect.objectContaining({ mutationId: 'pending-consent', entityType: 'ai_consent', syncScope: accountScope }),
+    ]);
   });
 
   it('keeps the house scope active and preserves guest pantry data when its merge fails', async () => {
