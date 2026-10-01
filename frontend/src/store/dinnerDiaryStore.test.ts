@@ -163,7 +163,7 @@ describe('dinner diary store', () => {
     await expect(readQueuedMutations('account:user-1')).resolves.toEqual([]);
   });
 
-  it('updates and deletes entries through their explicit account and House scopes', async () => {
+  it('refuses an obsolete account entry while the House is active and deletes the selected House entry', async () => {
     const now = '2026-09-30T10:00:00.000Z';
     const houseScope = 'house:home-1';
     const accountScope = 'account:user-1';
@@ -176,11 +176,11 @@ describe('dinner diary store', () => {
     await hydrateDinnerDiaryStore();
     useDinnerDiaryStore.setState({ entries: [{ scope: accountScope, value: personalEntry }, { scope: houseScope, value: houseEntry }] });
 
-    expect(useDinnerDiaryStore.getState().updateEntry(accountScope, personalEntry.id, { note: null })).toBe(true);
+    expect(useDinnerDiaryStore.getState().updateEntry(accountScope, personalEntry.id, { note: null })).toBe(false);
     expect(useDinnerDiaryStore.getState().deleteEntry(houseScope, houseEntry.id)).toBe(true);
     await waitForPendingDinnerDiaryWrites();
 
-    await expect(readQueuedMutations(accountScope)).resolves.toEqual([expect.objectContaining({ entityType: 'dinner_entry', entityId: personalEntry.id, operation: 'upsert' })]);
+    await expect(readQueuedMutations(accountScope)).resolves.toEqual([]);
     await expect(readQueuedMutations(houseScope)).resolves.toEqual([expect.objectContaining({ entityType: 'dinner_entry', entityId: houseEntry.id, operation: 'delete' })]);
   });
 
@@ -196,7 +196,7 @@ describe('dinner diary store', () => {
     expect(await storage.readDinnerEntries('account:user-1')).toEqual([expect.objectContaining({ id, text: 'Personale' })]);
   });
 
-  it('refuses another account author and a non-author House member, while admin can edit', async () => {
+  it('lets any current House member edit and delete another author while refusing foreign scopes', async () => {
     const now = '2026-09-30T10:00:00.000Z';
     const houseScope = 'house:home-1';
     const entry = { id: 'entry-1', date: '2026-09-30', text: 'Pasta', servings: 2, note: null, recipes: [], authorId: 'user-2', createdAt: now, updatedAt: now };
@@ -207,10 +207,11 @@ describe('dinner diary store', () => {
     useDinnerDiaryStore.setState({ entries: [{ scope: 'account:someone-else', value: entry }, { scope: houseScope, value: entry }] });
 
     expect(useDinnerDiaryStore.getState().updateEntry('account:someone-else', entry.id, { text: 'No' })).toBe(false);
-    expect(useDinnerDiaryStore.getState().deleteEntry(houseScope, entry.id)).toBe(false);
-    useHouseStore.setState({ state: { house: { id: 'home-1', name: 'Casa', createdAt: now }, membership: { role: 'admin', joinedAt: now }, members: [] } });
-    expect(useDinnerDiaryStore.getState().updateEntry(houseScope, entry.id, { text: 'Admin update' })).toBe(true);
+    expect(useDinnerDiaryStore.getState().updateEntry(houseScope, entry.id, { text: 'Member update' })).toBe(true);
+    expect(useDinnerDiaryStore.getState().entries.find(item => item.scope === houseScope)?.value.authorId).toBe('user-2');
+    expect(useDinnerDiaryStore.getState().deleteEntry(houseScope, entry.id)).toBe(true);
     setActiveDataScope('house:another-house');
+    useDinnerDiaryStore.setState({ entries: [{ scope: houseScope, value: entry }] });
     expect(useDinnerDiaryStore.getState().deleteEntry(houseScope, entry.id)).toBe(false);
   });
 

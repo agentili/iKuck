@@ -208,10 +208,6 @@ test('shares confirmed dinner recipes with House members while isolating outside
       return;
     }
     const entryPayload = current.payload as Record<string, unknown>;
-    if (entryPayload.authorId !== userId && userId !== admin.id) {
-      await route.fulfill({ status: 403, json: { code: 'sync_permission_denied', message: 'Not permitted' } });
-      return;
-    }
     const existingLinks = Array.isArray(entryPayload.recipes) ? entryPayload.recipes as Array<Record<string, unknown>> : [];
     const recipePayload = recipeChange.payload as Record<string, unknown>;
     const updatedEntry = {
@@ -370,11 +366,44 @@ test('shares confirmed dinner recipes with House members while isolating outside
   await expect(page.getByText(dinnerText)).toBeVisible();
   await expect(page.getByText(recipeTitle)).toBeVisible();
   await expect(page.getByText('Condivisa con la Casa')).toBeVisible();
-  await expect(page.getByRole('button', { name: /Modifica cena del/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Elimina cena del/ })).toHaveCount(0);
+  await expect(page.getByRole('article').filter({ hasText: dinnerText })
+    .getByRole('button', { name: /Modifica cena del/ })).toHaveCount(1);
+  await expect(page.getByRole('article').filter({ hasText: dinnerText })
+    .getByRole('button', { name: /Elimina cena del/ })).toHaveCount(1);
   expect(syncCalls.filter((call) => call.userId === member.id && call.csrfAuthorized).flatMap((call) => call.mutations)
     .some((mutation) => typeof mutation.payload === 'object' && mutation.payload !== null
       && 'text' in mutation.payload && mutation.payload.text === privateText)).toBe(false);
+
+  await page.getByRole('article').filter({ hasText: dinnerText })
+    .getByRole('button', { name: /Modifica cena del/ }).click();
+  await page.getByLabel('Nota (facoltativa)').fill('Nota della casa');
+  await page.getByRole('button', { name: 'Salva modifiche' }).click();
+  await page.waitForFunction(async (scope) => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('ikuck-local-v2');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const values = await new Promise<unknown[]>((resolve, reject) => {
+      const request = database.transaction('syncQueue', 'readonly').objectStore('syncQueue').getAll();
+      request.onsuccess = () => resolve(request.result as unknown[]);
+      request.onerror = () => reject(request.error);
+    });
+    database.close();
+    return values.some((value) => typeof value === 'object' && value !== null
+      && 'scope' in value && value.scope === scope
+      && 'entityType' in value && value.entityType === 'dinner_entry'
+      && 'payload' in value && typeof value.payload === 'object' && value.payload !== null
+      && 'note' in value.payload && value.payload.note === 'Nota della casa');
+  }, houseScope);
+  await page.reload();
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect.poll(() => houseChanges.some((change) => change.entityType === 'dinner_entry'
+    && change.entityId === sharedDinnerId && change.operation === 'upsert'
+    && typeof change.payload === 'object' && change.payload !== null
+    && 'note' in change.payload && change.payload.note === 'Nota della casa'
+    && 'authorId' in change.payload && change.payload.authorId === admin.id)).toBe(true);
+  await expect(page.getByRole('article').filter({ hasText: dinnerText }).getByText('Nota: Nota della casa')).toBeVisible();
 
   await page.getByLabel('Data della cena').fill('2026-09-26');
   await page.getByLabel('Com’è andata la cena?').fill(memberDinnerText);
@@ -392,7 +421,7 @@ test('shares confirmed dinner recipes with House members while isolating outside
   await expect(page.getByRole('article').filter({ hasText: memberDinnerText })
     .getByRole('button', { name: /Modifica cena del/ })).toHaveCount(1);
   await expect(page.getByRole('article').filter({ hasText: dinnerText })
-    .getByRole('button', { name: /Modifica cena del/ })).toHaveCount(0);
+    .getByRole('button', { name: /Modifica cena del/ })).toHaveCount(1);
   await expect(page.getByLabel('Collega una ricetta già salvata')).toHaveCount(0);
 
   await page.goto('/pantry');
