@@ -38,14 +38,14 @@ const mapAddMemberResult = (result: Awaited<ReturnType<HouseRepository['addExist
   throw new AuthServiceError('house_user_already_in_house', 409, 'The account already belongs to another house');
 };
 
-const mergeUserPantry = async (syncRepository: SyncRepository | undefined, userId: string, houseId: string): Promise<void> => {
+const migrateUserHouseData = async (syncRepository: SyncRepository | undefined, userId: string, houseId: string): Promise<void> => {
   if (syncRepository === undefined) return;
-  if (syncRepository.mergeUserPantryToHouse !== undefined) {
-    await syncRepository.mergeUserPantryToHouse(userId, houseId);
-    return;
-  }
   if (syncRepository.migrateUserSharedDataToHouse !== undefined) {
     await syncRepository.migrateUserSharedDataToHouse(userId, houseId);
+    return;
+  }
+  if (syncRepository.mergeUserPantryToHouse !== undefined) {
+    await syncRepository.mergeUserPantryToHouse(userId, houseId);
   }
 };
 
@@ -57,7 +57,7 @@ export const createHouseService = ({ repository, syncRepository, clock = () => n
       throw new AuthServiceError('house_membership_exists', 409, 'The account already belongs to a house');
     }
     const created = await repository.createHouse({ name: nameResult.data, userId, now: clock() });
-    await mergeUserPantry(syncRepository, userId, created.house.id);
+    await migrateUserHouseData(syncRepository, userId, created.house.id);
     const state = await repository.getStateForUser(userId);
     if (state === null) throw new AuthServiceError('house_not_found', 500, 'Created house could not be loaded');
     return { state, membership: { role: created.membership.role, joinedAt: created.membership.joinedAt.toISOString() } };
@@ -66,7 +66,7 @@ export const createHouseService = ({ repository, syncRepository, clock = () => n
   getState: async (userId) => {
     const state = await repository.getStateForUser(userId);
     if (state?.house !== null && state?.house !== undefined) {
-      await mergeUserPantry(syncRepository, userId, state.house.id);
+      await migrateUserHouseData(syncRepository, userId, state.house.id);
       return repository.getStateForUser(userId);
     }
     return state;
@@ -77,7 +77,7 @@ export const createHouseService = ({ repository, syncRepository, clock = () => n
     if (!emailResult.success) throw invalidPayload('Member email is invalid');
     const state = await requireState(repository, adminUserId);
     const member = mapAddMemberResult(await repository.addExistingMember({ adminUserId, email: emailResult.data, now: clock() }));
-    await mergeUserPantry(syncRepository, member.userId, state.house?.id ?? '');
+    await migrateUserHouseData(syncRepository, member.userId, state.house?.id ?? '');
     return member;
   },
 
@@ -125,7 +125,7 @@ export const createHouseService = ({ repository, syncRepository, clock = () => n
     }
     const state = await requireState(repository, userId);
     if (state.house === null) throw new AuthServiceError('house_not_found', 404, 'House not found');
-    await mergeUserPantry(syncRepository, userId, state.house.id);
+    await migrateUserHouseData(syncRepository, userId, state.house.id);
   },
 
   mergeGuestPantry: async (userId, input) => {

@@ -90,16 +90,20 @@ describe('sync queue', () => {
     ]);
   });
 
-  it('maps shared and personal entity types to the correct active scopes', () => {
+  it('maps every functional entity type to the active House scope while keeping AI consent personal', () => {
     setActiveDataScope('house:house-a');
     setPersonalDataScope('account:user-1');
 
+    expect(getMutationScope('pantry_item')).toBe('house:house-a');
     expect(getMutationScope('pantry_lot')).toBe('house:house-a');
-    expect(getMutationScope('shopping_list_item')).toBe('account:user-1');
-    expect(getMutationScope('cook_event')).toBe('account:user-1');
-    expect(getMutationScope('generated_recipe')).toBe('account:user-1');
-    expect(getMutationScope('recipe_preference')).toBe('account:user-1');
-    expect(getMutationScope('diet_profile')).toBe('account:user-1');
+    expect(getMutationScope('staple_preference')).toBe('house:house-a');
+    expect(getMutationScope('shopping_list_item')).toBe('house:house-a');
+    expect(getMutationScope('cook_event')).toBe('house:house-a');
+    expect(getMutationScope('generated_recipe')).toBe('house:house-a');
+    expect(getMutationScope('recipe_preference')).toBe('house:house-a');
+    expect(getMutationScope('diet_profile')).toBe('house:house-a');
+    expect(getMutationScope('dinner_entry')).toBe('house:house-a');
+    expect(getMutationScope('saved_recipe')).toBe('house:house-a');
     expect(getMutationScope('ai_consent')).toBe('account:user-1');
 
     setActiveDataScope('guest');

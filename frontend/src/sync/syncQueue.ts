@@ -10,6 +10,7 @@ import type {
   SyncMutation,
   SyncOperation,
 } from '@ikuck/shared/contracts';
+import { HOUSE_SYNC_ENTITY_TYPES } from '@ikuck/shared/contracts';
 import type { PantryMergeSummary } from '@ikuck/shared/pantryMerge';
 import type { DinnerEntry, SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { isDinnerEntry, isSavedRecipe } from '@ikuck/shared/dinnerDiary';
@@ -62,13 +63,7 @@ export const GUEST_SYNC_SCOPE: SyncScope = 'guest';
 
 export const getAccountSyncScope = (userId: string): SyncScope => `account:${userId}`;
 
-const SHARED_ENTITY_TYPES = new Set<SyncEntityType>([
-  'pantry_item',
-  'pantry_lot',
-  'staple_preference',
-  'dinner_entry',
-  'saved_recipe',
-]);
+const SHARED_ENTITY_TYPES = new Set<SyncEntityType>(HOUSE_SYNC_ENTITY_TYPES);
 
 export const getMutationScope = (
   entityType: SyncEntityType,

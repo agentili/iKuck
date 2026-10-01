@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { HOUSE_SYNC_ENTITY_TYPES, PERSONAL_SYNC_ENTITY_TYPES, SYNC_ENTITY_TYPES } from '@ikuck/shared/contracts';
 import type { AiConsent, CookEvent, DietProfile, GeneratedRecipe, HouseMember, HouseRole, HouseState, HouseSummary, PantryLot, RecipePreference, ShoppingListItem, SyncMutation } from '@ikuck/shared/contracts';
 import { describe, expect, it } from 'vitest';
 
@@ -23,6 +24,24 @@ const syncFixturePath = (name: string): string => join(
 );
 
 describe('shared contracts and account migration', () => {
+  it('partitions every sync entity into exactly one house or personal scope', () => {
+    expect(HOUSE_SYNC_ENTITY_TYPES).toEqual([
+      'pantry_item',
+      'pantry_lot',
+      'staple_preference',
+      'shopping_list_item',
+      'cook_event',
+      'recipe_preference',
+      'diet_profile',
+      'generated_recipe',
+      'dinner_entry',
+      'saved_recipe',
+    ]);
+    expect(PERSONAL_SYNC_ENTITY_TYPES).toEqual(['ai_consent']);
+    expect(new Set([...HOUSE_SYNC_ENTITY_TYPES, ...PERSONAL_SYNC_ENTITY_TYPES])).toEqual(new Set(SYNC_ENTITY_TYPES));
+    expect(HOUSE_SYNC_ENTITY_TYPES.filter((entityType) => PERSONAL_SYNC_ENTITY_TYPES.includes(entityType as 'ai_consent'))).toEqual([]);
+  });
+
   it('keeps sync mutations entity-scoped and serializable', () => {
     const mutation: SyncMutation = {
       mutationId: 'mutation-1',
