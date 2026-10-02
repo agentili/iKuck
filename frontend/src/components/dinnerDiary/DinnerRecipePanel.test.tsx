@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DiaryRecipeDraft, DinnerEntry, SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { useAuthStore } from '../../auth/authStore';
 import { useHouseStore } from '../../house/houseStore';
+import { ApiClientError } from '../../api/apiClient';
 import { setActiveDataScope, setPersonalDataScope } from '../../sync/scopeContext';
 import { deleteLocalDatabase } from '../../storage/indexedDb';
 import { hydrateDinnerDiaryStore, useDinnerDiaryStore, waitForPendingDinnerDiaryWrites } from '../../store/dinnerDiaryStore';
@@ -78,6 +79,18 @@ describe('DinnerRecipePanel', () => {
     expect(useDinnerDiaryStore.getState().drafts).toEqual([expect.objectContaining({
       value: expect.objectContaining({ entryUpdatedAt: confirmedEntry.updatedAt, drafts: [drafts[1]] }),
     })]);
+  });
+
+  it('uses provider-neutral copy when AI dinner reconstruction is unavailable', async () => {
+    const user = userEvent.setup();
+    vi.mocked(reconstructDinnerRecipes).mockRejectedValue(new ApiClientError(503, 'provider_unavailable', 'unavailable'));
+
+    renderPanel();
+    await user.click(screen.getByRole('button', { name: 'Prepara bozze ricetta' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Il servizio di ricostruzione delle ricette non è disponibile in questo momento. La cena è salvata; puoi riprovare più tardi.');
+    expect(alert).not.toHaveTextContent(/openai|gemini/i);
   });
 
   it('keeps the dinner saved when AI reconstruction fails', async () => {

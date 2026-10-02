@@ -57,31 +57,46 @@ describe('createProviders', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('selects the OpenAI dinner reconstruction adapter independently of recipe-provider selection', async () => {
+  it('uses the selected Gemini provider for dinner reconstruction without requiring OpenAI credentials', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: JSON.stringify({ recipes: [] }) }] } }],
+    })));
+    const providers = createProviders({ providers: {
+      recipeProvider: 'gemini',
+      geminiApiKey: 'test-gemini-key',
+      geminiModel: 'gemini-dinner-test',
+    } }, { fetch });
+
+    await expect(providers.dinnerReconstruction.reconstruct({ dinnerText: 'Pasta', servings: null })).resolves.toEqual([]);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0]?.[0]).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-dinner-test:generateContent');
+  });
+
+  it('does not fall back to OpenAI when Gemini is selected but Gemini is unconfigured', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ output_text: JSON.stringify({ recipes: [] }) })));
     const providers = createProviders({ providers: {
       recipeProvider: 'gemini',
       openAiApiKey: 'test-openai-key',
-      openAiModel: 'gpt-5.5',
-      geminiApiKey: 'test-gemini-key',
-    } }, { fetch });
-
-    await expect(providers.dinnerReconstruction.reconstruct({ dinnerText: 'Pasta con zucchine', servings: null })).resolves.toEqual([]);
-    expect(fetch).toHaveBeenCalledOnce();
-    expect(fetch.mock.calls[0]?.[0]).toBe('https://api.openai.com/v1/responses');
-  });
-
-  it('does not fall back to Gemini when the direct OpenAI dinner adapter is unconfigured', async () => {
-    const fetch = vi.fn();
-    const providers = createProviders({ providers: {
-      recipeProvider: 'gemini',
-      geminiApiKey: 'test-gemini-key',
     } }, { fetch });
 
     await expect(providers.dinnerReconstruction.reconstruct({ dinnerText: 'Pasta', servings: null })).rejects.toMatchObject({
       code: 'provider_unavailable', provider: 'dinner_reconstruction',
     });
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('selects OpenAI dinner reconstruction only when OpenAI is selected', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ output_text: JSON.stringify({ recipes: [] }) })));
+    const providers = createProviders({ providers: {
+      recipeProvider: 'openai',
+      openAiApiKey: 'test-openai-key',
+      openAiModel: 'gpt-5.5',
+      geminiApiKey: 'test-gemini-key',
+    } }, { fetch });
+
+    await expect(providers.dinnerReconstruction.reconstruct({ dinnerText: 'Pasta', servings: null })).resolves.toEqual([]);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0]?.[0]).toBe('https://api.openai.com/v1/responses');
   });
 
   it('injects the same fetch implementation into the Resend adapter', async () => {

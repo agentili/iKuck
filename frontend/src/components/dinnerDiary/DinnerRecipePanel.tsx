@@ -19,7 +19,7 @@ const errorMessage = (error: unknown, operation: 'generate' | 'confirm' | 'link'
   const code = error instanceof ApiClientError ? error.code : '';
   if (code === 'ai_consent_required') return 'Salva il consenso all’uso dell’AI prima di preparare le bozze.';
   if (code === 'ai_daily_limit_reached') return 'Hai raggiunto il limite giornaliero di ricostruzioni AI.';
-  if (code === 'provider_unavailable' || code === 'provider_error') return 'Il servizio OpenAI non è disponibile in questo momento. La cena è salvata; puoi riprovare più tardi.';
+  if (code === 'provider_unavailable' || code === 'provider_error') return 'Il servizio di ricostruzione delle ricette non è disponibile in questo momento. La cena è salvata; puoi riprovare più tardi.';
   if (code === 'network_error') return 'Non riesco a raggiungere il servizio. La cena resta salvata e la bozza non viene persa.';
   if (operation === 'confirm') return 'Non è stato possibile confermare la ricetta. La bozza resta conservata e puoi riprovare.';
   if (operation === 'link') return 'Non è stato possibile collegare la ricetta. La cena resta invariata.';
