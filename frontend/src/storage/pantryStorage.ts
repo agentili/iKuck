@@ -8,6 +8,7 @@ import {
   writeKeyValue,
 } from './indexedDb';
 import { getActiveDataScope, scopeStorageKey, type SyncScope } from '../sync/scopeContext';
+import { trackScopedWrite } from '../sync/scopeWriteFence';
 
 let pantryPersistenceSuspended = false;
 
@@ -234,13 +235,14 @@ export async function readPantrySnapshot(scope: SyncScope = getActiveDataScope()
 }
 
 export async function writePantrySnapshot(snapshot: PantrySnapshot, scope: SyncScope = getActiveDataScope()): Promise<void> {
-  const persisted: PersistedPantryState = { state: normalizePantrySnapshot(snapshot), version: 1 };
-  const serialized = JSON.stringify(persisted);
-  writeLocalStorageSnapshot(serialized, scope);
+  return trackScopedWrite(scope, async () => {
+    const persisted: PersistedPantryState = { state: normalizePantrySnapshot(snapshot), version: 1 };
+    const serialized = JSON.stringify(persisted);
+    writeLocalStorageSnapshot(serialized, scope);
 
-  if (!isIndexedDbAvailable()) return;
-
-  await writeKeyValue(scopedPantryDatabaseKey(scope), serialized);
+    if (!isIndexedDbAvailable()) return;
+    await writeKeyValue(scopedPantryDatabaseKey(scope), serialized);
+  });
 }
 
 export async function clearPantrySnapshot(scope: SyncScope): Promise<void> {
@@ -275,20 +277,23 @@ export const pantryStorage: StateStorage = {
   },
   async setItem(name, value) {
     if (pantryPersistenceSuspended) return;
-    if (name !== PANTRY_STORAGE_KEY) {
-      window.localStorage.setItem(name, value);
-      return;
-    }
+    const scope = getActiveDataScope();
+    await trackScopedWrite(scope, async () => {
+      if (name !== PANTRY_STORAGE_KEY) {
+        window.localStorage.setItem(name, value);
+        return;
+      }
 
-    writeLocalStorageSnapshot(value);
-    if (!isIndexedDbAvailable()) return;
+      writeLocalStorageSnapshot(value, scope);
+      if (!isIndexedDbAvailable()) return;
 
-    try {
-      const parsed = parsePantrySnapshot(value);
-      await writeKeyValue(scopedPantryDatabaseKey(), parsed === null ? value : serializeSnapshot(parsed));
-    } catch {
-      // The synchronous localStorage mirror keeps the latest state available.
-    }
+      try {
+        const parsed = parsePantrySnapshot(value);
+        await writeKeyValue(scopedPantryDatabaseKey(scope), parsed === null ? value : serializeSnapshot(parsed));
+      } catch {
+        // The synchronous localStorage mirror keeps the latest state available.
+      }
+    });
   },
   async removeItem(name) {
     if (name !== PANTRY_STORAGE_KEY || !isIndexedDbAvailable()) {

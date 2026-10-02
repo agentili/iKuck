@@ -1,4 +1,4 @@
-import type { PantryLot, HouseMember, HouseRole, HouseState } from '@ikuck/shared/contracts';
+import type { PantryLot, HouseMember, HouseRole, HouseState, SyncMutation } from '@ikuck/shared/contracts';
 import type { PantryMergeSummary } from '@ikuck/shared/pantryMerge';
 import { AuthServiceError } from '../auth/service.js';
 import type { SyncRepository } from '../sync/repository.js';
@@ -13,6 +13,8 @@ export interface HouseService {
   removeMember: (adminUserId: string, userId: string) => Promise<void>;
   leaveHouse: (userId: string) => Promise<void>;
   importPersonalData: (userId: string) => Promise<void>;
+  importPendingAccountQueue: (userId: string, mutations: readonly SyncMutation[]) => Promise<void>;
+  importGuestDietProfile: (userId: string, mutation: SyncMutation) => Promise<boolean>;
   mergeGuestPantry: (userId: string, input: { deviceId: string; lots: PantryLot[]; stapleIds: string[] }) => Promise<PantryMergeSummary>;
 }
 
@@ -136,6 +138,20 @@ export const createHouseService = ({ repository, syncRepository, clock = () => n
     await migrateUserHouseData(syncRepository, userId, state.house.id);
   },
 
+  importPendingAccountQueue: async (userId, mutations) => {
+    if (syncRepository === undefined) throw new AuthServiceError('house_not_found', 500, 'House data import is unavailable');
+    const state = await requireState(repository, userId);
+    if (state.house === null) throw new AuthServiceError('house_not_found', 404, 'House not found');
+    await syncRepository.migrateUserSharedDataToHouse(userId, state.house.id, mutations);
+  },
+  importGuestDietProfile: async (userId, mutation) => {
+    if (syncRepository?.mergeGuestDietProfileToHouse === undefined) {
+      throw new AuthServiceError('house_not_found', 500, 'House data import is unavailable');
+    }
+    const state = await requireState(repository, userId);
+    if (state.house === null) throw new AuthServiceError('house_not_found', 404, 'House not found');
+    return syncRepository.mergeGuestDietProfileToHouse(userId, state.house.id, mutation);
+  },
   mergeGuestPantry: async (userId, input) => {
     if (syncRepository?.mergeGuestPantryToHouse === undefined) {
       throw new AuthServiceError('house_not_found', 500, 'House data import is unavailable');

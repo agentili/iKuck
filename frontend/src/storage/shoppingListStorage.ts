@@ -2,6 +2,7 @@ import type { ShoppingListItem } from '@ikuck/shared/contracts';
 import { isShoppingListItem } from '../domain/shoppingList';
 import { deleteKeyValue, isIndexedDbAvailable, readKeyValue, writeKeyValue } from './indexedDb';
 import { getActiveDataScope, scopeStorageKey, type SyncScope } from '../sync/scopeContext';
+import { trackScopedWrite } from '../sync/scopeWriteFence';
 
 export const SHOPPING_LIST_STORAGE_KEY = 'ikuck-shopping-list-v1';
 export const SHOPPING_LIST_DATABASE_KEY = 'shopping-list';
@@ -54,18 +55,19 @@ export async function readShoppingList(scope: SyncScope = getActiveDataScope()):
 }
 
 export async function writeShoppingList(items: readonly ShoppingListItem[], scope: SyncScope = getActiveDataScope()): Promise<void> {
-  const serialized = serialize(items);
-  if (!isIndexedDbAvailable()) {
-    window.localStorage.setItem(scopedStorageKey(scope), serialized);
-    return;
-  }
-
-  try {
-    await writeKeyValue(scopedDatabaseKey(scope), serialized);
-  } catch (error) {
-    window.localStorage.setItem(scopedStorageKey(scope), serialized);
-    throw error;
-  }
+  return trackScopedWrite(scope, async () => {
+    const serialized = serialize(items);
+    if (!isIndexedDbAvailable()) {
+      window.localStorage.setItem(scopedStorageKey(scope), serialized);
+      return;
+    }
+    try {
+      await writeKeyValue(scopedDatabaseKey(scope), serialized);
+    } catch (error) {
+      window.localStorage.setItem(scopedStorageKey(scope), serialized);
+      throw error;
+    }
+  });
 }
 
 export async function clearShoppingList(scope: SyncScope): Promise<void> {

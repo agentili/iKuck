@@ -39,7 +39,7 @@ export const userProfiles = pgTable('user_profiles', {
 export const houses = pgTable('houses', {
   id: uuid('id').defaultRandom().primaryKey(),
   name: text('name').notNull(),
-  createdByUserId: uuid('created_by_user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+  createdByUserId: uuid('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -111,7 +111,7 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
 
 export const syncItems = pgTable('sync_items', {
   id: uuid('id').defaultRandom().primaryKey(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
   scopeType: text('scope_type').notNull().default('user'),
   scopeId: text('scope_id').notNull(),
   entityType: text('entity_type').notNull(),
@@ -133,7 +133,7 @@ export const syncItems = pgTable('sync_items', {
 
 export const processedSyncMutations = pgTable('processed_sync_mutations', {
   id: uuid('id').defaultRandom().primaryKey(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
   scopeType: text('scope_type').notNull().default('user'),
   scopeId: text('scope_id').notNull(),
   mutationId: text('mutation_id').notNull(),

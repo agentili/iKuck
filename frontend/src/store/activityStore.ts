@@ -18,6 +18,7 @@ import {
 } from '../sync/syncQueue';
 import { trackPersistence, trackSync } from './persistenceStatusStore';
 import { getActiveDataScope, subscribeActiveDataScope, type SyncScope } from '../sync/scopeContext';
+import { isScopeWritable, ScopeRevokedError, trackScopedWrite } from '../sync/scopeWriteFence';
 
 export interface ActivityState {
   hasHydrated: boolean;
@@ -46,13 +47,23 @@ const createEventId = (): string => {
 };
 
 const persistEvents = (events: readonly CookEvent[], scope: SyncScope): Promise<void> => {
-  const operation = pendingEventWrites.then(() => writeCookEvents(events, scope));
+  const previous = pendingEventWrites;
+  const operation = trackScopedWrite(scope, async () => {
+    await previous;
+    if (!isScopeWritable(scope)) throw new ScopeRevokedError();
+    await writeCookEvents(events, scope);
+  });
   pendingEventWrites = operation.catch(() => undefined);
   return operation;
 };
 
 const persistPreferences = (preferences: readonly RecipePreference[], scope: SyncScope): Promise<void> => {
-  const operation = pendingPreferenceWrites.then(() => writeRecipePreferences(preferences, scope));
+  const previous = pendingPreferenceWrites;
+  const operation = trackScopedWrite(scope, async () => {
+    await previous;
+    if (!isScopeWritable(scope)) throw new ScopeRevokedError();
+    await writeRecipePreferences(preferences, scope);
+  });
   pendingPreferenceWrites = operation.catch(() => undefined);
   return operation;
 };

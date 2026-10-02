@@ -10,7 +10,7 @@ import { createAuthService } from '../auth/service.js';
 import { createDrizzleAuthRepository } from '../auth/repository.js';
 import { createCache } from '../cache/client.js';
 import { createDatabase } from '../db/client.js';
-import { houseMemberships, houses, syncItems, users } from '../db/schema.js';
+import { houseMemberships, houses, processedSyncMutations, syncItems, users } from '../db/schema.js';
 import { createDrizzleHouseRepository } from '../house/repository.js';
 import { createHouseService } from '../house/service.js';
 import { createDrizzleProfileRepository } from '../profile/repository.js';
@@ -106,7 +106,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     await database?.close();
   });
 
-  it('enforces diary sharing and ownership in PostgreSQL without migrating private history', async () => {
+  it('shares migrated diary history and permits cross-member edits in PostgreSQL', async () => {
     if (database === null) throw new Error('Integration database is not configured');
     const ownerId = randomUUID();
     const memberId = randomUUID();
@@ -120,6 +120,18 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       emailVerifiedAt: now,
     })));
     await database.db.insert(houses).values({ id: houseId, name: 'Diary integration house', createdByUserId: adminId });
+    const privateEntryId = `pre-house-entry-${ownerId}`;
+    const timestamp = new Date().toISOString();
+    const entry = {
+      id: 'shared-entry', date: timestamp.slice(0, 10), text: 'Pasta con zucchine', servings: 2, note: null, recipes: [],
+      authorId: 'forged-author', createdAt: timestamp, updatedAt: timestamp,
+    };
+    await createDrizzleSyncRepository(database.db).applyMutation(ownerId, {
+      mutationId: randomUUID(), deviceId: `diary-device-${ownerId}`, entityType: 'dinner_entry',
+      entityId: privateEntryId, operation: 'upsert',
+      payload: { ...entry, id: privateEntryId, text: 'Diario prima della casa', authorId: null },
+      clientUpdatedAt: timestamp, syncScope: `account:${ownerId}`,
+    });
     await database.db.insert(houseMemberships).values([
       { houseId, userId: ownerId, role: 'member' },
       { houseId, userId: memberId, role: 'member' },
@@ -151,20 +163,13 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       clientUpdatedAt: new Date(Date.now() + clockStep++).toISOString(),
       syncScope,
     });
-    const timestamp = new Date().toISOString();
-    const entry = {
-      id: 'shared-entry', date: timestamp.slice(0, 10), text: 'Pasta con zucchine', servings: 2, note: null, recipes: [],
-      authorId: 'forged-author', createdAt: timestamp, updatedAt: timestamp,
-    };
     const createEntry = mutation(ownerId, 'dinner_entry', entry.id, entry);
     const created = await repository.applyMutation(ownerId, createEntry);
     expect(created.change?.payload).toMatchObject({ id: entry.id, authorId: ownerId });
     await expect(repository.readEntity(memberId, 'dinner_entry', entry.id)).resolves.toMatchObject({ payload: { text: entry.text, authorId: ownerId } });
     await expect(repository.readEntity(outsiderId, 'dinner_entry', entry.id)).resolves.toBeNull();
-    await expect(repository.applyMutation(memberId, mutation(memberId, 'dinner_entry', entry.id, { ...entry, text: 'Hijack', authorId: memberId })))
-      .rejects.toMatchObject({ code: 'sync_permission_denied', status: 403 });
-    await expect(repository.applyMutation(memberId, mutation(memberId, 'dinner_entry', entry.id, null, 'delete')))
-      .rejects.toMatchObject({ code: 'sync_permission_denied', status: 403 });
+    const memberUpdate = await repository.applyMutation(memberId, mutation(memberId, 'dinner_entry', entry.id, { ...entry, text: 'Cena condivisa', authorId: memberId }));
+    expect(memberUpdate.change?.payload).toMatchObject({ text: 'Cena condivisa', authorId: ownerId });
 
     const ownUpdate = await repository.applyMutation(ownerId, mutation(ownerId, 'dinner_entry', entry.id, { ...entry, text: 'Cena aggiornata', authorId: 'forged-again' }));
     expect(ownUpdate.change?.payload).toMatchObject({ text: 'Cena aggiornata', authorId: ownerId });
@@ -188,18 +193,24 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     expect(adminUpdate.change?.payload).toMatchObject({ title: 'Ricetta aggiornata', authorId: ownerId });
     await expect(repository.readEntity(memberId, 'saved_recipe', recipe.id)).resolves.toMatchObject({ payload: { title: 'Ricetta aggiornata' } });
 
-    const privateEntryId = 'pre-house-entry';
-    await repository.applyMutation(ownerId, mutation(ownerId, 'dinner_entry', privateEntryId, { ...entry, id: privateEntryId, text: 'Diario privato', authorId: null }, 'upsert', `account:${ownerId}`));
     await repository.migrateUserSharedDataToHouse(ownerId, houseId);
-    await expect(repository.readEntity(ownerId, 'dinner_entry', privateEntryId)).resolves.toMatchObject({ syncScope: `account:${ownerId}`, payload: { text: 'Diario privato', authorId: ownerId } });
-    await expect(repository.readEntity(memberId, 'dinner_entry', privateEntryId)).resolves.toBeNull();
-    const memberChanges = await repository.readAll(memberId);
-    expect(memberChanges.some((change) => change.entityId === privateEntryId)).toBe(false);
+    await expect(repository.readEntity(ownerId, 'dinner_entry', privateEntryId)).resolves.toMatchObject({
+      syncScope: `house:${houseId}`, payload: { text: 'Diario prima della casa', authorId: ownerId },
+    });
+    await expect(repository.readEntity(memberId, 'dinner_entry', privateEntryId)).resolves.toMatchObject({
+      syncScope: `house:${houseId}`, payload: { text: 'Diario prima della casa', authorId: ownerId },
+    });
+    const personalRows = await database.db.select().from(syncItems).where(and(
+      eq(syncItems.scopeType, 'user'), eq(syncItems.scopeId, ownerId), eq(syncItems.entityType, 'dinner_entry'),
+      eq(syncItems.entityId, privateEntryId),
+    ));
+    expect(personalRows).toHaveLength(0);
 
-    const authorDelete = await repository.applyMutation(ownerId, mutation(ownerId, 'dinner_entry', entry.id, null, 'delete'));
-    expect(authorDelete.change).toMatchObject({ operation: 'delete', payload: null });
-    await expect(repository.applyMutation(memberId, mutation(memberId, 'dinner_entry', entry.id, { ...entry, authorId: memberId })))
-      .rejects.toMatchObject({ code: 'sync_permission_denied', status: 403 });
+    const memberDelete = await repository.applyMutation(memberId, mutation(memberId, 'dinner_entry', entry.id, null, 'delete'));
+    expect(memberDelete.change).toMatchObject({ operation: 'delete', payload: null });
+    await expect(repository.readEntity(ownerId, 'dinner_entry', entry.id)).resolves.toMatchObject({
+      deleted: true, syncScope: `house:${houseId}`,
+    });
   });
 
   it('serializes stale personal dinner writes before merging concurrent recipe links in PostgreSQL', async () => {
@@ -433,12 +444,13 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       syncScope: `house:${houseId}`, payload: { title: recipeDraft.title, authorId: owner.user.id },
     });
 
-    const forbidden = await app.inject({
+    const memberConfirmation = await app.inject({
       method: 'POST', url: `/v1/dinner-entries/${houseEntryId}/confirm-recipe`, headers: member.headers,
-      payload: { draft: { ...recipeDraft, draftId: 'house-route-draft-member', title: 'Ricetta non autorizzata' } },
+      payload: { draft: { ...recipeDraft, draftId: 'house-route-draft-member', title: 'Ricetta condivisa' } },
     });
-    expect(forbidden.statusCode).toBe(403);
-    expect(forbidden.json()).toMatchObject({ code: 'sync_permission_denied' });
+    expect(memberConfirmation.statusCode).toBe(200);
+    await expect(repository.readEntity(owner.user.id, 'saved_recipe', memberConfirmation.json().recipe.id as string))
+      .resolves.toMatchObject({ syncScope: `house:${houseId}`, payload: { authorId: member.user.id } });
     const notFound = await app.inject({
       method: 'POST', url: `/v1/dinner-entries/${houseEntryId}/confirm-recipe`, headers: outsider.headers,
       payload: { draft: { ...recipeDraft, draftId: 'house-route-draft-outsider' } },
@@ -446,24 +458,217 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     expect(notFound.statusCode).toBe(404);
 
     const privateEntryId = `private-dinner-${randomUUID()}`;
-    await repository.applyMutation(owner.user.id, {
+    await repository.applyMutation(outsider.user.id, {
       mutationId: randomUUID(), deviceId: 'integration-private-dinner', entityType: 'dinner_entry',
-      entityId: privateEntryId, operation: 'upsert', payload: dinner(privateEntryId, 'Cena personale precedente'),
-      clientUpdatedAt: now, syncScope: `account:${owner.user.id}`,
+      entityId: privateEntryId, operation: 'upsert', payload: dinner(privateEntryId, 'Cena personale senza casa'),
+      clientUpdatedAt: now, syncScope: `account:${outsider.user.id}`,
     });
     const privateConfirmed = await app.inject({
-      method: 'POST', url: `/v1/dinner-entries/${privateEntryId}/confirm-recipe`, headers: owner.headers,
-      payload: { draft: { ...recipeDraft, draftId: 'private-route-draft-owner' } },
+      method: 'POST', url: `/v1/dinner-entries/${privateEntryId}/confirm-recipe`, headers: outsider.headers,
+      payload: { draft: { ...recipeDraft, draftId: 'private-route-draft-outsider' } },
     });
     expect(privateConfirmed.statusCode).toBe(200);
     const privateRecipeId = privateConfirmed.json().recipe.id as string;
     await expect(repository.readEntity(member.user.id, 'dinner_entry', privateEntryId)).resolves.toBeNull();
     await expect(repository.readEntity(member.user.id, 'saved_recipe', privateRecipeId)).resolves.toBeNull();
     const privateAccess = await app.inject({
-      method: 'POST', url: `/v1/dinner-entries/${privateEntryId}/confirm-recipe`, headers: member.headers,
-      payload: { draft: { ...recipeDraft, draftId: 'private-route-draft-member' } },
+      method: 'POST', url: `/v1/dinner-entries/${privateEntryId}/confirm-recipe`, headers: owner.headers,
+      payload: { draft: { ...recipeDraft, draftId: 'private-route-draft-owner' } },
     });
     expect(privateAccess.statusCode).toBe(404);
+  });
+
+  it('separates house records from a member’s personal consent in account export', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const suffix = randomUUID();
+    const admin = await authRepository.createUser({ email: `export-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date() });
+    const member = await authRepository.createUser({ email: `export-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date() });
+    const houseId = (await service.createHouse(admin.id, 'Casa esportata')).state.house!.id;
+    await service.addMember(admin.id, member.email);
+    await syncRepository.applyMutation(member.id, {
+      mutationId: randomUUID(), deviceId: `export-${suffix}`, entityType: 'ai_consent', entityId: 'profile',
+      operation: 'upsert', payload: { enabled: true, updatedAt: new Date().toISOString() },
+      clientUpdatedAt: new Date().toISOString(), syncScope: `account:${member.id}`,
+    });
+    const itemId = `export-item-${suffix}`;
+    await syncRepository.applyMutation(admin.id, {
+      mutationId: randomUUID(), deviceId: `export-${suffix}`, entityType: 'pantry_item', entityId: itemId,
+      operation: 'upsert', payload: { id: itemId, label: 'Lenticchie', known: true },
+      clientUpdatedAt: new Date().toISOString(), syncScope: `house:${houseId}`,
+    });
+
+    const exported = await createDrizzleProfileRepository(database.db, syncRepository).exportAccount(member.id);
+
+    expect(exported.personalData).toContainEqual(expect.objectContaining({ entityType: 'ai_consent', syncScope: `account:${member.id}` }));
+    expect(exported.houseData).toContainEqual(expect.objectContaining({ entityId: itemId, syncScope: `house:${houseId}` }));
+    expect(exported.personalData).not.toContainEqual(expect.objectContaining({ entityId: itemId }));
+    expect(exported.houseData).not.toContainEqual(expect.objectContaining({ entityType: 'ai_consent' }));
+  });
+
+  it('preserves shared records when an active member deletes their account', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const suffix = randomUUID();
+    const admin = await authRepository.createUser({ email: `delete-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date() });
+    const member = await authRepository.createUser({ email: `delete-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date() });
+    const houseId = (await service.createHouse(admin.id, 'Casa conservata')).state.house!.id;
+    await service.addMember(admin.id, member.email);
+    const itemId = `saved-after-delete-${suffix}`;
+    await syncRepository.applyMutation(member.id, {
+      mutationId: randomUUID(), deviceId: `delete-member-${suffix}`,
+      entityType: 'pantry_item', entityId: itemId, operation: 'upsert',
+      payload: { id: itemId, label: 'Fagioli', known: true },
+      clientUpdatedAt: new Date().toISOString(), syncScope: `house:${houseId}`,
+    });
+
+    await syncRepository.applyMutation(member.id, {
+      mutationId: randomUUID(), deviceId: `delete-member-${suffix}`, entityType: 'ai_consent',
+      entityId: 'profile', operation: 'upsert',
+      payload: { enabled: true, updatedAt: new Date().toISOString() },
+      clientUpdatedAt: new Date().toISOString(), syncScope: `account:${member.id}`,
+    });
+
+    await createDrizzleProfileRepository(database.db, syncRepository).deleteAccount(member.id);
+
+    await expect(syncRepository.readEntity(admin.id, 'pantry_item', itemId)).resolves.toMatchObject({
+      syncScope: `house:${houseId}`, payload: { label: 'Fagioli' },
+    });
+    await expect(houseRepository.getStateForUser(admin.id)).resolves.toMatchObject({ members: [expect.objectContaining({ userId: admin.id })] });
+  });
+
+  it('serializes account deletion behind a concurrent user-to-house migration without a PostgreSQL deadlock', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db);
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const suffix = randomUUID();
+    const admin = await authRepository.createUser({ email: `migration-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date() });
+    const member = await authRepository.createUser({ email: `migration-deleted-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date() });
+    const houseId = (await service.createHouse(admin.id, 'Casa concorrente')).state.house!.id;
+    const lotId = `pending-delete-${suffix}`;
+    const now = new Date().toISOString();
+    await syncRepository.applyMutation(member.id, {
+      mutationId: randomUUID(), deviceId: `migration-delete-${suffix}`, entityType: 'pantry_lot', entityId: lotId,
+      operation: 'upsert', payload: { id: lotId, ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 200, unit: 'g', expiresAt: null, createdAt: now, updatedAt: now },
+      clientUpdatedAt: now, syncScope: `account:${member.id}`,
+    });
+    // Membership has committed, but its retryable automatic migration has not yet run.
+    await houseRepository.addExistingMember({ adminUserId: admin.id, email: member.email, now: new Date() });
+    let releaseHouse: (() => void) | undefined;
+    let signalHouseLocked: (() => void) | undefined;
+    const houseLocked = new Promise<void>((resolve) => { signalHouseLocked = resolve; });
+    const heldHouse = new Promise<void>((resolve) => { releaseHouse = resolve; });
+    const holder = database.db.transaction(async (transaction) => {
+      await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${houseId} FOR UPDATE`);
+      signalHouseLocked?.();
+      await heldHouse;
+    });
+    await houseLocked;
+    try {
+      const migration = syncRepository.migrateUserSharedDataToHouse(member.id, houseId);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      const deletion = createDrizzleProfileRepository(database.db, syncRepository).deleteAccount(member.id);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      releaseHouse?.();
+      await expect(Promise.all([migration, deletion])).resolves.toEqual([undefined, undefined]);
+      await expect(syncRepository.readEntity(admin.id, 'pantry_lot', lotId)).resolves.toMatchObject({ syncScope: `house:${houseId}` });
+    } finally {
+      releaseHouse?.();
+      await holder;
+    }
+  }, 15_000);
+
+  it('preserves house history after its creator leaves and deletes their account', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const suffix = randomUUID();
+    const creator = await authRepository.createUser({ email: `delete-creator-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date() });
+    const survivor = await authRepository.createUser({ email: `delete-survivor-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date() });
+    const houseId = (await service.createHouse(creator.id, 'Casa storica')).state.house!.id;
+    await service.addMember(creator.id, survivor.email);
+    await service.changeRole(creator.id, survivor.id, 'admin');
+    const itemId = `creator-history-${suffix}`;
+    await syncRepository.applyMutation(creator.id, {
+      mutationId: randomUUID(), deviceId: `delete-creator-${suffix}`,
+      entityType: 'pantry_item', entityId: itemId, operation: 'upsert',
+      payload: { id: itemId, label: 'Riso', known: true },
+      clientUpdatedAt: new Date().toISOString(), syncScope: `house:${houseId}`,
+    });
+    await service.leaveHouse(creator.id);
+
+    await createDrizzleProfileRepository(database.db, syncRepository).deleteAccount(creator.id);
+
+    await expect(syncRepository.readEntity(survivor.id, 'pantry_item', itemId)).resolves.toMatchObject({
+      syncScope: `house:${houseId}`, payload: { label: 'Riso' },
+    });
+    await expect(houseRepository.getStateForUser(survivor.id)).resolves.toMatchObject({ house: { id: houseId } });
+  });
+
+  it('requires a successor admin before deleting the last admin account', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db);
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const suffix = randomUUID();
+    const admin = await authRepository.createUser({ email: `delete-last-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date() });
+    const member = await authRepository.createUser({ email: `delete-last-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date() });
+    await service.createHouse(admin.id, 'Casa amministrata');
+    await service.addMember(admin.id, member.email);
+
+    await expect(createDrizzleProfileRepository(database.db, syncRepository).deleteAccount(admin.id))
+      .rejects.toMatchObject({ code: 'house_last_admin_required', status: 409 });
+    await expect(houseRepository.getStateForUser(admin.id)).resolves.toMatchObject({
+      membership: { role: 'admin' }, members: expect.arrayContaining([expect.objectContaining({ userId: member.id })]),
+    });
+  });
+
+  it('removes the empty house when its last member deletes their account', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db);
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const admin = await authRepository.createUser({ email: `delete-sole-member-${randomUUID()}@example.com`, passwordHash: null, emailVerifiedAt: new Date() });
+    const houseId = (await service.createHouse(admin.id, 'Casa vuota')).state.house!.id;
+    const itemId = `sole-item-${randomUUID()}`;
+    await syncRepository.applyMutation(admin.id, {
+      mutationId: randomUUID(), deviceId: 'sole-account-delete', entityType: 'pantry_item',
+      entityId: itemId, operation: 'upsert', payload: { id: itemId, label: 'Riso', known: true },
+      clientUpdatedAt: new Date().toISOString(), syncScope: `house:${houseId}`,
+    });
+
+    await createDrizzleProfileRepository(database.db, syncRepository).deleteAccount(admin.id);
+
+    await expect(database.db.select().from(houses).where(eq(houses.id, houseId))).resolves.toHaveLength(0);
+    await expect(database.db.select().from(syncItems).where(and(eq(syncItems.scopeType, 'house'), eq(syncItems.scopeId, houseId))))
+      .resolves.toHaveLength(0);
   });
 
   it('rolls back the user when profile creation fails', async () => {
@@ -702,6 +907,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
           operation: 'upsert',
           payload: shoppingItem,
           clientUpdatedAt: shoppingItem.updatedAt,
+          syncScope: `account:${loginBody.user.id}`,
         }],
       },
     });
@@ -740,10 +946,12 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
           {
             mutationId: 'integration-event-mutation', deviceId: 'device-1', entityType: 'cook_event',
             entityId: cookedEvent.id, operation: 'upsert', payload: cookedEvent, clientUpdatedAt: cookedEvent.updatedAt,
+            syncScope: `account:${loginBody.user.id}`,
           },
           {
             mutationId: 'integration-preference-mutation', deviceId: 'device-1', entityType: 'recipe_preference',
             entityId: preference.recipeId, operation: 'upsert', payload: preference, clientUpdatedAt: preference.updatedAt,
+            syncScope: `account:${loginBody.user.id}`,
           },
         ],
       },
@@ -992,6 +1200,296 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     }));
   });
 
+  it('rolls back staged account mutations when semantic House import fails and retries idempotently', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const suffix = randomUUID();
+    const now = new Date();
+    const admin = await authRepository.createUser({ email: `atomic-import-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    const member = await authRepository.createUser({ email: `atomic-import-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    const houseId = (await service.createHouse(admin.id, `Casa import atomico ${suffix}`)).state.house!.id;
+    const lot: PantryLot = {
+      id: `atomic-lot-${suffix}`, ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 200, unit: 'g', expiresAt: '2026-10-20',
+      createdAt: now.toISOString(), updatedAt: now.toISOString(),
+    };
+    await syncRepository.applyMutation(member.id, {
+      mutationId: randomUUID(), deviceId: 'atomic-original-device', entityType: 'pantry_lot', entityId: lot.id,
+      operation: 'upsert', payload: lot, clientUpdatedAt: now.toISOString(), syncScope: `account:${member.id}`,
+    });
+    // Commit membership without running the automatic migration, so the test can
+    // exercise the retry endpoint with an existing account source row.
+    await houseRepository.addExistingMember({ adminUserId: admin.id, email: member.email, now });
+    const pendingMutation: SyncMutation = {
+      mutationId: randomUUID(), deviceId: 'atomic-revision-device', entityType: 'pantry_lot', entityId: lot.id,
+      operation: 'upsert', payload: { ...lot, quantity: 450, updatedAt: new Date(now.getTime() + 2000).toISOString() },
+      clientUpdatedAt: new Date(now.getTime() + 2000).toISOString(), syncScope: `account:${member.id}`,
+    };
+
+    await database.db.execute(sql`DROP TRIGGER IF EXISTS house_account_queue_test_failure ON sync_items`);
+    await database.db.execute(sql`DROP FUNCTION IF EXISTS house_account_queue_test_failure()`);
+    await database.db.execute(sql`
+      CREATE FUNCTION house_account_queue_test_failure()
+      RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.scope_type = 'house' AND NEW.entity_type = 'pantry_lot' THEN
+          RAISE EXCEPTION 'injected House import failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$
+    `);
+    await database.db.execute(sql`
+      CREATE TRIGGER house_account_queue_test_failure
+      BEFORE INSERT ON sync_items FOR EACH ROW EXECUTE FUNCTION house_account_queue_test_failure()
+    `);
+    try {
+      await expect(service.importPendingAccountQueue(member.id, [pendingMutation])).rejects.toThrow('Failed query: insert into "sync_items"');
+      const sourceAfterFailure = await database.db.select().from(syncItems).where(and(
+        eq(syncItems.scopeType, 'user'), eq(syncItems.scopeId, member.id),
+        eq(syncItems.entityType, 'pantry_lot'), eq(syncItems.entityId, lot.id),
+      ));
+      expect(sourceAfterFailure).toHaveLength(1);
+      expect(sourceAfterFailure[0]?.payload).toMatchObject({ quantity: 200 });
+      await expect(database.db.select().from(syncItems).where(and(
+        eq(syncItems.scopeType, 'house'), eq(syncItems.scopeId, houseId),
+        eq(syncItems.entityType, 'pantry_lot'), eq(syncItems.entityId, lot.id),
+      ))).resolves.toHaveLength(0);
+      await expect(database.db.select().from(processedSyncMutations).where(and(
+        eq(processedSyncMutations.scopeType, 'user'), eq(processedSyncMutations.scopeId, member.id),
+        eq(processedSyncMutations.mutationId, pendingMutation.mutationId),
+      ))).resolves.toHaveLength(0);
+    } finally {
+      await database.db.execute(sql`DROP TRIGGER IF EXISTS house_account_queue_test_failure ON sync_items`);
+      await database.db.execute(sql`DROP FUNCTION IF EXISTS house_account_queue_test_failure()`);
+    }
+
+    await service.importPendingAccountQueue(member.id, [pendingMutation]);
+    await service.importPendingAccountQueue(member.id, [pendingMutation]);
+    await expect(syncRepository.readEntity(admin.id, 'pantry_lot', lot.id)).resolves.toMatchObject({
+      syncScope: `house:${houseId}`, payload: expect.objectContaining({ quantity: 450 }),
+    });
+    await expect(database.db.select().from(syncItems).where(and(
+      eq(syncItems.scopeType, 'user'), eq(syncItems.scopeId, member.id),
+      eq(syncItems.entityType, 'pantry_lot'), eq(syncItems.entityId, lot.id),
+    ))).resolves.toHaveLength(0);
+  });
+
+  it('imports pending account diet and colliding lot transactionally without losing House restrictions or quantity', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const suffix = randomUUID();
+    const now = new Date();
+    const admin = await authRepository.createUser({ email: `pending-import-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    const member = await authRepository.createUser({ email: `pending-import-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    const created = await service.createHouse(admin.id, `Casa pending import ${suffix}`);
+    await service.addMember(admin.id, member.email);
+    const houseScope = `house:${created.state.house!.id}` as const;
+    const timestamp = now.toISOString();
+    const lot: PantryLot = {
+      id: 'colliding-lot', ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 200, unit: 'g', expiresAt: '2026-10-20',
+      createdAt: timestamp, updatedAt: timestamp,
+    };
+    await syncRepository.applyMutation(admin.id, { mutationId: randomUUID(), deviceId: 'house-device', entityType: 'pantry_lot', entityId: lot.id, operation: 'upsert', payload: lot, clientUpdatedAt: timestamp, syncScope: houseScope });
+    await syncRepository.applyMutation(admin.id, {
+      mutationId: randomUUID(), deviceId: 'house-device', entityType: 'diet_profile', entityId: 'profile', operation: 'upsert',
+      payload: { diet: 'vegetarian', excludedAllergens: ['gluten'], nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null }, updatedAt: timestamp },
+      clientUpdatedAt: timestamp, syncScope: houseScope,
+    });
+    const pending = [
+      { mutationId: randomUUID(), deviceId: 'member-device', entityType: 'pantry_lot' as const, entityId: lot.id, operation: 'upsert' as const,
+        payload: { ...lot, quantity: 500, updatedAt: new Date(now.getTime() + 1000).toISOString() }, clientUpdatedAt: timestamp, syncScope: `account:${member.id}` as const },
+      { mutationId: randomUUID(), deviceId: 'member-device', entityType: 'diet_profile' as const, entityId: 'profile', operation: 'upsert' as const,
+        payload: { diet: 'vegan', excludedAllergens: ['milk'], nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null }, updatedAt: timestamp },
+        clientUpdatedAt: timestamp, syncScope: `account:${member.id}` as const },
+    ];
+    await service.importPendingAccountQueue(member.id, pending);
+    await service.importPendingAccountQueue(member.id, pending);
+    const houseRows = await syncRepository.readAll(admin.id);
+    expect(houseRows.filter((row) => row.entityType === 'pantry_lot' && row.operation === 'upsert'))
+      .toEqual([expect.objectContaining({ payload: expect.objectContaining({ quantity: 700, unit: 'g' }) })]);
+    expect(houseRows).toContainEqual(expect.objectContaining({ entityType: 'diet_profile', payload: expect.objectContaining({
+      diet: 'vegan', excludedAllergens: expect.arrayContaining(['gluten', 'milk']),
+    }) }));
+    await expect(syncRepository.readChanges(member.id, 0, 100, `account:${member.id}`))
+      .resolves.not.toContainEqual(expect.objectContaining({ entityType: 'diet_profile' }));
+
+    const other = await authRepository.createUser({ email: `pending-import-other-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
+    await service.addMember(admin.id, other.email);
+    await service.importPendingAccountQueue(other.id, [{
+      ...pending[0]!, mutationId: randomUUID(), syncScope: `account:${other.id}`,
+    }]);
+    const bothMembersLots = (await syncRepository.readAll(admin.id)).filter((row) => row.entityType === 'pantry_lot' && row.operation === 'upsert');
+    expect(bothMembersLots).toEqual([expect.objectContaining({ payload: expect.objectContaining({ quantity: 1200, unit: 'g' }) })]);
+
+    const revision = { ...pending[0]!, mutationId: randomUUID(), deviceId: 'member-revision-device',
+      payload: { ...lot, quantity: 600, updatedAt: new Date(now.getTime() + 2000).toISOString() },
+      clientUpdatedAt: new Date(now.getTime() + 2000).toISOString() };
+    await service.importPendingAccountQueue(member.id, [revision]);
+    const revisedLots = (await syncRepository.readAll(admin.id)).filter((row) => row.entityType === 'pantry_lot' && row.operation === 'upsert');
+    expect(revisedLots).toEqual([expect.objectContaining({ payload: expect.objectContaining({ quantity: 1300, unit: 'g' }) })]);
+    const deletion = { ...revision, mutationId: randomUUID(), deviceId: 'member-delete-device', operation: 'delete' as const, payload: null,
+      clientUpdatedAt: new Date(now.getTime() + 3000).toISOString() };
+    await service.importPendingAccountQueue(member.id, [deletion]);
+    const remainingLots = (await syncRepository.readAll(admin.id)).filter((row) => row.entityType === 'pantry_lot' && row.operation === 'upsert');
+    expect(remainingLots).toEqual([expect.objectContaining({ payload: expect.objectContaining({ quantity: 700, unit: 'g' }) })]);
+  });
+
+  it('does not migrate a pending account diet tombstone over an existing House profile in PostgreSQL', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const suffix = randomUUID();
+    const timestamp = '2026-09-24T12:00:00.000Z';
+    const admin = await authRepository.createUser({ email: `diet-delete-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date() });
+    const member = await authRepository.createUser({ email: `diet-delete-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date() });
+    const state = await service.createHouse(admin.id, 'Casa con allergeni');
+    await service.addMember(admin.id, member.email);
+    const houseId = state.state.house!.id;
+    const houseProfile = {
+      diet: 'vegan' as const,
+      excludedAllergens: ['milk', 'gluten'] as const,
+      nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null },
+      updatedAt: timestamp,
+    };
+    await syncRepository.applyMutation(admin.id, {
+      mutationId: randomUUID(), deviceId: `diet-delete-house-${suffix}`, entityType: 'diet_profile', entityId: 'profile',
+      operation: 'upsert', payload: houseProfile, clientUpdatedAt: timestamp, syncScope: `house:${houseId}`,
+    });
+    const pendingDelete: SyncMutation = {
+      mutationId: `pending-account-diet-delete-${suffix}`,
+      deviceId: `diet-delete-member-${suffix}`,
+      entityType: 'diet_profile', entityId: 'profile', operation: 'delete', payload: null,
+      clientUpdatedAt: '2026-09-24T13:00:00.000Z', syncScope: `account:${member.id}`,
+    };
+
+    await service.importPendingAccountQueue(member.id, [pendingDelete]);
+    await service.importPendingAccountQueue(member.id, [pendingDelete]);
+
+    await expect(syncRepository.readEntity(admin.id, 'diet_profile', 'profile')).resolves.toMatchObject({
+      deleted: false,
+      payload: { diet: 'vegan', excludedAllergens: expect.arrayContaining(['gluten', 'milk']) },
+    });
+    await expect(syncRepository.readChanges(member.id, 0, 100, `account:${member.id}`))
+      .resolves.not.toContainEqual(expect.objectContaining({ entityType: 'diet_profile', entityId: 'profile' }));
+  });
+
+  it('merges guest diet imports conservatively and deduplicates only the submitted revision in PostgreSQL', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const suffix = randomUUID();
+    const timestamp = new Date().toISOString();
+    const revisedTimestamp = new Date(Date.parse(timestamp) + 1000).toISOString();
+    const admin = await authRepository.createUser({ email: `guest-diet-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date() });
+    const member = await authRepository.createUser({ email: `guest-diet-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date() });
+    const state = await service.createHouse(admin.id, 'Casa con allergeni');
+    await service.addMember(admin.id, member.email);
+    const houseId = state.state.house!.id;
+    await syncRepository.applyMutation(admin.id, {
+      mutationId: randomUUID(), deviceId: `house-diet-${suffix}`, entityType: 'diet_profile', entityId: 'profile',
+      operation: 'upsert', payload: {
+        diet: 'vegan', excludedAllergens: ['milk', 'gluten'],
+        nutrition: { maxCaloriesPerServing: 600, minProteinGramsPerServing: 25 }, updatedAt: timestamp,
+      }, clientUpdatedAt: timestamp, syncScope: `house:${houseId}`,
+    });
+    const guestImport: SyncMutation = {
+      mutationId: `guest-diet-revision-1-${suffix}`, deviceId: `guest-device-${suffix}`,
+      entityType: 'diet_profile', entityId: 'profile', operation: 'upsert', syncScope: undefined,
+      payload: {
+        diet: 'omnivore', excludedAllergens: [],
+        nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null }, updatedAt: timestamp,
+      }, clientUpdatedAt: timestamp,
+    };
+
+    await expect(syncRepository.mergeGuestDietProfileToHouse(member.id, houseId, guestImport)).resolves.toBe(true);
+    await expect(syncRepository.mergeGuestDietProfileToHouse(member.id, houseId, guestImport)).resolves.toBe(false);
+    await expect(syncRepository.readEntity(admin.id, 'diet_profile', 'profile')).resolves.toMatchObject({
+      payload: {
+        diet: 'vegan', excludedAllergens: expect.arrayContaining(['milk', 'gluten']),
+        nutrition: { maxCaloriesPerServing: 600, minProteinGramsPerServing: 25 },
+      },
+    });
+
+    const revisedImport: SyncMutation = {
+      ...guestImport, mutationId: `guest-diet-revision-2-${suffix}`, clientUpdatedAt: revisedTimestamp,
+      payload: {
+        diet: 'omnivore', excludedAllergens: ['peanuts'],
+        nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null }, updatedAt: revisedTimestamp,
+      },
+    };
+    await expect(syncRepository.mergeGuestDietProfileToHouse(member.id, houseId, revisedImport)).resolves.toBe(true);
+    await expect(syncRepository.readEntity(admin.id, 'diet_profile', 'profile')).resolves.toMatchObject({
+      payload: { diet: 'vegan', excludedAllergens: expect.arrayContaining(['milk', 'gluten', 'peanuts']) },
+    });
+  });
+
+  it('applies a revised guest shopping import after the processed mutation receipt in PostgreSQL', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db);
+    const suffix = randomUUID();
+    const user = await authRepository.createUser({ email: `guest-shopping-revision-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date() });
+    const firstTimestamp = new Date().toISOString();
+    const revisedTimestamp = new Date(Date.parse(firstTimestamp) + 1000).toISOString();
+    const firstMutation: SyncMutation = {
+      mutationId: `import:${randomUUID()}`, deviceId: `guest-device-${suffix}`, entityType: 'shopping_list_item',
+      entityId: `guest-item-${suffix}`, operation: 'upsert', syncScope: `account:${user.id}`,
+      payload: {
+        id: `guest-item-${suffix}`, ingredientId: 'pasta', label: 'Pasta', quantity: 1000, unit: 'g',
+        note: null, purchased: false, sourceRecipeId: null, createdAt: firstTimestamp, updatedAt: firstTimestamp,
+      },
+      clientUpdatedAt: firstTimestamp,
+    };
+    await syncRepository.applyMutation(user.id, firstMutation);
+    const retryWithSameReceipt = await syncRepository.applyMutation(user.id, {
+      ...firstMutation,
+      clientUpdatedAt: revisedTimestamp,
+      payload: { ...firstMutation.payload as object, quantity: 2000, updatedAt: revisedTimestamp },
+    });
+    expect(retryWithSameReceipt.applied).toBe(false);
+    const revisedMutation = {
+      ...firstMutation,
+      mutationId: `import:${randomUUID()}`,
+      clientUpdatedAt: revisedTimestamp,
+      payload: { ...firstMutation.payload as object, quantity: 2000, updatedAt: revisedTimestamp },
+    };
+    const appliedRevision = await syncRepository.applyMutation(user.id, revisedMutation);
+
+    expect(appliedRevision.applied).toBe(true);
+    await expect(syncRepository.readEntity(user.id, 'shopping_list_item', firstMutation.entityId))
+      .resolves.toMatchObject({ payload: { quantity: 2000 } });
+  });
+
   it('deduplicates guest lot revisions and keeps the newer account revision in PostgreSQL', async () => {
     if (database === null) throw new Error('Integration database is not configured');
 
@@ -1009,7 +1507,6 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     const admin = await authRepository.createUser({ email: `integration-revision-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
     const member = await authRepository.createUser({ email: `integration-revision-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
     const created = await service.createHouse(admin.id, `Casa revision ${suffix}`);
-    await service.addMember(admin.id, member.email);
     const lot = (id: string, quantity: number, updatedAt: string): PantryLot => ({
       id,
       ingredientId: 'revision-pasta',
@@ -1032,6 +1529,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       clientUpdatedAt: '2026-09-24T10:02:00.000Z',
       syncScope: `account:${member.id}`,
     });
+    await service.addMember(admin.id, member.email);
     await syncRepository.mergeUserPantryToHouse(member.id, created.state.house!.id);
     await syncRepository.mergeGuestPantryToHouse(member.id, created.state.house!.id, {
       deviceId: `revision-device-${suffix}`,
@@ -1068,6 +1566,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       lots: [guestFirstLot(100, '2026-09-24T10:05:00.000Z')],
       stapleIds: [],
     });
+    await service.removeMember(admin.id, member.id);
     await syncRepository.applyMutation(member.id, {
       mutationId: `integration-guest-first-account-${suffix}`,
       deviceId: `guest-first-device-${suffix}`,
@@ -1078,6 +1577,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       clientUpdatedAt: '2026-09-24T10:06:00.000Z',
       syncScope: `account:${member.id}`,
     });
+    await service.addMember(admin.id, member.email);
     await syncRepository.mergeUserPantryToHouse(member.id, created.state.house!.id);
 
     const rekeyLotId = `rekey-lot-${suffix}`;
@@ -1092,6 +1592,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       createdAt: '2026-09-24T10:00:00.000Z',
       updatedAt,
     });
+    await service.removeMember(admin.id, member.id);
     await syncRepository.applyMutation(member.id, {
       mutationId: `integration-rekey-account-${suffix}`,
       deviceId: `rekey-account-device-${suffix}`,
@@ -1102,6 +1603,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       clientUpdatedAt: '2026-09-24T10:07:00.000Z',
       syncScope: `account:${member.id}`,
     });
+    await service.addMember(admin.id, member.email);
     await syncRepository.mergeUserPantryToHouse(member.id, created.state.house!.id);
     await syncRepository.mergeGuestPantryToHouse(member.id, created.state.house!.id, {
       deviceId: `rekey-guest-device-${suffix}`,
@@ -1128,7 +1630,44 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     expect(rekeyRows[0]).toMatchObject({ payload: expect.objectContaining({ quantity: 160 }) });
   });
 
-  it('preserves a personal source edit committed while a database merge is pending', async () => {
+  it('orders offset timestamps by instant when importing a newer account lot into a house', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const authRepository = createDrizzleAuthRepository(database.db);
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db);
+    const service = createHouseService({ repository: houseRepository, syncRepository });
+    const suffix = randomUUID();
+    const admin = await authRepository.createUser({
+      email: `offset-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date(),
+    });
+    const member = await authRepository.createUser({
+      email: `offset-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date(),
+    });
+    const houseId = (await service.createHouse(admin.id, 'Offset Casa')).state.house!.id;
+    const lotId = `offset-lot-${suffix}`;
+    const deviceId = `offset-device-${suffix}`;
+    const lot = (quantity: number, updatedAt: string): PantryLot => ({
+      id: lotId, ingredientId: `offset-pasta-${suffix}`, label: 'Pasta', known: true,
+      quantity, unit: 'g', expiresAt: '2026-10-01',
+      createdAt: '2026-09-24T10:00:00Z', updatedAt,
+    });
+    await service.addMember(admin.id, member.email);
+    await syncRepository.mergeGuestPantryToHouse(member.id, houseId, {
+      deviceId, lots: [lot(100, '2026-09-25T00:30:00+01:00')], stapleIds: [],
+    });
+    await service.importPendingAccountQueue(member.id, [{
+      mutationId: `offset-account-${suffix}`, deviceId,
+      entityType: 'pantry_lot', entityId: lotId, operation: 'upsert',
+      payload: lot(400, '2026-09-24T23:45:00Z'),
+      clientUpdatedAt: '2026-09-24T23:45:00Z', syncScope: `account:${member.id}`,
+    }]);
+
+    await expect(syncRepository.readEntity(member.id, 'pantry_lot', lotId)).resolves.toMatchObject({
+      payload: expect.objectContaining({ quantity: 400 }),
+    });
+  });
+
+  it('rejects stale personal writes while a pending house migration is in flight', async () => {
     if (database === null) throw new Error('Integration database is not configured');
 
     const authRepository = createDrizzleAuthRepository(database.db);
@@ -1145,7 +1684,6 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     const admin = await authRepository.createUser({ email: `integration-pending-admin-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
     const member = await authRepository.createUser({ email: `integration-pending-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: now });
     const created = await service.createHouse(admin.id, `Casa pending ${suffix}`);
-    await service.addMember(admin.id, member.email);
     const lotId = `pending-lot-${suffix}`;
     const lot = (quantity: number, updatedAt: string): PantryLot => ({
       id: lotId,
@@ -1168,6 +1706,8 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       clientUpdatedAt: '2026-09-24T10:01:00.000Z',
       syncScope: `account:${member.id}`,
     });
+    // Simulate a committed membership whose automatic migration needs a bootstrap retry.
+    await houseRepository.addExistingMember({ adminUserId: admin.id, email: member.email, now: new Date() });
 
     await database.db.execute(sql`DROP TRIGGER IF EXISTS sync_items_test_pause_house_merge ON sync_items`);
     await database.db.execute(sql`DROP FUNCTION IF EXISTS sync_items_test_pause_house_merge()`);
@@ -1189,7 +1729,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     try {
       const mergePromise = syncRepository.mergeUserPantryToHouse(member.id, created.state.house!.id);
       await new Promise((resolve) => setTimeout(resolve, 50));
-      await syncRepository.applyMutation(member.id, {
+      await expect(syncRepository.applyMutation(member.id, {
         mutationId: `integration-pending-after-${suffix}`,
         deviceId: `pending-device-${suffix}`,
         entityType: 'pantry_lot',
@@ -1198,7 +1738,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
         payload: lot(250, '2026-09-24T10:02:00.000Z'),
         clientUpdatedAt: '2026-09-24T10:02:00.000Z',
         syncScope: `account:${member.id}`,
-      });
+      })).rejects.toMatchObject({ code: 'sync_scope_invalid' });
       await mergePromise;
     } finally {
       await database.db.execute(sql`DROP TRIGGER IF EXISTS sync_items_test_pause_house_merge ON sync_items`);
@@ -1206,6 +1746,16 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     }
 
     await syncRepository.mergeUserPantryToHouse(member.id, created.state.house!.id);
+    await expect(syncRepository.readEntity(member.id, 'pantry_lot', lotId)).resolves.toMatchObject({
+      syncScope: `house:${created.state.house!.id}`,
+      payload: expect.objectContaining({ quantity: 100 }),
+    });
+    await syncRepository.applyMutation(member.id, {
+      mutationId: `integration-pending-house-after-${suffix}`,
+      deviceId: `pending-device-${suffix}`, entityType: 'pantry_lot', entityId: lotId,
+      operation: 'upsert', payload: lot(250, '2026-09-24T10:02:00.000Z'),
+      clientUpdatedAt: '2026-09-24T10:02:00.000Z', syncScope: `house:${created.state.house!.id}`,
+    });
     await expect(syncRepository.readEntity(member.id, 'pantry_lot', lotId)).resolves.toMatchObject({
       payload: expect.objectContaining({ quantity: 250 }),
     });

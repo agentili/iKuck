@@ -5,6 +5,7 @@ import * as activityStorage from '../../storage/activityStorage';
 import { readCookEvents, readRecipePreferences } from '../../storage/activityStorage';
 import { GUEST_SYNC_SCOPE, readQueuedMutations } from '../../sync/syncQueue';
 import { setActiveDataScope, setPersonalDataScope } from '../../sync/scopeContext';
+import { waitForScopedWrites } from '../../sync/scopeWriteFence';
 import { usePantryStore } from '../localPantryStore';
 import {
   hydrateActivityStore,
@@ -62,6 +63,52 @@ describe('activity store', () => {
     eventsSpy.mockRestore();
     preferencesSpy.mockRestore();
     setActiveDataScope('guest');
+  });
+
+  it('tracks a queued cook-event persistence callback before its storage write starts', async () => {
+    const scope = 'account:activity-pending' as const;
+    setActiveDataScope(scope);
+    const originalWrite = activityStorage.writeCookEvents;
+    let release: (() => void) | undefined;
+    const paused = new Promise<void>((resolve) => { release = resolve; });
+    const spy = vi.spyOn(activityStorage, 'writeCookEvents').mockImplementation(async (...args) => {
+      await paused;
+      return originalWrite(...args);
+    });
+    try {
+      expect(useActivityStore.getState().recordCookEvent(RECIPES[0])).not.toBeNull();
+      await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+      let drained = false;
+      const drain = waitForScopedWrites(scope).then(() => { drained = true; });
+      await Promise.resolve();
+      expect(drained).toBe(false);
+      release?.();
+      await drain;
+      await expect(readCookEvents(scope)).resolves.toHaveLength(1);
+    } finally { release?.(); await waitForPendingActivityWrites(); spy.mockRestore(); }
+  });
+
+  it('tracks a queued recipe-preference persistence callback before its storage write starts', async () => {
+    const scope = 'account:preferences-pending' as const;
+    setActiveDataScope(scope);
+    const originalWrite = activityStorage.writeRecipePreferences;
+    let release: (() => void) | undefined;
+    const paused = new Promise<void>((resolve) => { release = resolve; });
+    const spy = vi.spyOn(activityStorage, 'writeRecipePreferences').mockImplementation(async (...args) => {
+      await paused;
+      return originalWrite(...args);
+    });
+    try {
+      expect(useActivityStore.getState().setRecipePreference(RECIPES[0].id, true, 5, null)).toBe(true);
+      await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+      let drained = false;
+      const drain = waitForScopedWrites(scope).then(() => { drained = true; });
+      await Promise.resolve();
+      expect(drained).toBe(false);
+      release?.();
+      await drain;
+      await expect(readRecipePreferences(scope)).resolves.toHaveLength(1);
+    } finally { release?.(); await waitForPendingActivityWrites(); spy.mockRestore(); }
   });
 
   it('records cooking without changing the pantry lots', async () => {

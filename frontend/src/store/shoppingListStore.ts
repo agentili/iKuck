@@ -15,6 +15,7 @@ import {
 } from '../sync/syncQueue';
 import { trackPersistence, trackSync } from './persistenceStatusStore';
 import { getActiveDataScope, subscribeActiveDataScope, type SyncScope } from '../sync/scopeContext';
+import { isScopeWritable, ScopeRevokedError, trackScopedWrite } from '../sync/scopeWriteFence';
 
 export interface ShoppingListItemPatch {
   label?: string;
@@ -48,7 +49,12 @@ const createItemId = (): string => {
 };
 
 const persistItems = (items: readonly ShoppingListItem[], scope: SyncScope): Promise<void> => {
-  const operation = pendingStorageWrites.then(() => writeShoppingList(items, scope));
+  const previous = pendingStorageWrites;
+  const operation = trackScopedWrite(scope, async () => {
+    await previous;
+    if (!isScopeWritable(scope)) throw new ScopeRevokedError();
+    await writeShoppingList(items, scope);
+  });
   pendingStorageWrites = operation.catch(() => undefined);
   return operation;
 };

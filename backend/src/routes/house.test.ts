@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../app.js';
 import { hashOpaqueToken } from '../auth/tokens.js';
 import type { AuthService } from '../auth/service.js';
+import { AuthRateLimitError } from '../auth/rateLimit.js';
 import type { SyncRepository } from '../sync/repository.js';
 import { createMemoryHouseRepository } from '../house/repository.js';
 import { createHouseService } from '../house/service.js';
@@ -18,6 +19,8 @@ const authFor = (userId: string, email: string): AuthService => ({
     expiresAt: new Date('2026-10-12T12:00:00.000Z'),
   }),
 } as unknown as AuthService);
+
+const noOpRateLimiter = { enforce: async () => undefined };
 
 const headers = {
   cookie: 'ikuck_session=session-token',
@@ -36,7 +39,7 @@ describe('house routes', () => {
       database: { ping: async () => undefined },
       cache: { ping: async () => undefined },
       auth: { service: authService, appOrigin: origin, secureCookies: false },
-      house: { service: createHouseService({ repository }), authService, appOrigin: origin },
+      house: { service: createHouseService({ repository }), authService, appOrigin: origin, rateLimiter: noOpRateLimiter },
     });
 
     const createResponse = await app.inject({
@@ -77,7 +80,7 @@ describe('house routes', () => {
     const app = createApp({
       database: { ping: async () => undefined },
       cache: { ping: async () => undefined },
-      house: { service: createHouseService({ repository }), authService, appOrigin: origin },
+      house: { service: createHouseService({ repository }), authService, appOrigin: origin, rateLimiter: noOpRateLimiter },
     });
 
     const stateResponse = await app.inject({ method: 'GET', url: '/v1/house', headers });
@@ -92,6 +95,31 @@ describe('house routes', () => {
     expect(mergeResponse.statusCode).toBe(403);
   });
 
+  it('rate-limits direct member lookup before checking whether the target email is registered', async () => {
+    const repository = createMemoryHouseRepository([
+      { id: 'admin-1', email: 'admin@example.com', displayName: 'Admin', emailVerifiedAt: new Date() },
+      { id: 'member-1', email: 'member@example.com', displayName: 'Member', emailVerifiedAt: new Date() },
+    ]);
+    const authService = authFor('admin-1', 'admin@example.com');
+    const enforce = vi.fn().mockRejectedValue(new AuthRateLimitError('rate_limited', 429, 'Too many requests', 3600));
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      house: { service: createHouseService({ repository }), authService, appOrigin: origin, rateLimiter: { enforce } },
+    });
+    await app.inject({ method: 'POST', url: '/v1/house', headers, payload: { name: 'Casa' } });
+    const response = await app.inject({
+      method: 'POST', url: '/v1/house/members', headers, payload: { email: 'member@example.com' },
+    });
+    expect(response.statusCode).toBe(429);
+    expect(response.json()).toMatchObject({ code: 'rate_limited' });
+    expect(response.headers['retry-after']).toBe('3600');
+    expect(enforce).toHaveBeenCalledWith('houseAddMember', {
+      ip: expect.any(String), email: 'member@example.com', actorId: 'admin-1',
+    });
+    expect((await repository.getStateForUser('admin-1'))?.members).toHaveLength(1);
+  });
+
   it('returns a negative typed result for an unregistered email', async () => {
     const repository = createMemoryHouseRepository([
       { id: 'admin-1', email: 'admin@example.com', displayName: 'Admin', emailVerifiedAt: new Date() },
@@ -100,7 +128,7 @@ describe('house routes', () => {
     const app = createApp({
       database: { ping: async () => undefined },
       cache: { ping: async () => undefined },
-      house: { service: createHouseService({ repository }), authService, appOrigin: origin },
+      house: { service: createHouseService({ repository }), authService, appOrigin: origin, rateLimiter: noOpRateLimiter },
     });
     await app.inject({ method: 'POST', url: '/v1/house', headers, payload: { name: 'Casa' } });
 
@@ -125,7 +153,7 @@ describe('house routes', () => {
     const app = createApp({
       database: { ping: async () => undefined },
       cache: { ping: async () => undefined },
-      house: { service: createHouseService({ repository, syncRepository }), authService, appOrigin: origin },
+      house: { service: createHouseService({ repository, syncRepository }), authService, appOrigin: origin, rateLimiter: noOpRateLimiter },
     });
     await app.inject({ method: 'POST', url: '/v1/house', headers, payload: { name: 'Casa' } });
 
@@ -133,6 +161,71 @@ describe('house routes', () => {
 
     expect(response.statusCode).toBe(204);
     expect(migrateUserSharedDataToHouse).toHaveBeenCalledWith('admin-1', 'house-1');
+  });
+
+  it('imports only authenticated account-scoped shared queue mutations into the current house', async () => {
+    const repository = createMemoryHouseRepository([
+      { id: 'admin-1', email: 'admin@example.com', displayName: 'Admin', emailVerifiedAt: new Date() },
+    ]);
+    const migrateUserSharedDataToHouse = vi.fn<SyncRepository['migrateUserSharedDataToHouse']>().mockResolvedValue(undefined);
+    const authService = authFor('admin-1', 'admin@example.com');
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      house: { service: createHouseService({ repository, syncRepository: { migrateUserSharedDataToHouse } as unknown as SyncRepository }), authService, appOrigin: origin, rateLimiter: noOpRateLimiter },
+    });
+    await app.inject({ method: 'POST', url: '/v1/house', headers, payload: { name: 'Casa' } });
+    migrateUserSharedDataToHouse.mockClear();
+    const pending = {
+      mutationId: 'pending-diet', deviceId: 'device-1', entityType: 'diet_profile', entityId: 'profile',
+      operation: 'upsert', payload: { diet: 'vegetarian', excludedAllergens: ['milk'], nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null }, updatedAt: '2026-09-24T12:00:00.000Z' },
+      clientUpdatedAt: '2026-09-24T12:00:00.000Z', syncScope: 'account:admin-1',
+    };
+    const result = await app.inject({ method: 'POST', url: '/v1/house/account-queue/import', headers, payload: { mutations: [pending] } });
+    expect(result.statusCode).toBe(204);
+    expect(migrateUserSharedDataToHouse).toHaveBeenCalledExactlyOnceWith('admin-1', 'house-1', [pending]);
+    const personal = await app.inject({ method: 'POST', url: '/v1/house/account-queue/import', headers, payload: { mutations: [{ ...pending, entityType: 'ai_consent', payload: { enabled: true, updatedAt: pending.clientUpdatedAt } }] } });
+    expect(personal.statusCode).toBe(400);
+    const foreign = await app.inject({ method: 'POST', url: '/v1/house/account-queue/import', headers, payload: { mutations: [{ ...pending, syncScope: 'account:another-user' }] } });
+    expect(foreign.statusCode).toBe(400);
+    expect(migrateUserSharedDataToHouse).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
+
+  it('imports only an unscope guest diet mutation through the authenticated House endpoint', async () => {
+    const repository = createMemoryHouseRepository([
+      { id: 'admin-1', email: 'admin@example.com', displayName: 'Admin', emailVerifiedAt: new Date() },
+    ]);
+    const mergeGuestDietProfileToHouse = vi.fn().mockResolvedValue(true);
+    const authService = authFor('admin-1', 'admin@example.com');
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      house: {
+        service: createHouseService({ repository, syncRepository: { mergeGuestDietProfileToHouse } as unknown as SyncRepository }),
+        authService, appOrigin: origin, rateLimiter: noOpRateLimiter,
+      },
+    });
+    await app.inject({ method: 'POST', url: '/v1/house', headers, payload: { name: 'Casa' } });
+    const mutation = {
+      mutationId: 'guest-diet-1', deviceId: 'guest-device', entityType: 'diet_profile', entityId: 'profile',
+      operation: 'upsert', payload: {
+        diet: 'omnivore', excludedAllergens: [],
+        nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null }, updatedAt: '2026-09-24T12:00:00.000Z',
+      }, clientUpdatedAt: '2026-09-24T12:00:00.000Z',
+    };
+
+    const response = await app.inject({ method: 'POST', url: '/v1/house/diet-profile/import', headers, payload: { mutation } });
+    const forgedScope = await app.inject({
+      method: 'POST', url: '/v1/house/diet-profile/import', headers,
+      payload: { mutation: { ...mutation, syncScope: 'house:house-1' } },
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(mergeGuestDietProfileToHouse).toHaveBeenCalledExactlyOnceWith('admin-1', 'house-1', mutation);
+    expect(forgedScope.statusCode).toBe(400);
+    expect(mergeGuestDietProfileToHouse).toHaveBeenCalledTimes(1);
+    await app.close();
   });
 
   it('accepts a verified device pantry snapshot and returns the merge summary', async () => {
@@ -150,7 +243,7 @@ describe('house routes', () => {
     const app = createApp({
       database: { ping: async () => undefined },
       cache: { ping: async () => undefined },
-      house: { service: createHouseService({ repository, syncRepository }), authService, appOrigin: origin },
+      house: { service: createHouseService({ repository, syncRepository }), authService, appOrigin: origin, rateLimiter: noOpRateLimiter },
     });
     await app.inject({ method: 'POST', url: '/v1/house', headers, payload: { name: 'Casa' } });
 
@@ -180,12 +273,12 @@ describe('house routes', () => {
     const adminApp = createApp({
       database: { ping: async () => undefined },
       cache: { ping: async () => undefined },
-      house: { service: createHouseService({ repository }), authService: adminAuth, appOrigin: origin },
+      house: { service: createHouseService({ repository }), authService: adminAuth, appOrigin: origin, rateLimiter: noOpRateLimiter },
     });
     const memberApp = createApp({
       database: { ping: async () => undefined },
       cache: { ping: async () => undefined },
-      house: { service: createHouseService({ repository }), authService: memberAuth, appOrigin: origin },
+      house: { service: createHouseService({ repository }), authService: memberAuth, appOrigin: origin, rateLimiter: noOpRateLimiter },
     });
     await adminApp.inject({ method: 'POST', url: '/v1/house', headers, payload: { name: 'Casa' } });
     await createHouseService({ repository }).addMember('admin-1', 'member@example.com');
@@ -208,7 +301,7 @@ describe('house routes', () => {
     const adminApp = createApp({
       database: { ping: async () => undefined },
       cache: { ping: async () => undefined },
-      house: { service: createHouseService({ repository }), authService: adminAuth, appOrigin: origin },
+      house: { service: createHouseService({ repository }), authService: adminAuth, appOrigin: origin, rateLimiter: noOpRateLimiter },
     });
     await adminApp.inject({ method: 'POST', url: '/v1/house', headers, payload: { name: 'Casa' } });
     await createHouseService({ repository }).addMember('admin-1', 'member@example.com');
@@ -217,7 +310,7 @@ describe('house routes', () => {
     const memberApp = createApp({
       database: { ping: async () => undefined },
       cache: { ping: async () => undefined },
-      house: { service: createHouseService({ repository }), authService: memberAuth, appOrigin: origin },
+      house: { service: createHouseService({ repository }), authService: memberAuth, appOrigin: origin, rateLimiter: noOpRateLimiter },
     });
     const response = await memberApp.inject({
       method: 'POST',

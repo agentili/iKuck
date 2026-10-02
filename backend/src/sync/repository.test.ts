@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { SyncMutation } from '@ikuck/shared/contracts';
 import { createMemorySyncRepository, resolveScopeForCurrentMembership, SyncMembershipRequiredError, SyncScopeInvalidError } from './repository.js';
 
 const mutation = (clientUpdatedAt: string, mutationId: string, label: string) => ({
@@ -350,6 +351,250 @@ describe('sync repository', () => {
     await expect(repository.readChanges('user-1', 0, 100, 'account:user-1')).resolves.not.toContainEqual(
       expect.objectContaining({ entityType: 'diet_profile', entityId: 'profile' }),
     );
+  });
+
+  it('conservatively imports an unsent pre-house diet update instead of overwriting shared allergens', async () => {
+    const repository = createMemorySyncRepository({ scopeResolver: async () => ({ kind: 'house', id: 'house-1' }) });
+    const houseProfile = { diet: 'vegetarian' as const, excludedAllergens: ['gluten' as const], nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null }, updatedAt: '2026-09-12T11:00:00.000Z' };
+    const pendingProfile = { ...houseProfile, excludedAllergens: ['milk' as const], updatedAt: '2026-09-12T12:00:00.000Z' };
+    await repository.applyMutation('member-2', { ...mutation(houseProfile.updatedAt, 'house-diet', 'x'), entityType: 'diet_profile', entityId: 'profile', payload: houseProfile, syncScope: 'house:house-1' });
+    const pending = { ...mutation(pendingProfile.updatedAt, 'unsent-account-diet', 'x'), entityType: 'diet_profile' as const, entityId: 'profile', payload: pendingProfile, syncScope: 'account:user-1' as const };
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1', [pending]);
+    await expect(repository.readEntity('member-2', 'diet_profile', 'profile')).resolves.toMatchObject({
+      payload: { excludedAllergens: expect.arrayContaining(['gluten', 'milk']) },
+    });
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1', [pending]);
+    await expect(repository.readEntity('member-2', 'diet_profile', 'profile')).resolves.toMatchObject({
+      payload: { excludedAllergens: expect.arrayContaining(['gluten', 'milk']) },
+    });
+  });
+
+  it('does not let a pending account diet deletion remove House allergens', async () => {
+    const repository = createMemorySyncRepository({ scopeResolver: async () => ({ kind: 'house', id: 'house-1' }) });
+    const houseProfile = {
+      diet: 'vegan' as const,
+      excludedAllergens: ['milk', 'gluten'] as const,
+      nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null },
+      updatedAt: '2026-09-12T11:00:00.000Z',
+    };
+    await repository.applyMutation('member-2', {
+      ...mutation(houseProfile.updatedAt, 'house-diet-before-delete', 'x'),
+      entityType: 'diet_profile', entityId: 'profile', payload: houseProfile,
+      syncScope: 'house:house-1',
+    });
+    const pendingDelete = {
+      ...mutation('2026-09-12T12:00:00.000Z', 'pending-account-diet-delete', 'x'),
+      entityType: 'diet_profile' as const, entityId: 'profile', operation: 'delete' as const, payload: null,
+      syncScope: 'account:user-1' as const,
+    };
+
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1', [pendingDelete]);
+
+    await expect(repository.readEntity('member-2', 'diet_profile', 'profile')).resolves.toMatchObject({
+      deleted: false,
+      payload: { diet: 'vegan', excludedAllergens: expect.arrayContaining(['gluten', 'milk']) },
+    });
+  });
+
+  it('merges guest diet imports conservatively, retries idempotently, and accepts a revised import', async () => {
+    const repository = createMemorySyncRepository({ scopeResolver: async () => ({ kind: 'house', id: 'house-1' }) });
+    const timestamp = new Date().toISOString();
+    const revisedTimestamp = new Date(Date.parse(timestamp) + 1000).toISOString();
+    const houseProfile = {
+      diet: 'vegan' as const,
+      excludedAllergens: ['milk', 'gluten'] as const,
+      nutrition: { maxCaloriesPerServing: 600, minProteinGramsPerServing: 25 },
+      updatedAt: timestamp,
+    };
+    await repository.applyMutation('member-2', {
+      ...mutation(timestamp, 'existing-house-diet', 'x'), entityType: 'diet_profile', entityId: 'profile',
+      payload: houseProfile, syncScope: 'house:house-1',
+    });
+    const guestImport: SyncMutation = {
+      mutationId: 'guest-diet-revision-1', deviceId: 'guest-device', entityType: 'diet_profile', entityId: 'profile',
+      operation: 'upsert', payload: {
+        diet: 'omnivore', excludedAllergens: [],
+        nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null }, updatedAt: timestamp,
+      }, clientUpdatedAt: timestamp,
+    };
+
+    await expect(repository.mergeGuestDietProfileToHouse('member-2', 'house-1', guestImport)).resolves.toBe(true);
+    await expect(repository.mergeGuestDietProfileToHouse('member-2', 'house-1', guestImport)).resolves.toBe(false);
+    await expect(repository.readEntity('member-2', 'diet_profile', 'profile')).resolves.toMatchObject({
+      payload: {
+        diet: 'vegan', excludedAllergens: expect.arrayContaining(['milk', 'gluten']),
+        nutrition: { maxCaloriesPerServing: 600, minProteinGramsPerServing: 25 },
+      },
+    });
+
+    const revisedImport: SyncMutation = {
+      ...guestImport,
+      mutationId: 'guest-diet-revision-2',
+      clientUpdatedAt: revisedTimestamp,
+      payload: { ...guestImport.payload as object, excludedAllergens: ['peanuts'], updatedAt: revisedTimestamp },
+    };
+    await expect(repository.mergeGuestDietProfileToHouse('member-2', 'house-1', revisedImport)).resolves.toBe(true);
+    await expect(repository.readEntity('member-2', 'diet_profile', 'profile')).resolves.toMatchObject({
+      payload: { diet: 'vegan', excludedAllergens: expect.arrayContaining(['milk', 'gluten', 'peanuts']) },
+    });
+  });
+
+  it('semantically imports an unsent account lot even if its id matches another member’s lot', async () => {
+    const repository = createMemorySyncRepository({ scopeResolver: async () => ({ kind: 'house', id: 'house-1' }) });
+    const houseLot = pantryLot('same-lot', 200, 'g', '2026-10-01');
+    const pendingLot = { ...houseLot, quantity: 500, updatedAt: '2026-09-12T12:01:00.000Z' };
+    await repository.applyMutation('member-2', { ...mutation(houseLot.updatedAt, 'house-lot', 'x'), entityType: 'pantry_lot', entityId: houseLot.id, payload: houseLot, syncScope: 'house:house-1' });
+    const pending = { ...mutation(pendingLot.updatedAt, 'unsent-account-lot', 'x'), entityType: 'pantry_lot' as const, entityId: pendingLot.id, payload: pendingLot, syncScope: 'account:user-1' as const };
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1', [pending]);
+    const lots = (await repository.readAll('member-2')).filter((change) => change.entityType === 'pantry_lot' && change.operation === 'upsert');
+    expect(lots).toHaveLength(1);
+    expect(lots[0]?.payload).toMatchObject({ quantity: 700, unit: 'g' });
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1', [pending]);
+    const retryLots = (await repository.readAll('member-2')).filter((change) => change.entityType === 'pantry_lot' && change.operation === 'upsert');
+    expect(retryLots).toHaveLength(1);
+    expect(retryLots[0]?.payload).toMatchObject({ quantity: 700, unit: 'g' });
+  });
+
+  it('replaces only the original account lot contribution on a delayed revision after a prior migration', async () => {
+    let joined = false;
+    const repository = createMemorySyncRepository({ scopeResolver: async (userId) => userId === 'member-2' || joined
+      ? { kind: 'house', id: 'house-1' } : { kind: 'user', id: 'user-1' } });
+    const houseLot = pantryLot('house-lot', 300, 'g', '2026-10-01');
+    const accountLot = pantryLot('account-lot', 200, 'g', '2026-10-01');
+    await repository.applyMutation('member-2', { ...mutation(houseLot.updatedAt, 'house-origin', 'x'), entityType: 'pantry_lot', entityId: houseLot.id, payload: houseLot });
+    await repository.applyMutation('user-1', { ...mutation(accountLot.updatedAt, 'account-origin', 'x'), entityType: 'pantry_lot', entityId: accountLot.id, payload: accountLot });
+    joined = true;
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1');
+    const pending = { ...mutation('2026-09-12T12:01:00.000Z', 'account-later', 'x'), entityType: 'pantry_lot' as const,
+      entityId: accountLot.id, payload: { ...accountLot, quantity: 450, updatedAt: '2026-09-12T12:01:00.000Z' }, syncScope: 'account:user-1' as const };
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1', [pending]);
+    const lots = (await repository.readAll('member-2')).filter((change) => change.entityType === 'pantry_lot' && change.operation === 'upsert');
+    expect(lots).toEqual([expect.objectContaining({ payload: expect.objectContaining({ quantity: 750, unit: 'g' }) })]);
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1', [pending]);
+    const retry = (await repository.readAll('member-2')).filter((change) => change.entityType === 'pantry_lot' && change.operation === 'upsert');
+    expect(retry).toEqual([expect.objectContaining({ payload: expect.objectContaining({ quantity: 750, unit: 'g' }) })]);
+  });
+
+  it('removes only the original account lot contribution for a delayed deletion', async () => {
+    let joined = false;
+    const repository = createMemorySyncRepository({ scopeResolver: async (userId) => userId === 'member-2' || joined
+      ? { kind: 'house', id: 'house-1' } : { kind: 'user', id: 'user-1' } });
+    const houseLot = pantryLot('house-lot', 300, 'g', '2026-10-01');
+    const accountLot = pantryLot('account-lot', 200, 'g', '2026-10-01');
+    await repository.applyMutation('member-2', { ...mutation(houseLot.updatedAt, 'house-origin', 'x'), entityType: 'pantry_lot', entityId: houseLot.id, payload: houseLot });
+    await repository.applyMutation('user-1', { ...mutation(accountLot.updatedAt, 'account-origin', 'x'), entityType: 'pantry_lot', entityId: accountLot.id, payload: accountLot });
+    joined = true;
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1');
+    const pending = { ...mutation('2026-09-12T12:01:00.000Z', 'account-delete', 'x'), entityType: 'pantry_lot' as const,
+      entityId: accountLot.id, operation: 'delete' as const, payload: null, syncScope: 'account:user-1' as const };
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1', [pending]);
+    const lots = (await repository.readAll('member-2')).filter((change) => change.entityType === 'pantry_lot' && change.operation === 'upsert');
+    expect(lots).toEqual([expect.objectContaining({ payload: expect.objectContaining({ quantity: 300, unit: 'g' }) })]);
+  });
+
+  it('replaces and deletes an imported account lot contribution across writer devices', async () => {
+    let joined = false;
+    const repository = createMemorySyncRepository({ scopeResolver: async (userId) => userId === 'member-2' || joined
+      ? { kind: 'house', id: 'house-1' } : { kind: 'user', id: 'user-1' } });
+    const houseLot = pantryLot('house-lot', 300, 'g', '2026-10-01');
+    const accountLot = pantryLot('account-lot', 200, 'g', '2026-10-01');
+    await repository.applyMutation('member-2', {
+      ...mutation(houseLot.updatedAt, 'house-origin', 'x'), deviceId: 'house-device',
+      entityType: 'pantry_lot', entityId: houseLot.id, payload: houseLot,
+    });
+    await repository.applyMutation('user-1', {
+      ...mutation(accountLot.updatedAt, 'account-origin', 'x'), deviceId: 'original-device',
+      entityType: 'pantry_lot', entityId: accountLot.id, payload: accountLot,
+    });
+    joined = true;
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1');
+
+    const revisedAt = '2026-09-12T12:01:00.000Z';
+    const revision = {
+      ...mutation(revisedAt, 'account-revision-device-2', 'x'), deviceId: 'revision-device',
+      entityType: 'pantry_lot' as const, entityId: accountLot.id,
+      payload: { ...accountLot, quantity: 450, updatedAt: revisedAt }, syncScope: 'account:user-1' as const,
+    };
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1', [revision]);
+    let lots = (await repository.readAll('member-2')).filter((change) => change.entityType === 'pantry_lot' && change.operation === 'upsert');
+    expect(lots).toEqual([expect.objectContaining({ payload: expect.objectContaining({ quantity: 750, unit: 'g' }) })]);
+
+    const deletedAt = '2026-09-12T12:02:00.000Z';
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1', [{
+      ...mutation(deletedAt, 'account-delete-device-3', 'x'), deviceId: 'delete-device',
+      entityType: 'pantry_lot', entityId: accountLot.id, operation: 'delete', payload: null,
+      syncScope: 'account:user-1',
+    }]);
+    lots = (await repository.readAll('member-2')).filter((change) => change.entityType === 'pantry_lot' && change.operation === 'upsert');
+    expect(lots).toEqual([expect.objectContaining({ payload: expect.objectContaining({ quantity: 300, unit: 'g' }) })]);
+  });
+
+  it('rolls back in-memory pending account staging when semantic pantry migration fails', async () => {
+    let failDuringMerge = false;
+    let migrationClockCalls = 0;
+    const repository = createMemorySyncRepository({
+      scopeResolver: async (userId) => userId === 'user-1'
+        ? { kind: 'user', id: 'user-1' } : { kind: 'house', id: 'house-1' },
+      clock: () => {
+        if (failDuringMerge && ++migrationClockCalls === 2) throw new Error('injected semantic merge failure');
+        return new Date('2026-09-12T12:00:00.000Z');
+      },
+    });
+    const houseLot = pantryLot('house-lot', 300, 'g', '2026-10-01');
+    const accountLot = pantryLot('account-lot', 200, 'g', '2026-10-01');
+    await repository.applyMutation('member-2', {
+      ...mutation(houseLot.updatedAt, 'house-origin', 'x'), entityType: 'pantry_lot', entityId: houseLot.id,
+      payload: houseLot, syncScope: 'house:house-1',
+    });
+    await repository.applyMutation('user-1', {
+      ...mutation(accountLot.updatedAt, 'account-origin', 'x'), entityType: 'pantry_lot', entityId: accountLot.id,
+      payload: accountLot, syncScope: 'account:user-1',
+    });
+    const pending = {
+      ...mutation('2026-09-12T12:01:00.000Z', 'pending-account-revision', 'x'),
+      deviceId: 'revision-device', entityType: 'pantry_lot' as const, entityId: accountLot.id,
+      payload: { ...accountLot, quantity: 450, updatedAt: '2026-09-12T12:01:00.000Z' },
+      syncScope: 'account:user-1' as const,
+    };
+    failDuringMerge = true;
+    await expect(repository.migrateUserSharedDataToHouse('user-1', 'house-1', [pending]))
+      .rejects.toThrow('injected semantic merge failure');
+    await expect(repository.readEntity('user-1', 'pantry_lot', accountLot.id)).resolves.toMatchObject({
+      payload: expect.objectContaining({ quantity: 200 }),
+    });
+    await expect(repository.readEntity('member-2', 'pantry_lot', houseLot.id)).resolves.toMatchObject({
+      payload: expect.objectContaining({ quantity: 300 }),
+    });
+
+    failDuringMerge = false;
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1', [pending]);
+    const lots = (await repository.readAll('member-2')).filter((change) => change.entityType === 'pantry_lot' && change.operation === 'upsert');
+    expect(lots).toEqual([expect.objectContaining({ payload: expect.objectContaining({ quantity: 750, unit: 'g' }) })]);
+  });
+
+  it('preserves same-device same-ID lots contributed by different house members', async () => {
+    const joined = new Set<string>();
+    const repository = createMemorySyncRepository({ scopeResolver: async (userId) => userId === 'house-admin' || joined.has(userId)
+      ? { kind: 'house', id: 'house-1' } : { kind: 'user', id: userId } });
+    const houseLot = pantryLot('shared-lot', 200, 'g', '2026-10-01');
+    const memberLot = pantryLot('shared-lot', 500, 'g', '2026-10-01');
+    await repository.applyMutation('house-admin', {
+      ...mutation(houseLot.updatedAt, 'house-shared-lot', 'x'), deviceId: 'same-device',
+      entityType: 'pantry_lot', entityId: houseLot.id, payload: houseLot, syncScope: 'house:house-1',
+    });
+    for (const userId of ['member-1', 'member-2']) {
+      await repository.applyMutation(userId, {
+        ...mutation(memberLot.updatedAt, `account-${userId}`, 'x'), deviceId: 'same-device',
+        entityType: 'pantry_lot', entityId: memberLot.id, payload: memberLot, syncScope: `account:${userId}`,
+      });
+    }
+    joined.add('member-1');
+    joined.add('member-2');
+    await repository.migrateUserSharedDataToHouse('member-1', 'house-1');
+    await repository.migrateUserSharedDataToHouse('member-2', 'house-1');
+
+    const lots = (await repository.readAll('house-admin')).filter((change) => change.entityType === 'pantry_lot' && change.operation === 'upsert');
+    expect(lots).toEqual([expect.objectContaining({ payload: expect.objectContaining({ quantity: 1200, unit: 'g' }) })]);
   });
 
   it('uses the semantic pantry merge while migrating all pre-house data', async () => {

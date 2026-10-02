@@ -36,6 +36,13 @@
       "when": 1726147440000,
       "tag": "0004_houses_and_scoped_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1726147500000,
+      "tag": "0005_house_content_account_deletion",
+      "breakpoints": true
     }
   ]
 }

@@ -18,6 +18,7 @@ export const start = async () => {
   const config = loadConfig(process.env);
   const database = createDatabase(config.databaseUrl);
   const cache = createCache(config.redisUrl);
+  const authRateLimiter = createRedisAuthRateLimiter(cache);
   const providers = createProviders(config);
   const auth = createAuthService({
     repository: createDrizzleAuthRepository(database.db),
@@ -44,7 +45,7 @@ export const start = async () => {
         google: config.googleClientId === undefined ? undefined : createGoogleIdentityProvider({ clientId: config.googleClientId }),
         appOrigin: config.appOrigin,
         secureCookies: config.nodeEnvironment === 'production',
-        rateLimiter: createRedisAuthRateLimiter(cache),
+        rateLimiter: authRateLimiter,
       },
       profile: {
         repository: profile,
@@ -53,7 +54,7 @@ export const start = async () => {
         secureCookies: config.nodeEnvironment === 'production',
       },
       sync: { repository: sync, authService: auth, appOrigin: config.appOrigin },
-      house: { service: houseService, authService: auth, appOrigin: config.appOrigin },
+      house: { service: houseService, authService: auth, appOrigin: config.appOrigin, rateLimiter: authRateLimiter },
       dinnerDiary: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       pantryLots: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       shoppingList: { repository: sync, authService: auth, appOrigin: config.appOrigin },

@@ -1,8 +1,11 @@
 import type { AccountSummary } from '@ikuck/shared/contracts';
-import { eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
+import { AuthServiceError } from '../auth/service.js';
 import type { ApplicationDatabase } from '../db/client.js';
-import { userProfiles, users } from '../db/schema.js';
-import type { SyncRepository } from '../sync/repository.js';
+import { houseMemberships, houses, processedSyncMutations, syncItems, userProfiles, users } from '../db/schema.js';
+import { isSharedEntityType, type SyncRepository } from '../sync/repository.js';
+
+type ExportedSyncData = Awaited<ReturnType<SyncRepository['readAll']>>;
 
 export interface ProfileRecord {
   displayName: string | null;
@@ -12,7 +15,8 @@ export interface ProfileRecord {
 export interface AccountExport {
   account: AccountSummary;
   profile: ProfileRecord | null;
-  sync: Awaited<ReturnType<SyncRepository['readAll']>>;
+  personalData: ExportedSyncData;
+  houseData: ExportedSyncData;
 }
 
 export interface ProfileRepository {
@@ -34,7 +38,8 @@ export const createMemoryProfileRepository = (): ProfileRepository => {
     exportAccount: async (userId) => ({
       account: { id: userId, email: 'user@example.com', emailVerifiedAt: new Date().toISOString() },
       profile: profiles.get(userId) ?? null,
-      sync: [],
+      personalData: [],
+      houseData: [],
     }),
     deleteAccount: async (userId) => {
       profiles.delete(userId);
@@ -72,6 +77,7 @@ export const createDrizzleProfileRepository = (
       emailVerifiedAt: users.emailVerifiedAt,
     }).from(users).where(eq(users.id, userId)).limit(1);
     if (user === undefined || user.emailVerifiedAt === null) throw new Error('Account not found');
+    const changes = await sync.readAll(userId);
     return {
       account: {
         id: user.id,
@@ -79,12 +85,46 @@ export const createDrizzleProfileRepository = (
         emailVerifiedAt: user.emailVerifiedAt.toISOString(),
       },
       profile: await getProfile(userId),
-      sync: await sync.readAll(userId),
+      personalData: changes.filter((change) => change.syncScope === `account:${userId}`),
+      houseData: changes.filter((change) => change.syncScope?.startsWith('house:') && isSharedEntityType(change.entityType)),
     };
   };
 
   const deleteAccount = async (userId: string): Promise<void> => {
-    await database.delete(users).where(eq(users.id, userId));
+    await database.transaction(async (transaction) => {
+      // Match the user-then-house lock order of membership creation and shared writes.
+      await transaction.execute(sql`SELECT id FROM ${users} WHERE id = ${userId} FOR UPDATE`);
+      const [membership] = await transaction.select({ houseId: houseMemberships.houseId })
+        .from(houseMemberships).where(eq(houseMemberships.userId, userId)).limit(1);
+      if (membership !== undefined) {
+        await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${membership.houseId} FOR UPDATE`);
+        const [current] = await transaction.select({ id: houseMemberships.id, role: houseMemberships.role })
+          .from(houseMemberships).where(and(
+            eq(houseMemberships.userId, userId), eq(houseMemberships.houseId, membership.houseId),
+          )).limit(1);
+        if (current !== undefined) {
+          const members = await transaction.select({ role: houseMemberships.role })
+            .from(houseMemberships).where(eq(houseMemberships.houseId, membership.houseId));
+          if (current.role === 'admin' && members.length > 1
+            && members.filter((member) => member.role === 'admin').length === 1) {
+            throw new AuthServiceError('house_last_admin_required', 409, 'The house must keep at least one admin');
+          }
+          if (members.length === 1) {
+            await transaction.delete(syncItems).where(and(eq(syncItems.scopeType, 'house'), eq(syncItems.scopeId, membership.houseId)));
+            await transaction.delete(processedSyncMutations).where(and(
+              eq(processedSyncMutations.scopeType, 'house'), eq(processedSyncMutations.scopeId, membership.houseId),
+            ));
+            await transaction.delete(houses).where(eq(houses.id, membership.houseId));
+          }
+        }
+      }
+      // Account-scoped rows must not survive as orphaned personal data.
+      await transaction.delete(syncItems).where(and(eq(syncItems.scopeType, 'user'), eq(syncItems.scopeId, userId)));
+      await transaction.delete(processedSyncMutations).where(and(
+        eq(processedSyncMutations.scopeType, 'user'), eq(processedSyncMutations.scopeId, userId),
+      ));
+      await transaction.delete(users).where(eq(users.id, userId));
+    });
   };
 
   return { getProfile, updateProfile, exportAccount, deleteAccount };

@@ -4,7 +4,11 @@ import type { DinnerEntry, SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import validMutations from '@ikuck/shared/sync-fixtures/valid.json';
 import invalidMutations from '@ikuck/shared/sync-fixtures/invalid.json';
 import type { ApiRequest } from '../api/apiClient';
+import { useAuthStore } from '../auth/authStore';
+import { useDinnerDiaryStore, waitForPendingDinnerDiaryWrites } from '../store/dinnerDiaryStore';
+import { useShoppingListStore, waitForPendingShoppingListWrites } from '../store/shoppingListStore';
 import { ApiClientError } from '../api/apiClient';
+import * as indexedDb from '../storage/indexedDb';
 import {
   deleteLocalDatabase,
   deleteQueueValue,
@@ -15,8 +19,9 @@ import {
   type SyncScope,
 } from '../storage/indexedDb';
 import { readCookEvents, readRecipePreferences, writeCookEvents, writeRecipePreferences } from '../storage/activityStorage';
-import { clearDinnerDiary, readDinnerEntries, readSavedRecipes, writeDinnerEntries, writeSavedRecipes } from '../storage/dinnerDiaryStorage';
+import { clearDinnerDiary, readDiaryDraftSets, readDinnerEntries, readSavedRecipes, writeDiaryDraftSets, writeDinnerEntries, writeSavedRecipes } from '../storage/dinnerDiaryStorage';
 import { readPantrySnapshot, writePantrySnapshot } from '../storage/pantryStorage';
+import * as shoppingStorage from '../storage/shoppingListStorage';
 import { readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
 import { readDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
 import {
@@ -32,6 +37,7 @@ import {
   mergeGuestPantryIntoHouse,
   readQueuedMutations,
   readSyncCursor,
+  registerPantrySnapshotListener,
   syncNow,
   syncVerifiedSession,
   listenForReconnect,
@@ -55,11 +61,15 @@ const sampleMutation = (mutationId = 'mutation-1', clientUpdatedAt = '2026-09-12
 
 const responseFor = (body: SyncChangeSet) => new Response(JSON.stringify(body), { status: 200 });
 import { getActiveDataScope, getPersonalDataScope, setActiveDataScope, setPersonalDataScope } from './scopeContext';
+import { isScopeWritable, trackScopedWrite } from './scopeWriteFence';
 
 const accountScope = getAccountSyncScope(session.userId);
 describe('sync queue', () => {
   beforeEach(async () => {
     await deleteLocalDatabase();
+    window.localStorage.clear();
+    setActiveDataScope('guest');
+    setPersonalDataScope('guest');
   });
 
   it('isolates queue reads and deletes by guest and account scope', async () => {
@@ -218,17 +228,23 @@ describe('sync queue', () => {
     expect(requestB).toHaveBeenCalledOnce();
   });
 
-  it('stores a separate cursor for each house while keeping the account high-water mark', async () => {
+  it('keeps house and account cursors independent across joining and leaving', async () => {
     const houseScope = 'house:cursor-house' as const;
+    const accountRequest = vi.fn().mockResolvedValue({ changes: [], nextCursor: 7 });
+    await syncNow({ session, request: accountRequest });
     setActiveDataScope(houseScope);
     setPersonalDataScope(accountScope);
-    const request = vi.fn().mockResolvedValue({ changes: [], nextCursor: 12 });
+    const houseRequest = vi.fn().mockResolvedValue({ changes: [], nextCursor: 12 });
 
-    await syncNow({ session, request });
+    await syncNow({ session, request: houseRequest });
 
     await expect(readSyncCursor(houseScope)).resolves.toBe(12);
-    await expect(readSyncCursor(accountScope)).resolves.toBe(12);
-    setActiveDataScope('guest');
+    await expect(readSyncCursor(accountScope)).resolves.toBe(7);
+    setActiveDataScope(accountScope);
+    const afterLeave = vi.fn().mockResolvedValue({ changes: [], nextCursor: 8 });
+    await syncNow({ session, request: afterLeave });
+    expect(afterLeave.mock.calls[0]?.[1]).toMatchObject({ body: expect.objectContaining({ cursor: 7, syncScope: accountScope }) });
+    await expect(readSyncCursor(accountScope)).resolves.toBe(8);
   });
   it('shares one in-flight request for concurrent syncs of the same account', async () => {
     let resolveRequest: ((value: SyncChangeSet) => void) | undefined;
@@ -243,6 +259,23 @@ describe('sync queue', () => {
     await vi.waitFor(() => expect(requestMock).toHaveBeenCalledOnce());
     resolveRequest?.({ changes: [], nextCursor: 4 });
     await Promise.all([first, second]);
+  });
+
+  it('does not reuse an in-flight sync after the same account changes session', async () => {
+    let currentToken = session.csrfToken;
+    let resolveOld: ((value: SyncChangeSet) => void) | undefined;
+    const oldRequest = vi.fn(async () => new Promise<SyncChangeSet>((resolve) => { resolveOld = resolve; }));
+    const oldSync = syncNow({ session, request: oldRequest as ApiRequest, isSessionCurrent: () => currentToken === session.csrfToken });
+    await vi.waitFor(() => expect(oldRequest).toHaveBeenCalledOnce());
+    currentToken = 'new-session-token';
+    const freshSession = { ...session, csrfToken: currentToken };
+    const freshRequest = vi.fn(async () => ({ changes: [], nextCursor: 1 }));
+    const freshSync = syncNow({ session: freshSession, request: freshRequest as ApiRequest, isSessionCurrent: () => currentToken === freshSession.csrfToken });
+    await vi.waitFor(() => expect(freshRequest).toHaveBeenCalledOnce());
+    resolveOld?.({ changes: [], nextCursor: 2 });
+    await expect(oldSync).rejects.toMatchObject({ code: 'session_changed' });
+    await expect(freshSync).resolves.toMatchObject({ complete: true });
+    await expect(readSyncCursor(accountScope)).resolves.toBe(1);
   });
 
   it('runs concurrent syncs for different accounts without sharing responses', async () => {
@@ -395,6 +428,83 @@ describe('sync queue', () => {
     });
   });
 
+  it('blocks House access as soon as an authoritative departure starts draining writes', async () => {
+    const houseScope = 'house:departure-in-flight' as const;
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    let releaseWrite: (() => void) | undefined;
+    const heldWrite = new Promise<void>((resolve) => { releaseWrite = resolve; });
+    const pending = trackScopedWrite(houseScope, () => heldWrite);
+    const request = vi.fn().mockResolvedValue(null) as ApiRequest;
+    try {
+      const initialization = initializeSessionScope(session, request);
+      await vi.waitFor(() => expect(isScopeWritable(houseScope)).toBe(false));
+      // The personal scope must not activate before the departed House is purged.
+      expect(getActiveDataScope()).toBe(houseScope);
+      releaseWrite?.();
+      await initialization;
+      expect(getActiveDataScope()).toBe(accountScope);
+    } finally {
+      releaseWrite?.();
+      await pending;
+      setActiveDataScope('guest');
+    }
+  });
+
+  it('retries an incomplete House purge before reactivating the same membership', async () => {
+    const houseScope = 'house:failed-departure' as const;
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    await enqueueMutation(houseScope, sampleMutation('obsolete-house-write'));
+    await writeMeta(`syncCursor:${houseScope}`, 7);
+    const failure = new Error('IndexedDB delete failed');
+    const deletion = vi.spyOn(indexedDb, 'deleteKeyValue').mockRejectedValue(failure);
+    try {
+      await expect(initializeSessionScope(session, vi.fn().mockResolvedValue(null))).rejects.toThrow(failure);
+      expect(isScopeWritable(houseScope)).toBe(false);
+      await expect(readQueuedMutations(houseScope)).resolves.toHaveLength(1);
+      await expect(readSyncCursor(houseScope)).resolves.toBe(7);
+    } finally {
+      deletion.mockRestore();
+    }
+    expect(window.localStorage.getItem(`ikuck:pending-house-purge:${houseScope}`)).toBe('1');
+    // A later authoritative membership must not reactivate the old queue.
+    setActiveDataScope(accountScope);
+    const state = {
+      house: { id: 'failed-departure', name: 'Casa', createdAt: '2026-09-30T10:00:00.000Z' },
+      membership: { role: 'member' as const, joinedAt: '2026-09-30T10:00:00.000Z' }, members: [],
+    };
+    await initializeSessionScope(session, vi.fn().mockResolvedValue(state));
+    await expect(readQueuedMutations(houseScope)).resolves.toEqual([]);
+    await expect(readSyncCursor(houseScope)).resolves.toBe(0);
+    expect(getActiveDataScope()).toBe(houseScope);
+  });
+
+  it('keeps a revoked House hidden and its queue fenced when purge fails after a membership error', async () => {
+    const houseScope = 'house:failed-sync-revocation' as const;
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    await enqueueMutation(houseScope, sampleMutation('unsent-revoked-write'));
+    await writeMeta(`syncCursor:${houseScope}`, 9);
+    const deletion = vi.spyOn(indexedDb, 'deleteKeyValue').mockRejectedValue(new Error('persistent delete failure'));
+    const onMembershipLost = vi.fn();
+    const request = vi.fn().mockRejectedValue(new ApiClientError(403, 'house_membership_required', 'Membership ended'));
+    try {
+      await expect(syncVerifiedSession(session, { request, onMembershipLost })).resolves.toBeNull();
+      expect(getActiveDataScope()).toBe(houseScope);
+      expect(isScopeWritable(houseScope)).toBe(false);
+      expect(onMembershipLost).not.toHaveBeenCalled();
+      expect(getSyncStatus(accountScope)).toMatchObject({ state: 'error', error: expect.objectContaining({ message: 'persistent delete failure' }) });
+      await expect(readQueuedMutations(houseScope)).resolves.toHaveLength(1);
+    } finally {
+      deletion.mockRestore();
+    }
+    await initializeSessionScope(session, vi.fn().mockResolvedValue(null));
+    expect(getActiveDataScope()).toBe(accountScope);
+    await expect(readQueuedMutations(houseScope)).resolves.toEqual([]);
+    await expect(readSyncCursor(houseScope)).resolves.toBe(0);
+  });
+
   it('purges the stale house scope and switches to the account after membership loss during sync', async () => {
     const staleScope = 'house:removed-house' as const;
     setActiveDataScope(staleScope);
@@ -417,6 +527,56 @@ describe('sync queue', () => {
     await expect(readPantrySnapshot(staleScope)).resolves.toBeNull();
     await expect(readQueuedMutations(staleScope)).resolves.toEqual([]);
     await expect(readSyncCursor(staleScope)).resolves.toBe(0);
+  });
+
+  it('does not purge or switch the new account after an old session gets a late membership error', async () => {
+    const oldScope = 'house:old-session-home' as const;
+    const newScope = 'house:new-session-home' as const;
+    setActiveDataScope(oldScope);
+    setPersonalDataScope(accountScope);
+    await enqueueMutation(oldScope, sampleMutation('old-unsent'));
+    let rejectRequest: ((error: Error) => void) | undefined;
+    const request = vi.fn(() => new Promise<SyncChangeSet>((_resolve, reject) => { rejectRequest = reject; }));
+    let current = true;
+    const onMembershipLost = vi.fn();
+    const pending = syncVerifiedSession(session, {
+      request: request as unknown as ApiRequest,
+      isSessionCurrent: () => current,
+      onMembershipLost,
+    });
+    await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
+    current = false;
+    setActiveDataScope(newScope);
+    setPersonalDataScope('account:user-2');
+    rejectRequest?.(new ApiClientError(403, 'house_membership_required', 'Old session lost access'));
+
+    await expect(pending).resolves.toBeNull();
+    expect(getActiveDataScope()).toBe(newScope);
+    expect(getPersonalDataScope()).toBe('account:user-2');
+    expect(onMembershipLost).not.toHaveBeenCalled();
+    await expect(readQueuedMutations(oldScope)).resolves.toEqual([expect.objectContaining({ mutationId: 'old-unsent' })]);
+  });
+
+  it('does not revoke a shared scope for a late reconnect error from the previous session', async () => {
+    const houseScope = 'house:reconnect-session' as const;
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    await enqueueMutation(houseScope, sampleMutation('keep-house-mutation'));
+    let resolveRequest: ((response: Response) => void) | undefined;
+    const fetch = vi.fn(() => new Promise<Response>((resolve) => { resolveRequest = resolve; }));
+    vi.stubGlobal('fetch', fetch);
+    let currentSession = session;
+    const removeListener = listenForReconnect(() => currentSession);
+    try {
+      window.dispatchEvent(new Event('online'));
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+      currentSession = { ...session, userId: 'user-2', csrfToken: 'csrf-2' };
+      resolveRequest?.(new Response(JSON.stringify({ code: 'house_membership_required', message: 'Old account lost access' }), { status: 403 }));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      await expect(readQueuedMutations(houseScope)).resolves.toHaveLength(1);
+      expect(getActiveDataScope()).toBe(houseScope);
+      expect(getPersonalDataScope()).toBe(accountScope);
+    } finally { removeListener(); vi.unstubAllGlobals(); setActiveDataScope('guest'); }
   });
 
   it('syncs a verified session on reconnect and removes the listener', async () => {
@@ -457,6 +617,8 @@ describe('sync queue', () => {
   });
 
   it('drains multiple server change pages until the cursor is complete', async () => {
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
     const firstPage = Array.from({ length: 200 }, (_, index) => ({
       ...sampleMutation(`change-${index}`),
       entityType: 'staple_preference' as const,
@@ -594,6 +756,24 @@ describe('sync queue', () => {
     ]);
   });
 
+  it('keeps guest pantry private during House bootstrap until an explicit import', async () => {
+    const guestLot: PantryLot = {
+      id: 'private-guest-lot', ingredientId: 'pasta', label: 'Pasta ospite', known: true,
+      quantity: 200, unit: 'g', expiresAt: null,
+      createdAt: '2026-09-24T00:00:00.000Z', updatedAt: '2026-09-24T00:00:00.000Z',
+    };
+    await writePantrySnapshot({ pantryItems: [{ id: 'pasta', label: 'Pasta ospite', known: true }], stapleIds: [], pantryLots: [guestLot] }, GUEST_SYNC_SCOPE);
+    const houseState = { house: { id: 'private-house', name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' }, membership: { role: 'member' as const, joinedAt: '2026-09-24T00:00:00.000Z' }, members: [] };
+    const request = vi.fn().mockResolvedValue(houseState);
+
+    await initializeSessionScope(session, request);
+
+    expect(request).toHaveBeenCalledExactlyOnceWith('/v1/house');
+    expect(getActiveDataScope()).toBe('house:private-house');
+    await expect(readPantrySnapshot(GUEST_SYNC_SCOPE)).resolves.toMatchObject({ pantryLots: [guestLot] });
+    await expect(readPantrySnapshot('house:private-house')).resolves.toBeNull();
+  });
+
   it('activates the personal account scope and clears stale house state after access is lost', async () => {
     const staleScope = 'house:stale-house' as const;
     setActiveDataScope(staleScope);
@@ -613,6 +793,38 @@ describe('sync queue', () => {
     await expect(readPantrySnapshot(staleScope)).resolves.toBeNull();
     await expect(readQueuedMutations(staleScope)).resolves.toEqual([]);
     await expect(readSyncCursor(staleScope)).resolves.toBe(0);
+  });
+
+  it('preserves a known house and unsent offline changes when membership lookup fails', async () => {
+    const houseScope = 'house:known-home' as const;
+    setPersonalDataScope(accountScope);
+    setActiveDataScope(houseScope);
+    await writePantrySnapshot({ pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: [], pantryLots: [] }, houseScope);
+    await enqueueMutation(houseScope, sampleMutation('unsent-house-change'));
+    await writeMeta(`syncCursor:${houseScope}`, 7);
+    const request = vi.fn().mockRejectedValue(new ApiClientError(0, 'network_error', 'Offline'));
+
+    await expect(initializeSessionScope(session, request)).rejects.toMatchObject({ code: 'network_error' });
+
+    expect(getActiveDataScope()).toBe(houseScope);
+    expect(getPersonalDataScope()).toBe(accountScope);
+    await expect(readPantrySnapshot(houseScope)).resolves.toMatchObject({ pantryItems: [expect.objectContaining({ id: 'pasta' })] });
+    await expect(readQueuedMutations(houseScope)).resolves.toEqual([expect.objectContaining({ mutationId: 'unsent-house-change' })]);
+    await expect(readSyncCursor(houseScope)).resolves.toBe(7);
+  });
+
+  it('keeps another member’s house cache but never exposes it to a newly signed-in account offline', async () => {
+    const previousHouse = 'house:prior-user-home' as const;
+    setPersonalDataScope('account:prior-user');
+    setActiveDataScope(previousHouse);
+    await enqueueMutation(previousHouse, sampleMutation('unsent-prior-user-change'));
+    const request = vi.fn().mockRejectedValue(new ApiClientError(0, 'network_error', 'Offline'));
+
+    await expect(initializeSessionScope(session, request)).rejects.toMatchObject({ code: 'network_error' });
+
+    expect(getActiveDataScope()).toBe(accountScope);
+    expect(getPersonalDataScope()).toBe(accountScope);
+    await expect(readQueuedMutations(previousHouse)).resolves.toEqual([expect.objectContaining({ mutationId: 'unsent-prior-user-change' })]);
   });
 
   it('does not apply a cancelled session scope initialization after an await', async () => {
@@ -635,21 +847,208 @@ describe('sync queue', () => {
     expect(getPersonalDataScope()).toBe('account:new-user');
   });
 
-  it('activates the house scope after loading the authenticated house and merging guest data', async () => {
+  it('activates the house scope after loading authenticated membership without importing guest data', async () => {
     setActiveDataScope('house:stale-house');
-    const request = vi.fn()
-      .mockResolvedValueOnce({ house: { id: 'house-a', name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' }, membership: { role: 'member', joinedAt: '2026-09-24T00:00:00.000Z' }, members: [] })
-      .mockResolvedValueOnce({ summary: { addedLots: 0, mergedLots: 0, mergedGroups: 0, importedStaples: 0 } });
+    const request = vi.fn().mockResolvedValue({ house: { id: 'house-a', name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' }, membership: { role: 'member', joinedAt: '2026-09-24T00:00:00.000Z' }, members: [] });
 
     await initializeSessionScope(session, request);
 
-    expect(request).toHaveBeenNthCalledWith(1, '/v1/house');
-    expect(request).toHaveBeenNthCalledWith(2, '/v1/house/pantry/merge', expect.objectContaining({ method: 'POST' }));
+    expect(request).toHaveBeenCalledExactlyOnceWith('/v1/house');
     expect(getActiveDataScope()).toBe('house:house-a');
     expect(getPersonalDataScope()).toBe('account:user-1');
   });
 
-  it('relocates unsent functional mutations into the confirmed house without moving AI consent', async () => {
+  it('retains a confirmed house scope when obsolete account cache cleanup fails', async () => {
+    const accountScope = getAccountSyncScope(session.userId);
+    const houseScope = 'house:cache-failure' as const;
+    const clear = vi.spyOn(shoppingStorage, 'clearShoppingList').mockRejectedValueOnce(new Error('IndexedDB unavailable'));
+    await expect(initializeSessionScope(session, (async () => ({
+      house: { id: 'cache-failure', name: 'Casa', createdAt: '2026-09-24T10:00:00.000Z' },
+      membership: { role: 'member', joinedAt: '2026-09-24T10:00:00.000Z' },
+      members: [],
+    })) as ApiRequest)).rejects.toThrow('IndexedDB unavailable');
+    expect(getActiveDataScope()).toBe(houseScope);
+    expect(getPersonalDataScope()).toBe(accountScope);
+    clear.mockRestore();
+  });
+
+  it('does not resurrect account shopping snapshots from store-level writes delayed past house migration', async () => {
+    const houseScope = 'house:shopping-in-flight-migration' as const;
+    const originalWrite = shoppingStorage.writeShoppingList;
+    let releaseWrite: (() => void) | undefined;
+    let signalWrite: (() => void) | undefined;
+    const writeStarted = new Promise<void>((resolve) => { signalWrite = resolve; });
+    const paused = new Promise<void>((resolve) => { releaseWrite = resolve; });
+    const spy = vi.spyOn(shoppingStorage, 'writeShoppingList').mockImplementation(async (...args) => {
+      if (args[1] === accountScope) { signalWrite?.(); await paused; }
+      return originalWrite(...args);
+    });
+    setActiveDataScope(accountScope);
+    useShoppingListStore.setState({ hasHydrated: true, items: [] });
+    const itemId = useShoppingListStore.getState().addItem({
+      ingredientId: 'pasta', label: 'Pasta', quantity: 1, unit: 'pack', note: null,
+      purchased: false, sourceRecipeId: null,
+    });
+    expect(itemId).toBeTruthy();
+    let fallback: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await writeStarted;
+      const request = vi.fn().mockResolvedValue({
+        house: { id: 'shopping-in-flight-migration', name: 'Casa', createdAt: '2026-09-30T10:00:00.000Z' },
+        membership: { role: 'member', joinedAt: '2026-09-30T10:00:00.000Z' }, members: [],
+      }) as ApiRequest;
+      fallback = setTimeout(() => releaseWrite?.(), 150);
+      await initializeSessionScope(session, request);
+      await waitForPendingShoppingListWrites();
+      await expect(readShoppingList(accountScope)).resolves.toEqual([]);
+      await expect(readQueuedMutations(houseScope)).resolves.toEqual([]);
+      expect(request).toHaveBeenCalledWith('/v1/house/account-queue/import', expect.objectContaining({
+        body: { mutations: [expect.objectContaining({ entityType: 'shopping_list_item', entityId: itemId, syncScope: accountScope })] },
+      }));
+    } finally {
+      if (fallback !== undefined) clearTimeout(fallback);
+      releaseWrite?.();
+      await waitForPendingShoppingListWrites();
+      spy.mockRestore();
+      setActiveDataScope('guest');
+    }
+  });
+
+  it('imports a delayed diary mutation into the house instead of leaving it in the obsolete account queue', async () => {
+    const houseScope = 'house:diary-in-flight-migration' as const;
+    const key = `ikuck:${accountScope}:dinner-entries`;
+    const originalWrite = indexedDb.writeKeyValue;
+    let releaseWrite: (() => void) | undefined;
+    let signalWrite: (() => void) | undefined;
+    const writeStarted = new Promise<void>((resolve) => { signalWrite = resolve; });
+    const paused = new Promise<void>((resolve) => { releaseWrite = resolve; });
+    const spy = vi.spyOn(indexedDb, 'writeKeyValue').mockImplementation(async (target, value) => {
+      if (target === key) { signalWrite?.(); await paused; }
+      return originalWrite(target, value);
+    });
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
+    useAuthStore.setState({ user: { id: session.userId } as never });
+    useDinnerDiaryStore.setState({ hasHydrated: true, entries: [], recipes: [], drafts: [], error: null });
+    const entryId = useDinnerDiaryStore.getState().createEntry({ date: '2026-09-30', text: 'Cena', servings: 2, note: null });
+    expect(entryId).toBeTruthy();
+    let fallback: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await writeStarted;
+      const request = vi.fn().mockResolvedValue({
+        house: { id: 'diary-in-flight-migration', name: 'Casa', createdAt: '2026-09-30T10:00:00.000Z' },
+        membership: { role: 'member', joinedAt: '2026-09-30T10:00:00.000Z' }, members: [],
+      }) as ApiRequest;
+      fallback = setTimeout(() => releaseWrite?.(), 150);
+      await initializeSessionScope(session, request);
+      await waitForPendingDinnerDiaryWrites();
+      await expect(readQueuedMutations(accountScope)).resolves.toEqual([]);
+      await expect(readQueuedMutations(houseScope)).resolves.toEqual([]);
+      expect(request).toHaveBeenCalledWith('/v1/house/account-queue/import', expect.objectContaining({
+        body: { mutations: [expect.objectContaining({ entityType: 'dinner_entry', entityId: entryId, syncScope: accountScope })] },
+      }));
+      await expect(readDinnerEntries(accountScope)).resolves.toEqual([]);
+    } finally {
+      if (fallback !== undefined) clearTimeout(fallback);
+      releaseWrite?.();
+      await waitForPendingDinnerDiaryWrites();
+      spy.mockRestore();
+      useAuthStore.setState({ user: null });
+      setActiveDataScope('guest');
+    }
+  });
+
+  it('preserves personal local dinner drafts while clearing migrated account snapshots', async () => {
+    const houseScope = 'house:keep-private-drafts' as const;
+    const updatedAt = '2026-09-30T10:00:00.000Z';
+    const entry: DinnerEntry = {
+      id: 'account-dinner-with-draft', date: '2026-09-30', text: 'Pasta', servings: null,
+      note: null, recipes: [], authorId: session.userId, createdAt: updatedAt, updatedAt,
+    };
+    const draftSet = {
+      entryId: entry.id, entryUpdatedAt: updatedAt,
+      drafts: [{
+        draftId: 'draft-local-only', title: 'Pasta', description: '',
+        ingredients: [{ name: 'Pasta', amount: '', ingredientId: null, optional: false, provenance: 'provided' as const }],
+        steps: ['Cuoci la pasta'], servings: null, durationMinutes: null,
+        diets: null, allergens: null, suggestedFields: [],
+      }],
+    };
+    await writeDinnerEntries([entry], accountScope);
+    await writeDiaryDraftSets([draftSet], accountScope);
+    const request = vi.fn().mockResolvedValue({
+      house: { id: 'keep-private-drafts', name: 'Casa', createdAt: updatedAt },
+      membership: { role: 'member', joinedAt: updatedAt }, members: [],
+    }) as ApiRequest;
+    await initializeSessionScope(session, request);
+    await expect(readDinnerEntries(accountScope)).resolves.toEqual([]);
+    await expect(readDiaryDraftSets(accountScope)).resolves.toEqual([draftSet]);
+    await expect(readDiaryDraftSets(houseScope)).resolves.toEqual([]);
+  });
+
+  it('clears migrated account functional snapshots but preserves consent queue, cursor and guest data', async () => {
+    const houseScope = 'house:clean-migrated-account' as const;
+    const item: ShoppingListItem = {
+      id: 'account-shopping', ingredientId: 'pasta', label: 'Pasta', quantity: 1, unit: 'pack', note: null,
+      purchased: false, sourceRecipeId: null, createdAt: '2026-09-12T12:00:00.000Z', updatedAt: '2026-09-12T12:00:00.000Z',
+    };
+    const entry: DinnerEntry = { id: 'old-dinner', date: '2026-09-12', text: 'Vecchia cena', servings: null, note: null, recipes: [], authorId: session.userId, createdAt: item.createdAt, updatedAt: item.updatedAt };
+    await writePantrySnapshot({ pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: [], pantryLots: [] }, accountScope);
+    await writeShoppingList([item], accountScope);
+    await writeDinnerEntries([entry], accountScope);
+    await writeDietProfile({ diet: 'vegan', excludedAllergens: ['milk'], nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null }, updatedAt: item.updatedAt }, accountScope);
+    await writeShoppingList([item], GUEST_SYNC_SCOPE);
+    await writeMeta(`syncCursor:${accountScope}`, 7);
+    await enqueueMutation(accountScope, { ...sampleMutation('personal-consent'), entityType: 'ai_consent', entityId: 'profile', payload: { enabled: true, updatedAt: item.updatedAt } });
+    setActiveDataScope(accountScope);
+    const state = { house: { id: 'clean-migrated-account', name: 'Casa', createdAt: item.createdAt }, membership: { role: 'member' as const, joinedAt: item.createdAt }, members: [] };
+    await initializeSessionScope(session, vi.fn().mockResolvedValue(state));
+
+    await expect(readPantrySnapshot(accountScope)).resolves.toBeNull();
+    await expect(readShoppingList(accountScope)).resolves.toEqual([]);
+    await expect(readDinnerEntries(accountScope)).resolves.toEqual([]);
+    await expect(readDietProfile(accountScope)).resolves.toMatchObject({ diet: 'omnivore', excludedAllergens: [] });
+    await expect(readShoppingList(GUEST_SYNC_SCOPE)).resolves.toEqual([item]);
+    await expect(readSyncCursor(accountScope)).resolves.toBe(7);
+    await expect(readQueuedMutations(accountScope)).resolves.toEqual([expect.objectContaining({ entityType: 'ai_consent' })]);
+    expect(getActiveDataScope()).toBe(houseScope);
+  });
+
+  it('retries a failed account-queue import without acknowledging mutations before server success', async () => {
+    const houseScope = 'house:retry-account-queue' as const;
+    setActiveDataScope(accountScope);
+    const shoppingItem: ShoppingListItem = {
+      id: 'retry-shopping', ingredientId: 'pasta', label: 'Pasta', quantity: 1, unit: 'pack', note: null,
+      purchased: false, sourceRecipeId: null, createdAt: '2026-09-12T12:00:00.000Z', updatedAt: '2026-09-12T12:00:00.000Z',
+    };
+    await enqueueMutation(accountScope, {
+      ...sampleMutation('retry-pending-shopping'), entityType: 'shopping_list_item', entityId: shoppingItem.id, payload: shoppingItem,
+    });
+    const houseState = {
+      house: { id: 'retry-account-queue', name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' },
+      membership: { role: 'member' as const, joinedAt: '2026-09-24T00:00:00.000Z' }, members: [],
+    };
+    const failure = new Error('temporary import failure');
+    const requestMock = vi.fn()
+      .mockResolvedValueOnce(houseState)
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValueOnce(houseState)
+      .mockResolvedValueOnce(undefined);
+    const request = requestMock as ApiRequest;
+
+    await expect(initializeSessionScope(session, request)).rejects.toThrow(failure);
+    await expect(readQueuedMutations(accountScope)).resolves.toEqual([
+      expect.objectContaining({ mutationId: 'retry-pending-shopping', entityType: 'shopping_list_item' }),
+    ]);
+    expect(getActiveDataScope()).toBe(houseScope);
+
+    await expect(initializeSessionScope(session, request)).resolves.toMatchObject({ state: houseState });
+    await expect(readQueuedMutations(accountScope)).resolves.toEqual([]);
+    await expect(readQueuedMutations(houseScope)).resolves.toEqual([]);
+    expect(requestMock.mock.calls.filter(([path]) => path === '/v1/house/account-queue/import')).toHaveLength(2);
+  });
+
+  it('imports unsent account mutations through the semantic House migration while keeping AI consent personal', async () => {
     const houseScope = 'house:queued-home' as const;
     setActiveDataScope(accountScope);
     const shoppingItem: ShoppingListItem = {
@@ -659,24 +1058,25 @@ describe('sync queue', () => {
     await enqueueMutation(accountScope, { ...sampleMutation('pending-shopping'), entityType: 'shopping_list_item', entityId: shoppingItem.id, payload: shoppingItem });
     await enqueueMutation(accountScope, { ...sampleMutation('pending-consent'), entityType: 'ai_consent', entityId: 'profile', payload: { enabled: true, updatedAt: '2026-09-12T12:00:00.000Z' } });
     const houseState = { house: { id: 'queued-home', name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' }, membership: { role: 'member' as const, joinedAt: '2026-09-24T00:00:00.000Z' }, members: [] };
-    const request = vi.fn()
-      .mockResolvedValueOnce(houseState)
-      .mockResolvedValueOnce({ summary: { addedLots: 0, mergedLots: 0, mergedGroups: 0, importedStaples: 0 } });
+    const request = vi.fn(async (path: string, options?: { method?: string; body?: unknown }) => {
+      void options;
+      return path === '/v1/house' ? houseState : undefined;
+    });
+    await initializeSessionScope(session, request as ApiRequest);
+    await initializeSessionScope(session, request as ApiRequest);
 
-    await initializeSessionScope(session, request);
-    await initializeSessionScope(session, vi.fn()
-      .mockResolvedValueOnce(houseState)
-      .mockResolvedValueOnce({ summary: { addedLots: 0, mergedLots: 0, mergedGroups: 0, importedStaples: 0 } }));
-
-    await expect(readQueuedMutations(houseScope)).resolves.toEqual([
-      expect.objectContaining({ mutationId: 'pending-shopping', entityType: 'shopping_list_item', syncScope: houseScope }),
-    ]);
+    const imported = request.mock.calls.filter(([path]) => path === '/v1/house/account-queue/import');
+    expect(imported).toHaveLength(1);
+    expect(imported[0]?.[1]).toMatchObject({ method: 'POST', body: { mutations: [
+      expect.objectContaining({ mutationId: 'pending-shopping', entityType: 'shopping_list_item', syncScope: accountScope }),
+    ] } });
+    await expect(readQueuedMutations(houseScope)).resolves.toEqual([]);
     await expect(readQueuedMutations(accountScope)).resolves.toEqual([
       expect.objectContaining({ mutationId: 'pending-consent', entityType: 'ai_consent', syncScope: accountScope }),
     ]);
   });
 
-  it('keeps the house scope active and preserves guest pantry data when its merge fails', async () => {
+  it('preserves guest pantry and its queue when House bootstrap succeeds without a merge', async () => {
     setActiveDataScope(accountScope);
     setPersonalDataScope(accountScope);
     await writePantrySnapshot({
@@ -690,13 +1090,12 @@ describe('sync queue', () => {
       membership: { role: 'member' as const, joinedAt: '2026-09-24T00:00:00.000Z' },
       members: [],
     };
-    const request = vi.fn()
-      .mockResolvedValueOnce(houseState)
-      .mockRejectedValueOnce(new ApiClientError(400, 'invalid_payload', 'Request payload is invalid'));
+    const request = vi.fn().mockResolvedValue(houseState);
 
     const initialization = await initializeSessionScope(session, request);
 
-    expect(initialization).toMatchObject({ state: houseState, mergeSummary: null, guestMergeFailed: true });
+    expect(initialization).toMatchObject({ state: houseState, mergeSummary: null, guestMergeFailed: false });
+    expect(request).toHaveBeenCalledExactlyOnceWith('/v1/house');
     expect(getActiveDataScope()).toBe('house:house-a');
     expect(getPersonalDataScope()).toBe(accountScope);
     await expect(readPantrySnapshot(GUEST_SYNC_SCOPE)).resolves.toMatchObject({
@@ -752,12 +1151,176 @@ describe('sync queue', () => {
     ]);
   });
 
+  it('cancels an explicit guest import when the authenticated session changes before a guest read completes', async () => {
+    const houseScope = 'house:import-session-race' as const;
+    const guestItem: ShoppingListItem = {
+      id: 'guest-session-item', ingredientId: 'pasta', label: 'Pasta ospite', quantity: 1, unit: 'pack', note: null,
+      purchased: false, sourceRecipeId: null, createdAt: '2026-09-13T10:00:00.000Z', updatedAt: '2026-09-13T10:00:00.000Z',
+    };
+    await writeShoppingList([guestItem], GUEST_SYNC_SCOPE);
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    let releaseRead: (() => void) | undefined;
+    let signalRead: (() => void) | undefined;
+    const readStarted = new Promise<void>((resolve) => { signalRead = resolve; });
+    const heldRead = new Promise<void>((resolve) => { releaseRead = resolve; });
+    const actualRead = indexedDb.readKeyValue;
+    const readSpy = vi.spyOn(indexedDb, 'readKeyValue').mockImplementation(async (key) => {
+      if (key === 'shopping-list') {
+        signalRead?.();
+        await heldRead;
+      }
+      return actualRead(key);
+    });
+    const request = vi.fn().mockResolvedValue(responseFor({ changes: [], nextCursor: 0 }));
+    vi.stubGlobal('fetch', request);
+    let currentSession = true;
+    try {
+      const importing = importLocalData(session, () => currentSession);
+      const assertion = expect(importing).rejects.toMatchObject({ code: 'session_changed' });
+      await readStarted;
+      currentSession = false;
+      releaseRead?.();
+      await assertion;
+      await expect(readQueuedMutations(houseScope)).resolves.toEqual([]);
+      await expect(readShoppingList(GUEST_SYNC_SCOPE)).resolves.toEqual([guestItem]);
+      expect(request).not.toHaveBeenCalled();
+    } finally {
+      releaseRead?.();
+      readSpy.mockRestore();
+      vi.unstubAllGlobals();
+      setActiveDataScope('guest');
+    }
+  });
+
+  it('imports guest functional records into an active house, never a stale account or existing house snapshot', async () => {
+    const houseScope = 'house:import-home' as const;
+    const guestItem: ShoppingListItem = {
+      id: 'guest-shopping', ingredientId: 'pasta', label: 'Pasta ospite', quantity: 1, unit: 'pack', note: null,
+      purchased: false, sourceRecipeId: null, createdAt: '2026-09-13T10:00:00.000Z', updatedAt: '2026-09-13T10:00:00.000Z',
+    };
+    await writeShoppingList([guestItem], GUEST_SYNC_SCOPE);
+    await writeShoppingList([{ ...guestItem, id: 'already-shared' }], houseScope);
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    const fetch = vi.fn().mockResolvedValue(responseFor({ changes: [], nextCursor: 0 }));
+    vi.stubGlobal('fetch', fetch);
+
+    await importLocalData(session, () => true);
+
+    const requests = fetch.mock.calls.map(([, init]) => JSON.parse((init as RequestInit).body as string) as {
+      syncScope: string; mutations: Array<{ syncScope: string; entityType: string; entityId: string }>;
+    });
+    const mutations = requests.flatMap((request) => request.mutations);
+    expect(mutations).toContainEqual(expect.objectContaining({ entityType: 'shopping_list_item', entityId: guestItem.id, syncScope: houseScope }));
+    expect(mutations).not.toContainEqual(expect.objectContaining({ entityId: 'already-shared' }));
+    expect(mutations).not.toContainEqual(expect.objectContaining({ syncScope: accountScope }));
+    expect(mutations).not.toContainEqual(expect.objectContaining({ entityType: 'diet_profile' }));
+    expect(requests.every((request) => request.syncScope === houseScope)).toBe(true);
+    await expect(readShoppingList(GUEST_SYNC_SCOPE)).resolves.toEqual([guestItem]);
+    await expect(readQueuedMutations(accountScope)).resolves.toEqual([]);
+    vi.unstubAllGlobals();
+  });
+
+  it('imports a guest diet profile conservatively through the House import endpoint, not sync LWW', async () => {
+    const houseScope = 'house:guest-diet-import' as const;
+    const profile: DietProfile = {
+      diet: 'omnivore',
+      excludedAllergens: [],
+      nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null },
+      updatedAt: '2026-09-13T10:00:00.000Z',
+    };
+    await writeDietProfile(profile, GUEST_SYNC_SCOPE);
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (input === '/v1/house/diet-profile/import') return new Response(null, { status: 204 });
+      void init;
+      return responseFor({ changes: [], nextCursor: 0 });
+    });
+    vi.stubGlobal('fetch', fetch);
+
+    await importLocalData(session, () => true);
+
+    const guestDietImports = fetch.mock.calls.filter(([input]) => input === '/v1/house/diet-profile/import');
+    expect(guestDietImports).toHaveLength(1);
+    expect(JSON.parse(guestDietImports[0]?.[1]?.body as string)).toMatchObject({
+      mutation: { entityType: 'diet_profile', entityId: 'profile', operation: 'upsert', payload: profile },
+    });
+    const syncMutations = fetch.mock.calls.filter(([input]) => input === '/v1/sync').flatMap(([, init]) =>
+      (JSON.parse((init as RequestInit).body as string) as { mutations: SyncMutation[] }).mutations);
+    expect(syncMutations).not.toContainEqual(expect.objectContaining({ entityType: 'diet_profile' }));
+    await expect(readDietProfile(GUEST_SYNC_SCOPE)).resolves.toEqual(profile);
+    vi.unstubAllGlobals();
+  });
+
+  it('imports guest dinner entries and saved recipes into the active house', async () => {
+    const houseScope = 'house:diary-import' as const;
+    const entry: DinnerEntry = {
+      id: 'guest-entry', date: '2026-09-12', text: 'Cena ospite', servings: 2, note: null, recipes: [],
+      authorId: session.userId, createdAt: '2026-09-12T12:00:00.000Z', updatedAt: '2026-09-12T12:00:00.000Z',
+    };
+    const recipe: SavedRecipe = {
+      id: 'guest-recipe', title: 'Pasta', description: '',
+      ingredients: [{ name: 'Pasta', amount: '200 g', ingredientId: null, optional: false, provenance: 'provided' }],
+      steps: ['Cuocere'], servings: 2, durationMinutes: null, diets: null, allergens: null, suggestedFields: [],
+      source: 'diary', authorId: session.userId, createdAt: entry.createdAt, updatedAt: entry.updatedAt,
+    };
+    await writeDinnerEntries([entry], GUEST_SYNC_SCOPE);
+    await writeSavedRecipes([recipe], GUEST_SYNC_SCOPE);
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    const fetch = vi.fn().mockResolvedValue(responseFor({ changes: [], nextCursor: 0 }));
+    vi.stubGlobal('fetch', fetch);
+
+    await importLocalData(session, () => true);
+
+    const mutations = fetch.mock.calls.flatMap(([, init]) =>
+      (JSON.parse((init as RequestInit).body as string) as { mutations: Array<{ entityType: string; entityId: string; syncScope: string }> }).mutations);
+    expect(mutations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ entityType: 'dinner_entry', entityId: entry.id, syncScope: houseScope }),
+      expect.objectContaining({ entityType: 'saved_recipe', entityId: recipe.id, syncScope: houseScope }),
+    ]));
+    await expect(readDinnerEntries(GUEST_SYNC_SCOPE)).resolves.toEqual([entry]);
+    vi.unstubAllGlobals();
+  });
+
+  it('merges guest pantry semantically rather than uploading lot upserts into an active house', async () => {
+    const houseScope = 'house:pantry-import' as const;
+    const guestLot: PantryLot = {
+      id: 'guest-lot', ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 100, unit: 'g', expiresAt: null,
+      createdAt: '2026-09-13T10:00:00.000Z', updatedAt: '2026-09-13T10:00:00.000Z',
+    };
+    await writePantrySnapshot({ pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: [], pantryLots: [guestLot] }, GUEST_SYNC_SCOPE);
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (input === '/v1/house/pantry/merge') {
+        return responseFor({ summary: { addedLots: 1, mergedLots: 0, mergedGroups: 0, importedStaples: 0 } } as never);
+      }
+      void init;
+      return responseFor({ changes: [], nextCursor: 0 });
+    });
+    vi.stubGlobal('fetch', fetch);
+
+    await importLocalData(session, () => true);
+
+    expect(fetch.mock.calls.some(([input]) => input === '/v1/house/pantry/merge')).toBe(true);
+    const syncBodies = fetch.mock.calls.filter(([input]) => input === '/v1/sync').map(([, init]) =>
+      JSON.parse((init as RequestInit).body as string) as { mutations: Array<{ entityType: string }> });
+    expect(syncBodies.flatMap((body) => body.mutations).some((mutation) => mutation.entityType === 'pantry_lot')).toBe(false);
+    await expect(readPantrySnapshot(GUEST_SYNC_SCOPE)).resolves.toBeNull();
+    vi.unstubAllGlobals();
+  });
+
   it('imports pantry data into the account scope without deleting the guest data', async () => {
     await writePantrySnapshot({
       pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
       stapleIds: ['salt'],
       pantryLots: [],
-    });
+    }, GUEST_SYNC_SCOPE);
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
     const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       void input;
       void init;
@@ -765,15 +1328,15 @@ describe('sync queue', () => {
     });
     vi.stubGlobal('fetch', fetch);
 
-    await importLocalData(session);
+    await importLocalData(session, () => true);
 
     const body = JSON.parse(fetch.mock.calls[0]?.[1]?.body as string) as { mutations: Array<{ entityType: string; entityId: string }> };
     expect(body.mutations).toEqual(expect.arrayContaining([
       expect.objectContaining({ entityType: 'pantry_lot', entityId: 'pasta' }),
       expect.objectContaining({ entityType: 'staple_preference', entityId: 'salt' }),
-      expect.objectContaining({ entityType: 'diet_profile', entityId: 'profile' }),
     ]));
-    await expect(readPantrySnapshot()).resolves.toMatchObject({
+    expect(body.mutations).not.toContainEqual(expect.objectContaining({ entityType: 'diet_profile' }));
+    await expect(readPantrySnapshot(GUEST_SYNC_SCOPE)).resolves.toMatchObject({
       pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
     });
     await expect(readQueuedMutations(GUEST_SYNC_SCOPE)).resolves.toEqual([]);
@@ -785,7 +1348,9 @@ describe('sync queue', () => {
       pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
       stapleIds: [],
       pantryLots: [],
-    });
+    }, GUEST_SYNC_SCOPE);
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
     const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       void input;
       void init;
@@ -793,14 +1358,46 @@ describe('sync queue', () => {
     });
     vi.stubGlobal('fetch', fetch);
 
-    await importLocalData(session);
-    await importLocalData(session);
+    await importLocalData(session, () => true);
+    await importLocalData(session, () => true);
 
     const mutationIds = fetch.mock.calls.map(([, init]) => {
       const body = JSON.parse((init as RequestInit).body as string) as { mutations: Array<{ mutationId: string }> };
       return body.mutations.map((mutation) => mutation.mutationId);
     });
     expect(new Set(mutationIds[0])).toEqual(new Set(mutationIds[1]));
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps guest import ids stable for a retry but assigns a new id to an edited revision', async () => {
+    const makeItem = (quantity: number, updatedAt: string): ShoppingListItem => ({
+      id: 'reimport-shopping', ingredientId: 'pasta', label: 'Pasta', quantity, unit: 'g', note: null,
+      purchased: false, sourceRecipeId: null, createdAt: '2026-09-13T10:00:00.000Z', updatedAt,
+    });
+    const firstRevision = makeItem(1000, '2026-09-13T10:00:00.000Z');
+    await writeShoppingList([firstRevision], GUEST_SYNC_SCOPE);
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
+    const fetch = vi.fn().mockImplementation(() => responseFor({ changes: [], nextCursor: 0 }));
+    vi.stubGlobal('fetch', fetch);
+
+    await importLocalData(session, () => true);
+    await importLocalData(session, () => true);
+    const revisedItem = makeItem(2000, '2026-09-13T10:01:00.000Z');
+    await writeShoppingList([revisedItem], GUEST_SYNC_SCOPE);
+    await importLocalData(session, () => true);
+
+    const imports = fetch.mock.calls.flatMap(([input, init]) => input === '/v1/sync'
+      ? (JSON.parse((init as RequestInit).body as string) as { mutations: SyncMutation[] }).mutations
+        .filter((mutation) => mutation.entityType === 'shopping_list_item')
+      : []);
+    expect(imports).toHaveLength(3);
+    expect(imports[0]?.mutationId).toBe(imports[1]?.mutationId);
+    expect(imports[2]?.mutationId).not.toBe(imports[1]?.mutationId);
+    expect(imports[2]?.payload).toMatchObject({ quantity: 2000 });
+    const ledger = await readMeta<Record<string, { fingerprint: string; mutationId: string }>>(`importMutationIds:${accountScope}`);
+    expect(Object.values(ledger ?? {})).toHaveLength(1);
+    expect(Object.values(ledger ?? {})[0]?.fingerprint).toMatch(/^[0-9a-f]{64}$/);
     vi.unstubAllGlobals();
   });
 
@@ -842,7 +1439,124 @@ describe('sync queue', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('discards a house response when the account changes during IndexedDB snapshot hydration', async () => {
+    const oldScope = 'house:stale-response' as const;
+    setActiveDataScope(oldScope);
+    setPersonalDataScope(accountScope);
+    let resumeRead: (() => void) | undefined;
+    let signalRead: (() => void) | undefined;
+    const readBlocked = new Promise<void>((resolve) => { signalRead = resolve; });
+    const resume = new Promise<void>((resolve) => { resumeRead = resolve; });
+    const actualRead = indexedDb.readKeyValue;
+    const readSpy = vi.spyOn(indexedDb, 'readKeyValue').mockImplementation(async (key) => {
+      if (key === 'ikuck:house:stale-response:pantry') {
+        signalRead?.();
+        await resume;
+      }
+      return actualRead(key);
+    });
+    const listener = vi.fn();
+    const unsubscribe = registerPantrySnapshotListener(listener);
+    const change = { ...sampleMutation('old-house-change'), syncScope: oldScope, serverSequence: 1 };
+    const request = vi.fn().mockResolvedValue({ changes: [change], nextCursor: 1 });
+
+    try {
+      const synchronizing = syncNow({ session, request });
+      await readBlocked;
+      setActiveDataScope('account:new-person');
+      setPersonalDataScope('account:new-person');
+      resumeRead?.();
+      await expect(synchronizing).rejects.toMatchObject({ code: 'scope_changed' });
+      expect(listener).not.toHaveBeenCalled();
+      await expect(readPantrySnapshot(oldScope)).resolves.toBeNull();
+      await expect(readSyncCursor(oldScope)).resolves.toBe(0);
+    } finally {
+      resumeRead?.();
+      unsubscribe();
+      readSpy.mockRestore();
+    }
+  });
+
+  it('does not resurrect a house sync cursor when purge overlaps its IndexedDB write', async () => {
+    const houseScope = 'house:revoked-during-cursor' as const;
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    const key = `syncCursor:${houseScope}`;
+    let releaseWrite: (() => void) | undefined;
+    let signalWrite: (() => void) | undefined;
+    const writeStarted = new Promise<void>((resolve) => { signalWrite = resolve; });
+    const resume = new Promise<void>((resolve) => { releaseWrite = resolve; });
+    const actualWrite = indexedDb.writeMeta;
+    const actualDelete = indexedDb.deleteMeta;
+    const writeSpy = vi.spyOn(indexedDb, 'writeMeta').mockImplementation(async (target, value) => {
+      if (target === key) { signalWrite?.(); await resume; }
+      return actualWrite(target, value);
+    });
+    const deleteSpy = vi.spyOn(indexedDb, 'deleteMeta').mockImplementation(async (target) => {
+      await actualDelete(target);
+      if (target === key) releaseWrite?.();
+    });
+    let fallback: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const synchronizing = syncNow({ session, request: vi.fn().mockResolvedValue({ changes: [], nextCursor: 7 }) });
+      const rejected = expect(synchronizing).rejects.toMatchObject({ code: 'scope_changed' });
+      await writeStarted;
+      setActiveDataScope(accountScope);
+      const purging = clearDataScope(houseScope);
+      fallback = setTimeout(() => releaseWrite?.(), 200);
+      await Promise.all([rejected, purging]);
+      await expect(readSyncCursor(houseScope)).resolves.toBe(0);
+    } finally {
+      if (fallback !== undefined) clearTimeout(fallback);
+      releaseWrite?.();
+      writeSpy.mockRestore();
+      deleteSpy.mockRestore();
+    }
+  });
+
+  it('does not resurrect a revoked house snapshot when purge races an IndexedDB sync write', async () => {
+    const oldScope = 'house:revoked-during-write' as const;
+    setActiveDataScope(oldScope);
+    setPersonalDataScope(accountScope);
+    let releaseWrite: (() => void) | undefined;
+    let signalWrite: (() => void) | undefined;
+    const writeStarted = new Promise<void>((resolve) => { signalWrite = resolve; });
+    const resume = new Promise<void>((resolve) => { releaseWrite = resolve; });
+    const actualWrite = indexedDb.writeKeyValue;
+    const writeSpy = vi.spyOn(indexedDb, 'writeKeyValue').mockImplementation(async (key, value) => {
+      if (key === 'ikuck:house:revoked-during-write:pantry') {
+        signalWrite?.();
+        await resume;
+      }
+      return actualWrite(key, value);
+    });
+    const listener = vi.fn();
+    const unsubscribe = registerPantrySnapshotListener(listener);
+    const request = vi.fn().mockResolvedValue({
+      changes: [{ ...sampleMutation('revoked-change'), syncScope: oldScope, serverSequence: 1 }], nextCursor: 1,
+    });
+
+    try {
+      const synchronizing = syncNow({ session, request });
+      const assertion = expect(synchronizing).rejects.toMatchObject({ code: 'scope_changed' });
+      await writeStarted;
+      setActiveDataScope('account:next-person');
+      const purging = clearDataScope(oldScope);
+      releaseWrite?.();
+      await Promise.all([assertion, purging]);
+      expect(listener).not.toHaveBeenCalled();
+      await expect(readPantrySnapshot(oldScope)).resolves.toBeNull();
+      await expect(readSyncCursor(oldScope)).resolves.toBe(0);
+    } finally {
+      releaseWrite?.();
+      unsubscribe();
+      writeSpy.mockRestore();
+    }
+  });
+
   it('removes sent mutations, applies server changes and advances the cursor', async () => {
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
     await enqueueMutation(accountScope, sampleMutation());
     const fetch = vi.fn().mockResolvedValue(responseFor({
       changes: [{ ...sampleMutation(), serverSequence: 4 }],
@@ -1035,11 +1749,13 @@ describe('sync queue', () => {
       createdAt: '2026-09-13T10:00:00.000Z',
       updatedAt: '2026-09-13T10:00:00.000Z',
     };
-    await writeShoppingList([item]);
+    await writeShoppingList([item], GUEST_SYNC_SCOPE);
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
     const fetch = vi.fn().mockResolvedValue(responseFor({ changes: [], nextCursor: 0 }));
     vi.stubGlobal('fetch', fetch);
 
-    await importLocalData(session);
+    await importLocalData(session, () => true);
 
     expect(fetch).toHaveBeenCalledWith('/v1/sync', expect.objectContaining({
       body: expect.stringContaining('shopping_list_item'),
@@ -1066,12 +1782,14 @@ describe('sync queue', () => {
       createdAt: event.createdAt,
       updatedAt: event.updatedAt,
     };
-    await writeCookEvents([event]);
-    await writeRecipePreferences([preference]);
+    await writeCookEvents([event], GUEST_SYNC_SCOPE);
+    await writeRecipePreferences([preference], GUEST_SYNC_SCOPE);
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
     const fetch = vi.fn().mockResolvedValue(responseFor({ changes: [], nextCursor: 0 }));
     vi.stubGlobal('fetch', fetch);
 
-    await importLocalData(session);
+    await importLocalData(session, () => true);
 
     expect(fetch).toHaveBeenCalledWith('/v1/sync', expect.objectContaining({
       body: expect.stringContaining('cook_event'),
@@ -1146,11 +1864,13 @@ describe('sync queue', () => {
       nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: 20 },
       updatedAt: '2026-09-13T12:00:00.000Z',
     };
-    await writeDietProfile(profile);
+    await writeDietProfile(profile, GUEST_SYNC_SCOPE);
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
     const fetch = vi.fn().mockResolvedValue(responseFor({ changes: [], nextCursor: 0 }));
     vi.stubGlobal('fetch', fetch);
 
-    await importLocalData(session);
+    await importLocalData(session, () => true);
 
     expect(fetch).toHaveBeenCalledWith('/v1/sync', expect.objectContaining({ body: expect.stringContaining('diet_profile') }));
     vi.unstubAllGlobals();

@@ -14,7 +14,7 @@ export interface HouseUserRecord {
 export interface HouseRecord {
   id: string;
   name: string;
-  createdByUserId: string;
+  createdByUserId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

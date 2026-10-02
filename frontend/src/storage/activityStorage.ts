@@ -2,6 +2,7 @@ import type { CookEvent, RecipePreference } from '@ikuck/shared/contracts';
 import { isCookEvent, isRecipePreference } from '../domain/activity';
 import { deleteKeyValue, isIndexedDbAvailable, readKeyValue, writeKeyValue } from './indexedDb';
 import { getActiveDataScope, scopeStorageKey, type SyncScope } from '../sync/scopeContext';
+import { trackScopedWrite } from '../sync/scopeWriteFence';
 
 export const ACTIVITY_DATABASE_KEY = 'activity';
 export const PREFERENCES_DATABASE_KEY = 'recipe-preferences';
@@ -43,6 +44,21 @@ const serializeCollection = <T>(items: readonly T[], normalize: (values: readonl
   version: 1,
 });
 
+const writeCollection = (scope: SyncScope, databaseKey: string, storageKey: string, serialized: string): Promise<void> => (
+  trackScopedWrite(scope, async () => {
+    if (!isIndexedDbAvailable()) {
+      window.localStorage.setItem(scopedKey(storageKey, scope), serialized);
+      return;
+    }
+    try {
+      await writeKeyValue(scopedKey(databaseKey, scope), serialized);
+    } catch (error) {
+      window.localStorage.setItem(scopedKey(storageKey, scope), serialized);
+      throw error;
+    }
+  })
+);
+
 export async function readCookEvents(scope: SyncScope = getActiveDataScope()): Promise<CookEvent[]> {
   if (!isIndexedDbAvailable()) return parseCollection(window.localStorage.getItem(scopedKey(ACTIVITY_STORAGE_KEY, scope)), normalizeCookEvents);
   try {
@@ -53,17 +69,7 @@ export async function readCookEvents(scope: SyncScope = getActiveDataScope()): P
 }
 
 export async function writeCookEvents(events: readonly CookEvent[], scope: SyncScope = getActiveDataScope()): Promise<void> {
-  const serialized = serializeCollection(events, normalizeCookEvents);
-  if (!isIndexedDbAvailable()) {
-    window.localStorage.setItem(scopedKey(ACTIVITY_STORAGE_KEY, scope), serialized);
-    return;
-  }
-  try {
-    await writeKeyValue(scopedKey(ACTIVITY_DATABASE_KEY, scope), serialized);
-  } catch (error) {
-    window.localStorage.setItem(scopedKey(ACTIVITY_STORAGE_KEY, scope), serialized);
-    throw error;
-  }
+  return writeCollection(scope, ACTIVITY_DATABASE_KEY, ACTIVITY_STORAGE_KEY, serializeCollection(events, normalizeCookEvents));
 }
 
 export async function clearCookEvents(scope: SyncScope): Promise<void> {
@@ -81,17 +87,7 @@ export async function readRecipePreferences(scope: SyncScope = getActiveDataScop
 }
 
 export async function writeRecipePreferences(preferences: readonly RecipePreference[], scope: SyncScope = getActiveDataScope()): Promise<void> {
-  const serialized = serializeCollection(preferences, normalizeRecipePreferences);
-  if (!isIndexedDbAvailable()) {
-    window.localStorage.setItem(scopedKey(PREFERENCES_STORAGE_KEY, scope), serialized);
-    return;
-  }
-  try {
-    await writeKeyValue(scopedKey(PREFERENCES_DATABASE_KEY, scope), serialized);
-  } catch (error) {
-    window.localStorage.setItem(scopedKey(PREFERENCES_STORAGE_KEY, scope), serialized);
-    throw error;
-  }
+  return writeCollection(scope, PREFERENCES_DATABASE_KEY, PREFERENCES_STORAGE_KEY, serializeCollection(preferences, normalizeRecipePreferences));
 }
 
 export async function clearRecipePreferences(scope: SyncScope): Promise<void> {
