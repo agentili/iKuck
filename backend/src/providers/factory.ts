@@ -3,6 +3,7 @@ import { createResendEmailProvider } from './resend.js';
 import { createUsdaNutritionProvider } from './usda.js';
 import { createOpenAiRecipeProvider } from './openaiRecipes.js';
 import { createOpenAiDinnerReconstructionProvider } from './openaiDinnerReconstruction.js';
+import { createGeminiDinnerReconstructionProvider } from './geminiDinnerReconstruction.js';
 import { createGeminiRecipeProvider } from './geminiRecipes.js';
 import {
   createUnavailableEmailProvider,
@@ -55,13 +56,21 @@ export const createProviders = (
           timeoutMs: providers.openAiTimeoutMs,
         })
         : createUnavailableRecipeProvider(reasonFor(providers.openAiApiKey)),
-    dinnerReconstruction: providers.openAiApiKey !== undefined
-      ? createOpenAiDinnerReconstructionProvider({
-        apiKey: providers.openAiApiKey,
-        model: providers.openAiModel ?? 'gpt-5.5',
-        fetch: options.fetch,
-        timeoutMs: providers.openAiTimeoutMs,
-      })
-      : createUnavailableDinnerReconstructionProvider(reasonFor(providers.openAiApiKey)),
+    dinnerReconstruction: providers.recipeProvider === 'gemini'
+      ? providers.geminiApiKey !== undefined
+        ? createGeminiDinnerReconstructionProvider({
+          apiKey: providers.geminiApiKey,
+          model: providers.geminiModel ?? 'gemini-3.5-flash-lite',
+          fetch: options.fetch,
+        })
+        : createUnavailableDinnerReconstructionProvider(reasonFor(providers.geminiApiKey))
+      : providers.openAiApiKey !== undefined
+        ? createOpenAiDinnerReconstructionProvider({
+          apiKey: providers.openAiApiKey,
+          model: providers.openAiModel ?? 'gpt-5.5',
+          fetch: options.fetch,
+          timeoutMs: providers.openAiTimeoutMs,
+        })
+        : createUnavailableDinnerReconstructionProvider(reasonFor(providers.openAiApiKey)),
   };
 };

@@ -5,6 +5,7 @@ import { hashOpaqueToken } from '../auth/tokens.js';
 import type { GenerationRateLimiter } from '../ai/rateLimit.js';
 import type { AuthService } from '../auth/service.js';
 import type { DinnerReconstructionProvider } from '../providers/types.js';
+import { createProviders } from '../providers/factory.js';
 import { createMemorySyncRepository } from '../sync/repository.js';
 
 const appOrigin = 'http://127.0.0.1:5173';
@@ -96,6 +97,38 @@ describe('AI dinner reconstruction route', () => {
     expect(limiter.consume).toHaveBeenCalledWith('user-1');
     const mutations = await repository.readAll('user-1');
     expect(mutations.map(({ entityType }) => entityType)).toEqual(['ai_consent']);
+    await app.close();
+  });
+
+  it('uses selected Gemini output in the consented route without persisting the draft', async () => {
+    const modelRecipe = {
+      title: recipeDraft.title,
+      description: recipeDraft.description,
+      ingredients: recipeDraft.ingredients,
+      steps: recipeDraft.steps,
+      servings: null,
+      durationMinutes: null,
+      diets: null,
+      allergens: null,
+      suggestedFields: recipeDraft.suggestedFields,
+    };
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: JSON.stringify({ recipes: [modelRecipe] }) }] } }],
+    })));
+    const providers = createProviders({ providers: {
+      recipeProvider: 'gemini', geminiApiKey: 'synthetic-gemini-key', geminiModel: 'gemini-route-test',
+    } }, { fetch });
+    const { app, repository, limiter } = createTestApp({ dinnerProvider: providers.dinnerReconstruction });
+    await enableConsent(app);
+
+    const result = await requestDrafts(app, { dinnerText: 'Pasta con zucchine, poi insalata.', servings: null });
+
+    expect(result.statusCode).toBe(200);
+    expect(result.json()).toMatchObject({ drafts: [{ title: recipeDraft.title, allergens: null, diets: null }], quota: { allowed: true } });
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0]?.[0]).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-route-test:generateContent');
+    expect(limiter.consume).toHaveBeenCalledWith('user-1');
+    expect((await repository.readAll('user-1')).map(({ entityType }) => entityType)).toEqual(['ai_consent']);
     await app.close();
   });
 
