@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { DiaryDraftSet, DinnerEntry, SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { isDiaryDraftSet, isDinnerEntry, isSavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { getActiveDataScope, getPersonalDataScope, subscribeActiveDataScope, subscribePersonalDataScope, type SyncScope } from '../sync/scopeContext';
+import { isScopeWritable, ScopeRevokedError, trackScopedWrite } from '../sync/scopeWriteFence';
 import { enqueueEntityMutation, registerDinnerDiarySnapshotListener } from '../sync/syncQueue';
 import { readDinnerEntries, readDiaryDraftSets, readSavedRecipes, writeDinnerEntries, writeDiaryDraftSets, writeSavedRecipes } from '../storage/dinnerDiaryStorage';
 import { useAuthStore } from '../auth/authStore';
@@ -24,16 +25,15 @@ export interface DinnerDiaryState {
 const randomId = (): string => typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 const isoNow = () => new Date().toISOString();
 const validContent = (date: string, text: string, servings: number | null, note: string | null) => isDinnerEntry({ id: 'validate', date, text, servings, note, recipes: [], authorId: null, createdAt: isoNow(), updatedAt: isoNow() });
-const canEdit = (scope: SyncScope, authorId: string | null): boolean => {
+const canEdit = (scope: SyncScope): boolean => {
+  if (!isScopeWritable(scope)) return false;
   if (scope === 'guest') return getActiveDataScope() === 'guest';
   const user = useAuthStore.getState().user;
-  if (!user || getActiveDataScope() !== scope && scope.startsWith('house:')) return false;
+  if (!user || getActiveDataScope() !== scope) return false;
   if (scope.startsWith('account:')) return scope === `account:${user.id}`;
   const house = useHouseStore.getState().state;
-  const membership = house?.membership;
-  return membership !== null && membership !== undefined
-    && scope === `house:${house?.house?.id}`
-    && (authorId === user.id || membership.role === 'admin');
+  return house?.membership !== null && house?.membership !== undefined
+    && scope === `house:${house?.house?.id}`;
 };
 let generation = 0;
 const pendingWrites = new Set<Promise<void>>();
@@ -43,7 +43,13 @@ export const waitForPendingDinnerDiaryWrites = async (): Promise<void> => {
 };
 const queueWrite = (scope: SyncScope, action: () => Promise<void>) => {
   const previous = writeChains.get(scope) ?? Promise.resolve();
-  const pending = previous.then(() => persistLater(scope, action));
+  // Register before waiting on the store chain: a scope transition must also
+  // drain the mutation that is enqueued only after persistence succeeds.
+  const pending = trackScopedWrite(scope, async () => {
+    await previous;
+    if (!isScopeWritable(scope)) throw new ScopeRevokedError();
+    await persistLater(scope, action);
+  }).catch(error => { useDinnerDiaryStore.setState({ error }); });
   writeChains.set(scope, pending);
   pendingWrites.add(pending);
   void pending.finally(() => {
@@ -59,37 +65,39 @@ export const useDinnerDiaryStore = create<DinnerDiaryState>((set, get) => ({
   localDate: (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`,
   createEntry: ({ date, text, servings, note }) => {
     const scope = getActiveDataScope(); if (!validContent(date, text, servings, note)) { set({ error: new Error('Invalid dinner entry') }); return null; }
+    if (scope !== 'guest' && !canEdit(scope)) { set({ error: new Error('Not permitted') }); return null; }
     const now = isoNow(); const entry: DinnerEntry = { id: randomId(), date, text, servings, note, recipes: [], authorId: scope === 'guest' ? null : useAuthStore.getState().user?.id ?? null, createdAt: now, updatedAt: now };
-    if (scope !== 'guest' && !canEdit(scope, entry.authorId)) { set({ error: new Error('Not permitted') }); return null; }
     set(state => ({ entries: [...state.entries.filter(item => !(item.scope === scope && item.value.id === entry.id)), { scope, value: entry }], error: null }));
     const scopedEntries = get().entries.filter(item => item.scope === scope).map(item => item.value);
     queueWrite(scope, async () => { await writeDinnerEntries(scopedEntries, scope); if (scope !== 'guest') await enqueueEntityMutation(scope, 'dinner_entry', entry.id, 'upsert', entry); });
     return entry.id;
   },
   updateEntry: (scope, id, changes) => {
-    const item = get().entries.find(value => value.scope === scope && value.value.id === id); if (!item || !canEdit(scope, item.value.authorId)) return false;
+    const item = get().entries.find(value => value.scope === scope && value.value.id === id); if (!item || !canEdit(scope)) return false;
     const entry = { ...item.value, date: changes.date ?? item.value.date, text: changes.text ?? item.value.text, servings: changes.servings === undefined ? item.value.servings : changes.servings, note: changes.note === undefined ? item.value.note : changes.note, id, recipes: item.value.recipes, authorId: item.value.authorId, createdAt: item.value.createdAt, updatedAt: isoNow() };
     if (!validContent(entry.date, entry.text, entry.servings, entry.note)) return false;
     set(state => ({ entries: state.entries.map(value => value === item ? { scope, value: entry } : value), drafts: state.drafts.filter(value => !(value.scope === scope && value.value.entryId === id)), error: null }));
     const scopedEntries = get().entries.filter(v => v.scope === scope).map(v => v.value);
-    const scopedDrafts = get().drafts.filter(v => v.scope === scope).map(v => v.value);
-    queueWrite(scope, async () => { await writeDinnerEntries(scopedEntries, scope); if (scope !== 'guest') await enqueueEntityMutation(scope, 'dinner_entry', id, 'upsert', entry); await writeDiaryDraftSets(scopedDrafts, scope); }); return true;
+    const scopedDrafts = get().drafts.map(v => v.value);
+    const draftScope = getPersonalDataScope();
+    queueWrite(scope, async () => { await writeDinnerEntries(scopedEntries, scope); if (scope !== 'guest') await enqueueEntityMutation(scope, 'dinner_entry', id, 'upsert', entry); await writeDiaryDraftSets(scopedDrafts, draftScope); }); return true;
   },
-  deleteEntry: (scope, id) => { const item = get().entries.find(v => v.scope === scope && v.value.id === id); if (!item || !canEdit(scope, item.value.authorId)) return false;
+  deleteEntry: (scope, id) => { const item = get().entries.find(v => v.scope === scope && v.value.id === id); if (!item || !canEdit(scope)) return false;
     set(state => ({ entries: state.entries.filter(v => v !== item), drafts: state.drafts.filter(v => !(v.scope === scope && v.value.entryId === id)) }));
     const scopedEntries = get().entries.filter(v => v.scope === scope).map(v => v.value);
-    const scopedDrafts = get().drafts.filter(v => v.scope === scope).map(v => v.value);
-    queueWrite(scope, async () => { await writeDinnerEntries(scopedEntries, scope); await writeDiaryDraftSets(scopedDrafts, scope); if (scope !== 'guest') await enqueueEntityMutation(scope, 'dinner_entry', id, 'delete', null); }); return true;
+    const scopedDrafts = get().drafts.map(v => v.value);
+    const draftScope = getPersonalDataScope();
+    queueWrite(scope, async () => { await writeDinnerEntries(scopedEntries, scope); await writeDiaryDraftSets(scopedDrafts, draftScope); if (scope !== 'guest') await enqueueEntityMutation(scope, 'dinner_entry', id, 'delete', null); }); return true;
   },
-  saveRecipe: (scope, recipe) => { if (!isSavedRecipe(recipe) || !canEdit(scope, recipe.authorId)) return false; set(state => ({ recipes: [...state.recipes.filter(v => !(v.scope === scope && v.value.id === recipe.id)), { scope, value: recipe }] })); const scopedRecipes = get().recipes.filter(v => v.scope === scope).map(v => v.value); queueWrite(scope, async () => { await writeSavedRecipes(scopedRecipes, scope); if (scope !== 'guest') await enqueueEntityMutation(scope, 'saved_recipe', recipe.id, 'upsert', recipe); }); return true; },
-  deleteRecipe: (scope, id) => { const item = get().recipes.find(v => v.scope === scope && v.value.id === id); if (!item || !canEdit(scope, item.value.authorId)) return false; set(state => ({ recipes: state.recipes.filter(v => v !== item) })); const scopedRecipes = get().recipes.filter(v => v.scope === scope).map(v => v.value); queueWrite(scope, async () => { await writeSavedRecipes(scopedRecipes, scope); if (scope !== 'guest') await enqueueEntityMutation(scope, 'saved_recipe', id, 'delete', null); }); return true; },
-  saveDraftSet: (scope, value) => { const entry = get().entries.find(v => v.scope === scope && v.value.id === value.entryId); if (!entry || !canEdit(scope, entry.value.authorId) || !isDiaryDraftSet(value) || value.entryUpdatedAt !== entry.value.updatedAt) return false; set(state => ({ drafts: [...state.drafts.filter(v => !(v.scope === scope && v.value.entryId === value.entryId)), { scope, value }] })); const scopedDrafts = get().drafts.filter(v => v.scope === scope).map(v => v.value); queueWrite(scope, () => writeDiaryDraftSets(scopedDrafts, scope)); return true; },
+  saveRecipe: (scope, recipe) => { if (!isSavedRecipe(recipe) || !canEdit(scope)) return false; set(state => ({ recipes: [...state.recipes.filter(v => !(v.scope === scope && v.value.id === recipe.id)), { scope, value: recipe }] })); const scopedRecipes = get().recipes.filter(v => v.scope === scope).map(v => v.value); queueWrite(scope, async () => { await writeSavedRecipes(scopedRecipes, scope); if (scope !== 'guest') await enqueueEntityMutation(scope, 'saved_recipe', recipe.id, 'upsert', recipe); }); return true; },
+  deleteRecipe: (scope, id) => { const item = get().recipes.find(v => v.scope === scope && v.value.id === id); if (!item || !canEdit(scope)) return false; set(state => ({ recipes: state.recipes.filter(v => v !== item) })); const scopedRecipes = get().recipes.filter(v => v.scope === scope).map(v => v.value); queueWrite(scope, async () => { await writeSavedRecipes(scopedRecipes, scope); if (scope !== 'guest') await enqueueEntityMutation(scope, 'saved_recipe', id, 'delete', null); }); return true; },
+  saveDraftSet: (scope, value) => { const entry = get().entries.find(v => v.scope === scope && v.value.id === value.entryId); if (!entry || !canEdit(scope) || !isDiaryDraftSet(value) || value.entryUpdatedAt !== entry.value.updatedAt) return false; set(state => ({ drafts: [...state.drafts.filter(v => !(v.scope === scope && v.value.entryId === value.entryId)), { scope, value }] })); const draftScope = getPersonalDataScope(); const personalDrafts = get().drafts.map(v => v.value); queueWrite(draftScope, () => writeDiaryDraftSets(personalDrafts, draftScope)); return true; },
   acceptConfirmedRecipe: (scope, entry, recipe, confirmedDraftId) => {
     const current = get().entries.find(item => item.scope === scope && item.value.id === entry.id);
     const draftSet = get().drafts.find(item => item.scope === scope && item.value.entryId === entry.id);
     if (!current || !draftSet || draftSet.value.entryUpdatedAt !== current.value.updatedAt
       || !draftSet.value.drafts.some(draft => draft.draftId === confirmedDraftId)
-      || !canEdit(scope, current.value.authorId) || !isDinnerEntry(entry) || !isSavedRecipe(recipe)
+      || !canEdit(scope) || !isDinnerEntry(entry) || !isSavedRecipe(recipe)
       || recipe.source !== 'diary' || entry.id !== current.value.id || entry.text !== current.value.text
       || entry.date !== current.value.date || entry.note !== current.value.note || entry.servings !== current.value.servings
       || !entry.recipes.some(link => link.recipeId === recipe.id && link.source === 'diary')) return false;
@@ -107,17 +115,18 @@ export const useDinnerDiaryStore = create<DinnerDiaryState>((set, get) => ({
     }));
     const scopedEntries = get().entries.filter(item => item.scope === scope).map(item => item.value);
     const scopedRecipes = get().recipes.filter(item => item.scope === scope).map(item => item.value);
-    const scopedDrafts = get().drafts.filter(item => item.scope === scope).map(item => item.value);
+    const scopedDrafts = get().drafts.map(item => item.value);
+    const draftScope = getPersonalDataScope();
     queueWrite(scope, async () => {
       await writeDinnerEntries(scopedEntries, scope);
       await writeSavedRecipes(scopedRecipes, scope);
-      await writeDiaryDraftSets(scopedDrafts, scope);
+      await writeDiaryDraftSets(scopedDrafts, draftScope);
     });
     return true;
   },
   acceptLinkedEntry: (scope, entry, recipeId, source) => {
     const current = get().entries.find(item => item.scope === scope && item.value.id === entry.id);
-    if (!current || !canEdit(scope, current.value.authorId) || !isDinnerEntry(entry)
+    if (!current || !canEdit(scope) || !isDinnerEntry(entry)
       || entry.id !== current.value.id || entry.text !== current.value.text || entry.date !== current.value.date
       || entry.note !== current.value.note || entry.servings !== current.value.servings
       || !current.value.recipes.every(oldLink => entry.recipes.some(link => link.recipeId === oldLink.recipeId && link.source === oldLink.source))
@@ -135,14 +144,15 @@ export const useDinnerDiaryStore = create<DinnerDiaryState>((set, get) => ({
       error: null,
     }));
     const scopedEntries = get().entries.filter(item => item.scope === scope).map(item => item.value);
-    const scopedDrafts = get().drafts.filter(item => item.scope === scope).map(item => item.value);
+    const scopedDrafts = get().drafts.map(item => item.value);
+    const draftScope = getPersonalDataScope();
     queueWrite(scope, async () => {
       await writeDinnerEntries(scopedEntries, scope);
-      await writeDiaryDraftSets(scopedDrafts, scope);
+      await writeDiaryDraftSets(scopedDrafts, draftScope);
     });
     return true;
   },
-  clearDraftSet: (scope, id) => { const found = get().drafts.some(v => v.scope === scope && v.value.entryId === id); if (!found) return false; set(state => ({ drafts: state.drafts.filter(v => !(v.scope === scope && v.value.entryId === id)) })); const scopedDrafts = get().drafts.filter(v => v.scope === scope).map(v => v.value); queueWrite(scope, () => writeDiaryDraftSets(scopedDrafts, scope)); return true; },
+  clearDraftSet: (scope, id) => { const found = get().drafts.some(v => v.scope === scope && v.value.entryId === id); if (!found) return false; set(state => ({ drafts: state.drafts.filter(v => !(v.scope === scope && v.value.entryId === id)) })); const draftScope = getPersonalDataScope(); const personalDrafts = get().drafts.map(v => v.value); queueWrite(draftScope, () => writeDiaryDraftSets(personalDrafts, draftScope)); return true; },
 }));
 
 export async function hydrateDinnerDiaryStore(): Promise<void> {
@@ -152,7 +162,15 @@ export async function hydrateDinnerDiaryStore(): Promise<void> {
     if (ticket !== generation || scopes[0] !== getActiveDataScope() || scopes[1] !== getPersonalDataScope() && scopes.length > 1) return;
     const entries = snapshots.flatMap(s => attach(s.scope, s.entries));
     const recipes = snapshots.flatMap(s => attach(s.scope, s.recipes));
-    const drafts = snapshots.flatMap(s => attach(s.scope, s.drafts)).filter(draft => entries.some(entry => entry.scope === draft.scope && entry.value.id === draft.value.entryId && entry.value.updatedAt === draft.value.entryUpdatedAt));
+    // Drafts are personal local data even when their entry now belongs to a
+    // house. Present them alongside the active entry, never from house storage.
+    const personalScope = getPersonalDataScope();
+    const personalDrafts = snapshots.find(snapshot => snapshot.scope === personalScope)?.drafts ?? [];
+    const drafts = personalDrafts.flatMap(value => {
+      const entry = entries.find(candidate => candidate.value.id === value.entryId
+        && candidate.value.updatedAt === value.entryUpdatedAt);
+      return entry === undefined ? [] : [{ scope: entry.scope, value }];
+    });
     useDinnerDiaryStore.setState({ entries, recipes, drafts, hasHydrated: true, error: null });
   } catch (error) { if (ticket === generation && scopes[0] === getActiveDataScope() && (scopes.length === 1 || scopes[1] === getPersonalDataScope())) useDinnerDiaryStore.setState({ hasHydrated: true, error }); }
 }

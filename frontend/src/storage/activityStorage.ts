@@ -1,15 +1,15 @@
 import type { CookEvent, RecipePreference } from '@ikuck/shared/contracts';
 import { isCookEvent, isRecipePreference } from '../domain/activity';
 import { deleteKeyValue, isIndexedDbAvailable, readKeyValue, writeKeyValue } from './indexedDb';
-import { getPersonalDataScope, scopeStorageKey, type SyncScope } from '../sync/scopeContext';
+import { getActiveDataScope, scopeStorageKey, type SyncScope } from '../sync/scopeContext';
+import { trackScopedWrite } from '../sync/scopeWriteFence';
 
 export const ACTIVITY_DATABASE_KEY = 'activity';
 export const PREFERENCES_DATABASE_KEY = 'recipe-preferences';
 export const ACTIVITY_STORAGE_KEY = 'ikuck-activity-v1';
 export const PREFERENCES_STORAGE_KEY = 'ikuck-recipe-preferences-v1';
 
-const scopedKey = (base: string, scope: SyncScope = getPersonalDataScope()): string => scope === 'guest' ? base : scopeStorageKey(scope, base);
-const personalScopedKey = (base: string, scope: SyncScope = getPersonalDataScope()): string => scope === 'guest' ? base : scopeStorageKey(scope, base);
+const scopedKey = (base: string, scope: SyncScope = getActiveDataScope()): string => scope === 'guest' ? base : scopeStorageKey(scope, base);
 
 const normalizeById = <T extends { id: string }>(items: readonly unknown[], guard: (value: unknown) => value is T): T[] => {
   const unique = new Map<string, T>();
@@ -44,7 +44,22 @@ const serializeCollection = <T>(items: readonly T[], normalize: (values: readonl
   version: 1,
 });
 
-export async function readCookEvents(scope: SyncScope = getPersonalDataScope()): Promise<CookEvent[]> {
+const writeCollection = (scope: SyncScope, databaseKey: string, storageKey: string, serialized: string): Promise<void> => (
+  trackScopedWrite(scope, async () => {
+    if (!isIndexedDbAvailable()) {
+      window.localStorage.setItem(scopedKey(storageKey, scope), serialized);
+      return;
+    }
+    try {
+      await writeKeyValue(scopedKey(databaseKey, scope), serialized);
+    } catch (error) {
+      window.localStorage.setItem(scopedKey(storageKey, scope), serialized);
+      throw error;
+    }
+  })
+);
+
+export async function readCookEvents(scope: SyncScope = getActiveDataScope()): Promise<CookEvent[]> {
   if (!isIndexedDbAvailable()) return parseCollection(window.localStorage.getItem(scopedKey(ACTIVITY_STORAGE_KEY, scope)), normalizeCookEvents);
   try {
     return parseCollection(await readKeyValue<string>(scopedKey(ACTIVITY_DATABASE_KEY, scope)), normalizeCookEvents);
@@ -53,18 +68,8 @@ export async function readCookEvents(scope: SyncScope = getPersonalDataScope()):
   }
 }
 
-export async function writeCookEvents(events: readonly CookEvent[], scope: SyncScope = getPersonalDataScope()): Promise<void> {
-  const serialized = serializeCollection(events, normalizeCookEvents);
-  if (!isIndexedDbAvailable()) {
-    window.localStorage.setItem(scopedKey(ACTIVITY_STORAGE_KEY, scope), serialized);
-    return;
-  }
-  try {
-    await writeKeyValue(scopedKey(ACTIVITY_DATABASE_KEY, scope), serialized);
-  } catch (error) {
-    window.localStorage.setItem(scopedKey(ACTIVITY_STORAGE_KEY, scope), serialized);
-    throw error;
-  }
+export async function writeCookEvents(events: readonly CookEvent[], scope: SyncScope = getActiveDataScope()): Promise<void> {
+  return writeCollection(scope, ACTIVITY_DATABASE_KEY, ACTIVITY_STORAGE_KEY, serializeCollection(events, normalizeCookEvents));
 }
 
 export async function clearCookEvents(scope: SyncScope): Promise<void> {
@@ -72,30 +77,20 @@ export async function clearCookEvents(scope: SyncScope): Promise<void> {
   window.localStorage.removeItem(scopedKey(ACTIVITY_STORAGE_KEY, scope));
 }
 
-export async function readRecipePreferences(scope: SyncScope = getPersonalDataScope()): Promise<RecipePreference[]> {
-  if (!isIndexedDbAvailable()) return parseCollection(window.localStorage.getItem(personalScopedKey(PREFERENCES_STORAGE_KEY, scope)), normalizeRecipePreferences);
+export async function readRecipePreferences(scope: SyncScope = getActiveDataScope()): Promise<RecipePreference[]> {
+  if (!isIndexedDbAvailable()) return parseCollection(window.localStorage.getItem(scopedKey(PREFERENCES_STORAGE_KEY, scope)), normalizeRecipePreferences);
   try {
-    return parseCollection(await readKeyValue<string>(personalScopedKey(PREFERENCES_DATABASE_KEY, scope)), normalizeRecipePreferences);
+    return parseCollection(await readKeyValue<string>(scopedKey(PREFERENCES_DATABASE_KEY, scope)), normalizeRecipePreferences);
   } catch {
-    return parseCollection(window.localStorage.getItem(personalScopedKey(PREFERENCES_STORAGE_KEY, scope)), normalizeRecipePreferences);
+    return parseCollection(window.localStorage.getItem(scopedKey(PREFERENCES_STORAGE_KEY, scope)), normalizeRecipePreferences);
   }
 }
 
-export async function writeRecipePreferences(preferences: readonly RecipePreference[], scope: SyncScope = getPersonalDataScope()): Promise<void> {
-  const serialized = serializeCollection(preferences, normalizeRecipePreferences);
-  if (!isIndexedDbAvailable()) {
-    window.localStorage.setItem(personalScopedKey(PREFERENCES_STORAGE_KEY, scope), serialized);
-    return;
-  }
-  try {
-    await writeKeyValue(personalScopedKey(PREFERENCES_DATABASE_KEY, scope), serialized);
-  } catch (error) {
-    window.localStorage.setItem(personalScopedKey(PREFERENCES_STORAGE_KEY, scope), serialized);
-    throw error;
-  }
+export async function writeRecipePreferences(preferences: readonly RecipePreference[], scope: SyncScope = getActiveDataScope()): Promise<void> {
+  return writeCollection(scope, PREFERENCES_DATABASE_KEY, PREFERENCES_STORAGE_KEY, serializeCollection(preferences, normalizeRecipePreferences));
 }
 
 export async function clearRecipePreferences(scope: SyncScope): Promise<void> {
-  if (isIndexedDbAvailable()) await deleteKeyValue(personalScopedKey(PREFERENCES_DATABASE_KEY, scope));
-  window.localStorage.removeItem(personalScopedKey(PREFERENCES_STORAGE_KEY, scope));
+  if (isIndexedDbAvailable()) await deleteKeyValue(scopedKey(PREFERENCES_DATABASE_KEY, scope));
+  window.localStorage.removeItem(scopedKey(PREFERENCES_STORAGE_KEY, scope));
 }

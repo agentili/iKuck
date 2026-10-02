@@ -1,4 +1,35 @@
-export type SyncEntityType = 'pantry_item' | 'pantry_lot' | 'staple_preference' | 'shopping_list_item' | 'cook_event' | 'recipe_preference' | 'diet_profile' | 'ai_consent' | 'generated_recipe' | 'dinner_entry' | 'saved_recipe';
+export const SYNC_ENTITY_TYPES = [
+  'pantry_item',
+  'pantry_lot',
+  'staple_preference',
+  'shopping_list_item',
+  'cook_event',
+  'recipe_preference',
+  'diet_profile',
+  'ai_consent',
+  'generated_recipe',
+  'dinner_entry',
+  'saved_recipe',
+] as const;
+
+export type SyncEntityType = typeof SYNC_ENTITY_TYPES[number];
+
+export const HOUSE_SYNC_ENTITY_TYPES = [
+  'pantry_item',
+  'pantry_lot',
+  'staple_preference',
+  'shopping_list_item',
+  'cook_event',
+  'recipe_preference',
+  'diet_profile',
+  'generated_recipe',
+  'dinner_entry',
+  'saved_recipe',
+] as const satisfies readonly SyncEntityType[];
+
+export const PERSONAL_SYNC_ENTITY_TYPES = [
+  'ai_consent',
+] as const satisfies readonly SyncEntityType[];
 
 export type SyncOperation = 'upsert' | 'delete';
 

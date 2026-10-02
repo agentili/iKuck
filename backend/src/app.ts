@@ -7,7 +7,7 @@ import { registerHealthRoute } from './routes/health.js';
 import { type ProfileRouteDependencies, registerProfileRoutes } from './routes/profile.js';
 import { type SyncRouteDependencies, registerSyncRoutes } from './routes/sync.js';
 import { SyncPayloadError, SyncScopeRequiredError } from './routes/sync.js';
-import { SyncDiaryRecipeLimitError, SyncMembershipRequiredError, SyncPermissionDeniedError, SyncScopeInvalidError } from './sync/repository.js';
+import { SyncDiaryRecipeLimitError, SyncMembershipRequiredError, SyncScopeInvalidError } from './sync/repository.js';
 import { type PantryLotRouteDependencies, registerPantryLotRoutes } from './routes/pantryLots.js';
 import { type ShoppingListRouteDependencies, registerShoppingListRoutes } from './routes/shoppingList.js';
 import { type ActivityRouteDependencies, registerActivityRoutes } from './routes/activity.js';
@@ -44,7 +44,7 @@ export const createApp = (
     ...(options.trustProxy === undefined ? {} : { trustProxy: options.trustProxy }),
   });
   app.setErrorHandler((error, _request, reply) => {
-    if (error instanceof SyncPayloadError || error instanceof SyncScopeInvalidError || error instanceof SyncScopeRequiredError || error instanceof SyncMembershipRequiredError || error instanceof SyncPermissionDeniedError || error instanceof SyncDiaryRecipeLimitError) {
+    if (error instanceof SyncPayloadError || error instanceof SyncScopeInvalidError || error instanceof SyncScopeRequiredError || error instanceof SyncMembershipRequiredError || error instanceof SyncDiaryRecipeLimitError) {
       return reply.code(error.status).send({ code: error.code, message: error.message });
     }
     if (error instanceof AuthServiceError) {

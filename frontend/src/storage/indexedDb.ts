@@ -108,6 +108,22 @@ export async function writeQueueValue<T extends { mutationId: string; scope: Syn
   await database.put(SYNC_QUEUE_STORE, value);
 }
 
+export async function moveQueueValues<T extends { mutationId: string; scope: SyncScope }>(
+  fromScope: SyncScope,
+  toScope: SyncScope,
+  shouldMove: (value: T) => boolean,
+): Promise<void> {
+  if (fromScope === toScope) return;
+  const database = await openLocalDatabase();
+  const transaction = database.transaction(SYNC_QUEUE_STORE, 'readwrite');
+  const queue = transaction.objectStore(SYNC_QUEUE_STORE);
+  const values = await queue.index('byScope').getAll(fromScope) as T[];
+  for (const value of values) {
+    if (shouldMove(value)) await queue.put({ ...value, scope: toScope });
+  }
+  await transaction.done;
+}
+
 export async function deleteQueueValue(mutationId: string, scope: SyncScope): Promise<void> {
   const database = await openLocalDatabase();
   const transaction = database.transaction(SYNC_QUEUE_STORE, 'readwrite');

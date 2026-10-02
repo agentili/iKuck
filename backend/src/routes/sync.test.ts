@@ -27,10 +27,9 @@ const sessionServiceFor = (userId: string) => ({
 }) as unknown as AuthService;
 
 describe('sync routes', () => {
-  it('maps unauthorized House diary edits to a sanitized 403 response', async () => {
+  it('allows a House member to edit another member diary while preserving its author', async () => {
     const repository = createMemorySyncRepository({
       scopeResolver: async () => ({ kind: 'house', id: 'house-1' }),
-      roleResolver: async () => 'member',
     });
     const entry = { id: 'entry-1', date: '2026-09-24', text: 'Cena', servings: null, note: null, recipes: [], authorId: null, createdAt: '2026-09-24T12:00:00.000Z', updatedAt: '2026-09-24T12:00:00.000Z' };
     await repository.applyMutation('owner', {
@@ -53,8 +52,10 @@ describe('sync routes', () => {
         clientUpdatedAt: '2026-09-24T12:01:00.000Z', syncScope: 'house:house-1',
       }] },
     });
-    expect(response.statusCode).toBe(403);
-    expect(response.json()).toEqual({ code: 'sync_permission_denied', message: 'You do not have permission to modify this shared record' });
+    expect(response.statusCode).toBe(200);
+    await expect(repository.readEntity('member', 'dinner_entry', entry.id)).resolves.toMatchObject({
+      payload: { text: 'Sostituita', authorId: 'owner' },
+    });
     await app.close();
   });
   it('rejects stale house-scoped mutations after membership is removed', async () => {
@@ -175,14 +176,14 @@ describe('sync routes', () => {
         deviceId: 'device-1',
         cursor: 0,
         mutations: [{
-          mutationId: 'personal-house-scope', deviceId: 'device-1', entityType: 'cook_event', entityId: 'event-1',
+          mutationId: 'personal-house-scope', deviceId: 'device-1', entityType: 'ai_consent', entityId: 'profile',
           operation: 'delete', payload: null, clientUpdatedAt: '2026-09-24T12:00:00.000Z', syncScope: 'house:house-1',
         }],
       },
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json()).toEqual({ code: 'sync_scope_invalid', message: 'House scope is only valid for shared data' });
+    expect(response.json()).toEqual({ code: 'sync_scope_invalid', message: 'The requested sync scope is not valid for this entity' });
     await app.close();
   });
 
@@ -332,11 +333,11 @@ describe('sync routes', () => {
         mutations: [
           {
             mutationId: 'event-1', deviceId: 'device-1', entityType: 'cook_event', entityId: event.id,
-            operation: 'upsert', payload: event, clientUpdatedAt: event.updatedAt,
+            operation: 'upsert', payload: event, clientUpdatedAt: event.updatedAt, syncScope: 'account:user-1',
           },
           {
             mutationId: 'preference-1', deviceId: 'device-1', entityType: 'recipe_preference', entityId: preference.recipeId,
-            operation: 'upsert', payload: preference, clientUpdatedAt: preference.updatedAt,
+            operation: 'upsert', payload: preference, clientUpdatedAt: preference.updatedAt, syncScope: 'account:user-1',
           },
         ],
       },
@@ -449,7 +450,7 @@ describe('sync routes', () => {
           },
           {
             mutationId: 'generated-1', deviceId: 'device-1', entityType: 'generated_recipe', entityId: recipe.id,
-            operation: 'upsert', payload: recipe, clientUpdatedAt: recipe.updatedAt,
+            operation: 'upsert', payload: recipe, clientUpdatedAt: recipe.updatedAt, syncScope: 'account:user-1',
           },
         ],
       },
@@ -469,7 +470,7 @@ describe('sync routes', () => {
         cursor: valid.json().nextCursor,
         mutations: [{
           mutationId: 'generated-delete-1', deviceId: 'device-1', entityType: 'generated_recipe', entityId: recipe.id,
-          operation: 'delete', payload: null, clientUpdatedAt: '2026-09-13T12:01:00.000Z',
+          operation: 'delete', payload: null, clientUpdatedAt: '2026-09-13T12:01:00.000Z', syncScope: 'account:user-1',
         }],
       },
     });

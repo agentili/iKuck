@@ -12,10 +12,11 @@ import { getActiveDataScope } from '../sync/scopeContext';
 import { hydrateDinnerDiaryStore, useDinnerDiaryStore, type Scoped } from '../store/dinnerDiaryStore';
 
 const canManageEntry = (entry: Scoped<DinnerEntry>, userId: string | null, houseId: string | null, houseRole: string | null): boolean => {
-  if (entry.scope === 'guest') return getActiveDataScope() === 'guest';
+  if (entry.scope !== getActiveDataScope()) return false;
+  if (entry.scope === 'guest') return true;
   if (userId === null) return false;
   if (entry.scope === `account:${userId}`) return true;
-  return entry.scope === `house:${houseId}` && (entry.value.authorId === userId || houseRole === 'admin');
+  return houseId !== null && houseRole !== null && entry.scope === `house:${houseId}`;
 };
 
 const formatDinnerDate = (date: string): string => new Intl.DateTimeFormat('it-IT', { dateStyle: 'long' }).format(new Date(`${date}T12:00:00`));
@@ -74,7 +75,7 @@ export default function DinnerDiaryPage() {
     return () => { cancelled = true; };
   }, [verified, userId]);
 
-  const orderedEntries = useMemo(() => [...entries].sort((left, right) => (
+  const orderedEntries = useMemo(() => entries.filter((entry) => entry.scope === getActiveDataScope()).sort((left, right) => (
     right.value.date.localeCompare(left.value.date)
     || right.value.createdAt.localeCompare(left.value.createdAt)
   )), [entries]);

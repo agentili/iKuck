@@ -5,6 +5,7 @@ vi.mock('../sync/syncQueue', async (importOriginal) => {
   return { ...actual, registerDinnerDiarySnapshotListener: (listener: (snapshot: any) => void) => { snapshotListeners.push(listener); return () => undefined; } };
 });
 import * as storage from '../storage/dinnerDiaryStorage';
+import * as indexedDb from '../storage/indexedDb';
 import { deleteLocalDatabase } from '../storage/indexedDb';
 import { useAuthStore } from '../auth/authStore';
 import { useHouseStore } from '../house/houseStore';
@@ -12,7 +13,7 @@ import { useDinnerDiaryStore, hydrateDinnerDiaryStore, waitForPendingDinnerDiary
 import { setActiveDataScope, setPersonalDataScope } from '../sync/scopeContext';
 import { readQueuedMutations } from '../sync/syncQueue';
 import type { DinnerEntry, DiaryRecipeDraft, SavedRecipe } from '@ikuck/shared/dinnerDiary';
-import { clearDataScope } from '../sync/syncQueue';
+import { clearDataScope, enqueueEntityMutation } from '../sync/syncQueue';
 
 describe('dinner diary store', () => {
   beforeEach(async () => {
@@ -163,7 +164,7 @@ describe('dinner diary store', () => {
     await expect(readQueuedMutations('account:user-1')).resolves.toEqual([]);
   });
 
-  it('updates and deletes entries through their explicit account and House scopes', async () => {
+  it('refuses an obsolete account entry while the House is active and deletes the selected House entry', async () => {
     const now = '2026-09-30T10:00:00.000Z';
     const houseScope = 'house:home-1';
     const accountScope = 'account:user-1';
@@ -176,11 +177,11 @@ describe('dinner diary store', () => {
     await hydrateDinnerDiaryStore();
     useDinnerDiaryStore.setState({ entries: [{ scope: accountScope, value: personalEntry }, { scope: houseScope, value: houseEntry }] });
 
-    expect(useDinnerDiaryStore.getState().updateEntry(accountScope, personalEntry.id, { note: null })).toBe(true);
+    expect(useDinnerDiaryStore.getState().updateEntry(accountScope, personalEntry.id, { note: null })).toBe(false);
     expect(useDinnerDiaryStore.getState().deleteEntry(houseScope, houseEntry.id)).toBe(true);
     await waitForPendingDinnerDiaryWrites();
 
-    await expect(readQueuedMutations(accountScope)).resolves.toEqual([expect.objectContaining({ entityType: 'dinner_entry', entityId: personalEntry.id, operation: 'upsert' })]);
+    await expect(readQueuedMutations(accountScope)).resolves.toEqual([]);
     await expect(readQueuedMutations(houseScope)).resolves.toEqual([expect.objectContaining({ entityType: 'dinner_entry', entityId: houseEntry.id, operation: 'delete' })]);
   });
 
@@ -196,7 +197,7 @@ describe('dinner diary store', () => {
     expect(await storage.readDinnerEntries('account:user-1')).toEqual([expect.objectContaining({ id, text: 'Personale' })]);
   });
 
-  it('refuses another account author and a non-author House member, while admin can edit', async () => {
+  it('lets any current House member edit and delete another author while refusing foreign scopes', async () => {
     const now = '2026-09-30T10:00:00.000Z';
     const houseScope = 'house:home-1';
     const entry = { id: 'entry-1', date: '2026-09-30', text: 'Pasta', servings: 2, note: null, recipes: [], authorId: 'user-2', createdAt: now, updatedAt: now };
@@ -207,10 +208,11 @@ describe('dinner diary store', () => {
     useDinnerDiaryStore.setState({ entries: [{ scope: 'account:someone-else', value: entry }, { scope: houseScope, value: entry }] });
 
     expect(useDinnerDiaryStore.getState().updateEntry('account:someone-else', entry.id, { text: 'No' })).toBe(false);
-    expect(useDinnerDiaryStore.getState().deleteEntry(houseScope, entry.id)).toBe(false);
-    useHouseStore.setState({ state: { house: { id: 'home-1', name: 'Casa', createdAt: now }, membership: { role: 'admin', joinedAt: now }, members: [] } });
-    expect(useDinnerDiaryStore.getState().updateEntry(houseScope, entry.id, { text: 'Admin update' })).toBe(true);
+    expect(useDinnerDiaryStore.getState().updateEntry(houseScope, entry.id, { text: 'Member update' })).toBe(true);
+    expect(useDinnerDiaryStore.getState().entries.find(item => item.scope === houseScope)?.value.authorId).toBe('user-2');
+    expect(useDinnerDiaryStore.getState().deleteEntry(houseScope, entry.id)).toBe(true);
     setActiveDataScope('house:another-house');
+    useDinnerDiaryStore.setState({ entries: [{ scope: houseScope, value: entry }] });
     expect(useDinnerDiaryStore.getState().deleteEntry(houseScope, entry.id)).toBe(false);
   });
 
@@ -224,6 +226,46 @@ describe('dinner diary store', () => {
     expect(useDinnerDiaryStore.getState().recipes).toContainEqual({ scope: 'guest', value: recipe });
     expect(useDinnerDiaryStore.getState().deleteRecipe('guest', recipe.id)).toBe(true);
     expect(useDinnerDiaryStore.getState().entries).toEqual([]);
+  });
+
+  it('keeps migrated dinner drafts usable for their owner without exposing them to another house member', async () => {
+    const accountScope = 'account:user-1' as const;
+    const houseScope = 'house:private-drafts' as const;
+    const now = '2026-09-30T10:00:00.000Z';
+    const entry: DinnerEntry = {
+      id: 'dinner-private-draft', date: '2026-09-30', text: 'Pasta', servings: 2, note: null,
+      recipes: [], authorId: 'user-1', createdAt: now, updatedAt: now,
+    };
+    const draft: DiaryRecipeDraft = {
+      draftId: 'owner-only', title: 'Pasta', description: '',
+      ingredients: [{ name: 'Pasta', amount: '200 g', ingredientId: null, optional: false, provenance: 'provided' }],
+      steps: ['Cuoci la pasta'], servings: 2, durationMinutes: null, diets: null, allergens: null, suggestedFields: [],
+    };
+    await storage.writeDinnerEntries([entry], houseScope);
+    await storage.writeDiaryDraftSets([{ entryId: entry.id, entryUpdatedAt: now, drafts: [draft] }], accountScope);
+    useAuthStore.setState({ user: { id: 'user-1' } as never });
+    useHouseStore.setState({ state: {
+      house: { id: 'private-drafts', name: 'Casa', createdAt: now },
+      membership: { role: 'member', joinedAt: now }, members: [],
+    } as never });
+    setPersonalDataScope(accountScope);
+    setActiveDataScope(houseScope);
+    await hydrateDinnerDiaryStore();
+    expect(useDinnerDiaryStore.getState().drafts).toEqual([{
+      scope: houseScope, value: { entryId: entry.id, entryUpdatedAt: now, drafts: [draft] },
+    }]);
+    expect(useDinnerDiaryStore.getState().saveDraftSet(houseScope, {
+      entryId: entry.id, entryUpdatedAt: now, drafts: [{ ...draft, title: 'Pasta aggiornata' }],
+    })).toBe(true);
+    await waitForPendingDinnerDiaryWrites();
+    await expect(storage.readDiaryDraftSets(accountScope)).resolves.toMatchObject([
+      { drafts: [{ title: 'Pasta aggiornata' }] },
+    ]);
+    await expect(storage.readDiaryDraftSets(houseScope)).resolves.toEqual([]);
+    useAuthStore.setState({ user: { id: 'user-2' } as never });
+    setPersonalDataScope('account:user-2');
+    await hydrateDinnerDiaryStore();
+    expect(useDinnerDiaryStore.getState().drafts).toEqual([]);
   });
 
   it('keeps revision-bound drafts local, rejects stale drafts, and clears them after editing', async () => {
@@ -310,6 +352,40 @@ describe('dinner diary store', () => {
     expect(useDinnerDiaryStore.getState().drafts).toEqual([{ scope, value: { entryId, entryUpdatedAt: linkedEntry.updatedAt, drafts: [draft] } }]);
     await expect(storage.readDiaryDraftSets(scope)).resolves.toEqual([{ entryId, entryUpdatedAt: linkedEntry.updatedAt, drafts: [draft] }]);
     await expect(readQueuedMutations(scope)).resolves.toEqual([expect.objectContaining({ entityType: 'dinner_entry', entityId: entryId, operation: 'upsert' })]);
+  });
+
+  it('drains an in-flight local diary write and blocks a late enqueue before purging a revoked house', async () => {
+    const scope = 'house:revoked-local-write' as const;
+    const user = { id: 'user-1', email: 'ale@example.com', emailVerifiedAt: '2026-09-12T10:00:00.000Z' };
+    setActiveDataScope(scope); setPersonalDataScope('account:user-1');
+    useAuthStore.setState({ user, csrfToken: 'csrf-1' });
+    useHouseStore.setState({ state: {
+      house: { id: 'revoked-local-write', name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' },
+      membership: { role: 'member', joinedAt: '2026-09-24T00:00:00.000Z' }, members: [],
+    } });
+    let signalWrite: (() => void) | undefined;
+    let releaseWrite: (() => void) | undefined;
+    const writeStarted = new Promise<void>((resolve) => { signalWrite = resolve; });
+    const heldWrite = new Promise<void>((resolve) => { releaseWrite = resolve; });
+    const realWrite = indexedDb.writeKeyValue;
+    const spy = vi.spyOn(indexedDb, 'writeKeyValue').mockImplementation(async (key, value) => {
+      if (key === `ikuck:${scope}:dinner-entries`) { signalWrite?.(); await heldWrite; }
+      return realWrite(key, value);
+    });
+    try {
+      expect(useDinnerDiaryStore.getState().createEntry({ date: '2026-09-30', text: 'Privata', servings: null, note: null })).toBeTruthy();
+      await writeStarted;
+      let purged = false;
+      const purging = clearDataScope(scope).then(() => { purged = true; });
+      await expect(enqueueEntityMutation(scope, 'dinner_entry', 'late-entry', 'delete', null))
+        .rejects.toMatchObject({ code: 'scope_revoked' });
+      expect(purged).toBe(false);
+      releaseWrite?.();
+      await purging;
+      await waitForPendingDinnerDiaryWrites();
+      await expect(storage.readDinnerEntries(scope)).resolves.toEqual([]);
+      await expect(readQueuedMutations(scope)).resolves.toEqual([]);
+    } finally { releaseWrite?.(); spy.mockRestore(); setActiveDataScope('guest'); }
   });
 
   it('clears revoked House drafts without deleting personal drafts', async () => {

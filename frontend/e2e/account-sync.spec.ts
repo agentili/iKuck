@@ -30,7 +30,7 @@ test.afterEach(async ({ page }) => {
   assertOfflineBackendClean(page);
 });
 
-test('keeps the house pantry visible when the local pantry merge is rejected', async ({ page }) => {
+test('keeps the house pantry and guest source when an explicitly requested merge is rejected', async ({ page }) => {
   const guestLot = {
     id: 'x'.repeat(161),
     ingredientId: 'local-pasta',
@@ -70,6 +70,7 @@ test('keeps the house pantry visible when the local pantry merge is rejected', a
       expiresAt: '2026-10-12T10:00:00.000Z',
     },
   }));
+  await page.route('**/v1/profile', (route) => route.fulfill({ status: 200, json: { profile: { displayName: null } } }));
   await page.route('**/v1/house', (route) => route.fulfill({
     status: 200,
     json: {
@@ -108,10 +109,16 @@ test('keeps the house pantry visible when the local pantry merge is rejected', a
   await page.goto('/pantry');
 
   await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
-  await expect(page.getByText('La dispensa della Casa resta selezionata.')).toBeVisible();
   await expect(page.getByText('Riso', { exact: true })).toBeVisible();
+  expect(mergeLotIdLengths).toHaveLength(0);
+  await page.getByRole('link', { name: 'Profilo' }).click();
+  await page.getByRole('button', { name: 'Importa i dati locali' }).click();
+  await page.getByRole('button', { name: 'Conferma importazione' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Non è stato possibile completare l’operazione' })).toBeVisible();
   await expect.poll(() => mergeLotIdLengths.length).toBeGreaterThan(0);
   expect(mergeLotIdLengths).toContain(161);
+  await page.getByRole('link', { name: 'Dispensa' }).click();
+  await expect(page.getByText('Riso', { exact: true })).toBeVisible();
   await expect.poll(() => syncScopes.includes('house:house-e2e')).toBe(true);
   const preservedGuestLotIdLength = await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -313,6 +320,13 @@ test('two verified accounts share the house pantry while member authorization st
 
   bVerified = true;
   await memberPage.reload();
+  await expect(memberPage.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
+  await expect(memberPage.getByText('Riso', { exact: true })).toBeVisible();
+  expect(mergeRequests.filter((request) => request.userId === member.id)).toHaveLength(0);
+  await memberPage.getByRole('link', { name: 'Profilo' }).click();
+  await memberPage.getByRole('button', { name: 'Importa i dati locali' }).click();
+  await memberPage.getByRole('button', { name: 'Conferma importazione' }).click();
+  await expect(memberPage.getByText(/Sincronizzazione completata/)).toBeVisible();
   await expect.poll(() => mergeRequests.filter((request) => request.userId === member.id).length).toBeGreaterThanOrEqual(1);
   const memberMerges = mergeRequests.filter((request) => request.userId === member.id);
   expect(memberMerges.filter((request) => request.lots.length > 0)).toHaveLength(1);

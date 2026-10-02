@@ -2,9 +2,25 @@ import { describe, expect, it, vi } from 'vitest';
 import { AuthServiceError } from '../auth/service.js';
 import type { SyncRepository } from '../sync/repository.js';
 import { createHouseService } from './service.js';
-import { createMemoryHouseRepository } from './repository.js';
+import { createMemoryHouseRepository, HouseMembershipExistsError } from './repository.js';
 
 describe('house service', () => {
+  it('maps a membership conflict detected inside the create transaction to a typed conflict', async () => {
+    const repository = {
+      ...createMemoryHouseRepository([
+        { id: 'admin-1', email: 'admin@example.com', displayName: 'Admin', emailVerifiedAt: new Date() },
+      ]),
+      getMembershipForUser: async () => null,
+      createHouse: async () => { throw new HouseMembershipExistsError(); },
+    };
+    const service = createHouseService({ repository });
+
+    await expect(service.createHouse('admin-1', 'Casa')).rejects.toMatchObject({
+      code: 'house_membership_exists',
+      status: 409,
+    });
+  });
+
   it('creates a house with the creator as admin and adds a registered member directly', async () => {
     const repository = createMemoryHouseRepository([
       { id: 'admin-1', email: 'admin@example.com', displayName: 'Admin', emailVerifiedAt: new Date() },
@@ -20,25 +36,27 @@ describe('house service', () => {
     expect(member.email).toBe('member@example.com');
   });
 
-  it('automatically merges the creator and each new member pantry into the house', async () => {
+  it('automatically migrates every eligible record for the creator and each new member', async () => {
     const repository = createMemoryHouseRepository([
       { id: 'admin-1', email: 'admin@example.com', displayName: 'Admin', emailVerifiedAt: new Date() },
       { id: 'member-1', email: 'member@example.com', displayName: 'Member', emailVerifiedAt: new Date() },
     ]);
+    const migrateUserSharedDataToHouse = vi.fn<SyncRepository['migrateUserSharedDataToHouse']>().mockResolvedValue();
     const mergeUserPantryToHouse = vi.fn<SyncRepository['mergeUserPantryToHouse']>().mockResolvedValue({
       addedLots: 0,
       mergedLots: 0,
       mergedGroups: 0,
       importedStaples: 0,
     });
-    const syncRepository = { mergeUserPantryToHouse } as unknown as SyncRepository;
+    const syncRepository = { migrateUserSharedDataToHouse, mergeUserPantryToHouse } as unknown as SyncRepository;
     const service = createHouseService({ repository, syncRepository });
 
     await service.createHouse('admin-1', 'Casa');
     await service.addMember('admin-1', 'member@example.com');
 
-    expect(mergeUserPantryToHouse).toHaveBeenNthCalledWith(1, 'admin-1', 'house-1');
-    expect(mergeUserPantryToHouse).toHaveBeenNthCalledWith(2, 'member-1', 'house-1');
+    expect(migrateUserSharedDataToHouse).toHaveBeenNthCalledWith(1, 'admin-1', 'house-1');
+    expect(migrateUserSharedDataToHouse).toHaveBeenNthCalledWith(2, 'member-1', 'house-1');
+    expect(mergeUserPantryToHouse).not.toHaveBeenCalled();
   });
 
   it('keeps a created membership retryable when the first pantry merge fails', async () => {

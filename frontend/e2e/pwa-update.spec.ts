@@ -95,6 +95,8 @@ const createPwaServer = async (): Promise<PwaServer> => {
 let pwaServer: PwaServer;
 
 test.beforeAll(async () => {
+  // Two complete TypeScript/Vite builds can exceed Playwright's default 30s hook timeout.
+  test.setTimeout(120_000);
   await rm(buildRoot, { recursive: true, force: true });
   await mkdir(buildRoot, { recursive: true });
   await runBuild(buildA, 'build-a');
@@ -136,6 +138,9 @@ test('updates the service worker without losing IndexedDB data', async ({ page, 
   await page.getByLabel('Ingredienti presenti').fill('pasta, pomodoro');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
   await expect(page.getByRole('list', { name: 'La tua dispensa' }).getByText('Pasta', { exact: true })).toBeVisible();
+  // The first reload must occur after the initial worker activates; otherwise
+  // the navigation can race installation and never acquire a controller.
+  await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload();
   await expect(page.getByRole('list', { name: 'La tua dispensa' }).getByText('Pasta', { exact: true })).toBeVisible();
   await page.waitForFunction(() => 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null);

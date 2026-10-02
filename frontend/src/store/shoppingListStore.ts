@@ -14,7 +14,8 @@ import {
   waitForPendingQueueWrites,
 } from '../sync/syncQueue';
 import { trackPersistence, trackSync } from './persistenceStatusStore';
-import { getPersonalDataScope, subscribePersonalDataScope, type SyncScope } from '../sync/scopeContext';
+import { getActiveDataScope, subscribeActiveDataScope, type SyncScope } from '../sync/scopeContext';
+import { isScopeWritable, ScopeRevokedError, trackScopedWrite } from '../sync/scopeWriteFence';
 
 export interface ShoppingListItemPatch {
   label?: string;
@@ -48,7 +49,12 @@ const createItemId = (): string => {
 };
 
 const persistItems = (items: readonly ShoppingListItem[], scope: SyncScope): Promise<void> => {
-  const operation = pendingStorageWrites.then(() => writeShoppingList(items, scope));
+  const previous = pendingStorageWrites;
+  const operation = trackScopedWrite(scope, async () => {
+    await previous;
+    if (!isScopeWritable(scope)) throw new ScopeRevokedError();
+    await writeShoppingList(items, scope);
+  });
   pendingStorageWrites = operation.catch(() => undefined);
   return operation;
 };
@@ -70,7 +76,7 @@ const persistAndQueue = (
   changed: ShoppingListItem,
   operation: 'upsert' | 'delete' = 'upsert',
 ): void => {
-  const personalScope = getPersonalDataScope();
+  const personalScope = getActiveDataScope();
   void trackPersistence('shopping-list', () => persistItems(items, personalScope));
   void trackSync('shopping-list', () => enqueueEntityMutation(getMutationScope('shopping_list_item', personalScope, personalScope),
     'shopping_list_item',
@@ -156,7 +162,7 @@ export const useShoppingListStore = create<ShoppingListState>((set, get) => ({
     if (removed.length === 0) return 0;
     const items = get().items.filter((item) => !item.purchased);
     set({ items });
-    const personalScope = getPersonalDataScope();
+    const personalScope = getActiveDataScope();
     void trackPersistence('shopping-list', () => persistItems(items, personalScope));
     for (const item of removed) {
       void trackSync('shopping-list', () => enqueueEntityMutation(
@@ -175,7 +181,7 @@ registerShoppingListSnapshotListener((items) => {
   useShoppingListStore.setState({ items: normalizeShoppingList(items) });
 });
 
-subscribePersonalDataScope(() => {
+subscribeActiveDataScope(() => {
   hydrationGeneration += 1;
   hydratedScope = null;
   useShoppingListStore.setState({ hasHydrated: false, items: [] });
@@ -188,18 +194,18 @@ export async function waitForPendingShoppingListWrites(): Promise<void> {
 
 export async function hydrateShoppingListStore(): Promise<void> {
   for (;;) {
-    const scope = getPersonalDataScope();
+    const scope = getActiveDataScope();
     const generation = hydrationGeneration;
     if (useShoppingListStore.getState().hasHydrated && hydratedScope === scope) return;
     if (hydrationPromise === null) {
       const currentPromise = readShoppingList(scope)
         .then((items) => {
-          if (getPersonalDataScope() !== scope || hydrationGeneration !== generation) return;
+          if (getActiveDataScope() !== scope || hydrationGeneration !== generation) return;
           hydratedScope = scope;
           useShoppingListStore.setState({ items: normalizeShoppingList(items), hasHydrated: true });
         })
         .catch(() => {
-          if (getPersonalDataScope() !== scope || hydrationGeneration !== generation) return;
+          if (getActiveDataScope() !== scope || hydrationGeneration !== generation) return;
           hydratedScope = scope;
           useShoppingListStore.setState({ items: [], hasHydrated: true });
         })
@@ -210,7 +216,7 @@ export async function hydrateShoppingListStore(): Promise<void> {
     }
     const pendingHydration = hydrationPromise;
     if (pendingHydration !== null) await pendingHydration;
-    if (getPersonalDataScope() === scope && hydrationGeneration === generation
+    if (getActiveDataScope() === scope && hydrationGeneration === generation
       && useShoppingListStore.getState().hasHydrated && hydratedScope === scope) return;
   }
 }

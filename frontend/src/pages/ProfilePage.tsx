@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiClientError, apiRequest } from '../api/apiClient';
+import { getActiveDataScope, subscribeActiveDataScope } from '../sync/scopeContext';
 import AccountPanel from '../components/account/AccountPanel';
 import { useAuthStore } from '../auth/authStore';
 import { importLocalData } from '../sync/syncQueue';
@@ -27,6 +28,8 @@ export default function ProfilePage() {
   const logout = useAuthStore((state) => state.logout);
   const linkGoogle = useAuthStore((state) => state.linkGoogle);
   const clearSession = useAuthStore((state) => state.clearSession);
+  const activeScope = useSyncExternalStore(subscribeActiveDataScope, getActiveDataScope, () => 'guest');
+  const hasHouse = activeScope.startsWith('house:');
   const [displayName, setDisplayName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -97,6 +100,9 @@ export default function ProfilePage() {
         userId: user.id,
         emailVerifiedAt: user.emailVerifiedAt,
         csrfToken,
+      }, () => {
+        const current = useAuthStore.getState();
+        return current.user?.id === user.id && current.csrfToken === csrfToken;
       });
       setMessage(`Sincronizzazione ${result.complete ? 'completata' : 'parziale'}: ${result.uploaded} elementi inviati, ${result.downloaded} ricevuti. In attesa: ${result.pending}.`);
     } catch (importError) {
@@ -197,13 +203,17 @@ export default function ProfilePage() {
 
         <div className="mt-7 grid gap-3 border-t border-gray-200 pt-6">
           <h2 className="text-xl font-black text-gray-950">I tuoi dati</h2>
-          <p className="text-gray-600">La sincronizzazione parte solo quando la richiedi. I dati locali verranno copiati nell’account e uniti a quelli già presenti. I dati locali resteranno sul dispositivo e non verranno cancellati.</p>
+          <p className="text-gray-600">{hasHouse
+            ? 'Importa esplicitamente i dati ospite nella Casa attiva. La dispensa ospite viene unita senza duplicare le quantità e rimossa dal dispositivo solo dopo la conferma del server; gli altri dati ospite restano sul dispositivo.'
+            : 'Importa esplicitamente i dati ospite nel tuo account. I dati locali resteranno sul dispositivo e non verranno cancellati.'}</p>
           <div className="flex flex-wrap gap-3">
             {!confirmImport ? (
               <button type="button" onClick={() => setConfirmImport(true)} disabled={isImporting || csrfToken === null} className="min-h-11 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800 disabled:opacity-60">Importa i dati locali</button>
             ) : (
               <div className="flex w-full flex-wrap items-center gap-3 rounded-xl border-2 border-amber-200 bg-amber-50 p-3">
-                <p className="basis-full font-semibold text-amber-950">Confermi l’unione dei dati locali con quelli dell’account? I dati locali non verranno cancellati.</p>
+                <p className="basis-full font-semibold text-amber-950">{hasHouse
+                  ? 'Confermi l’unione dei dati ospite con la Casa attiva? La dispensa ospite viene rimossa solo dopo una fusione riuscita.'
+                  : 'Confermi l’unione dei dati locali con quelli dell’account? I dati locali non verranno cancellati.'}</p>
                 <button type="button" onClick={() => void handleImport()} disabled={isImporting || csrfToken === null} className="min-h-11 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800 disabled:opacity-60">{isImporting ? 'Sincronizzazione…' : 'Conferma importazione'}</button>
                 <button type="button" onClick={() => setConfirmImport(false)} disabled={isImporting} className="min-h-11 rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900 disabled:opacity-60">Annulla</button>
               </div>
@@ -239,7 +249,7 @@ export default function ProfilePage() {
 
         <div className="mt-7 border-t border-rose-200 pt-6">
           <h2 className="text-xl font-black text-rose-950">Zona delicata</h2>
-          <p className="mt-2 text-gray-600">Eliminare l’account rimuove i dati remoti e chiude la sessione. I dati ospite già presenti sul dispositivo non vengono cancellati.</p>
+          <p className="mt-2 text-gray-600">Eliminare l’account rimuove i dati personali remoti e chiude la sessione. Se ci sono altri membri, i dati condivisi restano nella Casa. I dati ospite presenti sul dispositivo non vengono cancellati.</p>
           {!confirmDelete ? (
             <button type="button" onClick={() => setConfirmDelete(true)} className="mt-4 min-h-11 rounded-xl border-2 border-rose-300 px-4 py-2 font-bold text-rose-900 hover:border-rose-600">Elimina account</button>
           ) : (

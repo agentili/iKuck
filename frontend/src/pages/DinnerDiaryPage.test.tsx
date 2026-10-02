@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AiConsent } from '@ikuck/shared/contracts';
 import type { DinnerEntry, SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { useAuthStore } from '../auth/authStore';
+import { useHouseStore } from '../house/houseStore';
 import { fetchAiConsent, updateAiConsent } from '../ai/aiRecipeApi';
 import DinnerDiaryPage from './DinnerDiaryPage';
 import { useDinnerDiaryStore } from '../store/dinnerDiaryStore';
@@ -31,6 +32,7 @@ describe('DinnerDiaryPage', () => {
     vi.mocked(fetchAiConsent).mockReset();
     vi.mocked(updateAiConsent).mockReset();
     useAuthStore.setState({ user: null, csrfToken: null });
+    useHouseStore.setState({ state: null });
     setActiveDataScope('guest');
     useDinnerDiaryStore.setState({ hasHydrated: true, entries: [], recipes: [], drafts: [], error: null });
   });
@@ -53,6 +55,44 @@ describe('DinnerDiaryPage', () => {
 
     await waitFor(() => expect(updateAiConsent).toHaveBeenCalledWith(true, 'csrf-1'));
     expect(await screen.findByRole('button', { name: 'Prepara bozze ricetta' })).toBeVisible();
+  });
+
+  it('shows editing controls on another author’s house dinner for a current member', async () => {
+    const houseScope = 'house:home-1';
+    const member = { id: 'user-2', emailVerifiedAt: '2026-09-28T10:00:00.000Z' };
+    vi.mocked(fetchAiConsent).mockResolvedValue({ enabled: false, updatedAt: '2026-09-28T10:00:00.000Z' });
+    useAuthStore.setState({ user: member as never, csrfToken: 'csrf-2' });
+    useHouseStore.setState({ state: {
+      house: { id: 'home-1', name: 'Casa', createdAt: '2026-09-28T10:00:00.000Z' },
+      membership: { role: 'member', joinedAt: '2026-09-28T10:00:00.000Z' }, members: [],
+    } });
+    setActiveDataScope(houseScope);
+    useDinnerDiaryStore.setState({ hasHydrated: true, entries: [{ scope: houseScope, value: { ...existingEntry, authorId: 'user-1' } }] });
+
+    renderPage();
+
+    expect(screen.getByRole('button', { name: /Modifica cena del/ })).toBeVisible();
+    expect(screen.getByRole('button', { name: /Elimina cena del/ })).toBeVisible();
+  });
+
+  it('does not display account-only dinner records after entering a house', () => {
+    const now = '2026-09-28T10:00:00.000Z';
+    useAuthStore.setState({ user: { id: 'user-1', emailVerifiedAt: now } as never, csrfToken: 'csrf-1' });
+    vi.mocked(fetchAiConsent).mockResolvedValue({ enabled: false, updatedAt: now });
+    useHouseStore.setState({ state: {
+      house: { id: 'home-1', name: 'Casa', createdAt: now },
+      membership: { role: 'member', joinedAt: now }, members: [],
+    } });
+    setActiveDataScope('house:home-1');
+    useDinnerDiaryStore.setState({ hasHydrated: true, entries: [
+      { scope: 'account:user-1', value: { ...existingEntry, id: 'old-personal', text: 'Only in account' } },
+      { scope: 'house:home-1', value: { ...existingEntry, id: 'current-house', text: 'Only in house' } },
+    ] });
+
+    renderPage();
+
+    expect(screen.queryByText('Only in account')).not.toBeInTheDocument();
+    expect(screen.getByText('Only in house')).toBeVisible();
   });
 
   it('saves a dated dinner description to the local diary', async () => {

@@ -1,10 +1,14 @@
 import { DIARY_MAX_RECIPES } from '@ikuck/shared/limits';
 import { isDinnerEntry } from '@ikuck/shared/dinnerDiary';
-import type { PantryLot, SyncChange, SyncMutation } from '@ikuck/shared/contracts';
+import { HOUSE_SYNC_ENTITY_TYPES } from '@ikuck/shared/contracts';
+import type { DietProfile, DietType, PantryLot, SyncChange, SyncMutation } from '@ikuck/shared/contracts';
 import { mergePantryLots, type PantryMergeSummary } from '@ikuck/shared/pantryMerge';
 import { and, asc, eq, gt, inArray, like, or, sql } from 'drizzle-orm';
+import { Buffer } from 'node:buffer';
 import type { ApplicationDatabase } from '../db/client.js';
-import { processedSyncMutations, houseMemberships, houses, syncItems } from '../db/schema.js';
+import { processedSyncMutations, houseMemberships, houses, syncItems, users } from '../db/schema.js';
+import { isDietProfile } from '../diet/validation.js';
+import { isPantryLot } from '../pantry/validation.js';
 import { assertSyncMutation } from './validation.js';
 
 export interface StoredSyncItem {
@@ -34,7 +38,6 @@ export interface SyncRepositoryOptions {
   logger?: SyncRepositoryLogger;
   maxClientClockSkewMs?: number;
   scopeResolver?: (userId: string) => Promise<SyncScope | null>;
-  roleResolver?: (userId: string, houseId: string) => Promise<'admin' | 'member' | null>;
 }
 
 export type SyncScope =
@@ -51,15 +54,9 @@ export class SyncScopeInvalidError extends Error {
   readonly status = 400;
 
   constructor() {
-    super('House scope is only valid for shared data');
+    super('The requested sync scope is not valid for this entity');
     this.name = 'SyncScopeInvalidError';
   }
-}
-
-export class SyncPermissionDeniedError extends Error {
-  readonly code = 'sync_permission_denied';
-  readonly status = 403;
-  constructor() { super('You do not have permission to modify this shared record'); this.name = 'SyncPermissionDeniedError'; }
 }
 
 export class SyncDiaryRecipeLimitError extends Error {
@@ -77,11 +74,10 @@ const diaryAuthorId = (payload: unknown): string | null => {
   return typeof authorId === 'string' ? authorId : null;
 };
 
-const authorizeDiaryMutation = (
+const normalizeDiaryMutation = (
   userId: string,
   mutation: SyncMutation,
   existing: StoredSyncItem | null,
-  role: 'admin' | 'member' | null,
 ): SyncMutation => {
   if (!isDiaryEntityType(mutation.entityType)) return mutation;
   if (existing === null) {
@@ -93,7 +89,6 @@ const authorizeDiaryMutation = (
     };
   }
   const authorId = diaryAuthorId(existing.payload);
-  if (authorId !== userId && role !== 'admin') throw new SyncPermissionDeniedError();
   const payload = mutation.operation === 'delete'
     ? existing.payload ?? { authorId }
     : { ...(mutation.payload as Record<string, unknown>), authorId };
@@ -126,10 +121,57 @@ const mergeStaleDinnerRecipeLinks = (mutation: SyncMutation, existing: StoredSyn
   };
 };
 
+const DIET_RESTRICTION_RANK: Readonly<Record<DietType, number>> = {
+  omnivore: 0,
+  pescatarian: 1,
+  vegetarian: 2,
+  vegan: 3,
+};
+
+const lowerNonNull = (left: number | null, right: number | null): number | null => {
+  if (left === null) return right;
+  if (right === null) return left;
+  return Math.min(left, right);
+};
+
+const higherNonNull = (left: number | null, right: number | null): number | null => {
+  if (left === null) return right;
+  if (right === null) return left;
+  return Math.max(left, right);
+};
+
+const mergeDietProfiles = (left: unknown, right: unknown): DietProfile | null => {
+  if (!isDietProfile(left) || !isDietProfile(right)) return null;
+  const diet = DIET_RESTRICTION_RANK[left.diet] >= DIET_RESTRICTION_RANK[right.diet]
+    ? left.diet
+    : right.diet;
+  return {
+    diet,
+    excludedAllergens: [...new Set([...left.excludedAllergens, ...right.excludedAllergens])].sort(),
+    nutrition: {
+      maxCaloriesPerServing: lowerNonNull(
+        left.nutrition.maxCaloriesPerServing,
+        right.nutrition.maxCaloriesPerServing,
+      ),
+      minProteinGramsPerServing: higherNonNull(
+        left.nutrition.minProteinGramsPerServing,
+        right.nutrition.minProteinGramsPerServing,
+      ),
+    },
+    updatedAt: Date.parse(left.updatedAt) >= Date.parse(right.updatedAt) ? left.updatedAt : right.updatedAt,
+  };
+};
+
+const shouldPreserveLiveHouseDietProfile = (
+  entityType: string,
+  incomingDeleted: boolean,
+  existing: StoredSyncItem | null,
+): boolean => entityType === 'diet_profile' && incomingDeleted && existing !== null && !existing.deleted;
+
 const SHARED_ENTITY_TYPES: ReadonlySet<SyncMutation['entityType']> = new Set([
-  'pantry_item', 'pantry_lot', 'staple_preference', 'dinner_entry', 'saved_recipe',
+  ...HOUSE_SYNC_ENTITY_TYPES,
 ]);
-const AUTO_MIGRATED_ENTITY_TYPES: ReadonlySet<SyncMutation['entityType']> = new Set(['pantry_item', 'pantry_lot', 'staple_preference']);
+const AUTO_MIGRATED_ENTITY_TYPES: ReadonlySet<SyncMutation['entityType']> = SHARED_ENTITY_TYPES;
 
 export const isSharedEntityType = (entityType: SyncMutation['entityType']): boolean => SHARED_ENTITY_TYPES.has(entityType);
 
@@ -150,17 +192,33 @@ export interface SyncRepository {
   readChanges: (userId: string, cursor: number, limit: number, requestedScope?: SyncMutation['syncScope']) => Promise<SyncChange[]>;
   readAll: (userId: string) => Promise<SyncChange[]>;
   readEntity: (userId: string, entityType: SyncMutation['entityType'], entityId: string) => Promise<StoredSyncItem | null>;
-  migrateUserSharedDataToHouse: (userId: string, houseId: string) => Promise<void>;
+  migrateUserSharedDataToHouse: (userId: string, houseId: string, pendingAccountMutations?: readonly SyncMutation[]) => Promise<void>;
   mergeUserPantryToHouse: (userId: string, houseId: string) => Promise<PantryMergeSummary>;
   mergeGuestPantryToHouse: (userId: string, houseId: string, input: {
     deviceId: string;
     lots: PantryLot[];
     stapleIds: string[];
   }) => Promise<PantryMergeSummary>;
+  mergeGuestDietProfileToHouse: (userId: string, houseId: string, mutation: SyncMutation) => Promise<boolean>;
 }
 
 const scopeKey = (scope: SyncScope): string => `${scope.kind}:${scope.id}`;
 const userScope = (userId: string): SyncScope => ({ kind: 'user', id: userId });
+
+// Account-queue replay is a distinct authenticated import, never a normal
+// shared sync write. A forged foreign/personal scope cannot enter migration.
+const validatePendingAccountMutations = (userId: string, mutations: readonly SyncMutation[]): SyncMutation[] => mutations.map((mutation) => {
+  const valid = assertSyncMutation(mutation);
+  if (!isSharedEntityType(valid.entityType) || valid.syncScope !== `account:${userId}`) throw new SyncScopeInvalidError();
+  return valid;
+});
+
+const validateGuestDietProfileMutation = (mutation: SyncMutation): SyncMutation => {
+  const valid = assertSyncMutation(mutation);
+  if (valid.entityType !== 'diet_profile' || valid.entityId !== 'profile' || valid.operation !== 'upsert'
+    || valid.syncScope !== undefined || !isDietProfile(valid.payload)) throw new SyncScopeInvalidError();
+  return valid;
+};
 
 const pantryItemPayload = (value: unknown): value is { id: string; label: string; known: boolean } => {
   if (typeof value !== 'object' || value === null) return false;
@@ -291,23 +349,119 @@ const removeLotContribution = (existing: PantryLot, contribution: PantryLot): Pa
   return { ...existing, quantity: remaining / unitFactor(existing.unit) };
 };
 
-const latestGuestLotRevision = (markers: readonly string[], deviceId: string, lotId: string): PantryLot | null => {
-  const prefix = `guest:${deviceId}:pantry_lot:${lotId}:`;
+const encodedMarkerPart = (value: string): string => Buffer.from(value, 'utf8').toString('hex');
+
+const userSourceLotMarkerPrefix = (
+  userId: string,
+  deviceId: string,
+  entityType: SyncMutation['entityType'],
+  entityId: string,
+): string => `user-source:${encodedMarkerPart(userId)}:${encodedMarkerPart(deviceId)}:${encodedMarkerPart(entityType)}:${encodedMarkerPart(entityId)}:`;
+
+const userSourceLotMarkerForLot = (
+  userId: string,
+  deviceId: string,
+  entityType: SyncMutation['entityType'],
+  entityId: string,
+  lot: PantryLot,
+): string => `${userSourceLotMarkerPrefix(userId, deviceId, entityType, entityId)}${lotFingerprint(lot)}`;
+
+const userSourceLotMarkerForItem = (userId: string, item: StoredSyncItem): string | null => {
+  if (!pantryItemTypes.has(item.entityType)) return null;
+  const lot = storedPantryLot(item);
+  return lot === null ? null : userSourceLotMarkerForLot(userId, item.deviceId, item.entityType, item.entityId, lot);
+};
+
+const latestUserSourceLotRevision = (
+  markers: readonly string[],
+  userId: string,
+  deviceId: string,
+  entityType: SyncMutation['entityType'],
+  entityId: string,
+): PantryLot | null => {
+  const prefix = userSourceLotMarkerPrefix(userId, deviceId, entityType, entityId);
+  const lotId = entityType === 'pantry_item' ? `legacy:${entityId}` : entityId;
   const revisions = markers.flatMap((marker) => {
     if (!marker.startsWith(prefix)) return [];
     try {
       const value = JSON.parse(marker.slice(prefix.length)) as Record<string, unknown>;
-      if (typeof value.ingredientId !== 'string' || typeof value.label !== 'string' || typeof value.known !== 'boolean'
-        || (value.quantity !== null && typeof value.quantity !== 'number')
-        || (value.unit !== null && typeof value.unit !== 'string')
-        || (value.expiresAt !== null && typeof value.expiresAt !== 'string')
-        || typeof value.createdAt !== 'string' || typeof value.updatedAt !== 'string') return [];
-      return [{ ...value, id: lotId } as PantryLot];
+      const candidate = { ...value, id: lotId };
+      return isPantryLot(candidate) ? [candidate] : [];
     } catch {
       return [];
     }
   });
   return latestLotsById(revisions)[0] ?? null;
+};
+
+interface AccountSourceLotRevision {
+  deleted: boolean;
+  clientUpdatedAt: string;
+  serverUpdatedAt: string;
+  deviceId: string;
+  mutationId: string;
+  lot: PantryLot | null;
+}
+
+const accountSourceLotMarkerPrefix = (
+  userId: string,
+  entityType: SyncMutation['entityType'],
+  entityId: string,
+): string => `account-source:${encodedMarkerPart(userId)}:${encodedMarkerPart(entityType)}:${encodedMarkerPart(entityId)}:`;
+
+const accountSourceLotRevisionMarkerForItem = (
+  userId: string,
+  item: StoredSyncItem,
+  previous: AccountSourceLotRevision | null,
+): string | null => {
+  if (!pantryItemTypes.has(item.entityType)) return null;
+  const lot = item.deleted
+    ? previous?.deleted === false ? previous.lot : null
+    : storedPantryLot(item);
+  return `${accountSourceLotMarkerPrefix(userId, item.entityType, item.entityId)}${JSON.stringify({
+    deleted: item.deleted,
+    clientUpdatedAt: item.clientUpdatedAt.toISOString(),
+    serverUpdatedAt: item.serverUpdatedAt.toISOString(),
+    deviceId: item.deviceId,
+    mutationId: item.mutationId,
+    lot,
+  } satisfies AccountSourceLotRevision)}`;
+};
+
+const latestAccountSourceLotRevision = (
+  markers: readonly string[],
+  userId: string,
+  entityType: SyncMutation['entityType'],
+  entityId: string,
+): AccountSourceLotRevision | null => {
+  const prefix = accountSourceLotMarkerPrefix(userId, entityType, entityId);
+  const revisions = markers.flatMap((marker) => {
+    if (!marker.startsWith(prefix)) return [];
+    try {
+      const value = JSON.parse(marker.slice(prefix.length)) as Record<string, unknown>;
+      if (typeof value.deleted !== 'boolean' || typeof value.clientUpdatedAt !== 'string'
+        || !Number.isFinite(Date.parse(value.clientUpdatedAt)) || typeof value.serverUpdatedAt !== 'string'
+        || !Number.isFinite(Date.parse(value.serverUpdatedAt)) || typeof value.deviceId !== 'string'
+        || typeof value.mutationId !== 'string' || (value.lot !== null && !isPantryLot(value.lot))) return [];
+      return [value as unknown as AccountSourceLotRevision];
+    } catch {
+      return [];
+    }
+  });
+  return revisions.sort((left, right) => Date.parse(right.clientUpdatedAt) - Date.parse(left.clientUpdatedAt)
+    || Date.parse(right.serverUpdatedAt) - Date.parse(left.serverUpdatedAt)
+    || right.deviceId.localeCompare(left.deviceId) || right.mutationId.localeCompare(left.mutationId))[0] ?? null;
+};
+
+const accountSourceRevisionWins = (item: StoredSyncItem, existing: AccountSourceLotRevision): boolean => {
+  const incomingClientTime = item.clientUpdatedAt.getTime();
+  const existingClientTime = Date.parse(existing.clientUpdatedAt);
+  if (incomingClientTime !== existingClientTime) return incomingClientTime > existingClientTime;
+  const incomingServerTime = item.serverUpdatedAt.getTime();
+  const existingServerTime = Date.parse(existing.serverUpdatedAt);
+  if (incomingServerTime !== existingServerTime) return incomingServerTime > existingServerTime;
+  if (item.deviceId !== existing.deviceId) return item.deviceId > existing.deviceId;
+  return item.mutationId > existing.mutationId;
 };
 
 const rekeyCollidingLots = (
@@ -376,22 +530,43 @@ const entityIdFromKey = (key: string): string => key.slice(key.lastIndexOf(':') 
 const entityKey = (scope: SyncScope, entityType: SyncMutation['entityType'], entityId: string): string =>
   `${scopeKey(scope)}:${entityType}:${entityId}`;
 
+export const resolveScopeForCurrentMembership = (
+  userId: string,
+  entityType: SyncMutation['entityType'],
+  currentHouseId: string | null,
+  requestedScope?: SyncMutation['syncScope'],
+): SyncScope => {
+  const isShared = isSharedEntityType(entityType);
+  if (requestedScope === undefined) {
+    return isShared && currentHouseId !== null ? { kind: 'house', id: currentHouseId } : userScope(userId);
+  }
+  if (requestedScope === `account:${userId}`) {
+    if (isShared && currentHouseId !== null) throw new SyncScopeInvalidError();
+    return userScope(userId);
+  }
+  if (requestedScope.startsWith('house:')) {
+    if (!isShared) throw new SyncScopeInvalidError();
+    if (currentHouseId === null || requestedScope !== `house:${currentHouseId}`) {
+      throw new SyncMembershipRequiredError();
+    }
+    return { kind: 'house', id: currentHouseId };
+  }
+  throw new SyncMembershipRequiredError();
+};
+
 const resolveEntityScope = async (
   userId: string,
   entityType: SyncMutation['entityType'],
   options: ResolvedSyncRepositoryOptions,
   requestedScope?: SyncMutation['syncScope'],
 ): Promise<SyncScope | null> => {
-  if (requestedScope !== undefined) {
-    if (requestedScope === `account:${userId}`) return userScope(userId);
-    if (requestedScope.startsWith('house:') && !isSharedEntityType(entityType)) throw new SyncScopeInvalidError();
-    if (!requestedScope.startsWith('house:') || !options.scopeResolverConfigured) return null;
-    const currentHouse = await options.scopeResolver(userId);
-    return currentHouse?.kind === 'house' && requestedScope === `house:${currentHouse.id}` ? currentHouse : null;
-  }
-  if (!isSharedEntityType(entityType)) return userScope(userId);
-  if (!options.scopeResolverConfigured) return userScope(userId);
-  return (await options.scopeResolver(userId)) ?? userScope(userId);
+  const currentScope = options.scopeResolverConfigured ? await options.scopeResolver(userId) : null;
+  return resolveScopeForCurrentMembership(
+    userId,
+    entityType,
+    currentScope?.kind === 'house' ? currentScope.id : null,
+    requestedScope,
+  );
 };
 
 const resolveReadScopes = async (
@@ -424,7 +599,6 @@ const resolveOptions = (options: SyncRepositoryOptions): ResolvedSyncRepositoryO
   logger: options.logger ?? { warn: (message) => console.warn(message) },
   maxClientClockSkewMs: options.maxClientClockSkewMs ?? DEFAULT_MAX_CLIENT_CLOCK_SKEW_MS,
   scopeResolver: options.scopeResolver ?? (async () => null),
-  roleResolver: options.roleResolver ?? (async () => null),
   scopeResolverConfigured: options.scopeResolver !== undefined,
 });
 
@@ -485,8 +659,9 @@ export const createMemorySyncRepository = (repositoryOptions: SyncRepositoryOpti
     sourcePrefix: string,
   ): PantryMergeSummary => {
     const houseScope: SyncScope = { kind: 'house', id: houseId };
+    const accountSourceUserId = sourcePrefix.startsWith('user:') ? userId : null;
     const sourceRowsAfterExactDedup = sourceRows.map(([key, item]) => {
-      const marker = guestMarkerForItem(item);
+      const marker = userSourceLotMarkerForItem(userId, item);
       return marker !== null && processed.has(`${scopeKey(houseScope)}:${marker}`)
         ? [key, { ...item, deleted: true }] as [string, StoredSyncItem]
         : [key, item] as [string, StoredSyncItem];
@@ -507,19 +682,43 @@ export const createMemorySyncRepository = (repositoryOptions: SyncRepositoryOpti
     const houseProcessedMarkers = [...processed]
       .filter((processedKey) => processedKey.startsWith(houseProcessedPrefix))
       .map((processedKey) => processedKey.slice(houseProcessedPrefix.length));
+    let existingLotsForMerge = existingLots;
     const sourceRowsForMerge = sourceRowsAfterExactDedup.map(([key, item]) => {
       const sourceLot = storedPantryLot(item);
-      const previous = sourceLot === null ? undefined : existingLots.find((lot) => lot.id === sourceLot.id);
-      const markerPrefix = guestMarkerPrefixForItem(item);
-      const hasPriorRevision = markerPrefix !== null
-        && houseProcessedMarkers.some((processedMarker) => processedMarker.startsWith(markerPrefix));
-      if (!item.deleted && sourceLot !== null && previous !== undefined && hasPriorRevision) {
-        if (lotRevisionTime(sourceLot.updatedAt) <= lotRevisionTime(previous.updatedAt)) return [key, { ...item, deleted: true }] as [string, StoredSyncItem];
-        supersededExistingIds.add(previous.id);
+      const accountPriorRevision = accountSourceUserId === null ? null
+        : latestAccountSourceLotRevision(houseProcessedMarkers, userId, item.entityType, item.entityId);
+      if (accountPriorRevision !== null) {
+        if (!accountSourceRevisionWins(item, accountPriorRevision)) {
+          return [key, { ...item, deleted: true }] as [string, StoredSyncItem];
+        }
+        if (!accountPriorRevision.deleted && accountPriorRevision.lot !== null) {
+          const canonical = existingLotsForMerge.find((lot) => sameLotGroup(lot, accountPriorRevision.lot!));
+          if (canonical !== undefined) {
+            const remaining = removeLotContribution(canonical, accountPriorRevision.lot);
+            existingLotsForMerge = remaining === null
+              ? existingLotsForMerge.filter((lot) => lot.id !== canonical.id)
+              : existingLotsForMerge.map((lot) => lot.id === canonical.id ? remaining : lot);
+          }
+        }
+        return [key, item] as [string, StoredSyncItem];
+      }
+      const priorRevision = latestUserSourceLotRevision(houseProcessedMarkers, userId, item.deviceId, item.entityType, item.entityId);
+      if (priorRevision !== null) {
+        if (sourceLot !== null && lotRevisionTime(sourceLot.updatedAt) <= lotRevisionTime(priorRevision.updatedAt)) {
+          return [key, { ...item, deleted: true }] as [string, StoredSyncItem];
+        }
+        const canonical = existingLotsForMerge.find((lot) => sameLotGroup(lot, priorRevision));
+        if (canonical !== undefined) {
+          const remaining = removeLotContribution(canonical, priorRevision);
+          existingLotsForMerge = remaining === null
+            ? existingLotsForMerge.filter((lot) => lot.id !== canonical.id)
+            : existingLotsForMerge.map((lot) => lot.id === canonical.id ? remaining : lot);
+        }
+        return [key, item] as [string, StoredSyncItem];
       }
       return [key, item] as [string, StoredSyncItem];
     });
-    let existingLotsForMerge = existingLots.filter((lot) => !supersededExistingIds.has(lot.id));
+    existingLotsForMerge = existingLotsForMerge.filter((lot) => !supersededExistingIds.has(lot.id));
     const sourceLots = sourceRowsForMerge
       .filter(([, item]) => pantryItemTypes.has(item.entityType))
       .map(([, item]) => storedPantryLot(item))
@@ -532,9 +731,10 @@ export const createMemorySyncRepository = (repositoryOptions: SyncRepositoryOpti
     const sourceDeviceId = sourcePrefix.startsWith('guest:') ? sourcePrefix.slice('guest:'.length) : null;
     const revisionAwareIncomingLots = latestLotsById(incomingLots).filter((lot) => {
       const previous = existingLots.find((candidate) => candidate.id === lot.id);
-      const priorRevision = sourceDeviceId === null ? null : latestGuestLotRevision(houseProcessedMarkers, sourceDeviceId, lot.id);
-      const hasPriorRevision = priorRevision !== null || (sourceDeviceId !== null
-        && houseProcessedMarkers.some((processedMarker) => processedMarker.startsWith(`guest:${sourceDeviceId}:pantry_lot:${lot.id}:`)));
+      const priorRevision = sourceDeviceId === null ? null
+        : latestUserSourceLotRevision(houseProcessedMarkers, userId, sourceDeviceId, 'pantry_lot', lot.id);
+      const hasPriorRevision = sourceDeviceId !== null && houseProcessedMarkers
+        .some((processedMarker) => processedMarker.startsWith(userSourceLotMarkerPrefix(userId, sourceDeviceId, 'pantry_lot', lot.id)));
       if (!hasPriorRevision) return true;
       if (priorRevision !== null) {
         if (lotRevisionTime(lot.updatedAt) <= lotRevisionTime(priorRevision.updatedAt)) return false;
@@ -600,7 +800,22 @@ export const createMemorySyncRepository = (repositoryOptions: SyncRepositoryOpti
     }
 
     for (const [key] of sourceRows) entities.delete(key);
-    for (const markerId of markerIds) processed.add(`${scopeKey(houseScope)}:${markerId}`);
+    const accountRevisionMarkers = accountSourceUserId === null ? [] : sourceRows
+      .map(([, item]) => accountSourceLotRevisionMarkerForItem(
+        userId,
+        item,
+        latestAccountSourceLotRevision(houseProcessedMarkers, userId, item.entityType, item.entityId),
+      ))
+      .filter((marker): marker is string => marker !== null);
+    const userSourceMarkers = [
+      ...sourceRows.map(([, item]) => userSourceLotMarkerForItem(userId, item)),
+      ...(sourceDeviceId === null ? [] : revisionAwareIncomingLots.map((lot) => userSourceLotMarkerForLot(
+        userId, sourceDeviceId, 'pantry_lot', lot.id, lot,
+      ))),
+    ].filter((marker): marker is string => marker !== null);
+    for (const markerId of [...markerIds, ...accountRevisionMarkers, ...userSourceMarkers]) {
+      processed.add(`${scopeKey(houseScope)}:${markerId}`);
+    }
     void userId;
     return {
       ...mergedLots.summary,
@@ -617,19 +832,16 @@ export const createMemorySyncRepository = (repositoryOptions: SyncRepositoryOpti
       const processedKey = `${scopeKey(scope)}:${prepared.mutation.mutationId}`;
       if (processed.has(processedKey)) return { applied: false, change: null };
       const key = entityKey(scope, prepared.mutation.entityType, prepared.mutation.entityId);
-      const actorRole = scope.kind === 'house' && isDiaryEntityType(prepared.mutation.entityType)
-        ? await options.roleResolver(userId, scope.id)
-        : null;
       const existing = entities.get(key);
-      const authorizedMutation = authorizeDiaryMutation(userId, prepared.mutation, existing ?? null, actorRole);
-      const authorizedPrepared = { ...prepared, mutation: authorizedMutation };
+      const normalizedMutation = normalizeDiaryMutation(userId, prepared.mutation, existing ?? null);
+      const normalizedPrepared = { ...prepared, mutation: normalizedMutation };
       processed.add(processedKey);
-      const winsExisting = existing === undefined || wins(authorizedPrepared, existing);
+      const winsExisting = existing === undefined || wins(normalizedPrepared, existing);
       const staleRecipeLinkMutation = existing !== undefined && !winsExisting
-        ? mergeStaleDinnerRecipeLinks(authorizedMutation, existing)
+        ? mergeStaleDinnerRecipeLinks(normalizedMutation, existing)
         : null;
       if (!winsExisting && staleRecipeLinkMutation === null) return { applied: false, change: null };
-      const mutationToApply = staleRecipeLinkMutation ?? authorizedMutation;
+      const mutationToApply = staleRecipeLinkMutation ?? normalizedMutation;
       const item: StoredSyncItem = {
         entityType: mutationToApply.entityType,
         entityId: mutationToApply.entityId,
@@ -665,10 +877,7 @@ export const createMemorySyncRepository = (repositoryOptions: SyncRepositoryOpti
     readEntity: async (userId, entityType, entityId) => {
       const scope = await resolveEntityScope(userId, entityType, options);
       if (scope === null) return null;
-      const row = entities.get(entityKey(scope, entityType, entityId));
-      if (row !== undefined) return row;
-      if ((entityType === 'dinner_entry' || entityType === 'saved_recipe') && scope.kind === 'house') return entities.get(entityKey(userScope(userId), entityType, entityId)) ?? null;
-      return null;
+      return entities.get(entityKey(scope, entityType, entityId)) ?? null;
     },
     mergeUserPantryToHouse: async (userId, houseId) => {
       const sourceScope = userScope(userId);
@@ -705,11 +914,90 @@ export const createMemorySyncRepository = (repositoryOptions: SyncRepositoryOpti
         `guest:${input.deviceId}`,
       );
     },
-    migrateUserSharedDataToHouse: async (userId, houseId) => {
-      const personalPrefix = `${scopeKey(userScope(userId))}:`;
+    mergeGuestDietProfileToHouse: async (userId, houseId, mutation) => {
+      const valid = validateGuestDietProfileMutation(mutation);
+      if (options.scopeResolverConfigured) {
+        const currentScope = await options.scopeResolver(userId);
+        if (currentScope?.kind !== 'house' || currentScope.id !== houseId) throw new SyncMembershipRequiredError();
+      }
+      const prepared = prepareMutation(valid, options);
       const houseScope: SyncScope = { kind: 'house', id: houseId };
+      const processedKey = `${scopeKey(houseScope)}:${valid.mutationId}`;
+      if (processed.has(processedKey)) return false;
+      const key = entityKey(houseScope, 'diet_profile', 'profile');
+      const existing = entities.get(key);
+      const guestProfile = valid.payload as DietProfile;
+      const merged = existing !== undefined && !existing.deleted
+        ? mergeDietProfiles(existing.payload, guestProfile) ?? guestProfile
+        : guestProfile;
+      processed.add(processedKey);
+      entities.set(key, {
+        entityType: 'diet_profile',
+        entityId: 'profile',
+        deviceId: valid.deviceId,
+        payload: merged,
+        deleted: false,
+        clientUpdatedAt: new Date(prepared.mutation.clientUpdatedAt),
+        serverUpdatedAt: prepared.serverUpdatedAt,
+        mutationId: valid.mutationId,
+        syncScope: `house:${houseId}`,
+        serverSequence: ++sequence,
+      });
+      return true;
+    },
+    migrateUserSharedDataToHouse: async (userId, houseId, pendingAccountMutations = []) => {
+      const entitiesBefore = new Map(entities);
+      const processedBefore = new Set(processed);
+      const sequenceBefore = sequence;
+      try {
+        const sourceScope = userScope(userId);
+        // Stage offline account mutations in their original namespace, then run
+        // the existing semantic migration (pantry re-key, conservative diet).
+        // Never replay them as ordinary house-scoped LWW upserts.
+        for (const mutation of validatePendingAccountMutations(userId, pendingAccountMutations)) {
+        const prepared = prepareMutation(mutation, options);
+        const processedKey = `${scopeKey(sourceScope)}:${mutation.mutationId}`;
+        if (processed.has(processedKey)) continue;
+        const key = entityKey(sourceScope, mutation.entityType, mutation.entityId);
+        const existing = entities.get(key);
+        const normalized = normalizeDiaryMutation(userId, prepared.mutation, existing ?? null);
+        const normalizedPrepared = { ...prepared, mutation: normalized };
+        processed.add(processedKey);
+        if (existing !== undefined && !wins(normalizedPrepared, existing)) continue;
+        entities.set(key, {
+          entityType: normalized.entityType,
+          entityId: normalized.entityId,
+          deviceId: normalized.deviceId,
+          payload: normalized.payload,
+          deleted: normalized.operation === 'delete',
+          clientUpdatedAt: new Date(normalized.clientUpdatedAt),
+          serverUpdatedAt: prepared.serverUpdatedAt,
+          mutationId: normalized.mutationId,
+          syncScope: `account:${userId}`,
+          serverSequence: ++sequence,
+        });
+      }
+      const personalPrefix = `${scopeKey(sourceScope)}:`;
+      const houseScope: SyncScope = { kind: 'house', id: houseId };
+      const pantrySourceRows = [...entities.entries()].filter(([key, item]) => (
+        entityScopeFor(sourceScope, key) && pantryTypes.has(item.entityType)
+      ));
+      mergeMemoryPantry(
+        userId,
+        houseId,
+        [],
+        [],
+        pantrySourceRows,
+        pantrySourceRows.flatMap(([, item]) => [
+          item.mutationId,
+          guestMarkerForItem(item),
+        ].filter((marker): marker is string => marker !== null)),
+        `user:${userId}`,
+      );
       for (const [key, personalItem] of [...entities.entries()]) {
-        if (!key.startsWith(personalPrefix) || !AUTO_MIGRATED_ENTITY_TYPES.has(personalItem.entityType)) continue;
+        if (!key.startsWith(personalPrefix)
+          || pantryTypes.has(personalItem.entityType)
+          || !AUTO_MIGRATED_ENTITY_TYPES.has(personalItem.entityType)) continue;
         const targetKey = entityKey(houseScope, personalItem.entityType, personalItem.entityId);
         const existing = entities.get(targetKey);
         const incoming: PreparedMutation = {
@@ -724,10 +1012,38 @@ export const createMemorySyncRepository = (repositoryOptions: SyncRepositoryOpti
           },
           serverUpdatedAt: personalItem.serverUpdatedAt,
         };
-        if (existing === undefined || wins(incoming, existing)) {
-          entities.set(targetKey, { ...personalItem, serverSequence: ++sequence });
+        const mergedDietProfile = personalItem.entityType === 'diet_profile'
+          && existing !== undefined
+          && !personalItem.deleted
+          && !existing.deleted
+          ? mergeDietProfiles(existing.payload, personalItem.payload)
+          : null;
+        if (mergedDietProfile !== null) {
+          const winner: StoredSyncItem = wins(incoming, existing!) ? personalItem : existing!;
+          entities.set(targetKey, {
+            ...winner,
+            payload: mergedDietProfile,
+            deleted: false,
+            syncScope: `house:${houseId}`,
+            serverSequence: ++sequence,
+          });
+        } else if ((existing === undefined || wins(incoming, existing))
+          && !shouldPreserveLiveHouseDietProfile(personalItem.entityType, personalItem.deleted, existing ?? null)) {
+          entities.set(targetKey, {
+            ...personalItem,
+            syncScope: `house:${houseId}`,
+            serverSequence: ++sequence,
+          });
         }
         entities.delete(key);
+      }
+      } catch (error) {
+        entities.clear();
+        for (const [key, item] of entitiesBefore) entities.set(key, item);
+        processed.clear();
+        for (const marker of processedBefore) processed.add(marker);
+        sequence = sequenceBefore;
+        throw error;
       }
     },
   };
@@ -751,12 +1067,48 @@ export const createDrizzleSyncRepository = (
   repositoryOptions: SyncRepositoryOptions = {},
 ): SyncRepository => {
   const options = resolveOptions(repositoryOptions);
+  type SyncDatabaseTransaction = Parameters<Parameters<typeof database.transaction>[0]>[0];
 
-  const mergeDatabasePantry = async (
+  const resolveTransactionScope = async (
+    transaction: SyncDatabaseTransaction,
+    userId: string,
+    mutation: SyncMutation,
+  ): Promise<SyncScope> => {
+    if (!isSharedEntityType(mutation.entityType)) {
+      return resolveScopeForCurrentMembership(userId, mutation.entityType, null, mutation.syncScope);
+    }
+
+    // Serialize scope selection with house creation/member-add so a stale account write cannot race migration.
+    await transaction.execute(sql`SELECT id FROM ${users} WHERE id = ${userId} FOR SHARE`);
+    const [membership] = await transaction.select({ houseId: houseMemberships.houseId })
+      .from(houseMemberships)
+      .where(eq(houseMemberships.userId, userId))
+      .limit(1);
+    const houseId = membership?.houseId ?? null;
+    const scope = resolveScopeForCurrentMembership(userId, mutation.entityType, houseId, mutation.syncScope);
+    if (scope.kind === 'house') {
+      await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${scope.id} FOR UPDATE`);
+      const [currentMembership] = await transaction.select({ id: houseMemberships.id })
+        .from(houseMemberships)
+        .where(and(
+          eq(houseMemberships.userId, userId),
+          eq(houseMemberships.houseId, scope.id),
+        ))
+        .limit(1);
+      if (currentMembership === undefined) throw new SyncMembershipRequiredError();
+    }
+    return scope;
+  };
+
+  const mergeDatabasePantryInTransaction = async (
+    transaction: SyncDatabaseTransaction,
     userId: string,
     houseId: string,
     input: { lots: PantryLot[]; stapleIds: string[]; deviceId?: string; includePersonalRows: boolean },
-  ): Promise<PantryMergeSummary> => database.transaction(async (transaction) => {
+  ): Promise<PantryMergeSummary> => {
+    // Match deletion and membership writes: user first, then house. Inserts
+    // below take a foreign-key lock on the user even if this function did not.
+    await transaction.execute(sql`SELECT id FROM ${users} WHERE id = ${userId} FOR SHARE`);
     await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${houseId} FOR UPDATE`);
     const membershipRows = await transaction.execute(sql`SELECT id FROM ${houseMemberships} WHERE user_id = ${userId} AND house_id = ${houseId} FOR UPDATE`);
     if (membershipRows.length === 0) throw new SyncMembershipRequiredError();
@@ -772,8 +1124,12 @@ export const createDrizzleSyncRepository = (
         inArray(syncItems.entityType, [...pantryTypes]),
       ))
       : [];
-    const sourceAliasMarkers = sourceRows
-      .map((row) => guestMarkerForItem(fromDatabaseItem(row)))
+    const sourceItems = sourceRows.map(fromDatabaseItem);
+    const sourceAliasMarkers = sourceItems
+      .map((item) => guestMarkerForItem(item))
+      .filter((marker): marker is string => marker !== null);
+    const sourceUserLotMarkers = sourceItems
+      .map((item) => userSourceLotMarkerForItem(userId, item))
       .filter((marker): marker is string => marker !== null);
     const sourceMutationIds = sourceRows.map((row) => row.mutationId);
     const sourceProcessedRows = sourceMutationIds.length === 0 ? [] : await transaction.select({ mutationId: processedSyncMutations.mutationId })
@@ -787,10 +1143,15 @@ export const createDrizzleSyncRepository = (
     const guestLotMarkers = input.deviceId === undefined
       ? []
       : input.lots.map((lot) => guestMarkerForLot(input.deviceId!, lot));
+    const userSourceInputLotMarkers = input.deviceId === undefined ? [] : input.lots.map((lot) => userSourceLotMarkerForLot(
+      userId, input.deviceId!, 'pantry_lot', lot.id, lot,
+    ));
     const guestStapleMarkers = input.deviceId === undefined
       ? []
       : input.stapleIds.map((id) => `guest:${input.deviceId}:staple_preference:${id}:{"enabled":true}`);
-    const guestMarkers = [...guestLotMarkers, ...guestStapleMarkers, ...sourceAliasMarkers];
+    const guestMarkers = [
+      ...guestLotMarkers, ...userSourceInputLotMarkers, ...guestStapleMarkers, ...sourceAliasMarkers, ...sourceUserLotMarkers,
+    ];
     const guestProcessedRows = guestMarkers.length === 0 ? [] : await transaction.select({ mutationId: processedSyncMutations.mutationId })
       .from(processedSyncMutations)
       .where(and(
@@ -798,11 +1159,15 @@ export const createDrizzleSyncRepository = (
         eq(processedSyncMutations.scopeId, houseId),
         inArray(processedSyncMutations.mutationId, guestMarkers),
       ));
-    const sourceMarkerPrefixes = sourceRows
-      .map((row) => guestMarkerPrefixForItem(fromDatabaseItem(row)))
-      .filter((prefix): prefix is string => prefix !== null);
+    const sourceMarkerPrefixes = [
+      ...sourceItems.map(guestMarkerPrefixForItem),
+      ...sourceItems.map((item) => pantryItemTypes.has(item.entityType)
+        ? userSourceLotMarkerPrefix(userId, item.deviceId, item.entityType, item.entityId) : null),
+      ...sourceItems.map((item) => pantryItemTypes.has(item.entityType)
+        ? accountSourceLotMarkerPrefix(userId, item.entityType, item.entityId) : null),
+    ].filter((prefix): prefix is string => prefix !== null);
     const inputMarkerPrefixes = input.deviceId === undefined ? [] : [
-      ...input.lots.map((lot) => `guest:${input.deviceId}:pantry_lot:${lot.id}:`),
+      ...input.lots.map((lot) => userSourceLotMarkerPrefix(userId, input.deviceId!, 'pantry_lot', lot.id)),
       ...input.stapleIds.map((id) => `guest:${input.deviceId}:staple_preference:${id}:`),
     ];
     const priorMarkerPrefixes = [...new Set([...sourceMarkerPrefixes, ...inputMarkerPrefixes])];
@@ -817,7 +1182,8 @@ export const createDrizzleSyncRepository = (
       ...guestProcessedRows.map((row) => row.mutationId),
       ...priorSourceProcessedRows.map((row) => row.mutationId),
     ]);
-    const incomingLots = input.lots.filter((_, index) => !guestProcessed.has(guestLotMarkers[index]!));
+    const incomingLots = input.deviceId === undefined ? input.lots
+      : input.lots.filter((_, index) => !guestProcessed.has(userSourceInputLotMarkers[index]!));
     const incomingStaples = input.stapleIds.filter((_, index) => !guestProcessed.has(guestStapleMarkers[index]!));
     const housePantryRows = houseRows.map(fromDatabaseItem);
     const existingLots = housePantryRows
@@ -830,22 +1196,45 @@ export const createDrizzleSyncRepository = (
         && (row.payload as { enabled?: unknown }).enabled === true)
       .map((row) => row.entityId);
     const supersededExistingIds = new Set<string>();
+    let existingLotsForMerge = existingLots;
     const sourceRowsToMerge = sourceRows.filter((row) => {
       if (sourceProcessed.has(row.mutationId)) return false;
-      const marker = guestMarkerForItem(fromDatabaseItem(row));
+      const item = fromDatabaseItem(row);
+      const marker = userSourceLotMarkerForItem(userId, item);
       if (marker !== null && guestProcessed.has(marker)) return false;
-      const sourceLot = storedPantryLot(fromDatabaseItem(row));
-      const previous = sourceLot === null ? undefined : existingLots.find((lot) => lot.id === sourceLot.id);
-      const markerPrefix = guestMarkerPrefixForItem(fromDatabaseItem(row));
-      const hasPriorRevision = markerPrefix !== null
-        && [...guestProcessed].some((processedMarker) => processedMarker.startsWith(markerPrefix));
-      if (sourceLot !== null && previous !== undefined && hasPriorRevision) {
-        if (sourceLot.updatedAt <= previous.updatedAt) return false;
-        supersededExistingIds.add(previous.id);
+      const sourceLot = storedPantryLot(item);
+      const accountPriorRevision = input.includePersonalRows
+        ? latestAccountSourceLotRevision([...guestProcessed], userId, item.entityType, item.entityId)
+        : null;
+      if (accountPriorRevision !== null) {
+        if (!accountSourceRevisionWins(item, accountPriorRevision)) return false;
+        if (!accountPriorRevision.deleted && accountPriorRevision.lot !== null) {
+          const canonical = existingLotsForMerge.find((lot) => sameLotGroup(lot, accountPriorRevision.lot!));
+          if (canonical !== undefined) {
+            const remaining = removeLotContribution(canonical, accountPriorRevision.lot);
+            existingLotsForMerge = remaining === null
+              ? existingLotsForMerge.filter((lot) => lot.id !== canonical.id)
+              : existingLotsForMerge.map((lot) => lot.id === canonical.id ? remaining : lot);
+          }
+        }
+        return true;
+      }
+      const priorRevision = latestUserSourceLotRevision(
+        [...guestProcessed], userId, item.deviceId, item.entityType, item.entityId,
+      );
+      if (priorRevision !== null) {
+        if (sourceLot !== null && lotRevisionTime(sourceLot.updatedAt) <= lotRevisionTime(priorRevision.updatedAt)) return false;
+        const canonical = existingLotsForMerge.find((lot) => sameLotGroup(lot, priorRevision));
+        if (canonical !== undefined) {
+          const remaining = removeLotContribution(canonical, priorRevision);
+          existingLotsForMerge = remaining === null
+            ? existingLotsForMerge.filter((lot) => lot.id !== canonical.id)
+            : existingLotsForMerge.map((lot) => lot.id === canonical.id ? remaining : lot);
+        }
       }
       return true;
     });
-    let existingLotsForMerge = existingLots.filter((lot) => !supersededExistingIds.has(lot.id));
+    existingLotsForMerge = existingLotsForMerge.filter((lot) => !supersededExistingIds.has(lot.id));
     const sourceLots = sourceRowsToMerge
       .map((row) => storedPantryLot(fromDatabaseItem(row)))
       .filter((lot): lot is PantryLot => lot !== null);
@@ -857,9 +1246,10 @@ export const createDrizzleSyncRepository = (
     const sourceDeviceId = input.deviceId === undefined ? null : input.deviceId;
     const revisionAwareIncomingLots = latestLotsById(incomingLots).filter((lot) => {
       const previous = existingLots.find((candidate) => candidate.id === lot.id);
-      const priorRevision = sourceDeviceId === null ? null : latestGuestLotRevision([...guestProcessed], sourceDeviceId, lot.id);
-      const hasPriorRevision = priorRevision !== null || (sourceDeviceId !== null
-        && [...guestProcessed].some((processedMarker) => processedMarker.startsWith(`guest:${sourceDeviceId}:pantry_lot:${lot.id}:`)));
+      const priorRevision = sourceDeviceId === null ? null
+        : latestUserSourceLotRevision([...guestProcessed], userId, sourceDeviceId, 'pantry_lot', lot.id);
+      const hasPriorRevision = sourceDeviceId !== null && [...guestProcessed]
+        .some((processedMarker) => processedMarker.startsWith(userSourceLotMarkerPrefix(userId, sourceDeviceId, 'pantry_lot', lot.id)));
       if (!hasPriorRevision) return true;
       if (priorRevision !== null) {
         if (lotRevisionTime(lot.updatedAt) <= lotRevisionTime(priorRevision.updatedAt)) return false;
@@ -959,8 +1349,26 @@ export const createDrizzleSyncRepository = (
       if (values.length > 0) await transaction.insert(syncItems).values(values);
     }
 
-    const markerIds = [...sourceMutationIds, ...sourceAliasMarkers, ...guestLotMarkers, ...guestStapleMarkers]
-      .filter((mutationId) => !sourceProcessed.has(mutationId) && !guestProcessed.has(mutationId));
+    const accountRevisionMarkers = input.includePersonalRows ? sourceRows
+      .map((row) => {
+        const item = fromDatabaseItem(row);
+        return accountSourceLotRevisionMarkerForItem(
+          userId,
+          item,
+          latestAccountSourceLotRevision([...guestProcessed], userId, item.entityType, item.entityId),
+        );
+      })
+      .filter((marker): marker is string => marker !== null) : [];
+    const userSourceMarkers = [
+      ...sourceItems.map((item) => userSourceLotMarkerForItem(userId, item)),
+      ...(sourceDeviceId === null ? [] : revisionAwareIncomingLots.map((lot) => userSourceLotMarkerForLot(
+        userId, sourceDeviceId, 'pantry_lot', lot.id, lot,
+      ))),
+    ].filter((marker): marker is string => marker !== null);
+    const markerIds = [
+      ...sourceMutationIds, ...sourceAliasMarkers, ...guestLotMarkers, ...guestStapleMarkers,
+      ...accountRevisionMarkers, ...userSourceMarkers,
+    ].filter((mutationId) => !sourceProcessed.has(mutationId) && !guestProcessed.has(mutationId));
     if (markerIds.length > 0) {
       await transaction.insert(processedSyncMutations).values(markerIds.map((mutationId) => ({
         userId,
@@ -982,28 +1390,22 @@ export const createDrizzleSyncRepository = (
       importedStaples: incomingStaples.filter((id) => !existingStaples.includes(id)).length
         + sourceStaples.filter((id) => !existingStaples.includes(id)).length,
     };
-  });
+  };
+
+  const mergeDatabasePantry = async (
+    userId: string,
+    houseId: string,
+    input: { lots: PantryLot[]; stapleIds: string[]; deviceId?: string; includePersonalRows: boolean },
+  ): Promise<PantryMergeSummary> => database.transaction((transaction) => (
+    mergeDatabasePantryInTransaction(transaction, userId, houseId, input)
+  ));
 
   return {
     applyMutation: async (userId, mutation) => {
       const prepared = prepareMutation(mutation, options);
-      const scope = await resolveEntityScope(userId, prepared.mutation.entityType, options, prepared.mutation.syncScope);
-      if (scope === null) throw new SyncMembershipRequiredError();
       return database.transaction(async (transaction) => {
         const validMutation = prepared.mutation;
-        let actorRole: 'admin' | 'member' | null = null;
-        if (scope.kind === 'house') {
-          await transaction.execute(sql`SELECT id FROM houses WHERE id = ${scope.id} FOR UPDATE`);
-          const [membership] = await transaction.select({ id: houseMemberships.id, role: houseMemberships.role })
-            .from(houseMemberships)
-            .where(and(
-              eq(houseMemberships.houseId, scope.id),
-              eq(houseMemberships.userId, userId),
-            ))
-            .limit(1);
-          if (membership === undefined) throw new SyncMembershipRequiredError();
-          actorRole = membership.role === 'admin' ? 'admin' : 'member';
-        }
+        const scope = await resolveTransactionScope(transaction, userId, validMutation);
         const [alreadyProcessed] = await transaction.select({ id: processedSyncMutations.id })
           .from(processedSyncMutations)
           .where(and(
@@ -1032,14 +1434,14 @@ export const createDrizzleSyncRepository = (
           eq(syncItems.entityId, validMutation.entityId),
         )).limit(1);
         const existing = existingRow === undefined ? null : fromDatabaseItem(existingRow);
-        const authorizedMutation = authorizeDiaryMutation(userId, validMutation, existing, actorRole);
-        const authorizedPrepared = { ...prepared, mutation: authorizedMutation };
-        const winsExisting = existing === null || wins(authorizedPrepared, existing);
+        const normalizedMutation = normalizeDiaryMutation(userId, validMutation, existing);
+        const normalizedPrepared = { ...prepared, mutation: normalizedMutation };
+        const winsExisting = existing === null || wins(normalizedPrepared, existing);
         const staleRecipeLinkMutation = existing !== null && !winsExisting
-          ? mergeStaleDinnerRecipeLinks(authorizedMutation, existing)
+          ? mergeStaleDinnerRecipeLinks(normalizedMutation, existing)
           : null;
         if (!winsExisting && staleRecipeLinkMutation === null) return { applied: false, change: null };
-        const mutationToApply = staleRecipeLinkMutation ?? authorizedMutation;
+        const mutationToApply = staleRecipeLinkMutation ?? normalizedMutation;
 
         const values = {
           userId,
@@ -1146,20 +1548,12 @@ export const createDrizzleSyncRepository = (
         }
       }
     }
-    let [row] = await transaction.select().from(syncItems).where(and(
+    const [row] = await transaction.select().from(syncItems).where(and(
       eq(syncItems.scopeType, scope.kind),
       eq(syncItems.scopeId, scope.id),
       eq(syncItems.entityType, entityType),
       eq(syncItems.entityId, entityId),
     )).limit(1);
-    if (row === undefined && scope.kind === 'house' && isDiaryEntityType(entityType)) {
-      [row] = await transaction.select().from(syncItems).where(and(
-        eq(syncItems.scopeType, 'user'),
-        eq(syncItems.scopeId, userId),
-        eq(syncItems.entityType, entityType),
-        eq(syncItems.entityId, entityId),
-      )).limit(1);
-    }
     return row === undefined ? null : fromDatabaseItem(row);
   }),
 
@@ -1176,19 +1570,122 @@ export const createDrizzleSyncRepository = (
     includePersonalRows: false,
   }),
 
-  migrateUserSharedDataToHouse: async (userId, houseId) => database.transaction(async (transaction) => {
+  mergeGuestDietProfileToHouse: async (userId, houseId, mutation) => {
+    const valid = validateGuestDietProfileMutation(mutation);
+    const prepared = prepareMutation(valid, options);
+    return database.transaction(async (transaction) => {
+      // Keep the same user → house → membership lock order as migration and deletion.
+      await transaction.execute(sql`SELECT id FROM ${users} WHERE id = ${userId} FOR SHARE`);
+      await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${houseId} FOR UPDATE`);
+      const members = await transaction.execute(sql`SELECT id FROM ${houseMemberships} WHERE user_id = ${userId} AND house_id = ${houseId} FOR UPDATE`);
+      if (members.length === 0) throw new SyncMembershipRequiredError();
+
+      const [alreadyProcessed] = await transaction.select({ id: processedSyncMutations.id })
+        .from(processedSyncMutations)
+        .where(and(
+          eq(processedSyncMutations.scopeType, 'house'),
+          eq(processedSyncMutations.scopeId, houseId),
+          eq(processedSyncMutations.mutationId, valid.mutationId),
+        ))
+        .limit(1);
+      if (alreadyProcessed !== undefined) return false;
+      await transaction.insert(processedSyncMutations).values({
+        userId, scopeType: 'house', scopeId: houseId, mutationId: valid.mutationId,
+      });
+
+      const [existingRow] = await transaction.select().from(syncItems).where(and(
+        eq(syncItems.scopeType, 'house'),
+        eq(syncItems.scopeId, houseId),
+        eq(syncItems.entityType, 'diet_profile'),
+        eq(syncItems.entityId, 'profile'),
+      )).limit(1).for('update');
+      const existing = existingRow === undefined ? null : fromDatabaseItem(existingRow);
+      const guestProfile = valid.payload as DietProfile;
+      const merged = existing !== null && !existing.deleted
+        ? mergeDietProfiles(existing.payload, guestProfile) ?? guestProfile
+        : guestProfile;
+      const values = {
+        userId,
+        scopeType: 'house' as const,
+        scopeId: houseId,
+        entityType: 'diet_profile' as const,
+        entityId: 'profile',
+        deviceId: valid.deviceId,
+        payload: merged,
+        deleted: false,
+        clientUpdatedAt: new Date(prepared.mutation.clientUpdatedAt),
+        updatedAt: prepared.serverUpdatedAt,
+        mutationId: valid.mutationId,
+      };
+      if (existingRow === undefined) await transaction.insert(syncItems).values(values);
+      else await transaction.update(syncItems).set({ ...values, serverSequence: sql`nextval('sync_server_sequence')` }).where(eq(syncItems.id, existingRow.id));
+      return true;
+    });
+  },
+
+  migrateUserSharedDataToHouse: async (userId, houseId, pendingAccountMutations = []) => database.transaction(async (transaction) => {
+    const pending = validatePendingAccountMutations(userId, pendingAccountMutations);
+    if (pending.length > 0) {
+      // Match the migration/deletion lock order before inserting account rows;
+      // the whole replay and semantic migration commits or rolls back together.
+      await transaction.execute(sql`SELECT id FROM ${users} WHERE id = ${userId} FOR SHARE`);
+      await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${houseId} FOR UPDATE`);
+      const member = await transaction.execute(sql`SELECT id FROM ${houseMemberships} WHERE user_id = ${userId} AND house_id = ${houseId} FOR UPDATE`);
+      if (member.length === 0) throw new SyncMembershipRequiredError();
+      for (const mutation of pending) {
+        const [processed] = await transaction.select({ id: processedSyncMutations.id }).from(processedSyncMutations).where(and(
+          eq(processedSyncMutations.scopeType, 'user'),
+          eq(processedSyncMutations.scopeId, userId),
+          eq(processedSyncMutations.mutationId, mutation.mutationId),
+        )).limit(1);
+        if (processed !== undefined) continue;
+        const prepared = prepareMutation(mutation, options);
+        const [existingRow] = await transaction.select().from(syncItems).where(and(
+          eq(syncItems.scopeType, 'user'),
+          eq(syncItems.scopeId, userId),
+          eq(syncItems.entityType, mutation.entityType),
+          eq(syncItems.entityId, mutation.entityId),
+        )).limit(1).for('update');
+        const existing = existingRow === undefined ? null : fromDatabaseItem(existingRow);
+        const normalized = normalizeDiaryMutation(userId, prepared.mutation, existing);
+        await transaction.insert(processedSyncMutations).values({ userId, scopeType: 'user', scopeId: userId, mutationId: mutation.mutationId });
+        if (existing !== null && !wins({ ...prepared, mutation: normalized }, existing)) continue;
+        const values = {
+          userId,
+          scopeType: 'user' as const,
+          scopeId: userId,
+          entityType: normalized.entityType,
+          entityId: normalized.entityId,
+          deviceId: normalized.deviceId,
+          payload: normalized.operation === 'delete' && !isDiaryEntityType(normalized.entityType) ? null : normalized.payload,
+          deleted: normalized.operation === 'delete',
+          clientUpdatedAt: new Date(normalized.clientUpdatedAt),
+          updatedAt: prepared.serverUpdatedAt,
+          mutationId: normalized.mutationId,
+        };
+        if (existingRow === undefined) await transaction.insert(syncItems).values(values);
+        else await transaction.update(syncItems).set({ ...values, serverSequence: sql`nextval('sync_server_sequence')` }).where(eq(syncItems.id, existingRow.id));
+      }
+    }
+    await mergeDatabasePantryInTransaction(transaction, userId, houseId, {
+      lots: [],
+      stapleIds: [],
+      includePersonalRows: true,
+    });
+    const nonPantryEntityTypes = [...AUTO_MIGRATED_ENTITY_TYPES]
+      .filter((entityType) => !pantryTypes.has(entityType));
     const personalRows = await transaction.select().from(syncItems).where(and(
       eq(syncItems.scopeType, 'user'),
       eq(syncItems.scopeId, userId),
-      inArray(syncItems.entityType, [...AUTO_MIGRATED_ENTITY_TYPES]),
-    ));
+      inArray(syncItems.entityType, nonPantryEntityTypes),
+    )).for('update');
     for (const personalRow of personalRows) {
       const [houseRow] = await transaction.select().from(syncItems).where(and(
         eq(syncItems.scopeType, 'house'),
         eq(syncItems.scopeId, houseId),
         eq(syncItems.entityType, personalRow.entityType),
         eq(syncItems.entityId, personalRow.entityId),
-      )).limit(1);
+      )).limit(1).for('update');
       const existing = houseRow === undefined ? null : fromDatabaseItem(houseRow);
       const incoming: PreparedMutation = {
         mutation: {
@@ -1202,19 +1699,32 @@ export const createDrizzleSyncRepository = (
         },
         serverUpdatedAt: personalRow.updatedAt,
       };
-      if (existing === null || wins(incoming, existing)) {
+      const incomingWins = existing === null || wins(incoming, existing);
+      const mergedDietProfile = personalRow.entityType === 'diet_profile'
+        && existing !== null
+        && !personalRow.deleted
+        && !existing.deleted
+        ? mergeDietProfiles(existing.payload, personalRow.payload)
+        : null;
+      const preserveLiveHouseDietProfile = shouldPreserveLiveHouseDietProfile(
+        personalRow.entityType,
+        personalRow.deleted,
+        existing,
+      );
+      if ((incomingWins && !preserveLiveHouseDietProfile) || mergedDietProfile !== null) {
+        const winnerRow = incomingWins || houseRow === undefined ? personalRow : houseRow;
         const values = {
-          userId,
+          userId: winnerRow.userId,
           scopeType: 'house' as const,
           scopeId: houseId,
           entityType: personalRow.entityType,
           entityId: personalRow.entityId,
-          deviceId: personalRow.deviceId,
-          payload: personalRow.deleted ? null : personalRow.payload,
-          deleted: personalRow.deleted,
-          clientUpdatedAt: personalRow.clientUpdatedAt,
-          updatedAt: personalRow.updatedAt,
-          mutationId: personalRow.mutationId,
+          deviceId: winnerRow.deviceId,
+          payload: mergedDietProfile ?? (personalRow.deleted ? null : personalRow.payload),
+          deleted: mergedDietProfile === null && personalRow.deleted,
+          clientUpdatedAt: winnerRow.clientUpdatedAt,
+          updatedAt: winnerRow.updatedAt,
+          mutationId: winnerRow.mutationId,
         };
         if (houseRow === undefined) {
           await transaction.insert(syncItems).values(values);
@@ -1225,7 +1735,11 @@ export const createDrizzleSyncRepository = (
           }).where(eq(syncItems.id, houseRow.id));
         }
       }
-      await transaction.delete(syncItems).where(eq(syncItems.id, personalRow.id));
+      await transaction.delete(syncItems).where(and(
+        eq(syncItems.id, personalRow.id),
+        eq(syncItems.mutationId, personalRow.mutationId),
+        eq(syncItems.clientUpdatedAt, personalRow.clientUpdatedAt),
+      ));
     }
   }),
 

@@ -180,6 +180,7 @@ test('keeps mobile navigation labels concise and on one line', async ({ page }) 
     }
 
     const navigation = page.getByRole('navigation', { name: 'Navigazione principale' });
+    await expect(navigation.getByRole('link')).toHaveCount(scenario.labels.length);
     const items = await navigation.getByRole('link').evaluateAll((links) => links.map((link) => {
       const visibleLabels = Array.from(link.querySelectorAll('span'))
         .filter((label) => window.getComputedStyle(label).display !== 'none');

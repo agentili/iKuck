@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { useAuthStore } from '../auth/authStore';
+import { ApiClientError } from '../api/apiClient';
 import HousePage from './HousePage';
 import { useHouseStore } from '../house/houseStore';
 
@@ -30,15 +31,16 @@ describe('HousePage', () => {
     expect(screen.getByRole('button', { name: 'Crea casa' })).toBeInTheDocument();
   });
 
-  it('explains that diary entries and confirmed diary recipes are shared within the house', () => {
+  it('describes every functional record as shared and keeps identity and AI consent personal', () => {
     render(<MemoryRouter><HousePage /></MemoryRouter>);
 
-    expect(screen.getByText(/La casa condividerà la dispensa.*ingredienti, lotti e ingredienti di base/)).toBeInTheDocument();
-    expect(screen.getByText(/diario.*ricette confermate dal diario/i)).toBeInTheDocument();
-    expect(screen.getByText(/La lista della spesa, le attività, le bozze AI non confermate, le ricette generate e i dati del profilo restano personali/)).toBeInTheDocument();
+    expect(screen.getByText(/dispensa, la lista della spesa, le attività, le ricette generate, il diario delle cene e le preferenze ricetta/)).toBeInTheDocument();
+    expect(screen.getByText(/unico profilo alimentare e allergeni/)).toBeInTheDocument();
+    expect(screen.getByText(/identità dell’account e il consenso AI restano personali/)).toBeInTheDocument();
+    expect(screen.getByText(/dati funzionali preesistenti vengono importati automaticamente/)).toBeInTheDocument();
   });
 
-  it('explains diary sharing to existing house members', () => {
+  it('explains full house sharing and automatic import to existing members', () => {
     useHouseStore.setState({
       state: {
         house: { id: 'house-1', name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' },
@@ -48,8 +50,17 @@ describe('HousePage', () => {
     });
     render(<MemoryRouter><HousePage /></MemoryRouter>);
 
-    expect(screen.getByText(/diario delle cene.*ricette confermate dal diario.*condivisi/i)).toBeInTheDocument();
-    expect(screen.getByText(/bozze AI.*non confermate.*personali/i)).toBeInTheDocument();
+    expect(screen.getByText(/tutti i membri possono creare, modificare ed eliminare/)).toBeInTheDocument();
+    expect(screen.getByText(/importati automaticamente/)).toBeInTheDocument();
+    expect(screen.getByText(/consenso AI resta personale/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Riprova importazione dati funzionali' })).toBeInTheDocument();
+  });
+
+  it('explains member-lookup throttling without displaying the submitted email', () => {
+    useHouseStore.setState({ error: new ApiClientError(429, 'rate_limited', 'Too many requests') });
+    render(<MemoryRouter><HousePage /></MemoryRouter>);
+    expect(screen.getByRole('alert')).toHaveTextContent('Troppe richieste. Riprova più tardi.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent(user.email);
   });
 
   it('shows admin membership controls and sends the normalized form value', async () => {

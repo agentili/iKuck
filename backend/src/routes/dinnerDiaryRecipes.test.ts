@@ -245,17 +245,21 @@ const byType = <T extends { entityType: string }>(items: T[], entityType: string
     await app.close();
   });
 
-  it('does not copy a personal dinner or recipe into the House scope', async () => {
-    const repository = createMemorySyncRepository({ scopeResolver: async () => ({ kind: 'house', id: 'house-1' }) });
+  it('confirms a pre-house dinner only after automatic migration into the House scope', async () => {
+    let joined = false;
+    const repository = createMemorySyncRepository({
+      scopeResolver: async () => joined ? { kind: 'house', id: 'house-1' } : { kind: 'user', id: 'user-1' },
+    });
     await seedEntry(repository, dinnerEntry('personal-entry'), 'user-1', 'account:user-1');
+    joined = true;
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1');
     const { app } = createDiaryApp({ repository });
     const response = await confirmRecipe(app, 'personal-entry', draft('draft-personal'));
     expect(response.statusCode).toBe(200);
     const personal = await repository.readChanges('user-1', 0, 100, 'account:user-1');
     const house = await repository.readChanges('user-1', 0, 100, 'house:house-1');
-    expect(personal.filter((change) => ['dinner_entry', 'saved_recipe'].includes(change.entityType))).toHaveLength(2);
-    expect(house.filter((change) => ['dinner_entry', 'saved_recipe'].includes(change.entityType) && change.syncScope === 'house:house-1')).toHaveLength(0);
-    expect(house.filter((change) => ['dinner_entry', 'saved_recipe'].includes(change.entityType) && change.syncScope === 'account:user-1')).toHaveLength(2);
+    expect(personal.filter((change) => ['dinner_entry', 'saved_recipe'].includes(change.entityType))).toHaveLength(0);
+    expect(house.filter((change) => ['dinner_entry', 'saved_recipe'].includes(change.entityType) && change.syncScope === 'house:house-1')).toHaveLength(2);
     await app.close();
   });
 
@@ -322,18 +326,20 @@ const byType = <T extends { entityType: string }>(items: T[], entityType: string
     await app.close();
   });
 
-  it('rejects edits by a different House member before creating a recipe', async () => {
+  it('lets a different House member confirm a recipe for the shared dinner', async () => {
     const repository = createMemorySyncRepository({
       scopeResolver: async () => ({ kind: 'house', id: 'house-1' }),
-      roleResolver: async () => 'member',
     });
     await seedEntry(repository, dinnerEntry(), 'author', 'house:house-1');
     const { app } = createDiaryApp({ userId: 'member', repository });
 
     const response = await confirmRecipe(app, 'entry-1', draft('draft-denied'));
-    expect(response.statusCode).toBe(403);
-    expect(response.json()).toMatchObject({ code: 'sync_permission_denied' });
-    expect((await repository.readChanges('member', 0, 100, 'house:house-1')).filter((change) => change.entityType === 'saved_recipe')).toHaveLength(0);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      entry: { id: 'entry-1', authorId: 'author' },
+      recipe: { authorId: 'member' },
+    });
+    expect((await repository.readChanges('member', 0, 100, 'house:house-1')).filter((change) => change.entityType === 'saved_recipe')).toHaveLength(1);
     await app.close();
   });
 });

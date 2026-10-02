@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProfilePage from './ProfilePage';
 import { useAuthStore } from '../auth/authStore';
 import { ApiClientError } from '../api/apiClient';
+import { setActiveDataScope, setPersonalDataScope } from '../sync/scopeContext';
 
 const verifiedUser = {
   id: 'user-1',
@@ -14,6 +15,8 @@ const verifiedUser = {
 
 describe('ProfilePage', () => {
   beforeEach(() => {
+    setActiveDataScope('guest');
+    setPersonalDataScope('guest');
     useAuthStore.setState({
       user: null,
       csrfToken: null,
@@ -64,6 +67,21 @@ describe('ProfilePage', () => {
     expect(screen.getByText('Accesso con Google non disponibile in questo ambiente.')).toBeVisible();
   });
 
+  it('labels guest import as a house operation and preserves shared history on account deletion', async () => {
+    setActiveDataScope('house:copy-home');
+    setPersonalDataScope('account:user-1');
+    useAuthStore.setState({
+      user: verifiedUser,
+      csrfToken: 'csrf-1',
+      expiresAt: '2026-10-12T10:00:00.000Z',
+    });
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    await screen.findByRole('heading', { name: 'Il tuo profilo' });
+    expect(screen.getByText(/dati ospite.*Casa attiva/i)).toBeVisible();
+    expect(screen.getByText(/i dati condivisi restano nella Casa/i)).toBeVisible();
+  });
+
   it('no longer includes the AI recipes panel (moved to home page)', async () => {
     useAuthStore.setState({
       user: verifiedUser,
@@ -109,6 +127,8 @@ describe('ProfilePage', () => {
   });
 
   it('shows sync counts only after the complete local-data import', async () => {
+    setActiveDataScope('account:user-1');
+    setPersonalDataScope('account:user-1');
     const user = userEvent.setup();
     const fetch = vi.fn().mockImplementation((path: string) => {
       if (path === '/v1/ai-recipes/consent') {
@@ -143,6 +163,8 @@ describe('ProfilePage', () => {
   });
 
   it('reports a partial import when the server keeps returning more pages', async () => {
+    setActiveDataScope('account:user-1');
+    setPersonalDataScope('account:user-1');
     const user = userEvent.setup();
     let cursor = 0;
     const fetch = vi.fn().mockImplementation((path: string) => {

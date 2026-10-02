@@ -1,6 +1,7 @@
 import type { DiaryDraftSet, DinnerEntry, SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { isDiaryDraftSet, isDinnerEntry, isSavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { getActiveDataScope, scopeStorageKey, type SyncScope } from '../sync/scopeContext';
+import { trackScopedWrite } from '../sync/scopeWriteFence';
 import { deleteKeyValue, isIndexedDbAvailable, readKeyValue, writeKeyValue } from './indexedDb';
 
 const ENTRIES_DATABASE_KEY = 'dinner-entries';
@@ -51,19 +52,21 @@ async function readCollection<T>(databaseKey: string, storageKey: string, scope:
 }
 
 async function writeCollection<T>(databaseKey: string, storageKey: string, values: readonly T[], scope: SyncScope, normalize: (items: readonly unknown[]) => T[]): Promise<void> {
-  const serialized = serializeCollection(values, normalize);
-  const scopedDbKey = keyFor(scope, databaseKey);
-  const scopedStorageKey = keyFor(scope, storageKey);
-  if (!isIndexedDbAvailable()) {
-    window.localStorage.setItem(scopedStorageKey, serialized);
-    return;
-  }
-  try {
-    await writeKeyValue(scopedDbKey, serialized);
-  } catch (error) {
-    window.localStorage.setItem(scopedStorageKey, serialized);
-    throw error;
-  }
+  return trackScopedWrite(scope, async () => {
+    const serialized = serializeCollection(values, normalize);
+    const scopedDbKey = keyFor(scope, databaseKey);
+    const scopedStorageKey = keyFor(scope, storageKey);
+    if (!isIndexedDbAvailable()) {
+      window.localStorage.setItem(scopedStorageKey, serialized);
+      return;
+    }
+    try {
+      await writeKeyValue(scopedDbKey, serialized);
+    } catch (error) {
+      window.localStorage.setItem(scopedStorageKey, serialized);
+      throw error;
+    }
+  });
 }
 
 export const readDinnerEntries = (scope: SyncScope = getActiveDataScope()): Promise<DinnerEntry[]> => readCollection(ENTRIES_DATABASE_KEY, ENTRIES_STORAGE_KEY, scope, normalizeEntries);
@@ -86,13 +89,17 @@ export async function writeDiaryDraftSets(sets: readonly DiaryDraftSet[], scope:
   });
 }
 
-export async function clearDinnerDiary(scope: SyncScope): Promise<void> {
+export async function clearDinnerDiaryRecords(scope: SyncScope): Promise<void> {
   if (isIndexedDbAvailable()) {
     await deleteKeyValue(keyFor(scope, ENTRIES_DATABASE_KEY));
     await deleteKeyValue(keyFor(scope, RECIPES_DATABASE_KEY));
-    await deleteKeyValue(keyFor(scope, DRAFTS_DATABASE_KEY));
   }
   window.localStorage.removeItem(keyFor(scope, ENTRIES_STORAGE_KEY));
   window.localStorage.removeItem(keyFor(scope, RECIPES_STORAGE_KEY));
+}
+
+export async function clearDinnerDiary(scope: SyncScope): Promise<void> {
+  await clearDinnerDiaryRecords(scope);
+  if (isIndexedDbAvailable()) await deleteKeyValue(keyFor(scope, DRAFTS_DATABASE_KEY));
   window.localStorage.removeItem(keyFor(scope, DRAFTS_STORAGE_KEY));
 }

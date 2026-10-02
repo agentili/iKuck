@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { useAuthStore } from './auth/authStore';
 import { useHouseStore } from './house/houseStore';
@@ -17,7 +17,8 @@ import NotFoundPage from './pages/NotFoundPage';
 import PantryMergeNotice from './components/feedback/PantryMergeNotice';
 import { apiRequest } from './api/apiClient';
 import { initializeSessionScope, listenForReconnect, syncVerifiedSession, type SyncSession } from './sync/syncQueue';
-import { setActiveDataScope } from './sync/scopeContext';
+import { getActiveDataScope, setActiveDataScope, subscribeActiveDataScope } from './sync/scopeContext';
+import { isScopeWritable, subscribeScopeAvailability } from './sync/scopeWriteFence';
 import { hydrateShoppingListStore } from './store/shoppingListStore';
 import { hydrateActivityStore } from './store/activityStore';
 import { hydrateDietProfileStore } from './store/dietProfileStore';
@@ -35,20 +36,40 @@ const readVerifiedSession = (): SyncSession | null => {
   };
 };
 
+const subscribeVisibleScope = (listener: () => void): (() => void) => {
+  const stopScope = subscribeActiveDataScope(listener);
+  const stopAvailability = subscribeScopeAvailability(listener);
+  return () => { stopScope(); stopAvailability(); };
+};
+const getVisibleScope = (): string => {
+  const scope = getActiveDataScope();
+  return isScopeWritable(scope) ? scope : `revoked:${scope}`;
+};
+
 export default function App() {
   const user = useAuthStore((state) => state.user);
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const restoreSession = useAuthStore((state) => state.restoreSession);
   const houseId = useHouseStore((state) => state.state?.house?.id ?? null);
+  const visibleScope = useSyncExternalStore(subscribeVisibleScope, getVisibleScope, getVisibleScope);
   const pantryMergeSummary = usePantryMergeNoticeStore((state) => state.summary);
   const pantryMergeFailed = usePantryMergeNoticeStore((state) => state.mergeFailed);
   const previousSessionKey = useRef<string | null>(null);
+  const [sessionRestored, setSessionRestored] = useState(false);
+  const [readySessionKey, setReadySessionKey] = useState<string | null>(null);
+  const verifiedSession = user !== null && csrfToken !== null && user.emailVerifiedAt !== '';
+  const currentSessionKey = verifiedSession ? `${user.id}:${csrfToken}` : 'guest';
 
   useEffect(() => {
-    void restoreSession();
+    let active = true;
+    void restoreSession().catch(() => undefined).finally(() => {
+      if (active) setSessionRestored(true);
+    });
+    return () => { active = false; };
   }, [restoreSession]);
 
   useEffect(() => {
+    if (!sessionRestored) return;
     const session = readVerifiedSession();
     const sessionKey = session === null ? 'guest' : `${session.userId}:${session.csrfToken}`;
     const sessionChanged = previousSessionKey.current !== sessionKey;
@@ -56,7 +77,7 @@ export default function App() {
     let active = true;
     let removeReconnectListener: (() => void) | null = null;
 
-    const hydrateAndSync = async (): Promise<void> => {
+    const hydrateAndSync = async (shouldSync = true): Promise<void> => {
       await hydratePantryStore();
       if (!active) return;
       await Promise.all([
@@ -64,7 +85,9 @@ export default function App() {
         hydrateActivityStore(),
         hydrateDietProfileStore(),
       ]);
-      if (!active || session === null) return;
+      if (!active) return;
+      setReadySessionKey(sessionKey);
+      if (session === null || !shouldSync) return;
       void syncVerifiedSession(session, {
         isSessionCurrent: () => {
           const current = readVerifiedSession();
@@ -74,7 +97,9 @@ export default function App() {
           if (active) useHouseStore.getState().clear();
         },
       });
-      removeReconnectListener = listenForReconnect(readVerifiedSession);
+      removeReconnectListener = listenForReconnect(readVerifiedSession, () => {
+        if (active) useHouseStore.getState().clear();
+      });
     };
 
     if (session === null) {
@@ -106,7 +131,7 @@ export default function App() {
           return hydrateAndSync();
         })
         .catch(() => {
-          if (active) void hydrateAndSync();
+          if (active) void hydrateAndSync(false);
         });
     }
 
@@ -114,7 +139,14 @@ export default function App() {
       active = false;
       removeReconnectListener?.();
     };
-  }, [csrfToken, houseId, user]);
+  }, [csrfToken, houseId, sessionRestored, user]);
+
+  const expectedVisibleScope = verifiedSession
+    ? (houseId === null ? `account:${user.id}` : `house:${houseId}`)
+    : 'guest';
+  if (!sessionRestored || readySessionKey !== currentSessionKey || visibleScope !== expectedVisibleScope) {
+    return <div className="app-shell min-h-screen" role="status">Caricamento dati…</div>;
+  }
 
   return (
     <BrowserRouter>

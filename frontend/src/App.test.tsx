@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { useAuthStore } from './auth/authStore';
@@ -7,6 +7,10 @@ import { useShoppingListStore } from './store/shoppingListStore';
 import { usePantryStore } from './store/localPantryStore';
 import { useHouseStore } from './house/houseStore';
 import { usePantryMergeNoticeStore } from './store/pantryMergeNoticeStore';
+import { getActiveDataScope, setActiveDataScope, setPersonalDataScope } from './sync/scopeContext';
+import { clearDataScope } from './sync/syncQueue';
+import { trackScopedWrite } from './sync/scopeWriteFence';
+import { writeDinnerEntries } from './storage/dinnerDiaryStorage';
 
 const syncVerifiedSession = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 const listenForReconnect = vi.hoisted(() => vi.fn().mockReturnValue(vi.fn()));
@@ -28,8 +32,15 @@ describe('App synchronization lifecycle', () => {
     syncVerifiedSession.mockClear();
     listenForReconnect.mockClear();
     initializeSessionScope.mockReset();
-    initializeSessionScope.mockResolvedValue({ state: null, mergeSummary: null, guestMergeFailed: false });
+    initializeSessionScope.mockImplementation(async (session: { userId: string }) => {
+      const scope = `account:${session.userId}` as const;
+      setActiveDataScope(scope);
+      setPersonalDataScope(scope);
+      return { state: null, mergeSummary: null, guestMergeFailed: false };
+    });
     useHouseStore.getState().clear();
+    setActiveDataScope('guest');
+    setPersonalDataScope('guest');
     usePantryMergeNoticeStore.getState().clear();
     useAuthStore.setState({
       user: null,
@@ -37,10 +48,73 @@ describe('App synchronization lifecycle', () => {
       expiresAt: null,
       connection: 'unknown',
       isLoading: false,
-      restoreSession: vi.fn(),
+      restoreSession: vi.fn().mockResolvedValue(undefined),
     });
     useActivityStore.setState({ hasHydrated: true, events: [], preferences: [] });
     useShoppingListStore.setState({ hasHydrated: true, items: [] });
+  });
+
+  it('hides a revoked House diary immediately while purge waits for a local write', async () => {
+    const houseScope = 'house:revoked-on-screen' as const;
+    const state = {
+      house: { id: 'revoked-on-screen', name: 'Casa', createdAt: '2026-09-30T10:00:00.000Z' },
+      membership: { role: 'member' as const, joinedAt: '2026-09-30T10:00:00.000Z' }, members: [],
+    };
+    await writeDinnerEntries([{
+      id: 'revoked-entry', date: '2026-09-30', text: 'Cena visibile prima della revoca',
+      servings: null, note: null, recipes: [], authorId: verifiedUser.id,
+      createdAt: state.house.createdAt, updatedAt: state.house.createdAt,
+    }], houseScope);
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(`account:${verifiedUser.id}`);
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
+    initializeSessionScope.mockImplementation(async () => {
+      setActiveDataScope(houseScope);
+      setPersonalDataScope(`account:${verifiedUser.id}`);
+      return { state, mergeSummary: null, guestMergeFailed: false };
+    });
+    window.history.pushState({}, '', '/dinner-diary');
+    const { unmount } = render(<App />);
+    await screen.findByText('Cena visibile prima della revoca');
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const pending = trackScopedWrite(houseScope, () => held);
+    let complete = false;
+    const purging = clearDataScope(houseScope).then(() => { complete = true; });
+    try {
+      await waitFor(() => expect(screen.queryByText('Cena visibile prima della revoca')).not.toBeInTheDocument());
+      expect(screen.getByRole('status')).toHaveTextContent('Caricamento');
+      expect(complete).toBe(false);
+    } finally {
+      release?.();
+      await Promise.all([pending, purging]);
+      act(() => unmount());
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  it('hides the previous account’s routes during a new account’s unresolved House bootstrap', async () => {
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
+    const { rerender } = render(<App />);
+    await waitFor(() => expect(syncVerifiedSession).toHaveBeenCalledOnce());
+    let releaseBootstrap: (() => void) | undefined;
+    const bootstrap = new Promise<null>((resolve) => { releaseBootstrap = () => resolve(null); });
+    initializeSessionScope.mockReturnValueOnce(bootstrap);
+    setActiveDataScope('account:user-1');
+    setPersonalDataScope('account:user-1');
+    usePantryStore.setState({ hasHydrated: true, pantryItems: [{ id: 'secret-pasta', label: 'Pasta privata', known: true }] });
+    window.history.pushState({}, '', '/pantry');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await screen.findByRole('heading', { name: 'La tua dispensa' });
+    expect(screen.getByText('Pasta privata')).toBeVisible();
+
+    useAuthStore.setState({ user: { ...verifiedUser, id: 'user-2', email: 'other@example.com' }, csrfToken: 'csrf-2' });
+    rerender(<App />);
+    expect(screen.queryByRole('heading', { name: 'La tua dispensa' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Pasta privata')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Caricamento');
+    releaseBootstrap?.();
+    window.history.pushState({}, '', '/');
   });
 
   it('starts one initial sync and one reconnect listener for a verified session', async () => {
@@ -56,15 +130,33 @@ describe('App synchronization lifecycle', () => {
     expect(listenForReconnect).toHaveBeenCalledOnce();
   });
 
+  it('does not sync an account while the known House membership is unresolved', async () => {
+    setActiveDataScope('house:offline-home');
+    setPersonalDataScope('account:user-1');
+    initializeSessionScope.mockRejectedValue(new Error('House lookup offline'));
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
+
+    render(<App />);
+
+    await waitFor(() => expect(initializeSessionScope).toHaveBeenCalled());
+    await waitFor(() => expect(usePantryStore.getState().hasHydrated).toBe(true));
+    expect(getActiveDataScope()).toBe('house:offline-home');
+    expect(syncVerifiedSession).not.toHaveBeenCalled();
+    expect(listenForReconnect).not.toHaveBeenCalled();
+  });
+
   it('shows the non-destructive warning after a guest pantry merge fails', async () => {
-    initializeSessionScope.mockResolvedValue({
-      state: {
-        house: { id: 'house-a', name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' },
-        membership: { role: 'member', joinedAt: '2026-09-24T00:00:00.000Z' },
-        members: [],
-      },
-      mergeSummary: null,
-      guestMergeFailed: true,
+    initializeSessionScope.mockImplementation(async () => {
+      setActiveDataScope('house:house-a');
+      return {
+        state: {
+          house: { id: 'house-a', name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' },
+          membership: { role: 'member', joinedAt: '2026-09-24T00:00:00.000Z' },
+          members: [],
+        },
+        mergeSummary: null,
+        guestMergeFailed: true,
+      };
     });
     useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
 
@@ -74,7 +166,7 @@ describe('App synchronization lifecycle', () => {
     expect(warning).toBeVisible();
     expect(warning.closest('[role="alert"]')).toHaveTextContent('La copia locale è stata conservata su questo dispositivo');
     await waitFor(() => expect(useHouseStore.getState().state?.house?.id).toBe('house-a'));
-    expect(syncVerifiedSession).toHaveBeenCalledOnce();
+    await waitFor(() => expect(syncVerifiedSession).toHaveBeenCalledOnce());
   });
 
   it('keeps a successful merge summary visible after the house bootstrap refreshes', async () => {
@@ -83,14 +175,20 @@ describe('App synchronization lifecycle', () => {
       membership: { role: 'member' as const, joinedAt: '2026-09-24T00:00:00.000Z' },
       members: [],
     };
-    initializeSessionScope.mockResolvedValueOnce({
-      state: houseState,
-      mergeSummary: { addedLots: 2, mergedLots: 0, importedStaples: 0 },
-      guestMergeFailed: false,
-    }).mockResolvedValue({
-      state: houseState,
-      mergeSummary: { addedLots: 0, mergedLots: 0, importedStaples: 0 },
-      guestMergeFailed: false,
+    initializeSessionScope.mockImplementationOnce(async () => {
+      setActiveDataScope('house:house-a');
+      return {
+        state: houseState,
+        mergeSummary: { addedLots: 2, mergedLots: 0, importedStaples: 0 },
+        guestMergeFailed: false,
+      };
+    }).mockImplementation(async () => {
+      setActiveDataScope('house:house-a');
+      return {
+        state: houseState,
+        mergeSummary: { addedLots: 0, mergedLots: 0, importedStaples: 0 },
+        guestMergeFailed: false,
+      };
     });
     useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
 
@@ -101,31 +199,59 @@ describe('App synchronization lifecycle', () => {
     expect(importedLots).toBeVisible();
   });
 
-  it('clears the merge failure notice when a later bootstrap finds no house', async () => {
-    initializeSessionScope.mockResolvedValueOnce({
-      state: {
-        house: { id: 'house-a', name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' },
-        membership: { role: 'member' as const, joinedAt: '2026-09-24T00:00:00.000Z' },
-        members: [],
-      },
-      mergeSummary: null,
-      guestMergeFailed: true,
-    }).mockResolvedValue({ state: null, mergeSummary: null, guestMergeFailed: false });
+  it('clears a prior merge failure notice when a later bootstrap finds no house', async () => {
+    usePantryMergeNoticeStore.getState().showFailure();
+    initializeSessionScope.mockImplementation(async () => {
+      setActiveDataScope('account:user-1');
+      setPersonalDataScope('account:user-1');
+      return { state: null, mergeSummary: null, guestMergeFailed: false };
+    });
     useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
 
     render(<App />);
-
-    await screen.findByText('La dispensa della Casa resta selezionata.');
+    await waitFor(() => expect(initializeSessionScope).toHaveBeenCalled());
     await waitFor(() => expect(screen.queryByText('La dispensa della Casa resta selezionata.')).not.toBeInTheDocument());
   });
 
-  it('restores the session once when the application mounts', () => {
+  it('does not replace a stored house with guest while restoring a verified session', async () => {
+    setActiveDataScope('house:restored-home');
+    setPersonalDataScope('account:user-1');
+    initializeSessionScope.mockImplementation(async () => ({
+      state: {
+        house: { id: 'restored-home', name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' },
+        membership: { role: 'member', joinedAt: '2026-09-24T00:00:00.000Z' }, members: [],
+      },
+      mergeSummary: null,
+      guestMergeFailed: false,
+    }));
+    let finishRestore: (() => void) | undefined;
+    const restoration = new Promise<void>((resolve) => { finishRestore = resolve; });
+    useAuthStore.setState({
+      user: null,
+      csrfToken: null,
+      restoreSession: vi.fn(async () => {
+        await restoration;
+        useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
+      }),
+    });
+
+    render(<App />);
+
+    expect(getActiveDataScope()).toBe('house:restored-home');
+    finishRestore?.();
+    await waitFor(() => expect(initializeSessionScope).toHaveBeenCalled());
+    expect(getActiveDataScope()).toBe('house:restored-home');
+    await waitFor(() => expect(syncVerifiedSession).toHaveBeenCalled());
+  });
+
+  it('restores the session once when the application mounts', async () => {
     const restoreSession = vi.fn().mockResolvedValue(undefined);
     useAuthStore.setState({ restoreSession });
 
     render(<App />);
 
     expect(restoreSession).toHaveBeenCalledOnce();
+    await screen.findByRole('heading', { name: 'Cosa cuciniamo oggi?' });
   });
 
   it('hydrates pantry data before an authenticated profile uses it', async () => {
@@ -164,12 +290,12 @@ describe('App synchronization lifecycle', () => {
     expect(removeListener).toHaveBeenCalledOnce();
   });
 
-  it('renders an explicit 404 without replacing the requested URL', () => {
+  it('renders an explicit 404 without replacing the requested URL', async () => {
     window.history.pushState({}, '', '/missing-page');
 
     render(<App />);
 
-    expect(screen.getByRole('heading', { name: 'Pagina non trovata' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Pagina non trovata' })).toBeVisible();
     expect(window.location.pathname).toBe('/missing-page');
 
     window.history.pushState({}, '', '/');

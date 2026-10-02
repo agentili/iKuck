@@ -52,6 +52,20 @@ describe('Redis-backed auth rate limiter', () => {
     expect(incrementWithExpiry).toHaveBeenCalledTimes(4);
   });
 
+  it('throttles house member lookup per authenticated actor and IP even when target emails rotate', async () => {
+    const incrementWithExpiry = vi.fn()
+      .mockResolvedValueOnce(1).mockResolvedValueOnce(1).mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(2).mockResolvedValueOnce(1).mockResolvedValueOnce(AUTH_RATE_LIMITS.houseAddMember.actorLimit + 1);
+    const limiter = createRedisAuthRateLimiter({ incrementWithExpiry });
+    const input = { ip: '203.0.113.10', email: 'first@example.com', actorId: 'admin-1' };
+    await limiter.enforce('houseAddMember', input);
+    await expect(limiter.enforce('houseAddMember', { ...input, ip: '198.51.100.20', email: 'second@example.com' }))
+      .rejects.toMatchObject({ code: 'rate_limited', status: 429 });
+    const keys = incrementWithExpiry.mock.calls.map(([key]) => key as string);
+    expect(keys.every((key) => !key.includes('admin-1') && !key.includes('first@example.com'))).toBe(true);
+    expect(keys[2]).toBe(keys[5]);
+  });
+
   it('fails closed when Redis is unavailable', async () => {
     const limiter = createRedisAuthRateLimiter({
       incrementWithExpiry: vi.fn().mockRejectedValue(new Error('Redis is unavailable')),

@@ -14,7 +14,8 @@ import {
   waitForPendingQueueWrites,
 } from '../sync/syncQueue';
 import { trackPersistence, trackSync } from './persistenceStatusStore';
-import { getActiveDataScope, getPersonalDataScope, subscribePersonalDataScope, type SyncScope } from '../sync/scopeContext';
+import { getActiveDataScope, getPersonalDataScope, subscribeActiveDataScope, type SyncScope } from '../sync/scopeContext';
+import { isScopeWritable, ScopeRevokedError, trackScopedWrite } from '../sync/scopeWriteFence';
 
 export interface DietProfileState {
   hasHydrated: boolean;
@@ -34,15 +35,21 @@ const createDefaultProfile = (): DietProfile => normalizeDietProfile({
 });
 
 const persistProfile = (profile: DietProfile, scope: SyncScope): Promise<void> => {
-  const operation = pendingStorageWrites.then(() => writeDietProfile(profile, scope));
+  const previous = pendingStorageWrites;
+  const operation = trackScopedWrite(scope, async () => {
+    await previous;
+    if (!isScopeWritable(scope)) throw new ScopeRevokedError();
+    await writeDietProfile(profile, scope);
+  });
   pendingStorageWrites = operation.catch(() => undefined);
   return operation;
 };
 
 const persistAndQueue = (profile: DietProfile): void => {
+  const activeScope = getActiveDataScope();
   const personalScope = getPersonalDataScope();
-  void trackPersistence('diet', () => persistProfile(profile, personalScope));
-  void trackSync('diet', () => enqueueEntityMutation(getMutationScope('diet_profile', getActiveDataScope(), personalScope), 'diet_profile', 'profile', 'upsert', profile));
+  void trackPersistence('diet', () => persistProfile(profile, activeScope));
+  void trackSync('diet', () => enqueueEntityMutation(getMutationScope('diet_profile', activeScope, personalScope), 'diet_profile', 'profile', 'upsert', profile));
 };
 
 export const useDietProfileStore = create<DietProfileState>((set) => ({
@@ -67,7 +74,7 @@ registerDietProfileSnapshotListener((profile) => {
   useDietProfileStore.setState({ profile: normalizeDietProfile(profile) });
 });
 
-subscribePersonalDataScope(() => {
+subscribeActiveDataScope(() => {
   hydrationGeneration += 1;
   hydratedScope = null;
   useDietProfileStore.setState({ hasHydrated: false, profile: createDefaultProfile() });
@@ -80,18 +87,18 @@ export async function waitForPendingDietProfileWrites(): Promise<void> {
 
 export async function hydrateDietProfileStore(): Promise<void> {
   for (;;) {
-    const scope = getPersonalDataScope();
+    const scope = getActiveDataScope();
     const generation = hydrationGeneration;
     if (useDietProfileStore.getState().hasHydrated && hydratedScope === scope) return;
     if (hydrationPromise === null) {
       const currentPromise = readDietProfile(scope)
         .then((profile) => {
-          if (getPersonalDataScope() !== scope || hydrationGeneration !== generation) return;
+          if (getActiveDataScope() !== scope || hydrationGeneration !== generation) return;
           hydratedScope = scope;
           useDietProfileStore.setState({ profile: normalizeDietProfile(profile), hasHydrated: true });
         })
         .catch(() => {
-          if (getPersonalDataScope() !== scope || hydrationGeneration !== generation) return;
+          if (getActiveDataScope() !== scope || hydrationGeneration !== generation) return;
           hydratedScope = scope;
           useDietProfileStore.setState({ profile: createDefaultProfile(), hasHydrated: true });
         })
@@ -102,7 +109,7 @@ export async function hydrateDietProfileStore(): Promise<void> {
     }
     const pendingHydration = hydrationPromise;
     if (pendingHydration !== null) await pendingHydration;
-    if (getPersonalDataScope() === scope && hydrationGeneration === generation
+    if (getActiveDataScope() === scope && hydrationGeneration === generation
       && useDietProfileStore.getState().hasHydrated && hydratedScope === scope) return;
   }
 }
