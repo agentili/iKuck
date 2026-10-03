@@ -35,6 +35,43 @@ const waitForDietProfilePersistence = async (page: Page): Promise<void> => {
   }));
 };
 
+const waitForActivityPersistence = async (page: Page): Promise<void> => {
+  await page.waitForFunction(() => new Promise<boolean>((resolve) => {
+    const request = indexedDB.open('ikuck-local-v2');
+    request.onerror = () => resolve(false);
+    request.onsuccess = () => {
+      const database = request.result;
+      try {
+        const store = database.transaction('keyValue', 'readonly').objectStore('keyValue');
+        const events = store.get('activity');
+        const preferences = store.get('recipe-preferences');
+        events.onerror = () => { database.close(); resolve(false); };
+        preferences.onerror = () => { database.close(); resolve(false); };
+        preferences.onsuccess = () => {
+          const eventValue = events.result;
+          const preferenceValue = preferences.result;
+          database.close();
+          if (typeof eventValue !== 'string' || typeof preferenceValue !== 'string') {
+            resolve(false);
+            return;
+          }
+          try {
+            const eventItems = JSON.parse(eventValue) as { items?: Array<{ recipeId?: string }> };
+            const preferenceItems = JSON.parse(preferenceValue) as { items?: Array<{ recipeId?: string; note?: string }> };
+            resolve(eventItems.items?.some((item) => item.recipeId === 'pasta-tonno-pomodoro') === true
+              && preferenceItems.items?.some((item) => item.recipeId === 'pasta-tonno-pomodoro' && item.note === 'Da rifare presto') === true);
+          } catch {
+            resolve(false);
+          }
+        };
+      } catch {
+        database.close();
+        resolve(false);
+      }
+    };
+  }));
+};
+
 test.beforeEach(async ({ context, page }) => {
   await context.clearCookies();
   await installOfflineBackend(page);
@@ -330,6 +367,8 @@ test('activity records cooking, preferences and private notes offline', async ({
   await page.getByLabel('Nota privata sulla ricetta').fill('Da rifare presto');
   await page.getByRole('button', { name: 'Salva preferenza' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Preferenza salvata.' })).toHaveText('Preferenza salvata.');
+  // The success message reflects in-memory state; a full navigation must wait for both IndexedDB writes.
+  await waitForActivityPersistence(page);
 
   await page.goto('/activity');
   await expect(page.getByRole('heading', { name: 'La tua attività' })).toBeVisible();
