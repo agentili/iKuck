@@ -69,6 +69,7 @@ export const start = async () => {
         repository: sync,
         authService: auth,
         appOrigin: config.appOrigin,
+        recipeProvider: config.providers.recipeProvider ?? 'openai',
       },
     },
     {

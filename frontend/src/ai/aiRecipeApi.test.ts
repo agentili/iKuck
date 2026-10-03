@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ApiRequest } from '../api/apiClient';
 import type { DietProfilePayload, GeneratedRecipe } from '@ikuck/shared/contracts';
-import { deleteAiRecipe, fetchAiConsent, fetchAiRecipes, generateAiRecipe, saveAiRecipe, updateAiConsent } from './aiRecipeApi';
+import { deleteAiRecipe, fetchAiConsent, fetchAiConsentStatus, fetchAiRecipes, generateAiRecipe, saveAiRecipe, updateAiConsent, updateDinnerAiConsent } from './aiRecipeApi';
 
 const profile: DietProfilePayload = {
   diet: 'vegan',
@@ -23,19 +23,63 @@ const generatedRecipe: GeneratedRecipe = {
 };
 
 describe('AI recipe API', () => {
-  it('loads and updates server-side consent with the CSRF token', async () => {
+  it('uses the server-selected provider for Dinner consent status and update', async () => {
+    const consentStatus = { consent: { enabled: true, updatedAt: '2026-09-13T12:00:00.000Z' }, selectedProvider: 'gemini' as const };
     const request = vi.fn()
-      .mockResolvedValueOnce({ consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' } })
-      .mockResolvedValueOnce({ consent: { enabled: true, updatedAt: '2026-09-13T12:01:00.000Z' } }) as unknown as ApiRequest;
+      .mockResolvedValueOnce(consentStatus)
+      .mockResolvedValueOnce(consentStatus) as unknown as ApiRequest;
 
-    await expect(fetchAiConsent(request)).resolves.toMatchObject({ enabled: false });
-    await expect(updateAiConsent(true, 'csrf-token', request)).resolves.toMatchObject({ enabled: true });
+    await expect(fetchAiConsentStatus(request)).resolves.toEqual(consentStatus);
+    await expect(updateDinnerAiConsent('gemini', 'csrf-token', '2026-09-13T12:00:00.000Z', request)).resolves.toEqual(consentStatus);
 
     expect(request).toHaveBeenNthCalledWith(1, '/v1/ai-recipes/consent');
     expect(request).toHaveBeenNthCalledWith(2, '/v1/ai-recipes/consent', {
       method: 'PUT',
-      body: { enabled: true },
+      body: { dinnerProvider: 'gemini', expectedRevision: '2026-09-13T12:00:00.000Z' },
       csrfToken: 'csrf-token',
+    });
+  });
+
+  it('rejects an unknown server-selected provider so Home cannot show an incomplete consent disclosure', async () => {
+    const request = vi.fn().mockResolvedValue({
+      consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' },
+      selectedProvider: 'unknown-provider',
+    }) as unknown as ApiRequest;
+
+    await expect(fetchAiConsentStatus(request)).rejects.toMatchObject({ code: 'ai_consent_status_invalid' });
+  });
+
+  it('loads and updates server-side consent with the CSRF token', async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({ consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' }, selectedProvider: 'openai' })
+      .mockResolvedValueOnce({ consent: { enabled: true, homeProvider: 'openai', updatedAt: '2026-09-13T12:01:00.000Z' }, selectedProvider: 'openai' }) as unknown as ApiRequest;
+
+    await expect(fetchAiConsent(request)).resolves.toMatchObject({ enabled: false });
+    await expect(updateAiConsent(true, 'csrf-token', '2026-09-13T12:00:00.000Z', request, 'openai')).resolves.toMatchObject({ enabled: true, homeProvider: 'openai' });
+
+    expect(request).toHaveBeenNthCalledWith(1, '/v1/ai-recipes/consent');
+    expect(request).toHaveBeenNthCalledWith(2, '/v1/ai-recipes/consent', {
+      method: 'PUT',
+      body: { enabled: true, homeProvider: 'openai', expectedRevision: '2026-09-13T12:00:00.000Z' },
+      csrfToken: 'csrf-token',
+    });
+  });
+
+  it('keeps Home and Dinner revocations available without a revision', async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({ consent: { enabled: false, updatedAt: '2026-09-13T12:02:00.000Z' } })
+      .mockResolvedValueOnce({
+        consent: { enabled: false, updatedAt: '2026-09-13T12:03:00.000Z' }, selectedProvider: 'gemini',
+      }) as unknown as ApiRequest;
+
+    await updateAiConsent(false, 'csrf-token', undefined, request);
+    await updateDinnerAiConsent(null, 'csrf-token', undefined, request);
+
+    expect(request).toHaveBeenNthCalledWith(1, '/v1/ai-recipes/consent', {
+      method: 'PUT', body: { enabled: false }, csrfToken: 'csrf-token',
+    });
+    expect(request).toHaveBeenNthCalledWith(2, '/v1/ai-recipes/consent', {
+      method: 'PUT', body: { dinnerProvider: null }, csrfToken: 'csrf-token',
     });
   });
 

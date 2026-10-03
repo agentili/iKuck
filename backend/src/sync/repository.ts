@@ -1,15 +1,32 @@
 import { DIARY_MAX_RECIPES } from '@ikuck/shared/limits';
 import { isDinnerEntry } from '@ikuck/shared/dinnerDiary';
 import { HOUSE_SYNC_ENTITY_TYPES } from '@ikuck/shared/contracts';
-import type { DietProfile, DietType, PantryLot, SyncChange, SyncMutation } from '@ikuck/shared/contracts';
+import type { AiConsent, AiRecipeProvider, DietProfile, DietType, PantryLot, SyncChange, SyncMutation } from '@ikuck/shared/contracts';
 import { mergePantryLots, type PantryMergeSummary } from '@ikuck/shared/pantryMerge';
 import { and, asc, eq, gt, inArray, like, or, sql } from 'drizzle-orm';
 import { Buffer } from 'node:buffer';
+import { randomUUID } from 'node:crypto';
 import type { ApplicationDatabase } from '../db/client.js';
 import { processedSyncMutations, houseMemberships, houses, syncItems, users } from '../db/schema.js';
+import { isAiConsent } from '../ai/validation.js';
 import { isDietProfile } from '../diet/validation.js';
 import { isPantryLot } from '../pantry/validation.js';
-import { assertSyncMutation } from './validation.js';
+import { assertStoredSyncMutation, assertSyncMutation } from './validation.js';
+import { createDispatchCapacityGate, DispatchAbortedError, DispatchCapacityError, type DispatchCapacityGate } from './dispatchCapacity.js';
+
+type ReservedPostgresConnection = Awaited<ReturnType<ApplicationDatabase['db']['$client']['reserve']>>;
+
+const aiConsentDispatchGates = new WeakMap<object, DispatchCapacityGate>();
+const aiConsentLockKey = (userId: string): string => `ikuck:ai-consent:${userId}`;
+
+const dispatchGateFor = (client: ApplicationDatabase['db']['$client']): DispatchCapacityGate => {
+  const key = client as object;
+  const existing = aiConsentDispatchGates.get(key);
+  if (existing !== undefined) return existing;
+  const gate = createDispatchCapacityGate(client.options.max);
+  aiConsentDispatchGates.set(key, gate);
+  return gate;
+};
 
 export interface StoredSyncItem {
   entityType: SyncMutation['entityType'];
@@ -64,6 +81,49 @@ export class SyncDiaryRecipeLimitError extends Error {
   readonly status = 409;
   constructor() { super('Dinner entry already has the maximum number of linked recipes'); this.name = 'SyncDiaryRecipeLimitError'; }
 }
+
+export class AiConsentRequiredError extends Error {
+  readonly code = 'ai_consent_required';
+  readonly status = 403;
+
+  constructor() {
+    super('Global AI consent must be enabled before granting Dinner consent');
+    this.name = 'AiConsentRequiredError';
+  }
+}
+
+export class AiConsentRevisionRequiredError extends Error {
+  readonly code = 'ai_consent_revision_required';
+  readonly status = 428;
+
+  constructor() {
+    super('A current AI consent revision is required for grants');
+    this.name = 'AiConsentRevisionRequiredError';
+  }
+}
+
+export class AiConsentRevisionConflictError extends Error {
+  readonly code = 'ai_consent_revision_conflict';
+  readonly status = 409;
+
+  constructor() {
+    super('AI consent changed; refresh the current consent before granting');
+    this.name = 'AiConsentRevisionConflictError';
+  }
+}
+
+export const DEFAULT_AI_CONSENT_REVISION = '1970-01-01T00:00:00.000Z';
+
+export interface AiConsentUpdate {
+  enabled?: boolean;
+  homeProvider?: AiRecipeProvider | null;
+  dinnerProvider?: AiRecipeProvider | null;
+  expectedRevision?: string;
+}
+
+export type AiConsentDispatchRequirement =
+  | { kind: 'home'; provider: AiRecipeProvider }
+  | { kind: 'dinner'; provider: AiRecipeProvider };
 
 const isDiaryEntityType = (entityType: SyncMutation['entityType']): boolean =>
   entityType === 'dinner_entry' || entityType === 'saved_recipe';
@@ -189,6 +249,13 @@ export class SyncMembershipRequiredError extends Error {
 
 export interface SyncRepository {
   applyMutation: (userId: string, mutation: SyncMutation) => Promise<AppliedSyncMutation>;
+  updateAiConsent: (userId: string, update: AiConsentUpdate) => Promise<AiConsent>;
+  withAiConsentDispatch: <T>(
+    userId: string,
+    requirement: AiConsentDispatchRequirement,
+    dispatch: (consent: AiConsent) => Promise<T>,
+    signal?: AbortSignal,
+  ) => Promise<T>;
   readChanges: (userId: string, cursor: number, limit: number, requestedScope?: SyncMutation['syncScope']) => Promise<SyncChange[]>;
   readAll: (userId: string) => Promise<SyncChange[]>;
   readEntity: (userId: string, entityType: SyncMutation['entityType'], entityId: string) => Promise<StoredSyncItem | null>;
@@ -204,6 +271,79 @@ export interface SyncRepository {
 
 const scopeKey = (scope: SyncScope): string => `${scope.kind}:${scope.id}`;
 const userScope = (userId: string): SyncScope => ({ kind: 'user', id: userId });
+
+const applyAiConsentUpdate = (
+  current: AiConsent | null,
+  update: AiConsentUpdate,
+  updatedAt: string,
+): AiConsent => {
+  const requestsHomeGrant = update.homeProvider !== undefined && update.homeProvider !== null;
+  const requestsDinnerGrant = update.dinnerProvider !== undefined && update.dinnerProvider !== null;
+  if (requestsHomeGrant && update.enabled !== true && !current?.enabled) {
+    throw new AiConsentRequiredError();
+  }
+  if (requestsDinnerGrant && (update.enabled === false || !current?.enabled)) {
+    throw new AiConsentRequiredError();
+  }
+
+  const enabled = update.enabled ?? current?.enabled ?? false;
+  const homeProvider = !enabled || update.homeProvider === null
+    ? undefined
+    : update.homeProvider ?? (current?.enabled ? current.homeProvider : undefined);
+  const dinnerProvider = !enabled || update.dinnerProvider === null
+    ? undefined
+    : update.dinnerProvider ?? (current?.enabled ? current.dinnerProvider : undefined);
+  return {
+    enabled,
+    updatedAt,
+    ...(homeProvider === undefined ? {} : { homeProvider }),
+    ...(dinnerProvider === undefined ? {} : { dinnerProvider }),
+  };
+};
+
+const isAiConsentGrant = (update: AiConsentUpdate): boolean => update.enabled === true
+  || (update.homeProvider !== undefined && update.homeProvider !== null)
+  || (update.dinnerProvider !== undefined && update.dinnerProvider !== null);
+
+const currentConsentFromItem = (item: StoredSyncItem | null): AiConsent | null => (
+  item !== null && !item.deleted && isAiConsent(item.payload) ? item.payload : null
+);
+
+const consentRevisionFromItem = (item: StoredSyncItem | null, current: AiConsent | null): string => (
+  current?.updatedAt ?? item?.serverUpdatedAt.toISOString() ?? DEFAULT_AI_CONSENT_REVISION
+);
+
+const assertCurrentConsentRevision = (update: AiConsentUpdate, currentRevision: string): void => {
+  if (update.enabled === true && (update.homeProvider === undefined || update.homeProvider === null)) {
+    throw new AiConsentRevisionRequiredError();
+  }
+  if (!isAiConsentGrant(update)) return;
+  if (update.expectedRevision === undefined) throw new AiConsentRevisionRequiredError();
+  if (update.expectedRevision !== currentRevision) throw new AiConsentRevisionConflictError();
+};
+
+const nextConsentTimestamp = (clock: () => Date, currentRevision: string): Date => new Date(Math.max(
+  clock().getTime(),
+  Date.parse(currentRevision) + 1,
+));
+
+const createKeyedLock = () => {
+  const tails = new Map<string, Promise<void>>();
+  return async <T>(key: string, operation: () => Promise<T>): Promise<T> => {
+    const previous = tails.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const tail = previous.then(() => held);
+    tails.set(key, tail);
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (tails.get(key) === tail) tails.delete(key);
+    }
+  };
+};
 
 // Account-queue replay is a distinct authenticated import, never a normal
 // shared sync write. A forged foreign/personal scope cannot enter migration.
@@ -603,7 +743,11 @@ const resolveOptions = (options: SyncRepositoryOptions): ResolvedSyncRepositoryO
 });
 
 const prepareMutation = (mutation: SyncMutation, options: ResolvedSyncRepositoryOptions): PreparedMutation => {
-  const validMutation = assertSyncMutation(mutation);
+  const validMutation = assertStoredSyncMutation(mutation);
+  if (validMutation.entityType === 'ai_consent' && validMutation.operation === 'upsert'
+    && isAiConsent(validMutation.payload) && validMutation.payload.dinnerProvider !== undefined) {
+    throw new AiConsentRequiredError();
+  }
   const serverUpdatedAt = options.clock();
   const clientUpdatedAt = new Date(validMutation.clientUpdatedAt);
   const isFutureSkewed = clientUpdatedAt.getTime() > serverUpdatedAt.getTime() + options.maxClientClockSkewMs;
@@ -824,38 +968,103 @@ export const createMemorySyncRepository = (repositoryOptions: SyncRepositoryOpti
     };
   };
 
+  const withConsentLock = createKeyedLock();
   return {
-    applyMutation: async (userId, mutation) => {
-      const prepared = prepareMutation(mutation, options);
-      const scope = await resolveEntityScope(userId, prepared.mutation.entityType, options, prepared.mutation.syncScope);
-      if (scope === null) throw new SyncMembershipRequiredError();
-      const processedKey = `${scopeKey(scope)}:${prepared.mutation.mutationId}`;
-      if (processed.has(processedKey)) return { applied: false, change: null };
-      const key = entityKey(scope, prepared.mutation.entityType, prepared.mutation.entityId);
-      const existing = entities.get(key);
-      const normalizedMutation = normalizeDiaryMutation(userId, prepared.mutation, existing ?? null);
-      const normalizedPrepared = { ...prepared, mutation: normalizedMutation };
-      processed.add(processedKey);
-      const winsExisting = existing === undefined || wins(normalizedPrepared, existing);
-      const staleRecipeLinkMutation = existing !== undefined && !winsExisting
-        ? mergeStaleDinnerRecipeLinks(normalizedMutation, existing)
-        : null;
-      if (!winsExisting && staleRecipeLinkMutation === null) return { applied: false, change: null };
-      const mutationToApply = staleRecipeLinkMutation ?? normalizedMutation;
+    updateAiConsent: async (userId, update) => withConsentLock(userId, async () => {
+      const scope = userScope(userId);
+      const key = entityKey(scope, 'ai_consent', 'profile');
+      const existing = entities.get(key) ?? null;
+      const current = currentConsentFromItem(existing);
+      const currentRevision = consentRevisionFromItem(existing, current);
+      assertCurrentConsentRevision(update, currentRevision);
+      const now = nextConsentTimestamp(options.clock, currentRevision);
+      const consent = applyAiConsentUpdate(current, update, now.toISOString());
+      const mutationId = randomUUID();
       const item: StoredSyncItem = {
-        entityType: mutationToApply.entityType,
-        entityId: mutationToApply.entityId,
-        deviceId: mutationToApply.deviceId,
-        payload: mutationToApply.payload,
-        deleted: mutationToApply.operation === 'delete',
-        clientUpdatedAt: new Date(mutationToApply.clientUpdatedAt),
-        serverUpdatedAt: prepared.serverUpdatedAt,
-        mutationId: mutationToApply.mutationId,
-        syncScope: scope.kind === 'house' ? `house:${scope.id}` : `account:${scope.id}`,
+        entityType: 'ai_consent',
+        entityId: 'profile',
+        deviceId: 'api-ai-recipes',
+        payload: consent,
+        deleted: false,
+        clientUpdatedAt: now,
+        serverUpdatedAt: now,
+        mutationId,
+        syncScope: `account:${userId}`,
         serverSequence: ++sequence,
       };
+      processed.add(`${scopeKey(scope)}:${mutationId}`);
       entities.set(key, item);
-      return { applied: true, change: toChange(item) };
+      return consent;
+    }),
+    withAiConsentDispatch: async (userId, requirement, dispatch, signal) => withConsentLock(userId, async () => {
+      if (signal?.aborted) throw new DispatchAbortedError();
+      const item = entities.get(entityKey(userScope(userId), 'ai_consent', 'profile')) ?? null;
+      const current = currentConsentFromItem(item);
+      if (current === null || !current.enabled
+        || (requirement.kind === 'home' && current.homeProvider !== requirement.provider)
+        || (requirement.kind === 'dinner' && current.dinnerProvider !== requirement.provider)) {
+        throw new AiConsentRequiredError();
+      }
+      return dispatch(current);
+    }),
+    applyMutation: async (userId, mutation) => {
+      const apply = async () => {
+        const prepared = prepareMutation(mutation, options);
+        const scope = await resolveEntityScope(userId, prepared.mutation.entityType, options, prepared.mutation.syncScope);
+        if (scope === null) throw new SyncMembershipRequiredError();
+        const processedKey = `${scopeKey(scope)}:${prepared.mutation.mutationId}`;
+        if (processed.has(processedKey)) return { applied: false, change: null };
+        const key = entityKey(scope, prepared.mutation.entityType, prepared.mutation.entityId);
+        const existing = entities.get(key);
+        if (prepared.mutation.entityType === 'ai_consent') {
+          processed.add(processedKey);
+          if (prepared.mutation.operation === 'upsert' && isAiConsent(prepared.mutation.payload)
+            && prepared.mutation.payload.enabled) return { applied: false, change: null };
+
+          const current = currentConsentFromItem(existing ?? null);
+          const revision = consentRevisionFromItem(existing ?? null, current);
+          const now = nextConsentTimestamp(options.clock, revision);
+          const consent = applyAiConsentUpdate(current, { enabled: false }, now.toISOString());
+          const item: StoredSyncItem = {
+            entityType: 'ai_consent',
+            entityId: 'profile',
+            deviceId: prepared.mutation.deviceId,
+            payload: consent,
+            deleted: false,
+            clientUpdatedAt: now,
+            serverUpdatedAt: now,
+            mutationId: prepared.mutation.mutationId,
+            syncScope: `account:${userId}`,
+            serverSequence: ++sequence,
+          };
+          entities.set(key, item);
+          return { applied: true, change: toChange(item) };
+        }
+        const normalizedMutation = normalizeDiaryMutation(userId, prepared.mutation, existing ?? null);
+        const normalizedPrepared = { ...prepared, mutation: normalizedMutation };
+        processed.add(processedKey);
+        const winsExisting = existing === undefined || wins(normalizedPrepared, existing);
+        const staleRecipeLinkMutation = existing !== undefined && !winsExisting
+          ? mergeStaleDinnerRecipeLinks(normalizedMutation, existing)
+          : null;
+        if (!winsExisting && staleRecipeLinkMutation === null) return { applied: false, change: null };
+        const mutationToApply = staleRecipeLinkMutation ?? normalizedMutation;
+        const item: StoredSyncItem = {
+          entityType: mutationToApply.entityType,
+          entityId: mutationToApply.entityId,
+          deviceId: mutationToApply.deviceId,
+          payload: mutationToApply.payload,
+          deleted: mutationToApply.operation === 'delete',
+          clientUpdatedAt: new Date(mutationToApply.clientUpdatedAt),
+          serverUpdatedAt: prepared.serverUpdatedAt,
+          mutationId: mutationToApply.mutationId,
+          syncScope: scope.kind === 'house' ? `house:${scope.id}` : `account:${scope.id}`,
+          serverSequence: ++sequence,
+        };
+        entities.set(key, item);
+        return { applied: true, change: toChange(item) };
+      };
+      return mutation.entityType === 'ai_consent' ? withConsentLock(userId, apply) : apply();
     },
     readChanges: async (userId, cursor, limit, requestedScope) => {
       const keys = new Set((await resolveReadScopes(userId, options, requestedScope)).map(scopeKey));
@@ -1400,11 +1609,131 @@ export const createDrizzleSyncRepository = (
     mergeDatabasePantryInTransaction(transaction, userId, houseId, input)
   ));
 
+  const reserveDispatchConnection = (signal?: AbortSignal): Promise<ReservedPostgresConnection> => new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    };
+    const finishWithError = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const onAbort = () => finishWithError(new DispatchAbortedError());
+    const timer = setTimeout(() => finishWithError(new DispatchCapacityError('queue_timeout')), 5_000);
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+
+    void database.$client.reserve().then((connection) => {
+      if (settled) {
+        connection.release();
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve(connection);
+    }, (error: unknown) => {
+      finishWithError(error instanceof Error ? error : new Error('PostgreSQL dispatch connection unavailable'));
+    });
+  });
+
+  const withDatabaseAiConsentDispatchLock = async <T>(
+    userId: string,
+    signal: AbortSignal | undefined,
+    operation: (connection: ReservedPostgresConnection) => Promise<T>,
+  ): Promise<T> => {
+    const releaseCapacity = await dispatchGateFor(database.$client).acquire(signal);
+    try {
+      const connection = await reserveDispatchConnection(signal);
+      const lockKey = aiConsentLockKey(userId);
+      let locked = false;
+      try {
+        await connection`SELECT set_config('lock_timeout', '30000ms', false)`;
+        await connection`SELECT pg_advisory_lock(hashtextextended(${lockKey}, 0))`;
+        locked = true;
+        return await operation(connection);
+      } finally {
+        try {
+          if (locked) await connection`SELECT pg_advisory_unlock(hashtextextended(${lockKey}, 0))`;
+          await connection`RESET lock_timeout`;
+        } finally {
+          connection.release();
+        }
+      }
+    } finally {
+      releaseCapacity();
+    }
+  };
+
   return {
+    updateAiConsent: async (userId, update) => database.transaction(async (transaction) => {
+      await transaction.execute(sql`SET LOCAL lock_timeout = '30s'`);
+      await transaction.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${aiConsentLockKey(userId)}, 0))`);
+      await transaction.execute(sql`SELECT id FROM ${users} WHERE id = ${userId} FOR UPDATE`);
+      const [existingRow] = await transaction.select().from(syncItems).where(and(
+        eq(syncItems.scopeType, 'user'),
+        eq(syncItems.scopeId, userId),
+        eq(syncItems.entityType, 'ai_consent'),
+        eq(syncItems.entityId, 'profile'),
+      )).limit(1).for('update');
+      const existing = existingRow === undefined ? null : fromDatabaseItem(existingRow);
+      const current = currentConsentFromItem(existing);
+      const currentRevision = consentRevisionFromItem(existing, current);
+      assertCurrentConsentRevision(update, currentRevision);
+      const now = nextConsentTimestamp(options.clock, currentRevision);
+      const consent = applyAiConsentUpdate(current, update, now.toISOString());
+      const mutationId = randomUUID();
+      const values = {
+        userId,
+        scopeType: 'user' as const,
+        scopeId: userId,
+        entityType: 'ai_consent' as const,
+        entityId: 'profile',
+        deviceId: 'api-ai-recipes',
+        payload: consent,
+        deleted: false,
+        clientUpdatedAt: now,
+        updatedAt: now,
+        mutationId,
+      };
+      await transaction.insert(processedSyncMutations).values({
+        userId,
+        scopeType: 'user',
+        scopeId: userId,
+        mutationId,
+      });
+      if (existingRow === undefined) await transaction.insert(syncItems).values(values);
+      else await transaction.update(syncItems).set({
+        ...values,
+        serverSequence: sql`nextval('sync_server_sequence')`,
+      }).where(eq(syncItems.id, existingRow.id));
+      return consent;
+    }),
+    withAiConsentDispatch: async (userId, requirement, dispatch, signal) => withDatabaseAiConsentDispatchLock(userId, signal, async (connection) => {
+      const rows = await connection`SELECT payload, deleted FROM sync_items
+        WHERE scope_type = 'user' AND scope_id = ${userId}
+          AND entity_type = 'ai_consent' AND entity_id = 'profile'
+        LIMIT 1`;
+      const row = rows[0] as { payload: unknown; deleted: boolean } | undefined;
+      const current = row !== undefined && !row.deleted && isAiConsent(row.payload) ? row.payload : null;
+      if (current === null || !current.enabled
+        || (requirement.kind === 'home' && current.homeProvider !== requirement.provider)
+        || (requirement.kind === 'dinner' && current.dinnerProvider !== requirement.provider)) {
+        throw new AiConsentRequiredError();
+      }
+      return dispatch(current);
+    }),
     applyMutation: async (userId, mutation) => {
       const prepared = prepareMutation(mutation, options);
-      return database.transaction(async (transaction) => {
+      const apply = () => database.transaction(async (transaction) => {
         const validMutation = prepared.mutation;
+        if (validMutation.entityType === 'ai_consent') {
+          await transaction.execute(sql`SET LOCAL lock_timeout = '30s'`);
+          await transaction.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${aiConsentLockKey(userId)}, 0))`);
+          await transaction.execute(sql`SELECT id FROM ${users} WHERE id = ${userId} FOR UPDATE`);
+        }
         const scope = await resolveTransactionScope(transaction, userId, validMutation);
         const [alreadyProcessed] = await transaction.select({ id: processedSyncMutations.id })
           .from(processedSyncMutations)
@@ -1434,6 +1763,35 @@ export const createDrizzleSyncRepository = (
           eq(syncItems.entityId, validMutation.entityId),
         )).limit(1);
         const existing = existingRow === undefined ? null : fromDatabaseItem(existingRow);
+        if (validMutation.entityType === 'ai_consent') {
+          if (validMutation.operation === 'upsert' && isAiConsent(validMutation.payload)
+            && validMutation.payload.enabled) return { applied: false, change: null };
+
+          const current = currentConsentFromItem(existing);
+          const revision = consentRevisionFromItem(existing, current);
+          const now = nextConsentTimestamp(options.clock, revision);
+          const consent = applyAiConsentUpdate(current, { enabled: false }, now.toISOString());
+          const values = {
+            userId,
+            scopeType: 'user' as const,
+            scopeId: userId,
+            entityType: 'ai_consent' as const,
+            entityId: 'profile',
+            deviceId: validMutation.deviceId,
+            payload: consent,
+            deleted: false,
+            clientUpdatedAt: now,
+            updatedAt: now,
+            mutationId: validMutation.mutationId,
+          };
+          const [saved] = existing === null
+            ? await transaction.insert(syncItems).values(values).returning()
+            : await transaction.update(syncItems).set({
+              ...values,
+              serverSequence: sql`nextval('sync_server_sequence')`,
+            }).where(eq(syncItems.id, existingRow!.id)).returning();
+          return { applied: true, change: toChange(fromDatabaseItem(saved)) };
+        }
         const normalizedMutation = normalizeDiaryMutation(userId, validMutation, existing);
         const normalizedPrepared = { ...prepared, mutation: normalizedMutation };
         const winsExisting = existing === null || wins(normalizedPrepared, existing);
@@ -1466,6 +1824,7 @@ export const createDrizzleSyncRepository = (
         const item = fromDatabaseItem(saved);
         return { applied: true, change: toChange(item) };
       });
+      return apply();
     },
 
   readChanges: async (userId, cursor, limit, requestedScope) => database.transaction(async (transaction) => {

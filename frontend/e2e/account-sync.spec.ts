@@ -20,7 +20,7 @@ test.beforeEach(async ({ context, page }) => {
   await context.clearCookies();
   await installOfflineBackend(page, {
     responses: {
-      'GET /v1/ai-recipes/consent': { json: { consent: { enabled: false, updatedAt: '2026-09-14T00:00:00.000Z' } } },
+      'GET /v1/ai-recipes/consent': { json: { consent: { enabled: false, updatedAt: '2026-09-14T00:00:00.000Z' }, selectedProvider: 'openai' } },
       'GET /v1/ai-recipes': { json: { recipes: [] } },
     },
   });
@@ -237,7 +237,7 @@ test('two verified accounts share the house pantry while member authorization st
       });
     });
     await target.route('**/v1/profile', (route) => route.fulfill({ status: 200, json: { profile: { displayName: null } } }));
-    await target.route('**/v1/ai-recipes/consent', (route) => route.fulfill({ status: 200, json: { consent: { enabled: false, updatedAt: '2026-09-24T00:00:00.000Z' } } }));
+    await target.route('**/v1/ai-recipes/consent', (route) => route.fulfill({ status: 200, json: { consent: { enabled: false, updatedAt: '2026-09-24T00:00:00.000Z' }, selectedProvider: 'openai' } }));
     await target.route('**/v1/ai-recipes', (route) => route.fulfill({ status: 200, json: { recipes: [] } }));
     await target.route('**/v1/sync', async (route) => {
       const body = route.request().postDataJSON() as { cursor?: number; mutations?: Array<Record<string, unknown>> };

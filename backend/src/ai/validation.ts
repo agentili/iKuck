@@ -44,7 +44,11 @@ export const generatedRecipeSchema = generatedRecipeDraftSchema.extend({
 export const aiConsentSchema = z.object({
   enabled: z.boolean(),
   updatedAt: z.string().datetime({ offset: true }),
+  homeProvider: z.enum(['openai', 'gemini']).optional(),
+  dinnerProvider: z.enum(['openai', 'gemini']).optional(),
 }).strict();
+
+export const aiConsentSyncSchema = aiConsentSchema.omit({ homeProvider: true, dinnerProvider: true });
 
 export const parseGeneratedRecipeDraft = (value: unknown): GeneratedRecipeDraft | null => {
   const result = generatedRecipeDraftSchema.safeParse(value);

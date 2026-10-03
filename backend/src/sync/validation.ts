@@ -1,6 +1,6 @@
 import type { SyncEntityType, SyncMutation } from '@ikuck/shared/contracts';
 import { z } from 'zod';
-import { aiConsentSchema, generatedRecipeSchema } from '../ai/validation.js';
+import { aiConsentSchema, aiConsentSyncSchema, generatedRecipeSchema } from '../ai/validation.js';
 import { cookEventSchema, recipePreferenceSchema } from '../activity/validation.js';
 import { dietProfileSchema } from '../diet/validation.js';
 import { pantryLotSchema } from '../pantry/validation.js';
@@ -50,7 +50,7 @@ const payloadSchemas = {
     'recipeId', 'favorite', 'rating', 'note', 'createdAt', 'updatedAt',
   ]),
   diet_profile: dietProfileSchema,
-  ai_consent: aiConsentSchema,
+  ai_consent: aiConsentSyncSchema,
   generated_recipe: generatedRecipeSchema,
   dinner_entry: z.custom<unknown>(isDinnerEntry),
   saved_recipe: z.custom<unknown>(isSavedRecipe),
@@ -64,6 +64,7 @@ const buildEntityMutationSchema = <Entity extends SyncEntityType>(
   entityType: Entity,
   payloadSchema: z.ZodType<EntityPayload[Entity]>,
   entityIdMatches: (entityId: string, payload: EntityPayload[Entity]) => boolean = () => true,
+  entityIdIsValid: (entityId: string) => boolean = () => true,
 ) => z.union([
   z.object({
     ...mutationMetadata,
@@ -78,7 +79,8 @@ const buildEntityMutationSchema = <Entity extends SyncEntityType>(
     payload: z.null(),
   }),
 ]).superRefine((mutation, context) => {
-  if (mutation.operation === 'upsert' && !entityIdMatches(mutation.entityId, mutation.payload)) {
+  if (!entityIdIsValid(mutation.entityId)
+    || (mutation.operation === 'upsert' && !entityIdMatches(mutation.entityId, mutation.payload))) {
     context.addIssue({ code: 'custom', path: ['entityId'], message: 'Entity ID does not match payload' });
   }
 });
@@ -91,11 +93,32 @@ export const syncMutationSchema = z.union([
   buildEntityMutationSchema('cook_event', payloadSchemas.cook_event, (entityId, payload) => payload.id === entityId),
   buildEntityMutationSchema('recipe_preference', payloadSchemas.recipe_preference, (entityId, payload) => payload.recipeId === entityId),
   buildEntityMutationSchema('diet_profile', payloadSchemas.diet_profile, (entityId) => entityId === 'profile'),
-  buildEntityMutationSchema('ai_consent', payloadSchemas.ai_consent, (entityId) => entityId === 'profile'),
+  buildEntityMutationSchema('ai_consent', payloadSchemas.ai_consent, () => true, (entityId) => entityId === 'profile'),
   buildEntityMutationSchema('generated_recipe', payloadSchemas.generated_recipe, (entityId, payload) => payload.id === entityId),
   buildEntityMutationSchema('dinner_entry', payloadSchemas.dinner_entry, (entityId, payload) => typeof payload === 'object' && payload !== null && 'id' in payload && payload.id === entityId),
   buildEntityMutationSchema('saved_recipe', payloadSchemas.saved_recipe, (entityId, payload) => typeof payload === 'object' && payload !== null && 'id' in payload && payload.id === entityId),
 ]);
+
+const storedAiConsentMutationSchema = z.union([
+  z.object({
+    ...mutationMetadata,
+    entityType: z.literal('ai_consent'),
+    operation: z.literal('upsert'),
+    payload: aiConsentSchema,
+  }),
+  z.object({
+    ...mutationMetadata,
+    entityType: z.literal('ai_consent'),
+    operation: z.literal('delete'),
+    payload: z.null(),
+  }),
+]).superRefine((mutation, context) => {
+  if (mutation.entityId !== 'profile') {
+    context.addIssue({ code: 'custom', path: ['entityId'], message: 'Entity ID does not match payload' });
+  }
+});
+
+const storedMutationSchema = z.union([syncMutationSchema, storedAiConsentMutationSchema]);
 
 export class SyncMutationValidationError extends Error {
   readonly code = 'INVALID_SYNC_MUTATION';
@@ -115,4 +138,10 @@ export const assertSyncMutation = (value: unknown): SyncMutation => {
   const mutation = parseSyncMutation(value);
   if (mutation === null) throw new SyncMutationValidationError();
   return mutation;
+};
+
+export const assertStoredSyncMutation = (value: unknown): SyncMutation => {
+  const result = storedMutationSchema.safeParse(value);
+  if (!result.success) throw new SyncMutationValidationError();
+  return result.data as SyncMutation;
 };

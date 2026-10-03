@@ -187,6 +187,51 @@ describe('sync routes', () => {
     await app.close();
   });
 
+  it('rejects a wrong-ID ai_consent delete at the sync transport boundary', async () => {
+    const repository = createMemorySyncRepository();
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository, authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers: { cookie: 'ikuck_session=session-token', origin: 'http://127.0.0.1:5173', 'x-csrf-token': 'csrf-token' },
+      payload: {
+        deviceId: 'device-1',
+        cursor: 0,
+        mutations: [{
+          mutationId: 'wrong-consent-delete', deviceId: 'device-1', entityType: 'ai_consent', entityId: 'wrong-profile',
+          operation: 'delete', payload: null, clientUpdatedAt: '2026-09-24T12:00:00.000Z',
+        }],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: 'INVALID_SYNC_PAYLOAD' });
+    const wrongIdUpsert = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers: { cookie: 'ikuck_session=session-token', origin: 'http://127.0.0.1:5173', 'x-csrf-token': 'csrf-token' },
+      payload: {
+        deviceId: 'device-1',
+        cursor: 0,
+        mutations: [{
+          mutationId: 'wrong-consent-upsert', deviceId: 'device-1', entityType: 'ai_consent', entityId: 'wrong-profile',
+          operation: 'upsert', payload: { enabled: false, updatedAt: '2026-09-24T12:00:00.000Z' },
+          clientUpdatedAt: '2026-09-24T12:00:00.000Z',
+        }],
+      },
+    });
+    expect(wrongIdUpsert.statusCode).toBe(400);
+    expect(wrongIdUpsert.json()).toMatchObject({ code: 'INVALID_SYNC_PAYLOAD' });
+    await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toBeNull();
+    await app.close();
+  });
+
   it('accepts authenticated mutations and returns a cursor', async () => {
     const app = createApp({
       database: { ping: async () => undefined },
@@ -407,12 +452,13 @@ describe('sync routes', () => {
     await app.close();
   });
 
-  it('accepts AI consent and generated recipe entities while validating private recipe deletes', async () => {
+  it('acknowledges legacy global-consent upserts without applying them and syncs recipes', async () => {
+    const repository = createMemorySyncRepository();
     const app = createApp({
       database: { ping: async () => undefined },
       cache: { ping: async () => undefined },
       auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
-      sync: { repository: createMemorySyncRepository(), authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+      sync: { repository, authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
     });
     const headers = {
       cookie: 'ikuck_session=session-token',
@@ -457,9 +503,25 @@ describe('sync routes', () => {
     });
     expect(valid.statusCode).toBe(200);
     expect(valid.json()).toMatchObject({ changes: [
-      { entityType: 'ai_consent', entityId: 'profile' },
       { entityType: 'generated_recipe', entityId: recipe.id },
     ] });
+    await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toBeNull();
+
+    const forgedDinnerConsent = await app.inject({
+      method: 'POST',
+      url: '/v1/sync',
+      headers,
+      payload: {
+        deviceId: 'device-1',
+        cursor: valid.json().nextCursor,
+        mutations: [{
+          mutationId: 'forged-dinner-consent', deviceId: 'device-1', entityType: 'ai_consent', entityId: 'profile',
+          operation: 'upsert', payload: { ...consent, dinnerProvider: 'gemini' }, clientUpdatedAt: consent.updatedAt,
+        }],
+      },
+    });
+    expect(forgedDinnerConsent.statusCode).toBe(400);
+    expect(forgedDinnerConsent.json()).toMatchObject({ code: 'INVALID_SYNC_PAYLOAD' });
 
     const removed = await app.inject({
       method: 'POST',
@@ -492,6 +554,34 @@ describe('sync routes', () => {
     });
     expect(invalid.statusCode).toBe(400);
     expect(invalid.json()).toMatchObject({ code: 'INVALID_SYNC_PAYLOAD' });
+    await app.close();
+  });
+
+  it('does not let a legacy sync upsert with a one-minute future timestamp re-enable global AI consent', async () => {
+    const fixedNow = new Date('2026-09-13T12:00:00.000Z');
+    const repository = createMemorySyncRepository({ clock: () => fixedNow });
+    const app = createApp({
+      database: { ping: async () => undefined },
+      cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository, authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+    });
+
+    const response = await app.inject({
+      method: 'POST', url: '/v1/sync',
+      headers: { cookie: 'ikuck_session=session-token', origin: 'http://127.0.0.1:5173', 'x-csrf-token': 'csrf-token' },
+      payload: {
+        deviceId: 'device-legacy', cursor: 0, mutations: [{
+          mutationId: 'future-global-consent-route', deviceId: 'device-legacy', entityType: 'ai_consent', entityId: 'profile',
+          operation: 'upsert', payload: { enabled: true, updatedAt: '2026-09-13T12:01:00.000Z' },
+          clientUpdatedAt: '2026-09-13T12:01:00.000Z',
+        }],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ changes: [], nextCursor: 0 });
+    await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toBeNull();
     await app.close();
   });
 

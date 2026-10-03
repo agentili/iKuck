@@ -368,6 +368,7 @@ test('manifest is available and the application works offline after first load',
 
 test('verified users can consent to private AI recipes without changing pantry lots', async ({ page }) => {
   let consentEnabled = false;
+  let consentHomeProvider: 'openai' | 'gemini' | null = null;
   const recipes: Array<Record<string, unknown>> = [];
   const generationBodies: unknown[] = [];
   const saveBodies: unknown[] = [];
@@ -397,13 +398,14 @@ test('verified users can consent to private AI recipes without changing pantry l
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname === '/v1/ai-recipes/consent' && request.method() === 'GET') {
-      await route.fulfill({ json: { consent: { enabled: consentEnabled, updatedAt: '2026-09-13T12:00:00.000Z' } } });
+      await route.fulfill({ json: { consent: { enabled: consentEnabled, updatedAt: '2026-09-13T12:00:00.000Z', ...(consentHomeProvider === null ? {} : { homeProvider: consentHomeProvider }) }, selectedProvider: 'openai' } });
       return;
     }
     if (url.pathname === '/v1/ai-recipes/consent' && request.method() === 'PUT') {
-      const body = request.postDataJSON() as { enabled: boolean };
+      const body = request.postDataJSON() as { enabled: boolean; homeProvider?: 'openai' | 'gemini' };
       consentEnabled = body.enabled;
-      await route.fulfill({ json: { consent: { enabled: consentEnabled, updatedAt: '2026-09-13T12:01:00.000Z' } } });
+      consentHomeProvider = consentEnabled ? body.homeProvider ?? null : null;
+      await route.fulfill({ json: { consent: { enabled: consentEnabled, updatedAt: '2026-09-13T12:01:00.000Z', ...(consentHomeProvider === null ? {} : { homeProvider: consentHomeProvider }) } } });
       return;
     }
     if (url.pathname === '/v1/ai-recipes' && request.method() === 'GET') {
@@ -472,7 +474,7 @@ test('verified users can consent to private AI recipes without changing pantry l
   await page.getByRole('link', { name: 'Home' }).click();
   await expect(page.getByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
   const aiPanel = page.getByRole('region', { name: 'Ricette AI private' });
-  const consent = aiPanel.getByRole('checkbox', { name: /acconsento all’uso degli ingredienti/i });
+  const consent = aiPanel.getByRole('checkbox', { name: /acconsento all’invio a .*ingredienti della dispensa/i });
   await expect(consent).toBeVisible();
   await consent.check();
   await aiPanel.getByRole('button', { name: 'Salva consenso' }).click();
@@ -504,7 +506,7 @@ test('verified users can consent to private AI recipes without changing pantry l
   await page.reload();
   await expect(page.getByRole('region', { name: 'Ricette AI private' }).getByRole('heading', { name: 'Ceci croccanti al pomodoro' })).toBeVisible();
   const reloadedAiPanel = page.getByRole('region', { name: 'Ricette AI private' });
-  await reloadedAiPanel.getByRole('checkbox', { name: /acconsento all’uso degli ingredienti/i }).uncheck();
+  await reloadedAiPanel.getByRole('checkbox', { name: /acconsento all’invio a .*ingredienti della dispensa/i }).uncheck();
   await reloadedAiPanel.getByRole('button', { name: 'Salva consenso' }).click();
   await expect(reloadedAiPanel.getByRole('button', { name: 'Genera ricetta AI' })).toHaveCount(0);
   await expect(reloadedAiPanel.getByRole('heading', { name: 'Ceci croccanti al pomodoro' })).toBeVisible();

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import type { AiConsent, DietProfilePayload, GeneratedRecipe, GeneratedRecipeDraft, SyncChange, SyncMutation } from '@ikuck/shared/contracts';
+import type { AiConsent, AiRecipeProvider, DietProfilePayload, GeneratedRecipe, GeneratedRecipeDraft, SyncChange, SyncMutation } from '@ikuck/shared/contracts';
 import { AI_RECIPE_MAX_GENERATION_INGREDIENTS, DIARY_MAX_RECIPES, DIARY_SERVINGS_MAX, DIARY_SERVINGS_MIN, DIARY_TEXT_MAX_LENGTH } from '@ikuck/shared/limits';
 import { isDiaryRecipeDraft, type DiaryRecipeDraft } from '@ikuck/shared/dinnerDiary';
 import { isGeneratedRecipeCompatible, isAiConsent, isGeneratedRecipe, parseGeneratedRecipeDraft, generatedRecipeSchema } from '../ai/validation.js';
@@ -16,7 +16,13 @@ import type { GenerationRateLimiter, GenerationRateReservation } from '../ai/rat
 import { AuthServiceError, type AuthService } from '../auth/service.js';
 import { dietProfilePayloadSchema } from '../diet/validation.js';
 import type { DinnerReconstructionProvider, RecipeGenerationProvider } from '../providers/types.js';
-import type { SyncRepository } from '../sync/repository.js';
+import {
+  AiConsentRequiredError,
+  AiConsentRevisionConflictError,
+  AiConsentRevisionRequiredError,
+  DEFAULT_AI_CONSENT_REVISION,
+  type SyncRepository,
+} from '../sync/repository.js';
 import { ensureCsrf, ensureSameOrigin, requireVerifiedSession } from './auth.js';
 
 export interface AiRecipeRouteDependencies {
@@ -26,9 +32,17 @@ export interface AiRecipeRouteDependencies {
   repository: SyncRepository;
   authService: AuthService;
   appOrigin: string;
+  recipeProvider: AiRecipeProvider;
 }
 
-const consentRequestSchema = z.object({ enabled: z.boolean() }).strict();
+const consentRequestSchema = z.object({
+  enabled: z.boolean().optional(),
+  homeProvider: z.enum(['openai', 'gemini']).nullable().optional(),
+  dinnerProvider: z.enum(['openai', 'gemini']).nullable().optional(),
+  expectedRevision: z.string().datetime({ offset: true }).optional(),
+}).strict().refine((value) => (
+  value.enabled !== undefined || value.homeProvider !== undefined || value.dinnerProvider !== undefined
+));
 
 const dinnerReconstructionRequestSchema = z.object({
   dinnerText: z.string().max(DIARY_TEXT_MAX_LENGTH).refine((value) => value.trim().length > 0),
@@ -52,11 +66,13 @@ const generationRequestSchema = z.object({
 
 const invalidPayload = (): AuthServiceError => new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');
 
-const defaultConsent = (): AiConsent => ({ enabled: false, updatedAt: new Date().toISOString() });
+const defaultConsent = (): AiConsent => ({ enabled: false, updatedAt: DEFAULT_AI_CONSENT_REVISION });
 
 const readConsent = async (repository: SyncRepository, userId: string): Promise<AiConsent> => {
   const stored = await repository.readEntity(userId, 'ai_consent', 'profile');
-  return stored !== null && !stored.deleted && isAiConsent(stored.payload) ? stored.payload : defaultConsent();
+  if (stored === null) return defaultConsent();
+  if (!stored.deleted && isAiConsent(stored.payload)) return stored.payload;
+  return { enabled: false, updatedAt: stored.serverUpdatedAt.toISOString() };
 };
 
 const readRecipes = async (repository: SyncRepository, userId: string): Promise<GeneratedRecipe[]> => {
@@ -115,10 +131,10 @@ const createMutation = (
   clientUpdatedAt,
 });
 
-const parseConsent = (body: unknown): boolean => {
+const parseConsentUpdate = (body: unknown): z.infer<typeof consentRequestSchema> => {
   const result = consentRequestSchema.safeParse(body);
   if (!result.success) throw invalidPayload();
-  return result.data.enabled;
+  return result.data;
 };
 
 const parseSavableRecipe = (body: unknown): GeneratedRecipe => {
@@ -141,6 +157,18 @@ const releaseGeneration = async (reservation: GenerationRateReservation): Promis
   await reservation.release().catch(() => undefined);
 };
 
+const createReplyAbortSignal = (reply: FastifyReply): { signal: AbortSignal; dispose: () => void } => {
+  const controller = new AbortController();
+  const abortOnClose = () => {
+    if (!reply.raw.writableFinished) controller.abort();
+  };
+  reply.raw.once('close', abortOnClose);
+  return {
+    signal: controller.signal,
+    dispose: () => reply.raw.off('close', abortOnClose),
+  };
+};
+
 export const registerAiRecipeRoutes = ({
   provider,
   dinnerReconstructionProvider,
@@ -148,20 +176,37 @@ export const registerAiRecipeRoutes = ({
   repository,
   authService,
   appOrigin,
+  recipeProvider,
 }: AiRecipeRouteDependencies): FastifyPluginAsync => async (app) => {
   app.get('/v1/ai-recipes/consent', async (request) => {
     const { session } = await requireVerifiedSession(request, authService);
-    return { consent: await readConsent(repository, session.userId) };
+    return { consent: await readConsent(repository, session.userId), selectedProvider: recipeProvider };
   });
 
   app.put('/v1/ai-recipes/consent', async (request) => {
     ensureSameOrigin(request, appOrigin);
     const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
-    const now = new Date().toISOString();
-    const consent: AiConsent = { enabled: parseConsent(request.body), updatedAt: now };
-    await repository.applyMutation(session.userId, createMutation('ai_consent', 'profile', 'upsert', consent, now));
-    return { consent: await readConsent(repository, session.userId) };
+    const update = parseConsentUpdate(request.body);
+    if ((update.homeProvider !== undefined && update.homeProvider !== null && update.homeProvider !== recipeProvider)
+      || (update.dinnerProvider !== undefined && update.dinnerProvider !== null && update.dinnerProvider !== recipeProvider)) {
+      throw new AuthServiceError('ai_provider_mismatch', 409, 'AI consent provider does not match the selected provider');
+    }
+    try {
+      const consent = await repository.updateAiConsent(session.userId, update);
+      return { consent, selectedProvider: recipeProvider };
+    } catch (error) {
+      if (error instanceof AiConsentRevisionRequiredError) {
+        throw new AuthServiceError('ai_consent_revision_required', error.status, error.message);
+      }
+      if (error instanceof AiConsentRevisionConflictError) {
+        throw new AuthServiceError('ai_consent_revision_conflict', error.status, error.message);
+      }
+      if (error instanceof AiConsentRequiredError) {
+        throw new AuthServiceError('ai_consent_required', 403, 'Global AI recipe consent is required before Dinner consent');
+      }
+      throw error;
+    }
   });
 
   app.get('/v1/ai-recipes', async (request) => {
@@ -202,40 +247,56 @@ export const registerAiRecipeRoutes = ({
     }
 
     let draft: GeneratedRecipeDraft | null = null;
-    let noveltyConflict = null;
+    let noveltyConflict: ReturnType<typeof findRecipeNoveltyConflict> = null;
     const rejectedRecipes: RecipeReference[] = [];
-    for (let attempt = 0; attempt < MAX_NOVELTY_GENERATION_ATTEMPTS; attempt += 1) {
-      const existingRecipes = uniqueRecipeReferences([
-        ...rejectedRecipes.slice(-10),
-        ...basePromptReferences,
-      ]).slice(0, MAX_NOVELTY_REFERENCES_IN_PROMPT);
-      try {
-        draft = parseGeneratedRecipeDraft(await provider.generate({
-          ingredients: parsed.data.ingredients,
-          constraints: parsed.data.constraints,
-          dietProfile: parsed.data.dietProfile as DietProfilePayload,
-          existingRecipes,
-        }));
-      } catch {
-        await releaseGeneration(reservation);
-        throw new AuthServiceError('provider_unavailable', 503, 'AI recipe provider is unavailable');
+    const requestAbort = createReplyAbortSignal(reply);
+    try {
+      for (let attempt = 0; attempt < MAX_NOVELTY_GENERATION_ATTEMPTS; attempt += 1) {
+        const existingRecipes = uniqueRecipeReferences([
+          ...rejectedRecipes.slice(-10),
+          ...basePromptReferences,
+        ]).slice(0, MAX_NOVELTY_REFERENCES_IN_PROMPT);
+        draft = await repository.withAiConsentDispatch(session.userId, { kind: 'home', provider: recipeProvider }, async () => {
+          try {
+            return parseGeneratedRecipeDraft(await provider.generate({
+              ingredients: parsed.data.ingredients,
+              constraints: parsed.data.constraints,
+              dietProfile: parsed.data.dietProfile as DietProfilePayload,
+              existingRecipes,
+              signal: requestAbort.signal,
+            }));
+          } catch {
+            throw new AuthServiceError('provider_unavailable', 503, 'AI recipe provider is unavailable');
+          }
+        }, requestAbort.signal);
+        if (draft === null) {
+          throw new AuthServiceError('provider_unavailable', 503, 'AI recipe provider is unavailable');
+        }
+        noveltyConflict = findRecipeNoveltyConflict(draft, knownReferences);
+        if (noveltyConflict === null) break;
+        rejectedRecipes.push({ title: draft.title, ingredients: draft.ingredients });
       }
       if (draft === null) {
-        await releaseGeneration(reservation);
         throw new AuthServiceError('provider_unavailable', 503, 'AI recipe provider is unavailable');
       }
-      if (!isGeneratedRecipeCompatible(draft, parsed.data.dietProfile)) {
-        await releaseGeneration(reservation);
-        throw new AuthServiceError('ai_recipe_incompatible', 422, 'Generated recipe does not match the active dietary profile');
-      }
-
-      noveltyConflict = findRecipeNoveltyConflict(draft, knownReferences);
-      if (noveltyConflict === null) break;
-      rejectedRecipes.push({ title: draft.title, ingredients: draft.ingredients });
-    }
-    if (draft === null) {
+    } catch (error) {
       await releaseGeneration(reservation);
-      throw new AuthServiceError('provider_unavailable', 503, 'AI recipe provider is unavailable');
+      if (error instanceof AiConsentRequiredError) {
+        throw new AuthServiceError('ai_consent_required', 403, 'AI recipe consent is required');
+      }
+      const code = typeof error === 'object' && error !== null && 'code' in error
+        ? (error as { code?: unknown }).code
+        : undefined;
+      if (code === 'ai_dispatch_capacity' || code === 'ai_dispatch_aborted') {
+        throw new AuthServiceError('provider_unavailable', 503, 'AI recipe provider is unavailable');
+      }
+      throw error;
+    } finally {
+      requestAbort.dispose();
+    }
+    if (!isGeneratedRecipeCompatible(draft, parsed.data.dietProfile)) {
+      await releaseGeneration(reservation);
+      throw new AuthServiceError('ai_recipe_incompatible', 422, 'Generated recipe does not match the active dietary profile');
     }
     if (noveltyConflict !== null) {
       await releaseGeneration(reservation);
@@ -266,7 +327,9 @@ export const registerAiRecipeRoutes = ({
     if (!parsed.success) throw invalidPayload();
 
     const consent = await readConsent(repository, session.userId);
-    if (!consent.enabled) throw new AuthServiceError('ai_consent_required', 403, 'AI dinner reconstruction consent is required');
+    if (!consent.enabled || consent.dinnerProvider !== recipeProvider) {
+      throw new AuthServiceError('ai_consent_required', 403, 'AI dinner reconstruction consent is required');
+    }
 
     let reservation: GenerationRateReservation;
     try {
@@ -278,16 +341,25 @@ export const registerAiRecipeRoutes = ({
     if (!quota.allowed) throw new AuthServiceError('ai_daily_limit_reached', 429, 'Daily AI generation limit reached');
 
     let drafts: DiaryRecipeDraft[];
+    const requestAbort = createReplyAbortSignal(reply);
     try {
-      const result = await dinnerReconstructionProvider.reconstruct({
-        dinnerText: parsed.data.dinnerText,
-        servings: parsed.data.servings,
-      });
-      if (!isValidDinnerDrafts(result, parsed.data.servings)) throw new Error('Dinner reconstruction output is invalid');
-      drafts = result;
-    } catch {
+      drafts = await repository.withAiConsentDispatch(session.userId, { kind: 'dinner', provider: recipeProvider }, async () => {
+        const result = await dinnerReconstructionProvider.reconstruct({
+          dinnerText: parsed.data.dinnerText,
+          servings: parsed.data.servings,
+          signal: requestAbort.signal,
+        });
+        if (!isValidDinnerDrafts(result, parsed.data.servings)) throw new Error('Dinner reconstruction output is invalid');
+        return result;
+      }, requestAbort.signal);
+    } catch (error) {
       await releaseGeneration(reservation);
+      if (error instanceof AiConsentRequiredError) {
+        throw new AuthServiceError('ai_consent_required', 403, 'AI dinner reconstruction consent is required');
+      }
       throw new AuthServiceError('provider_unavailable', 503, 'AI dinner reconstruction provider is unavailable');
+    } finally {
+      requestAbort.dispose();
     }
 
     try {

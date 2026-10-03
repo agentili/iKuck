@@ -26,7 +26,7 @@ const installVerifiedBackend = async (page: Page): Promise<void> => {
       'GET /v1/house': { json: null },
       'GET /v1/sync': { json: { changes: [], nextCursor: 0 } },
       'POST /v1/sync': { json: { accepted: [], changes: [], nextCursor: 0 } },
-      'GET /v1/ai-recipes/consent': { json: { consent: { enabled: false, updatedAt: null } } },
+      'GET /v1/ai-recipes/consent': { json: { consent: { enabled: false, updatedAt: '2026-09-18T10:00:00.000Z' }, selectedProvider: 'openai' } },
       'GET /v1/ai-recipes': { json: { recipes: [] } },
     },
   });

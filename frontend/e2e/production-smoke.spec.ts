@@ -14,19 +14,19 @@ test.describe('production target smoke checks', () => {
   test('serves the guest flow and keeps primary navigation reachable', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Profilo' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Profilo', exact: true })).toBeVisible();
 
-    await page.getByRole('link', { name: 'Dispensa' }).click();
+    await page.getByRole('link', { name: 'Dispensa', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
     await page.getByLabel('Ingredienti presenti').fill('pasta');
     await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
     await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
 
-    await page.getByRole('link', { name: 'Lista' }).click();
+    await page.getByRole('link', { name: 'Lista', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Lista della spesa' })).toBeVisible();
-    await page.getByRole('link', { name: 'Torna alle ricette' }).click();
+    await page.getByRole('link', { name: 'Torna alle ricette', exact: true }).click();
 
-    await page.getByRole('link', { name: 'Attività' }).click();
+    await page.getByRole('link', { name: 'Attività', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'La tua attività' })).toBeVisible();
 
     await page.goto('/profile');
@@ -46,7 +46,7 @@ test.describe('production target smoke checks', () => {
     await page.goto('/pantry');
     await page.getByLabel('Ingredienti presenti').fill('pasta');
     await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
-    await page.getByRole('link', { name: 'Profilo' }).click();
+    await page.getByRole('link', { name: 'Profilo', exact: true }).click();
     await page.getByRole('button', { name: 'Importa i dati locali' }).click();
     await page.getByRole('button', { name: 'Conferma importazione' }).click();
     await expect(page.getByText(/Sincronizzazione completata/)).toBeVisible();
@@ -60,9 +60,9 @@ test.describe('production target smoke checks', () => {
     await page.getByText('Filtri alimentari', { exact: true }).click();
     await expect(page.getByLabel('Dieta')).toHaveValue('vegetarian');
 
-    await page.getByRole('link', { name: 'Profilo' }).click();
+    await page.getByRole('link', { name: 'Profilo', exact: true }).click();
     const aiPanel = page.getByRole('region', { name: 'Ricette AI private' });
-    await expect(aiPanel.getByRole('checkbox', { name: /acconsento all’uso degli ingredienti/i })).toBeVisible();
+    await expect(aiPanel.getByRole('checkbox', { name: /acconsento all’invio a .*ingredienti della dispensa/i })).toBeVisible();
     await expect(aiPanel.getByRole('button', { name: 'Genera ricetta AI' })).toHaveCount(0);
   });
 });

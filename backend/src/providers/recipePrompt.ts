@@ -12,5 +12,8 @@ export const serializeRecipeGenerationInput = (request: RecipeGenerationRequest)
   ingredients: request.ingredients,
   constraints: request.constraints,
   dietProfile: request.dietProfile ?? null,
-  existingRecipes: request.existingRecipes ?? [],
+  existingRecipes: (request.existingRecipes ?? []).map(({ title, ingredients }) => ({
+    title,
+    ingredients: ingredients.map(({ name, amount }) => ({ name, amount })),
+  })),
 });

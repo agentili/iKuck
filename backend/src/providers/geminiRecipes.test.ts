@@ -41,7 +41,10 @@ describe('Gemini recipe provider', () => {
     const provider = createGeminiRecipeProvider({ apiKey: 'secret-key', model: 'gemini-test', fetch });
     const existingRecipes = [{
       title: 'Pasta al pomodoro',
-      ingredients: [{ name: 'Pasta', amount: '80 g' }, { name: 'Pomodoro', amount: '100 g' }],
+      ingredients: [
+        { name: 'Pasta', amount: '80 g', ingredientId: 'ref-a', optional: false, provenance: 'provided' as const },
+        { name: 'Pomodoro', amount: '100 g', ingredientId: null, optional: false, provenance: 'provided' as const },
+      ],
     }];
 
     await provider.generate({ ingredients: ['Ceci'], constraints: [], existingRecipes });
@@ -49,7 +52,10 @@ describe('Gemini recipe provider', () => {
     const [, init] = fetch.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(init.body as string) as { contents: Array<{ parts: Array<{ text: string }> }> };
     const prompt = body.contents[0].parts[0].text;
-    expect(JSON.parse(prompt.slice(prompt.indexOf('{')))).toMatchObject({ existingRecipes });
+    expect(JSON.parse(prompt.slice(prompt.indexOf('{'))).existingRecipes).toEqual([{
+      title: 'Pasta al pomodoro',
+      ingredients: [{ name: 'Pasta', amount: '80 g' }, { name: 'Pomodoro', amount: '100 g' }],
+    }]);
     expect(prompt).toMatch(/30%/);
     expect(prompt).toMatch(/Jaccard/i);
   });

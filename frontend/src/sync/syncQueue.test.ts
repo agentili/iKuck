@@ -62,6 +62,7 @@ const sampleMutation = (mutationId = 'mutation-1', clientUpdatedAt = '2026-09-12
 const responseFor = (body: SyncChangeSet) => new Response(JSON.stringify(body), { status: 200 });
 import { getActiveDataScope, getPersonalDataScope, setActiveDataScope, setPersonalDataScope } from './scopeContext';
 import { isScopeWritable, trackScopedWrite } from './scopeWriteFence';
+import { parseSyncMutation } from './validation';
 
 const accountScope = getAccountSyncScope(session.userId);
 describe('sync queue', () => {
@@ -70,6 +71,17 @@ describe('sync queue', () => {
     window.localStorage.clear();
     setActiveDataScope('guest');
     setPersonalDataScope('guest');
+  });
+
+  it('rejects client-authored Dinner provider markers in personal AI consent sync records', () => {
+    const mutation = {
+      ...sampleMutation('provider-consent'),
+      entityType: 'ai_consent' as const,
+      entityId: 'profile',
+      payload: { enabled: true, dinnerProvider: 'gemini', updatedAt: '2026-09-12T12:00:00.000Z' },
+    };
+
+    expect(parseSyncMutation(mutation)).toBeNull();
   });
 
   it('isolates queue reads and deletes by guest and account scope', async () => {

@@ -47,6 +47,7 @@ interface AiAppOptions {
   provider?: RecipeGenerationProvider;
   dinnerProvider?: DinnerReconstructionProvider;
   limiter?: GenerationRateLimiter;
+  recipeProvider?: 'openai' | 'gemini';
 }
 
 const createAiApp = ({
@@ -55,6 +56,7 @@ const createAiApp = ({
   provider = { generate: vi.fn().mockResolvedValue(generatedDraft) },
   dinnerProvider = { reconstruct: vi.fn().mockResolvedValue([]) },
   limiter = { consume: vi.fn().mockResolvedValue({ allowed: true, used: 1, remaining: 4 }) },
+  recipeProvider = 'openai',
 }: AiAppOptions = {}) => {
   const repository = createMemorySyncRepository();
   const authService = {
@@ -64,13 +66,23 @@ const createAiApp = ({
     database: { ping: async () => undefined },
     cache: { ping: async () => undefined },
     auth: { service: authService, appOrigin, secureCookies: false },
-    aiRecipes: { provider, dinnerReconstructionProvider: dinnerProvider, limiter, repository, authService, appOrigin },
+    aiRecipes: { provider, dinnerReconstructionProvider: dinnerProvider, limiter, repository, authService, appOrigin, recipeProvider },
   });
   return { app, repository, provider, limiter };
 };
 
 const consent = async (app: ReturnType<typeof createApp>, enabled: boolean): Promise<AiConsent> => {
-  const response = await app.inject({ method: 'PUT', url: '/v1/ai-recipes/consent', headers, payload: { enabled } });
+  const current = await app.inject({ method: 'GET', url: '/v1/ai-recipes/consent', headers });
+  const response = await app.inject({
+    method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+    payload: {
+      enabled,
+      ...(enabled ? {
+        homeProvider: current.json().selectedProvider,
+        expectedRevision: current.json().consent.updatedAt,
+      } : {}),
+    },
+  });
   expect(response.statusCode).toBe(200);
   return response.json().consent as AiConsent;
 };
@@ -102,6 +114,256 @@ const saveRecipe = (app: ReturnType<typeof createApp>, recipe: unknown) => app.i
 });
 
 describe('AI recipe routes', () => {
+  it('fails closed for legacy consent enables without a current revision', async () => {
+    const { app, repository } = createAiApp();
+
+    const current = await app.inject({ method: 'GET', url: '/v1/ai-recipes/consent', headers });
+    expect(current.statusCode).toBe(200);
+    expect(current.json().consent).toEqual({ enabled: false, updatedAt: '1970-01-01T00:00:00.000Z' });
+    const legacyEnable = await app.inject({
+      method: 'PUT', url: '/v1/ai-recipes/consent', headers, payload: { enabled: true },
+    });
+
+    expect(legacyEnable.statusCode).toBe(428);
+    expect(legacyEnable.json()).toMatchObject({ code: 'ai_consent_revision_required' });
+    await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toBeNull();
+    await app.close();
+  });
+
+  it('requires an explicit server-selected Home provider as well as a revision for legacy enables', async () => {
+    const { app, repository } = createAiApp();
+    const current = await app.inject({ method: 'GET', url: '/v1/ai-recipes/consent', headers });
+
+    const oldClient = await app.inject({
+      method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+      payload: { enabled: true, expectedRevision: current.json().consent.updatedAt },
+    });
+
+    expect(oldClient.statusCode).toBe(428);
+    expect(oldClient.json()).toMatchObject({ code: 'ai_consent_revision_required' });
+    await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toBeNull();
+    await app.close();
+  });
+
+  it('rejects Home consent for a provider other than the server-selected recipient', async () => {
+    const { app, repository } = createAiApp({ recipeProvider: 'gemini' });
+    const current = await app.inject({ method: 'GET', url: '/v1/ai-recipes/consent', headers });
+
+    const response = await app.inject({
+      method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+      payload: {
+        enabled: true,
+        homeProvider: 'openai',
+        expectedRevision: current.json().consent.updatedAt,
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: 'ai_provider_mismatch' });
+    await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toBeNull();
+    await app.close();
+  });
+
+  it.each([
+    { name: 'capacity exhaustion', code: 'ai_dispatch_capacity' },
+    { name: 'request abort', code: 'ai_dispatch_aborted' },
+  ])('releases the quota and returns 503 on $name', async ({ code }) => {
+    const release = vi.fn().mockResolvedValue(undefined);
+    const provider: RecipeGenerationProvider = { generate: vi.fn().mockResolvedValue(generatedDraft) };
+    const { app, repository } = createAiApp({
+      provider,
+      limiter: {
+        consume: vi.fn(),
+        reserve: vi.fn().mockResolvedValue({
+          quota: { allowed: true, used: 1, remaining: 9999 }, commit: vi.fn(), release,
+        }),
+      },
+    });
+    await consent(app, true);
+    vi.spyOn(repository, 'withAiConsentDispatch').mockRejectedValue(Object.assign(new Error('dispatch unavailable'), { code }));
+
+    const response = await generate(app);
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ code: 'provider_unavailable' });
+    expect(release).toHaveBeenCalledOnce();
+    expect(provider.generate).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('fails closed for legacy Dinner provider grants without a current revision', async () => {
+    const { app, repository } = createAiApp({ recipeProvider: 'gemini' });
+    await consent(app, true);
+
+    const legacyGrant = await app.inject({
+      method: 'PUT', url: '/v1/ai-recipes/consent', headers, payload: { dinnerProvider: 'gemini' },
+    });
+
+    expect(legacyGrant.statusCode).toBe(428);
+    expect(legacyGrant.json()).toMatchObject({ code: 'ai_consent_revision_required' });
+    await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toMatchObject({
+      payload: { enabled: true },
+    });
+    const stored = await repository.readEntity('user-1', 'ai_consent', 'profile');
+    expect(stored?.payload).not.toHaveProperty('dinnerProvider');
+    await app.close();
+  });
+
+  it('allows only one of two tabs using the same consent revision to enable Home', async () => {
+    const { app, repository } = createAiApp();
+    const current = await app.inject({ method: 'GET', url: '/v1/ai-recipes/consent', headers });
+    const expectedRevision = current.json().consent.updatedAt as string;
+    const request = () => app.inject({
+      method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+      payload: { enabled: true, homeProvider: 'openai', expectedRevision },
+    });
+
+    const [first, second] = await Promise.all([request(), request()]);
+
+    expect([first.statusCode, second.statusCode].sort()).toEqual([200, 409]);
+    const conflict = first.statusCode === 409 ? first : second;
+    expect(conflict.json()).toMatchObject({ code: 'ai_consent_revision_conflict' });
+    const stored = await repository.readEntity('user-1', 'ai_consent', 'profile');
+    expect(stored?.payload).toMatchObject({ enabled: true });
+    expect((stored?.payload as AiConsent).updatedAt).not.toBe(expectedRevision);
+    await app.close();
+  });
+
+  it('rejects a delayed Dinner grant after global revoke and re-enable even for the same provider', async () => {
+    const { app, repository } = createAiApp({ recipeProvider: 'gemini' });
+    const initial = await consent(app, true);
+    const firstGrant = await app.inject({
+      method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+      payload: { dinnerProvider: 'gemini', expectedRevision: initial.updatedAt },
+    });
+    expect(firstGrant.statusCode).toBe(200);
+
+    const revoked = await consent(app, false);
+    const reenabled = await app.inject({
+      method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+      payload: { enabled: true, homeProvider: 'gemini', expectedRevision: revoked.updatedAt },
+    });
+    expect(reenabled.statusCode).toBe(200);
+    expect(reenabled.json().consent).not.toHaveProperty('dinnerProvider');
+
+    const delayedGrant = await app.inject({
+      method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+      payload: { dinnerProvider: 'gemini', expectedRevision: initial.updatedAt },
+    });
+
+    expect(delayedGrant.statusCode).toBe(409);
+    expect(delayedGrant.json()).toMatchObject({ code: 'ai_consent_revision_conflict' });
+    const stored = await repository.readEntity('user-1', 'ai_consent', 'profile');
+    expect(stored?.payload).toMatchObject({ enabled: true });
+    expect(stored?.payload).not.toHaveProperty('dinnerProvider');
+    await app.close();
+  });
+
+  it('reports the server-selected Dinner provider with personal consent state', async () => {
+    const { app } = createAiApp({ recipeProvider: 'gemini' });
+
+    const response = await app.inject({ method: 'GET', url: '/v1/ai-recipes/consent', headers });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ consent: { enabled: false }, selectedProvider: 'gemini' });
+    await app.close();
+  });
+
+  it('rejects a client provider that differs from the server-selected provider without writing consent', async () => {
+    const { app, repository } = createAiApp({ recipeProvider: 'gemini' });
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/v1/ai-recipes/consent',
+      headers,
+      payload: { dinnerProvider: 'openai' },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: 'ai_provider_mismatch' });
+    expect(await repository.readEntity('user-1', 'ai_consent', 'profile')).toBeNull();
+    await app.close();
+  });
+
+  it('keeps Home consent enabled while independently setting and revoking Dinner provider consent', async () => {
+    const { app, repository, provider } = createAiApp({ recipeProvider: 'gemini' });
+    await consent(app, true);
+
+    const enabledConsent = await consent(app, true);
+    const approved = await app.inject({
+      method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+      payload: { dinnerProvider: 'gemini', expectedRevision: enabledConsent.updatedAt },
+    });
+    expect(approved.statusCode).toBe(200);
+    expect(approved.json()).toMatchObject({
+      consent: { enabled: true, dinnerProvider: 'gemini' },
+      selectedProvider: 'gemini',
+    });
+    expect(await repository.readEntity('user-1', 'ai_consent', 'profile')).toMatchObject({ payload: { enabled: true, dinnerProvider: 'gemini' } });
+
+    const revoked = await app.inject({ method: 'PUT', url: '/v1/ai-recipes/consent', headers, payload: { dinnerProvider: null } });
+    expect(revoked.statusCode).toBe(200);
+    expect(revoked.json()).toMatchObject({ consent: { enabled: true } });
+    expect(revoked.json().consent).not.toHaveProperty('dinnerProvider');
+    await expect(generate(app)).resolves.toMatchObject({ statusCode: 201 });
+    expect(provider.generate).toHaveBeenCalledOnce();
+    await app.close();
+  });
+
+  it('rejects a forged stale Dinner grant after global revocation until a fresh grant', async () => {
+    const { app, repository } = createAiApp({ recipeProvider: 'gemini' });
+    const initiallyEnabled = await consent(app, true);
+    const initialDinnerGrant = await app.inject({
+      method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+      payload: { dinnerProvider: 'gemini', expectedRevision: initiallyEnabled.updatedAt },
+    });
+    expect(initialDinnerGrant.statusCode).toBe(200);
+
+    const revoked = await app.inject({
+      method: 'PUT', url: '/v1/ai-recipes/consent', headers, payload: { enabled: false },
+    });
+    expect(revoked.statusCode).toBe(200);
+    expect(revoked.json().consent).toMatchObject({ enabled: false });
+    expect(revoked.json().consent).not.toHaveProperty('dinnerProvider');
+
+    const forgedStaleGrant = await app.inject({
+      method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+      payload: { dinnerProvider: 'gemini', expectedRevision: initiallyEnabled.updatedAt },
+    });
+    expect(forgedStaleGrant.statusCode).toBe(409);
+    expect(forgedStaleGrant.json()).toMatchObject({ code: 'ai_consent_revision_conflict' });
+    await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toMatchObject({
+      payload: { enabled: false },
+    });
+    const afterStaleRequest = await repository.readEntity('user-1', 'ai_consent', 'profile');
+    expect(afterStaleRequest?.payload).not.toHaveProperty('dinnerProvider');
+
+    const combinedReenableAndGrant = await app.inject({
+      method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+      payload: { enabled: true, homeProvider: 'gemini', dinnerProvider: 'gemini', expectedRevision: revoked.json().consent.updatedAt },
+    });
+    expect(combinedReenableAndGrant.statusCode).toBe(403);
+    expect(combinedReenableAndGrant.json()).toMatchObject({ code: 'ai_consent_required' });
+    const afterCombinedRequest = await repository.readEntity('user-1', 'ai_consent', 'profile');
+    expect(afterCombinedRequest?.payload).toMatchObject({ enabled: false });
+    expect(afterCombinedRequest?.payload).not.toHaveProperty('dinnerProvider');
+
+    const reenabled = await app.inject({
+      method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+      payload: { enabled: true, homeProvider: 'gemini', expectedRevision: revoked.json().consent.updatedAt },
+    });
+    expect(reenabled.statusCode).toBe(200);
+    expect(reenabled.json().consent).toMatchObject({ enabled: true });
+    expect(reenabled.json().consent).not.toHaveProperty('dinnerProvider');
+    const freshDinnerGrant = await app.inject({
+      method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+      payload: { dinnerProvider: 'gemini', expectedRevision: reenabled.json().consent.updatedAt },
+    });
+    expect(freshDinnerGrant.statusCode).toBe(200);
+    expect(freshDinnerGrant.json().consent).toMatchObject({ enabled: true, dinnerProvider: 'gemini' });
+    await app.close();
+  });
+
   it('returns disabled consent, supports revocation and keeps private recipes removable', async () => {
     const { app } = createAiApp();
 
@@ -173,6 +435,23 @@ describe('AI recipe routes', () => {
     });
     expect(invalid.statusCode).toBe(400);
     expect(invalid.json()).toMatchObject({ code: 'invalid_payload' });
+    await app.close();
+  });
+
+  it('denies Home dispatch when consent is bound to a different provider', async () => {
+    const provider: RecipeGenerationProvider = { generate: vi.fn().mockResolvedValue(generatedDraft) };
+    const { app, repository } = createAiApp({ provider, recipeProvider: 'gemini' });
+    await repository.updateAiConsent('user-1', {
+      enabled: true,
+      homeProvider: 'openai',
+      expectedRevision: '1970-01-01T00:00:00.000Z',
+    });
+
+    const response = await generate(app);
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: 'ai_consent_required' });
+    expect(provider.generate).not.toHaveBeenCalled();
     await app.close();
   });
 
@@ -439,6 +718,124 @@ describe('AI recipe routes', () => {
     await expect(generate(app)).resolves.toMatchObject({ statusCode: 429 });
     resolveProvider?.(generatedDraft);
     await expect(first).resolves.toMatchObject({ statusCode: 201 });
+    await app.close();
+  });
+
+  it('rechecks global consent after quota reserve before dispatching Home data', async () => {
+    let markReserveStarted!: () => void;
+    let resumeReserve!: () => void;
+    const reserveStarted = new Promise<void>((resolve) => { markReserveStarted = resolve; });
+    const reserveGate = new Promise<void>((resolve) => { resumeReserve = resolve; });
+    const release = vi.fn().mockResolvedValue(undefined);
+    const provider: RecipeGenerationProvider = { generate: vi.fn().mockResolvedValue(generatedDraft) };
+    const limiter: GenerationRateLimiter = {
+      consume: vi.fn(),
+      reserve: vi.fn(async () => {
+        markReserveStarted();
+        await reserveGate;
+        return { quota: { allowed: true, used: 1, remaining: 4 }, commit: vi.fn(), release };
+      }),
+    };
+    const { app } = createAiApp({ provider, limiter });
+    await consent(app, true);
+
+    const pendingGeneration = generate(app);
+    await reserveStarted;
+    const revoked = await consent(app, false);
+    expect(revoked.enabled).toBe(false);
+    resumeReserve();
+
+    const response = await pendingGeneration;
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: 'ai_consent_required' });
+    expect(provider.generate).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledOnce();
+    await app.close();
+  });
+
+  it('rechecks consent before each Home novelty retry and releases quota after a revoke between attempts', async () => {
+    let repository: ReturnType<typeof createMemorySyncRepository> | null = null;
+    let providerCalls = 0;
+    let revoke: Promise<AiConsent> | undefined;
+    const release = vi.fn().mockResolvedValue(undefined);
+    const provider: RecipeGenerationProvider = {
+      generate: vi.fn(async () => {
+        providerCalls += 1;
+        if (providerCalls === 1) {
+          if (repository === null) throw new Error('Repository not initialized');
+          revoke = repository.updateAiConsent('user-1', { enabled: false });
+        }
+        return generatedDraft;
+      }),
+    };
+    const { app, repository: currentRepository } = createAiApp({
+      provider,
+      limiter: {
+        consume: vi.fn(),
+        reserve: vi.fn().mockResolvedValue({
+          quota: { allowed: true, used: 1, remaining: 4 },
+          commit: vi.fn().mockResolvedValue(undefined),
+          release,
+        }),
+      },
+    });
+    repository = currentRepository;
+    await consent(app, true);
+
+    const response = await generate(app, {
+      existingRecipes: [{
+        title: generatedDraft.title,
+        ingredients: [{ name: 'Ceci', amount: '240 g' }],
+      }],
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: 'ai_consent_required' });
+    expect(providerCalls).toBe(1);
+    await expect(revoke).resolves.toMatchObject({ enabled: false });
+    expect(release).toHaveBeenCalledOnce();
+    await app.close();
+  });
+
+  it('rechecks Dinner consent after quota reserve before dispatching dinner text', async () => {
+    let markReserveStarted!: () => void;
+    let resumeReserve!: () => void;
+    const reserveStarted = new Promise<void>((resolve) => { markReserveStarted = resolve; });
+    const reserveGate = new Promise<void>((resolve) => { resumeReserve = resolve; });
+    const release = vi.fn().mockResolvedValue(undefined);
+    const dinnerProvider: DinnerReconstructionProvider = { reconstruct: vi.fn().mockResolvedValue([]) };
+    const limiter: GenerationRateLimiter = {
+      consume: vi.fn(),
+      reserve: vi.fn(async () => {
+        markReserveStarted();
+        await reserveGate;
+        return { quota: { allowed: true, used: 1, remaining: 4 }, commit: vi.fn(), release };
+      }),
+    };
+    const { app } = createAiApp({ dinnerProvider, limiter });
+    const enabled = await consent(app, true);
+    const granted = await app.inject({
+      method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+      payload: { dinnerProvider: 'openai', expectedRevision: enabled.updatedAt },
+    });
+    expect(granted.statusCode).toBe(200);
+
+    const pendingGeneration = app.inject({
+      method: 'POST', url: '/v1/ai-dinner-reconstruction', headers,
+      payload: { dinnerText: 'Cena privata', servings: 2 },
+    });
+    await reserveStarted;
+    const revoked = await app.inject({
+      method: 'PUT', url: '/v1/ai-recipes/consent', headers, payload: { dinnerProvider: null },
+    });
+    expect(revoked.statusCode).toBe(200);
+    resumeReserve();
+
+    const response = await pendingGeneration;
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: 'ai_consent_required' });
+    expect(dinnerProvider.reconstruct).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledOnce();
     await app.close();
   });
 

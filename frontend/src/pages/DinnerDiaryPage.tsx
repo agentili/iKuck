@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { ArrowLeft, CalendarDays, Check, Pencil, Save, Trash2, X } from 'lucide-react';
-import type { AiConsent } from '@ikuck/shared/contracts';
+import type { AiConsent, AiRecipeProvider } from '@ikuck/shared/contracts';
 import type { DinnerEntry } from '@ikuck/shared/dinnerDiary';
 import { DIARY_NOTE_MAX_LENGTH, DIARY_SERVINGS_MAX, DIARY_SERVINGS_MIN, DIARY_TEXT_MAX_LENGTH } from '@ikuck/shared/limits';
 import { Link } from 'react-router-dom';
+import { ApiClientError } from '../api/apiClient';
 import { useAuthStore } from '../auth/authStore';
-import { fetchAiConsent, updateAiConsent } from '../ai/aiRecipeApi';
+import { fetchAiConsentStatus, updateAiConsent, updateDinnerAiConsent } from '../ai/aiRecipeApi';
+import { clearAiRecipeProposalHistory } from '../ai/aiRecipeHistory';
 import DinnerRecipePanel from '../components/dinnerDiary/DinnerRecipePanel';
 import { useHouseStore } from '../house/houseStore';
 import { getActiveDataScope } from '../sync/scopeContext';
@@ -38,7 +40,9 @@ export default function DinnerDiaryPage() {
   const houseRole = houseState?.membership?.role ?? null;
   const savedRecipes = useDinnerDiaryStore((state) => state.recipes);
   const [consent, setConsent] = useState<AiConsent | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<AiRecipeProvider | null>(null);
   const [consentDraft, setConsentDraft] = useState(false);
+  const [dinnerConsentDraft, setDinnerConsentDraft] = useState(false);
   const [consentLoading, setConsentLoading] = useState(false);
   const [consentSaving, setConsentSaving] = useState(false);
   const [consentError, setConsentError] = useState<string | null>(null);
@@ -56,15 +60,19 @@ export default function DinnerDiaryPage() {
   useEffect(() => {
     let cancelled = false;
     setConsent(null);
+    setSelectedProvider(null);
     setConsentDraft(false);
+    setDinnerConsentDraft(false);
     setConsentError(null);
     if (!verified || userId === null) return undefined;
     setConsentLoading(true);
-    void fetchAiConsent()
-      .then((value) => {
+    void fetchAiConsentStatus()
+      .then((status) => {
         if (cancelled) return;
-        setConsent(value);
-        setConsentDraft(value.enabled);
+        setConsent(status.consent);
+        setSelectedProvider(status.selectedProvider);
+        setConsentDraft(status.consent.enabled && status.consent.homeProvider === status.selectedProvider);
+        setDinnerConsentDraft(status.consent.enabled && status.consent.dinnerProvider === status.selectedProvider);
       })
       .catch(() => {
         if (!cancelled) setConsentError('Non è stato possibile verificare il consenso AI. La generazione resta disattivata.');
@@ -80,6 +88,24 @@ export default function DinnerDiaryPage() {
     || right.value.createdAt.localeCompare(left.value.createdAt)
   )), [entries]);
 
+  const dinnerProviderName = selectedProvider === 'openai'
+    ? 'OpenAI'
+    : selectedProvider === 'gemini' ? 'Gemini di Google' : null;
+  const homeConsentEnabled = consent?.enabled === true
+    && selectedProvider !== null
+    && consent.homeProvider === selectedProvider;
+  const dinnerConsentEnabled = consent?.enabled === true
+    && selectedProvider !== null
+    && consent.dinnerProvider === selectedProvider;
+
+  const refreshConsentState = async (): Promise<void> => {
+    const status = await fetchAiConsentStatus();
+    setConsent(status.consent);
+    setSelectedProvider(status.selectedProvider);
+    setConsentDraft(status.consent.enabled && status.consent.homeProvider === status.selectedProvider);
+    setDinnerConsentDraft(status.consent.enabled && status.consent.dinnerProvider === status.selectedProvider);
+  };
+
   const resetForm = () => {
     setDate(localDate());
     setText('');
@@ -89,16 +115,65 @@ export default function DinnerDiaryPage() {
     setFormError(null);
   };
 
-  const saveConsent = async () => {
-    if (csrfToken === null || consent === null || consentSaving) return;
+  const saveConsent = async (enabled = consentDraft) => {
+    if (csrfToken === null || consent === null || userId === null || (enabled && selectedProvider === null) || consentSaving) return;
     setConsentSaving(true);
     setConsentError(null);
     try {
-      const updated = await updateAiConsent(consentDraft, csrfToken);
+      const updated = await updateAiConsent(
+        enabled,
+        csrfToken,
+        consent.updatedAt,
+        undefined,
+        enabled ? selectedProvider ?? undefined : undefined,
+      );
       setConsent(updated);
-      setConsentDraft(updated.enabled);
-    } catch {
-      setConsentError('Non è stato possibile salvare il consenso AI. Riprova.');
+      setConsentDraft(updated.enabled && selectedProvider !== null && updated.homeProvider === selectedProvider);
+      if (!updated.enabled) {
+        setDinnerConsentDraft(false);
+        const cleared = await clearAiRecipeProposalHistory(userId);
+        if (!cleared) setConsentError('Consenso revocato, ma non è stato possibile sincronizzare la revoca della cronologia tra schede. Chiudi le altre schede e ricarica la pagina.');
+      }
+    } catch (error) {
+      if (error instanceof ApiClientError && error.code === 'ai_consent_revision_conflict') {
+        try {
+          await refreshConsentState();
+          setConsentError('Il consenso è cambiato in un’altra scheda. Ho aggiornato lo stato: verifica la scelta prima di salvare di nuovo.');
+        } catch {
+          setConsentError('Il consenso è cambiato in un’altra scheda. Aggiorna la pagina e verifica la scelta prima di riprovare.');
+        }
+      } else {
+        setConsentError('Non è stato possibile salvare il consenso AI. Riprova.');
+      }
+    } finally {
+      setConsentSaving(false);
+    }
+  };
+
+  const saveDinnerConsent = async (provider: AiRecipeProvider | null = dinnerConsentDraft && selectedProvider !== null ? selectedProvider : null) => {
+    if (csrfToken === null || consent === null || (provider !== null && selectedProvider === null) || !consent.enabled || consentSaving) return;
+    setConsentSaving(true);
+    setConsentError(null);
+    try {
+      const updated = await updateDinnerAiConsent(
+        provider,
+        csrfToken,
+        provider === null ? undefined : consent.updatedAt,
+      );
+      setConsent(updated.consent);
+      setSelectedProvider(updated.selectedProvider);
+      setDinnerConsentDraft(updated.consent.enabled && updated.consent.dinnerProvider === updated.selectedProvider);
+    } catch (error) {
+      if (error instanceof ApiClientError && error.code === 'ai_consent_revision_conflict') {
+        try {
+          await refreshConsentState();
+          setConsentError('Il consenso è cambiato in un’altra scheda. Ho aggiornato lo stato: verifica la scelta prima di salvare di nuovo.');
+        } catch {
+          setConsentError('Il consenso è cambiato in un’altra scheda. Aggiorna la pagina e verifica la scelta prima di riprovare.');
+        }
+      } else {
+        setConsentError('Non è stato possibile salvare il consenso per il provider AI selezionato. Aggiorna la pagina e riprova.');
+      }
     } finally {
       setConsentSaving(false);
     }
@@ -168,18 +243,55 @@ export default function DinnerDiaryPage() {
 
       <section aria-label="Consenso per ricostruire ricette" className="mt-6 rounded-2xl border-2 border-emerald-100 bg-emerald-50/70 p-4 sm:p-5">
         <h2 className="text-xl font-black text-gray-950">Ricostruisci una ricetta con l’AI</h2>
-        <p className="mt-1 text-sm leading-relaxed text-gray-700">La ricostruzione invia al servizio OpenAI il testo originale della cena e le porzioni indicate. Le proposte restano bozze modificabili: nessuna ricetta viene salvata senza una tua conferma esplicita. Puoi revocare il consenso dal profilo.</p>
         {verified ? (
-          consentLoading ? <p role="status" className="mt-3 text-sm font-semibold text-gray-700">Verifico il consenso AI…</p> : consent !== null ? (
-            <>
-              <label className="mt-3 flex items-start gap-3 text-sm font-semibold text-gray-800">
-                <input type="checkbox" checked={consentDraft} onChange={(event) => setConsentDraft(event.target.checked)} disabled={consentSaving} aria-label="Acconsento all’uso AI del testo della cena e delle porzioni" className="mt-0.5 h-5 w-5 accent-emerald-700" />
-                <span>Acconsento all’uso delle funzionalità AI di iKuck: dati inviati, inclusi il testo della cena e le porzioni, sono elaborati da OpenAI per preparare bozze. Le ricette non vengono salvate finché non le confermo.</span>
-              </label>
-              {consentDraft !== consent.enabled && <button type="button" onClick={() => void saveConsent()} disabled={consentSaving} className="mt-3 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white disabled:opacity-60">{consentSaving ? 'Salvo il consenso…' : 'Salva consenso'}</button>}
-            </>
-          ) : <p role="status" className="mt-3 text-sm text-gray-700">Il consenso non è disponibile; la generazione resta disattivata.</p>
-        ) : <p className="mt-3 text-sm text-gray-700">Puoi continuare a registrare cene. Per ricostruire ricette servono un account verificato e il consenso AI.</p>}
+          <>
+            {dinnerProviderName !== null ? (
+              <>
+                <p className="mt-1 text-sm leading-relaxed text-gray-700">
+                  La ricostruzione invia esclusivamente a <strong>{dinnerProviderName}</strong> il testo originale della cena e le porzioni indicate; se le porzioni non sono indicate, non viene inviato un numero. Non invia la nota, gli ingredienti della dispensa, il profilo alimentare o le ricette AI. Le bozze restano modificabili e conservate solo su questo dispositivo finché non le confermi o le scarti; non vengono salvate sul server come ricette.
+                </p>
+                <p className="mt-2 text-sm leading-relaxed text-gray-700">
+                  Per Home soltanto, inviamo a {dinnerProviderName} i nomi degli ingredienti della dispensa; il profilo alimentare (dieta scelta, allergeni esclusi, calorie massime e proteine minime per porzione); e i titoli e nomi/quantità degli ingredienti delle ricette AI salvate o già proposte. Home invia anche l’elenco dei vincoli di generazione, attualmente vuoto. Questi dati non sono inviati dalla ricostruzione Dinner.
+                </p>
+              </>
+            ) : (
+              <p className="mt-1 text-sm leading-relaxed text-gray-700">Non è stato possibile verificare il provider AI attivo. La ricostruzione resta disattivata e il testo della cena non viene inviato.</p>
+            )}
+            {consentLoading ? <p role="status" className="mt-3 text-sm font-semibold text-gray-700">Verifico il consenso AI…</p> : consent !== null ? (
+              <>
+                {selectedProvider !== null && dinnerProviderName !== null ? (
+                  <>
+                    <label className="mt-3 flex items-start gap-3 text-sm font-semibold text-gray-800">
+                      <input type="checkbox" checked={consentDraft} onChange={(event) => setConsentDraft(event.target.checked)} disabled={consentSaving} aria-label={`Acconsento all’invio a ${dinnerProviderName} degli ingredienti della dispensa, del profilo alimentare e dei titoli e ingredienti delle ricette AI salvate o proposte`} className="mt-0.5 h-5 w-5 accent-emerald-700" />
+                      <span>Acconsento all’invio a {dinnerProviderName} di ingredienti della dispensa, profilo alimentare e dati delle ricette AI per Home. Questo consenso resta personale; disattivando il consenso generale qui, si revocano anche i permessi Dinner.</span>
+                    </label>
+                    {consent.enabled && !homeConsentEnabled && <p className="mt-2 text-xs font-semibold leading-relaxed text-amber-900">Il provider è cambiato o il consenso precedente non specificava il destinatario: il consenso Home non autorizza {dinnerProviderName} finché non approvi esplicitamente questa scelta.</p>}
+                    {consentDraft !== homeConsentEnabled && <button type="button" onClick={() => void saveConsent()} disabled={consentSaving} className="mt-3 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white disabled:opacity-60">{consentSaving ? 'Salvo…' : 'Salva consenso AI globale'}</button>}
+                    <label className="mt-3 flex items-start gap-3 text-sm font-semibold text-gray-800">
+                      <input
+                        type="checkbox"
+                        checked={dinnerConsentDraft}
+                        onChange={(event) => setDinnerConsentDraft(event.target.checked)}
+                        disabled={consentSaving || !consent.enabled}
+                        aria-label={`Acconsento all’invio a ${dinnerProviderName} del testo della cena e delle porzioni`}
+                        className="mt-0.5 h-5 w-5 accent-emerald-700"
+                      />
+                      <span>Acconsento a inviare a {dinnerProviderName} il testo originale della cena e le porzioni indicate per preparare bozze che restano solo su questo dispositivo finché non le confermi o le scarti; non sono salvate sul server come ricette.</span>
+                    </label>
+                    {!consent.enabled && <p className="mt-2 text-sm text-gray-700">Per usare Dinner, attiva prima il consenso AI generale e salva la scelta.</p>}
+                    {dinnerConsentDraft !== dinnerConsentEnabled && consent.enabled && <button type="button" onClick={() => void saveDinnerConsent()} disabled={consentSaving} className="mt-3 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white disabled:opacity-60">{consentSaving ? 'Salvo…' : 'Salva consenso Dinner'}</button>}
+                    {consent.enabled && consent.dinnerProvider !== undefined && <button type="button" onClick={() => void saveDinnerConsent(null)} disabled={consentSaving} className="mt-3 ml-2 min-h-11 rounded-xl border-2 border-rose-300 px-4 py-2 font-bold text-rose-900 disabled:opacity-60">{consentSaving ? 'Salvataggio…' : 'Revoca consenso Dinner'}</button>}
+                  </>
+                ) : <p role="status" className="mt-3 text-sm text-gray-700">Il consenso non è disponibile; la generazione resta disattivata.</p>}
+                {consent.enabled && <button type="button" onClick={() => void saveConsent(false)} disabled={consentSaving} className="mt-3 min-h-11 rounded-xl border-2 border-rose-300 px-4 py-2 font-bold text-rose-900 disabled:opacity-60">{consentSaving ? 'Salvataggio…' : 'Revoca consenso AI globale'}</button>}
+              </>
+            ) : <p role="status" className="mt-3 text-sm text-gray-700">Il consenso non è disponibile; la generazione resta disattivata.</p>}
+          </>
+        ) : user === null ? (
+          <p className="mt-3 text-sm text-gray-700">Come ospite, le cene restano sul dispositivo: non inviamo testo, porzioni o note a un servizio AI. La ricostruzione è disponibile solo con un account verificato; vedrai il provider attivo e potrai dare un consenso esplicito prima dell’invio.</p>
+        ) : (
+          <p className="mt-3 text-sm text-gray-700">Con un account non verificato, la ricostruzione AI è disattivata: il testo della cena, le porzioni e le note non vengono inviati a un provider AI. Verifica l’account per vedere il provider attivo e decidere se consentire la ricostruzione.</p>
+        )}
         {consentError !== null && <p role="alert" className="mt-3 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-900">{consentError}</p>}
       </section>
 
@@ -268,7 +380,7 @@ export default function DinnerDiaryPage() {
                         </div>
                       )}
                     </div>
-                    <DinnerRecipePanel entry={entry} availableRecipes={availableRecipes} manageable={manageable} verified={verified} consentEnabled={consent?.enabled === true} csrfToken={csrfToken} />
+                    <DinnerRecipePanel entry={entry} availableRecipes={availableRecipes} manageable={manageable} verified={verified} consentEnabled={dinnerConsentEnabled} csrfToken={csrfToken} />
                   </article>
                 </li>
               );
