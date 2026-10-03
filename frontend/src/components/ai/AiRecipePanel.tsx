@@ -320,44 +320,62 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
       {error !== null && <p role="alert" className="mt-4 rounded-xl bg-rose-100 p-3 text-sm font-semibold text-rose-900">{error}</p>}
 
       {consent !== null && selectedProviderLabel === null && (
-        <div data-ai-consent className="mt-5 rounded-2xl border border-emerald-200 bg-white p-4">
-          <p role="status" className="text-sm leading-relaxed text-gray-700">Il provider delle ricette AI non è disponibile: non inviamo dati e la generazione resta disattivata.</p>
-          {consent.enabled && <button type="button" onClick={() => void saveConsent(false)} disabled={isSaving} className="mt-3 min-h-11 rounded-xl border-2 border-rose-300 px-4 py-2 font-bold text-rose-900 disabled:opacity-60">{isSaving ? 'Salvataggio…' : 'Revoca consenso AI globale'}</button>}
-        </div>
+        <details data-ai-consent className="mt-5 rounded-2xl border border-emerald-200 bg-white px-4">
+          <summary className="min-h-11 cursor-pointer py-3 font-bold text-gray-950 focus-visible:rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">
+            Consenso AI per Home <span className="block pl-5 text-sm font-medium text-amber-900">Provider non disponibile</span>
+          </summary>
+          <div className="border-t border-emerald-100 py-4">
+            <p role="status" className="text-sm leading-relaxed text-gray-700">Il provider delle ricette AI non è disponibile: non inviamo dati e la generazione resta disattivata.</p>
+          </div>
+        </details>
       )}
 
       {consent !== null && selectedProviderLabel !== null && (
-        <div data-ai-consent className="mt-5 rounded-2xl border border-emerald-200 bg-white p-4">
-          <label className="flex items-start gap-3 text-sm font-semibold text-gray-800">
-            <input
-              type="checkbox"
-              checked={consentDraft}
-              onChange={(event) => setConsentDraft(event.target.checked)}
-              disabled={isSaving}
-              aria-label={`Acconsento all’invio a ${selectedProviderLabel} degli ingredienti della dispensa, del profilo alimentare e dei titoli e ingredienti delle ricette AI salvate o proposte`}
-              className="mt-0.5 h-5 w-5 accent-emerald-700"
-            />
-            <span>Acconsento all’invio a {selectedProviderLabel} dei dati indicati per creare ricette AI.</span>
-          </label>
-          <p className="mt-2 text-xs leading-relaxed text-gray-600">
-            I dati inviati a {selectedProviderLabel}: nomi degli ingredienti della dispensa; profilo alimentare (dieta scelta, allergeni esclusi, calorie massime e proteine minime per porzione); titoli e nomi/quantità degli ingredienti delle ricette AI salvate o già proposte. Home invia anche l’elenco dei vincoli di generazione, attualmente vuoto.
-          </p>
-          {consent.enabled && !homeConsentEnabled && <p className="mt-2 text-xs font-semibold leading-relaxed text-amber-900">Il provider è cambiato o il consenso precedente non specificava il destinatario: non inviamo dati a {selectedProviderLabel} finché non approvi questa scelta.</p>}
-          <p className="mt-2 text-xs leading-relaxed text-gray-600">Puoi revocare il consenso in qualsiasi momento. Le ricette già salvate restano visibili finché non le elimini.</p>
-          {consent.enabled && <button type="button" onClick={() => void saveConsent(false)} disabled={isSaving} className="mt-3 min-h-11 rounded-xl border-2 border-rose-300 px-4 py-2 font-bold text-rose-900 disabled:opacity-60">{isSaving ? 'Salvataggio…' : 'Revoca consenso AI globale'}</button>}
-          {consentDraft !== homeConsentEnabled && (
-            <button type="button" onClick={() => void saveConsent()} disabled={isSaving} className="mt-3 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
-              {isSaving ? 'Salvataggio…' : 'Salva consenso'}
-            </button>
-          )}
-          {homeConsentEnabled && (
-            <button type="button" onClick={() => void generate()} disabled={isGenerating || pantryLabels.length === 0} className="mt-3 ml-2 inline-flex min-h-11 items-center gap-2 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50">
-              <Sparkles size={17} aria-hidden="true" />
-              {isGenerating ? 'Creo la ricetta…' : 'Genera ricetta AI'}
-            </button>
-          )}
-          {homeConsentEnabled && pantryLabels.length > 0 && <p className="mt-3 text-xs leading-relaxed text-gray-600">La ricetta generata resta un’anteprima: premi «Salva ricetta» per conservarla nel tuo account.</p>}
-          {homeConsentEnabled && pantryLabels.length === 0 && <p className="mt-3 text-sm font-semibold text-gray-700">Aggiungi almeno un ingrediente alla dispensa per generare.</p>}
+        <details data-ai-consent className="mt-5 rounded-2xl border border-emerald-200 bg-white px-4">
+          <summary className="min-h-11 cursor-pointer py-3 font-bold text-gray-950 focus-visible:rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">
+            Consenso AI per Home <span className="block pl-5 text-sm font-medium text-gray-700">{homeConsentEnabled ? `Attivo per ${selectedProviderLabel}` : `Da autorizzare per ${selectedProviderLabel}`}</span>
+          </summary>
+          <div className="border-t border-emerald-100 py-4">
+            <label className="flex items-start gap-3 text-sm font-semibold text-gray-800">
+              <input
+                type="checkbox"
+                checked={consentDraft}
+                onChange={(event) => setConsentDraft(event.target.checked)}
+                disabled={isSaving}
+                aria-label={`Acconsento all’invio a ${selectedProviderLabel} degli ingredienti della dispensa, del profilo alimentare e dei titoli e ingredienti delle ricette AI salvate o proposte`}
+                className="mt-0.5 h-5 w-5 accent-emerald-700"
+              />
+              <span>Acconsento all’invio a {selectedProviderLabel} dei dati indicati per creare ricette AI.</span>
+            </label>
+            <p className="mt-2 text-xs leading-relaxed text-gray-600">
+              I dati inviati a {selectedProviderLabel}: nomi degli ingredienti della dispensa; profilo alimentare (dieta scelta, allergeni esclusi, calorie massime e proteine minime per porzione); titoli e nomi/quantità degli ingredienti delle ricette AI salvate o già proposte. Home invia anche l’elenco dei vincoli di generazione, attualmente vuoto.
+            </p>
+            {consent.enabled && !homeConsentEnabled && <p className="mt-2 text-xs font-semibold leading-relaxed text-amber-900">Il provider è cambiato o il consenso precedente non specificava il destinatario: non inviamo dati a {selectedProviderLabel} finché non approvi questa scelta.</p>}
+            <p className="mt-2 text-xs leading-relaxed text-gray-600">Puoi revocare il consenso in qualsiasi momento. Le ricette già salvate restano visibili finché non le elimini.</p>
+            {consentDraft !== homeConsentEnabled && (
+              <button type="button" onClick={() => void saveConsent()} disabled={isSaving} className="mt-3 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
+                {isSaving ? 'Salvataggio…' : 'Salva consenso'}
+              </button>
+            )}
+          </div>
+        </details>
+      )}
+
+      {consent?.enabled && (
+        <button type="button" onClick={() => void saveConsent(false)} disabled={isSaving} className="mt-3 min-h-11 rounded-xl border-2 border-rose-300 px-4 py-2 font-bold text-rose-900 disabled:opacity-60">
+          {isSaving ? 'Salvataggio…' : 'Revoca consenso AI globale'}
+        </button>
+      )}
+
+      {homeConsentEnabled && (
+        <div className="mt-4">
+          <button type="button" onClick={() => void generate()} disabled={isGenerating || pantryLabels.length === 0} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50">
+            <Sparkles size={17} aria-hidden="true" />
+            {isGenerating ? 'Creo la ricetta…' : 'Genera ricetta AI'}
+          </button>
+          {pantryLabels.length > 0
+            ? <p className="mt-3 text-xs leading-relaxed text-gray-600">La ricetta generata resta un’anteprima: premi «Salva ricetta» per conservarla nel tuo account.</p>
+            : <p className="mt-3 text-sm font-semibold text-gray-700">Aggiungi almeno un ingrediente alla dispensa per generare.</p>}
         </div>
       )}
 

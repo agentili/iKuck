@@ -147,7 +147,10 @@ test('updates the service worker without losing IndexedDB data', async ({ page, 
 
   await page.goto(`${pwaServer.url}/profile`);
   await expect(page.getByRole('heading', { name: 'Il tuo profilo' })).toBeVisible();
-  await page.getByText('Diagnostica applicazione').click();
+  const diagnostics = page.locator('details').filter({ hasText: 'Diagnostica applicazione' });
+  await expect(diagnostics).not.toHaveAttribute('open', '');
+  await expect(page.getByText('build-a', { exact: true })).not.toBeVisible();
+  await page.getByText('Diagnostica applicazione').press('Enter');
   await expect(page.getByText('build-a', { exact: true })).toBeVisible();
 
   await pwaServer.swapToBuildB();

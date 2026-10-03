@@ -94,7 +94,8 @@ describe('ProfilePage', () => {
     expect(screen.queryByRole('region', { name: 'Ricette AI private' })).not.toBeInTheDocument();
   });
 
-  it('keeps app version and build diagnostics outside the primary profile header', async () => {
+  it('keeps diagnostics compact and opens them only on request', async () => {
+    const user = userEvent.setup();
     useAuthStore.setState({
       user: verifiedUser,
       csrfToken: 'csrf-1',
@@ -106,9 +107,15 @@ describe('ProfilePage', () => {
     const diagnostics = screen.getByText('Diagnostica applicazione').closest('details');
 
     expect(diagnostics).not.toBeNull();
+    expect(diagnostics).toHaveClass('mt-4');
     expect(diagnostics).not.toHaveAttribute('open');
-    expect(screen.getByText('Versione app')).toBeInTheDocument();
-    expect(screen.getByText('Build')).toBeInTheDocument();
+    expect(screen.getByText('Versione app')).not.toBeVisible();
+    expect(screen.getByText('Build')).not.toBeVisible();
+    await user.click(screen.getByText('Diagnostica applicazione'));
+    expect(screen.getByText('Versione app')).toBeVisible();
+    expect(screen.getByText('Build')).toBeVisible();
+    await user.click(screen.getByText('Diagnostica applicazione'));
+    expect(diagnostics).not.toHaveAttribute('open');
   });
 
   it('requires a second confirmation before account deletion', async () => {

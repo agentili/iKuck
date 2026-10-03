@@ -113,6 +113,51 @@ describe('AiRecipePanel', () => {
     expect(fetchAiRecipes).not.toHaveBeenCalled();
   });
 
+  it('keeps Home consent compact until opened without changing draft or grant state', async () => {
+    const userEvents = userEvent.setup();
+    renderPanel();
+
+    const panel = screen.getByRole('region', { name: 'Ricette AI private' });
+    const checkbox = await within(panel).findByRole('checkbox', { name: /acconsento all’invio a .*degli ingredienti/i, hidden: true });
+    const disclosure = panel.querySelector('details[data-ai-consent]');
+    expect(disclosure).not.toBeNull();
+    expect(disclosure).not.toHaveAttribute('open');
+    expect(checkbox).not.toBeVisible();
+
+    const summary = within(panel).getByText('Consenso AI per Home');
+    await userEvents.click(summary);
+    expect(disclosure).toHaveAttribute('open');
+    expect(checkbox).toBeVisible();
+    await userEvents.click(checkbox);
+    await userEvents.click(summary);
+    expect(checkbox).not.toBeVisible();
+    await userEvents.click(summary);
+    expect(checkbox).toBeChecked();
+    expect(updateAiConsent).not.toHaveBeenCalled();
+  });
+
+  it('keeps generation and immediate revocation usable when approved consent is collapsed', async () => {
+    const userEvents = userEvent.setup();
+    vi.mocked(updateAiConsent).mockResolvedValue({ enabled: false, updatedAt: '2026-09-13T12:01:00.000Z' });
+    vi.mocked(fetchAiConsent).mockResolvedValue({ enabled: true, homeProvider: 'gemini', updatedAt: '2026-09-13T12:00:00.000Z' });
+    vi.mocked(fetchAiConsentStatus).mockResolvedValue({
+      consent: { enabled: true, homeProvider: 'gemini', updatedAt: '2026-09-13T12:00:00.000Z' },
+      selectedProvider: 'gemini',
+    });
+    renderPanel();
+
+    const panel = screen.getByRole('region', { name: 'Ricette AI private' });
+    expect(await within(panel).findByRole('button', { name: 'Genera ricetta AI' })).toBeVisible();
+    expect(panel.querySelector('details[data-ai-consent]')).not.toHaveAttribute('open');
+    expect(within(panel).getByText(/Attivo per Gemini di Google/)).toBeVisible();
+    const revoke = within(panel).getByRole('button', { name: 'Revoca consenso AI globale' });
+    expect(revoke).toBeVisible();
+    await userEvents.click(revoke);
+    expect(updateAiConsent).toHaveBeenCalledWith(false, 'csrf-token', '2026-09-13T12:00:00.000Z', undefined, undefined);
+    await waitFor(() => expect(within(panel).queryByRole('button', { name: 'Genera ricetta AI' })).not.toBeInTheDocument());
+    expect(panel.querySelector('details[data-ai-consent]')).not.toHaveAttribute('open');
+  });
+
   it('saves consent before showing generation and keeps the generated recipe as an unsaved preview', async () => {
     const userEvents = userEvent.setup();
     vi.mocked(updateAiConsent).mockResolvedValue({ enabled: true, homeProvider: 'openai', updatedAt: '2026-09-13T12:01:00.000Z' });

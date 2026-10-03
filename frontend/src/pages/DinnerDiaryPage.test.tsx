@@ -41,6 +41,65 @@ describe('DinnerDiaryPage', () => {
     useDinnerDiaryStore.setState({ hasHydrated: true, entries: [], recipes: [], drafts: [], error: null });
   });
 
+  it('keeps Dinner consent closed until requested, leaving the diary form available', async () => {
+    const user = userEvent.setup();
+    const now = '2026-09-29T10:00:00.000Z';
+    vi.mocked(fetchAiConsentStatus).mockResolvedValue({
+      consent: { enabled: true, homeProvider: 'gemini', dinnerProvider: 'gemini', updatedAt: now },
+      selectedProvider: 'gemini',
+    });
+    useAuthStore.setState({ user: { id: 'user-1', emailVerifiedAt: now } as never, csrfToken: 'csrf-1' });
+    renderPage();
+
+    const region = await screen.findByRole('region', { name: 'Consenso per ricostruire ricette' });
+    const checkbox = await screen.findByRole('checkbox', { name: /Gemini di Google.*testo della cena.*porzioni/i, hidden: true });
+    const disclosure = region.querySelector('details');
+    expect(disclosure).not.toBeNull();
+    expect(disclosure).not.toHaveAttribute('open');
+    expect(checkbox).not.toBeVisible();
+    expect(screen.getByRole('button', { name: 'Salva cena' })).toBeVisible();
+    expect(screen.getByText(/Attivo per Gemini di Google/)).toBeVisible();
+
+    const summary = screen.getByText('Consenso AI per Dinner');
+    await user.click(summary);
+    expect(checkbox).toBeVisible();
+    await user.click(summary);
+    expect(checkbox).not.toBeVisible();
+    expect(updateAiConsent).not.toHaveBeenCalled();
+    expect(updateDinnerAiConsent).not.toHaveBeenCalled();
+  });
+
+  it('keeps Dinner and global revocation directly available while the consent is collapsed', async () => {
+    const user = userEvent.setup();
+    const now = '2026-09-29T10:00:00.000Z';
+    vi.mocked(fetchAiConsentStatus).mockResolvedValue({
+      consent: { enabled: true, homeProvider: 'gemini', dinnerProvider: 'gemini', updatedAt: now },
+      selectedProvider: 'gemini',
+    });
+    vi.mocked(updateDinnerAiConsent).mockResolvedValue({
+      consent: { enabled: true, homeProvider: 'gemini', updatedAt: '2026-09-29T10:01:00.000Z' },
+      selectedProvider: 'gemini',
+    });
+    vi.mocked(updateAiConsent).mockResolvedValue({ enabled: false, updatedAt: '2026-09-29T10:02:00.000Z' });
+    useAuthStore.setState({ user: { id: 'user-1', emailVerifiedAt: now } as never, csrfToken: 'csrf-1' });
+    renderPage();
+
+    const disclosure = (await screen.findByRole('region', { name: 'Consenso per ricostruire ricette' })).querySelector('details');
+    const revokeDinner = await screen.findByRole('button', { name: 'Revoca consenso Dinner' });
+    const revokeGlobal = screen.getByRole('button', { name: 'Revoca consenso AI globale' });
+    expect(disclosure).not.toHaveAttribute('open');
+    expect(revokeDinner).toBeVisible();
+    expect(revokeGlobal).toBeVisible();
+
+    await user.click(revokeDinner);
+    expect(updateDinnerAiConsent).toHaveBeenCalledWith(null, 'csrf-1', undefined);
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Revoca consenso Dinner' })).not.toBeInTheDocument());
+    expect(disclosure).not.toHaveAttribute('open');
+    await user.click(revokeGlobal);
+    expect(updateAiConsent).toHaveBeenCalledWith(false, 'csrf-1', '2026-09-29T10:01:00.000Z', undefined, undefined);
+    expect(disclosure).not.toHaveAttribute('open');
+  });
+
   it('tells guests that dinner text and servings stay on-device until verified consent', () => {
     renderPage();
 

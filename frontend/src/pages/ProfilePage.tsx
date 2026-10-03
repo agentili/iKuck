@@ -231,21 +231,19 @@ export default function ProfilePage() {
           {isLinkingGoogle && <p className="text-sm font-semibold text-gray-600">Collegamento in corso…</p>}
         </div>
 
-        <div className="mt-7 border-t border-gray-200 pt-6">
-          <details className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-            <summary className="cursor-pointer font-bold text-gray-900">Diagnostica applicazione</summary>
-            <dl className="mt-3 grid gap-2 text-sm text-gray-700 sm:grid-cols-2">
-              <div>
-                <dt className="font-semibold">Versione app</dt>
-                <dd>{appVersion}</dd>
-              </div>
-              <div>
-                <dt className="font-semibold">Build</dt>
-                <dd>{buildId}</dd>
-              </div>
-            </dl>
-          </details>
-        </div>
+        <details className="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-4">
+          <summary className="min-h-11 cursor-pointer py-3 font-bold text-gray-900 focus-visible:rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">Diagnostica applicazione</summary>
+          <dl className="grid gap-2 border-t border-gray-200 py-3 text-sm text-gray-700 sm:grid-cols-2">
+            <div>
+              <dt className="font-semibold">Versione app</dt>
+              <dd>{appVersion}</dd>
+            </div>
+            <div>
+              <dt className="font-semibold">Build</dt>
+              <dd>{buildId}</dd>
+            </div>
+          </dl>
+        </details>
 
         <div className="mt-7 border-t border-rose-200 pt-6">
           <h2 className="text-xl font-black text-rose-950">Zona delicata</h2>
