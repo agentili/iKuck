@@ -119,7 +119,11 @@ export interface DietProfile extends DietProfilePayload {
 export interface AiConsent {
   enabled: boolean;
   updatedAt: string;
+  homeProvider?: AiRecipeProvider;
+  dinnerProvider?: AiRecipeProvider;
 }
+
+export type AiRecipeProvider = 'openai' | 'gemini';
 
 export interface GeneratedRecipeIngredient {
   name: string;

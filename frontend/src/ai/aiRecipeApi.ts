@@ -1,5 +1,10 @@
-import type { AiConsent, DietProfilePayload, GeneratedRecipe } from '@ikuck/shared/contracts';
-import { apiRequest, type ApiRequest } from '../api/apiClient';
+import type { AiConsent, AiRecipeProvider, DietProfilePayload, GeneratedRecipe } from '@ikuck/shared/contracts';
+import { ApiClientError, apiRequest, type ApiRequest } from '../api/apiClient';
+
+export interface AiRecipeConsentStatus {
+  consent: AiConsent;
+  selectedProvider: AiRecipeProvider;
+}
 
 export interface AiRecipeGenerationInput {
   ingredients: string[];
@@ -7,9 +12,7 @@ export interface AiRecipeGenerationInput {
   existingRecipes?: Array<{ title: string; ingredients: Array<{ name: string; amount: string }> }>;
 }
 
-interface ConsentResponse {
-  consent: AiConsent;
-}
+interface ConsentResponse extends AiRecipeConsentStatus {}
 
 interface RecipesResponse {
   recipes: GeneratedRecipe[];
@@ -19,22 +22,85 @@ interface GeneratedRecipeResponse {
   recipe: GeneratedRecipe;
 }
 
+export const fetchAiConsentStatus = async (request: ApiRequest = apiRequest): Promise<AiRecipeConsentStatus> => {
+  const response = await request<unknown>('/v1/ai-recipes/consent');
+  if (typeof response !== 'object' || response === null || Array.isArray(response)) {
+    throw new ApiClientError(502, 'ai_consent_status_invalid', 'AI consent status is invalid');
+  }
+  const candidate = response as { consent?: unknown; selectedProvider?: unknown };
+  const consent = candidate.consent;
+  if (typeof consent !== 'object' || consent === null || Array.isArray(consent)) {
+    throw new ApiClientError(502, 'ai_consent_status_invalid', 'AI consent status is invalid');
+  }
+  const candidateConsent = consent as { enabled?: unknown; updatedAt?: unknown; homeProvider?: unknown; dinnerProvider?: unknown };
+  const hasValidHomeProvider = candidateConsent.homeProvider === undefined
+    || candidateConsent.homeProvider === 'openai'
+    || candidateConsent.homeProvider === 'gemini';
+  const hasValidDinnerProvider = candidateConsent.dinnerProvider === undefined
+    || candidateConsent.dinnerProvider === 'openai'
+    || candidateConsent.dinnerProvider === 'gemini';
+  if (typeof candidateConsent.enabled !== 'boolean'
+    || typeof candidateConsent.updatedAt !== 'string'
+    || !Number.isFinite(Date.parse(candidateConsent.updatedAt))
+    || !hasValidHomeProvider
+    || !hasValidDinnerProvider
+    || (candidate.selectedProvider !== 'openai' && candidate.selectedProvider !== 'gemini')) {
+    throw new ApiClientError(502, 'ai_consent_status_invalid', 'AI consent status is invalid');
+  }
+  return {
+    consent: {
+      enabled: candidateConsent.enabled,
+      updatedAt: candidateConsent.updatedAt,
+      ...(candidateConsent.homeProvider === undefined
+        ? {}
+        : { homeProvider: candidateConsent.homeProvider as AiRecipeProvider }),
+      ...(candidateConsent.dinnerProvider === undefined
+        ? {}
+        : { dinnerProvider: candidateConsent.dinnerProvider as AiRecipeProvider }),
+    },
+    selectedProvider: candidate.selectedProvider,
+  };
+};
+
 export const fetchAiConsent = async (request: ApiRequest = apiRequest): Promise<AiConsent> => {
-  const response = await request<ConsentResponse>('/v1/ai-recipes/consent');
+  const response = await fetchAiConsentStatus(request);
   return response.consent;
 };
 
 export const updateAiConsent = async (
   enabled: boolean,
   csrfToken: string,
+  expectedRevision?: string,
   request: ApiRequest = apiRequest,
+  homeProvider?: AiRecipeProvider,
 ): Promise<AiConsent> => {
   const response = await request<ConsentResponse>('/v1/ai-recipes/consent', {
     method: 'PUT',
-    body: { enabled },
+    body: {
+      enabled,
+      ...(enabled && homeProvider !== undefined ? { homeProvider } : {}),
+      ...(enabled && expectedRevision !== undefined ? { expectedRevision } : {}),
+    },
     csrfToken,
   });
   return response.consent;
+};
+
+export const updateDinnerAiConsent = async (
+  dinnerProvider: AiRecipeProvider | null,
+  csrfToken: string,
+  expectedRevision?: string,
+  request: ApiRequest = apiRequest,
+): Promise<AiRecipeConsentStatus> => {
+  const response = await request<ConsentResponse>('/v1/ai-recipes/consent', {
+    method: 'PUT',
+    body: {
+      dinnerProvider,
+      ...(dinnerProvider !== null && expectedRevision !== undefined ? { expectedRevision } : {}),
+    },
+    csrfToken,
+  });
+  return { consent: response.consent, selectedProvider: response.selectedProvider };
 };
 
 export const fetchAiRecipes = async (request: ApiRequest = apiRequest): Promise<GeneratedRecipe[]> => {

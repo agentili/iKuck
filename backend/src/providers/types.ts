@@ -71,6 +71,7 @@ export interface RecipeGenerationRequest {
   constraints: string[];
   dietProfile?: DietProfilePayload;
   existingRecipes?: Array<{ title: string; ingredients: Array<{ name: string; amount: string }> }>;
+  signal?: AbortSignal;
 }
 
 export type GeneratedRecipeDraft = SharedGeneratedRecipeDraft;
@@ -82,6 +83,7 @@ export interface RecipeGenerationProvider {
 export interface DinnerReconstructionRequest {
   dinnerText: string;
   servings: number | null;
+  signal?: AbortSignal;
 }
 
 export interface DinnerReconstructionProvider {

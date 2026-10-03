@@ -44,6 +44,8 @@ test('shares confirmed dinner recipes with House members while isolating outside
   let apiUnavailable = false;
   let nextSequence = 0;
   const consentByUser = new Map<string, boolean>();
+  const homeConsentByUser = new Map<string, 'openai' | 'gemini'>();
+  const dinnerConsentByUser = new Map<string, 'openai' | 'gemini'>();
   const houseChanges: StoredChange[] = [];
   const accountChanges = new Map<string, StoredChange[]>();
   const syncCalls: Array<{
@@ -131,19 +133,44 @@ test('shares confirmed dinner recipes with House members while isolating outside
   await page.route('**/v1/ai-recipes/consent', async (route) => {
     const userId = currentUser?.id ?? 'guest';
     if (route.request().method() === 'GET') {
-      await route.fulfill({ status: 200, json: { consent: { enabled: consentByUser.get(userId) ?? false, updatedAt: '2026-09-24T10:00:00.000Z' } } });
+      const homeProvider = homeConsentByUser.get(userId);
+      const dinnerProvider = dinnerConsentByUser.get(userId);
+      await route.fulfill({ status: 200, json: {
+        consent: { enabled: consentByUser.get(userId) ?? false, updatedAt: '2026-09-24T10:00:00.000Z', ...(homeProvider === undefined ? {} : { homeProvider }), ...(dinnerProvider === undefined ? {} : { dinnerProvider }) },
+        selectedProvider: 'openai',
+      } });
       return;
     }
     if (route.request().method() === 'PUT') {
-      const body = route.request().postDataJSON() as { enabled: boolean };
-      consentByUser.set(userId, body.enabled);
-      await route.fulfill({ status: 200, json: { consent: { enabled: body.enabled, updatedAt: '2026-09-24T10:01:00.000Z' } } });
+      const body = route.request().postDataJSON() as { enabled?: boolean; homeProvider?: 'openai' | 'gemini'; dinnerProvider?: 'openai' | 'gemini' | null; expectedRevision?: string };
+      expect(body.expectedRevision).toBeDefined();
+      if (body.enabled !== undefined) {
+        if (body.enabled) expect(body.homeProvider).toBe('openai');
+        consentByUser.set(userId, body.enabled);
+        if (!body.enabled) {
+          homeConsentByUser.delete(userId);
+          dinnerConsentByUser.delete(userId);
+        }
+      }
+      if (body.homeProvider !== undefined) homeConsentByUser.set(userId, body.homeProvider);
+      if (body.dinnerProvider === null) dinnerConsentByUser.delete(userId);
+      else if (body.dinnerProvider !== undefined) {
+        expect(body.dinnerProvider).toBe('openai');
+        dinnerConsentByUser.set(userId, body.dinnerProvider);
+      }
+      const homeProvider = homeConsentByUser.get(userId);
+      const dinnerProvider = dinnerConsentByUser.get(userId);
+      await route.fulfill({ status: 200, json: {
+        consent: { enabled: consentByUser.get(userId) ?? false, updatedAt: '2026-09-24T10:01:00.000Z', ...(homeProvider === undefined ? {} : { homeProvider }), ...(dinnerProvider === undefined ? {} : { dinnerProvider }) },
+        selectedProvider: 'openai',
+      } });
       return;
     }
     await route.fallback();
   });
   await page.route('**/v1/ai-dinner-reconstruction', async (route) => {
-    if (currentUser?.id !== admin.id || consentByUser.get(admin.id) !== true) {
+    if (currentUser?.id !== admin.id || consentByUser.get(admin.id) !== true
+      || homeConsentByUser.get(admin.id) !== 'openai' || dinnerConsentByUser.get(admin.id) !== 'openai') {
       await route.fulfill({ status: 403, json: { code: 'ai_consent_required', message: 'AI consent is required' } });
       return;
     }
@@ -296,9 +323,12 @@ test('shares confirmed dinner recipes with House members while isolating outside
 
   await page.goto('/dinner-diary');
   await expect(page.getByRole('heading', { name: 'Diario delle cene' })).toBeVisible();
-  const consent = page.getByRole('checkbox', { name: 'Acconsento all’uso AI del testo della cena e delle porzioni' });
-  await consent.check();
-  await page.getByRole('button', { name: 'Salva consenso' }).click();
+  const globalConsent = page.getByRole('checkbox', { name: /OpenAI.*ingredienti della dispensa.*profilo alimentare/i });
+  await globalConsent.check();
+  await page.getByRole('button', { name: 'Salva consenso AI globale' }).click();
+  const dinnerConsent = page.getByRole('checkbox', { name: 'Acconsento all’invio a OpenAI del testo della cena e delle porzioni' });
+  await dinnerConsent.check();
+  await page.getByRole('button', { name: 'Salva consenso Dinner' }).click();
   await page.getByLabel('Data della cena').fill('2026-09-24');
   await page.getByLabel('Porzioni (facoltative)').fill('2');
   await page.getByLabel('Com’è andata la cena?').fill(dinnerText);

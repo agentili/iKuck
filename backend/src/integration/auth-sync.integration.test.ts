@@ -3,7 +3,9 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import { and, eq, sql } from 'drizzle-orm';
+import postgres from 'postgres';
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { createApp } from '../app.js';
 import { createAuthService } from '../auth/service.js';
@@ -11,19 +13,30 @@ import { createDrizzleAuthRepository } from '../auth/repository.js';
 import { createCache } from '../cache/client.js';
 import { createDatabase } from '../db/client.js';
 import { houseMemberships, houses, processedSyncMutations, syncItems, users } from '../db/schema.js';
+import * as schema from '../db/schema.js';
 import { createDrizzleHouseRepository } from '../house/repository.js';
 import { createHouseService } from '../house/service.js';
 import { createDrizzleProfileRepository } from '../profile/repository.js';
-import { createDrizzleSyncRepository } from '../sync/repository.js';
+import { createDrizzleSyncRepository, DEFAULT_AI_CONSENT_REVISION } from '../sync/repository.js';
 import type { PantryLot, SyncMutation } from '@ikuck/shared/contracts';
 import { hashOpaqueToken, createOpaqueToken } from '../auth/tokens.js';
-import { createRedisGenerationRateLimiter } from '../ai/rateLimit.js';
+import { createRedisGenerationRateLimiter, type GenerationRateLimiter } from '../ai/rateLimit.js';
 import type { RecipeGenerationProvider } from '../providers/types.js';
 
 const databaseUrl = process.env.INTEGRATION_DATABASE_URL;
 const redisUrl = process.env.INTEGRATION_REDIS_URL;
 const runIntegration = databaseUrl !== undefined && redisUrl !== undefined ? describe : describe.skip;
 const appOrigin = 'http://127.0.0.1:4173';
+const waitWithin = <T>(promise: Promise<T>, label: string, timeoutMs = 1_500): Promise<T> => new Promise((resolve, reject) => {
+  const timeout = setTimeout(() => reject(new Error(`${label} did not resolve within ${timeoutMs}ms`)), timeoutMs);
+  void promise.then((value) => {
+    clearTimeout(timeout);
+    resolve(value);
+  }, (error: unknown) => {
+    clearTimeout(timeout);
+    reject(error);
+  });
+});
 
 runIntegration('PostgreSQL and Redis auth/sync integration', () => {
   const database = databaseUrl === undefined ? null : createDatabase(databaseUrl);
@@ -95,6 +108,7 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
         repository: sync,
         authService: auth,
         appOrigin,
+        recipeProvider: 'openai',
       },
     });
     await app.ready();
@@ -278,6 +292,415 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
       await lockTransaction;
     }
   });
+
+  it('compares AI consent revisions atomically across separate PostgreSQL repository instances', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const userId = randomUUID();
+    await database.db.insert(users).values({
+      id: userId,
+      email: `consent-lock-${userId}@example.com`,
+      emailVerifiedAt: new Date(),
+    });
+    const firstRepository = createDrizzleSyncRepository(database.db);
+    const secondRepository = createDrizzleSyncRepository(database.db);
+    const expectedRevision = '1970-01-01T00:00:00.000Z';
+    const outcomes = await Promise.allSettled([
+      firstRepository.updateAiConsent(userId, { enabled: true, homeProvider: 'openai', expectedRevision }),
+      secondRepository.updateAiConsent(userId, { enabled: true, homeProvider: 'openai', expectedRevision }),
+    ]);
+
+    expect(outcomes.map(({ status }) => status).sort()).toEqual(['fulfilled', 'rejected']);
+    const rejected = outcomes.find((outcome) => outcome.status === 'rejected');
+    expect(rejected?.status).toBe('rejected');
+    if (rejected?.status === 'rejected') {
+      expect(rejected.reason).toMatchObject({ code: 'ai_consent_revision_conflict' });
+    }
+    const winner = outcomes.find((outcome) => outcome.status === 'fulfilled');
+    expect(winner?.status).toBe('fulfilled');
+    if (winner?.status !== 'fulfilled') throw new Error('A consent CAS winner is required');
+
+    const stored = await secondRepository.readEntity(userId, 'ai_consent', 'profile');
+    expect(stored?.payload).toMatchObject({ enabled: true });
+    expect(stored?.payload).not.toHaveProperty('dinnerProvider');
+    expect((stored?.payload as { updatedAt: string }).updatedAt).not.toBe(expectedRevision);
+    await expect(secondRepository.updateAiConsent(userId, {
+      dinnerProvider: 'openai', expectedRevision,
+    })).rejects.toMatchObject({ code: 'ai_consent_revision_conflict' });
+  });
+
+  it('serializes two consent writers on a max-two pool without reserving a second connection per writer', async () => {
+    if (database === null || databaseUrl === undefined) throw new Error('Integration database is not configured');
+    const userId = randomUUID();
+    await database.db.insert(users).values({
+      id: userId, email: `consent-pool-two-${userId}@example.com`, emailVerifiedAt: new Date(),
+    });
+
+    const client = postgres(databaseUrl, { max: 2, idle_timeout: 1 });
+    const poolDb = drizzle(client, { schema });
+    let signalFirstTransaction!: () => void;
+    let releaseFirstTransaction!: () => void;
+    const firstTransactionReached = new Promise<void>((resolve) => { signalFirstTransaction = resolve; });
+    const firstTransactionGate = new Promise<void>((resolve) => { releaseFirstTransaction = resolve; });
+    let transactionCalls = 0;
+    const actualTransaction = poolDb.transaction.bind(poolDb);
+    const gatedDb = new Proxy(poolDb, {
+      get(target, property, receiver) {
+        if (property !== 'transaction') return Reflect.get(target, property, receiver);
+        return async (...args: unknown[]) => {
+          transactionCalls += 1;
+          if (transactionCalls === 1) {
+            signalFirstTransaction();
+            await firstTransactionGate;
+          }
+          return Reflect.apply(actualTransaction, target, args);
+        };
+      },
+    }) as typeof poolDb;
+    const repository = createDrizzleSyncRepository(gatedDb);
+    const update = () => repository.updateAiConsent(userId, {
+      enabled: true,
+      homeProvider: 'openai',
+      expectedRevision: '1970-01-01T00:00:00.000Z',
+    });
+    const firstWriter = update();
+    await firstTransactionReached;
+    const secondWriter = update();
+    let blockedPid: number | null = null;
+
+    try {
+      for (let attempt = 0; attempt < 50 && blockedPid === null; attempt += 1) {
+        const waiting = await database.db.execute(sql`SELECT pid FROM pg_stat_activity
+          WHERE state = 'active' AND wait_event_type = 'Lock' AND query LIKE '%pg_advisory_%'`);
+        blockedPid = (waiting[0] as { pid: number } | undefined)?.pid ?? null;
+        if (blockedPid === null) await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(blockedPid).toBeNull();
+      releaseFirstTransaction();
+      const outcomes = await Promise.allSettled([firstWriter, secondWriter]);
+      expect(outcomes.map(({ status }) => status).sort()).toEqual(['fulfilled', 'rejected']);
+      const conflict = outcomes.find((outcome) => outcome.status === 'rejected');
+      expect(conflict).toMatchObject({ status: 'rejected', reason: { code: 'ai_consent_revision_conflict' } });
+      await expect(poolDb.execute(sql`SELECT 1 AS pool_available`)).resolves.toBeDefined();
+    } finally {
+      releaseFirstTransaction();
+      if (blockedPid !== null) await database.db.execute(sql`SELECT pg_cancel_backend(${blockedPid})`);
+      await Promise.allSettled([firstWriter, secondWriter]);
+      await client.end({ timeout: 5 });
+    }
+  }, 10_000);
+
+  it('runs one AI dispatch at a time on a max-two pool in FIFO order while ordinary queries continue', async () => {
+    if (database === null || databaseUrl === undefined) throw new Error('Integration database is not configured');
+    const userId = randomUUID();
+    await database.db.insert(users).values({
+      id: userId, email: `dispatch-pool-two-${userId}@example.com`, emailVerifiedAt: new Date(),
+    });
+    const client = postgres(databaseUrl, { max: 2, idle_timeout: 1 });
+    const poolDb = drizzle(client, { schema });
+    const repository = createDrizzleSyncRepository(poolDb);
+    const enabled = await repository.updateAiConsent(userId, {
+      enabled: true,
+      homeProvider: 'openai',
+      expectedRevision: DEFAULT_AI_CONSENT_REVISION,
+    });
+    const ids = ['first', 'second', 'third'];
+    const started: string[] = [];
+    let active = 0;
+    let maximumActive = 0;
+    const startSignals = new Map<string, () => void>();
+    const startWaiters = new Map(ids.map((id) => [id, new Promise<void>((resolve) => { startSignals.set(id, resolve); })]));
+    const releaseSignals = new Map<string, () => void>();
+    const releaseWaiters = new Map(ids.map((id) => [id, new Promise<void>((resolve) => { releaseSignals.set(id, resolve); })]));
+    const requests = ids.map((id) => repository.withAiConsentDispatch(userId, { kind: 'home', provider: 'openai' }, async () => {
+      started.push(id);
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      startSignals.get(id)?.();
+      await releaseWaiters.get(id);
+      active -= 1;
+      return id;
+    }));
+
+    try {
+      await waitWithin(startWaiters.get('first')!, 'first dispatch');
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(started).toEqual(['first']);
+      await expect(waitWithin(poolDb.execute(sql`SELECT 1 AS available_during_dispatch`), 'ordinary pool query', 250)).resolves.toBeDefined();
+
+      releaseSignals.get('first')?.();
+      await waitWithin(startWaiters.get('second')!, 'second dispatch');
+      expect(started).toEqual(['first', 'second']);
+      releaseSignals.get('second')?.();
+      await waitWithin(startWaiters.get('third')!, 'third dispatch');
+      expect(started).toEqual(['first', 'second', 'third']);
+      releaseSignals.get('third')?.();
+
+      await expect(Promise.all(requests)).resolves.toEqual(ids);
+      expect(maximumActive).toBe(1);
+      expect(enabled.enabled).toBe(true);
+    } finally {
+      for (const release of releaseSignals.values()) release();
+      await Promise.allSettled(requests);
+      await client.end({ timeout: 5 });
+    }
+  }, 10_000);
+
+  it('caps a max-ten pool at two dispatches while preserving FIFO and ordinary queries', async () => {
+    if (database === null || databaseUrl === undefined) throw new Error('Integration database is not configured');
+    const userIds = Array.from({ length: 10 }, () => randomUUID());
+    await database.db.insert(users).values(userIds.map((id) => ({
+      id,
+      email: `dispatch-pool-ten-${id}@example.com`,
+      emailVerifiedAt: new Date(),
+    })));
+    const client = postgres(databaseUrl, { max: 10, idle_timeout: 1 });
+    const poolDb = drizzle(client, { schema });
+    const repository = createDrizzleSyncRepository(poolDb);
+    for (const userId of userIds) {
+      await repository.updateAiConsent(userId, {
+        enabled: true, homeProvider: 'openai', expectedRevision: DEFAULT_AI_CONSENT_REVISION,
+      });
+    }
+    const ids = Array.from({ length: 10 }, (_, index) => `dispatch-${index}`);
+    const started: string[] = [];
+    let active = 0;
+    let maximumActive = 0;
+    const startSignals = new Map<string, () => void>();
+    const startWaiters = new Map(ids.map((id) => [id, new Promise<void>((resolve) => { startSignals.set(id, resolve); })]));
+    const releaseSignals = new Map<string, () => void>();
+    const releaseWaiters = new Map(ids.map((id) => [id, new Promise<void>((resolve) => { releaseSignals.set(id, resolve); })]));
+    const requests = ids.map((id, index) => repository.withAiConsentDispatch(userIds[index]!, { kind: 'home', provider: 'openai' }, async () => {
+      started.push(id);
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      startSignals.get(id)?.();
+      await releaseWaiters.get(id);
+      active -= 1;
+      return id;
+    }));
+
+    try {
+      await waitWithin(Promise.all([startWaiters.get(ids[0])!, startWaiters.get(ids[1])!]), 'first two dispatches');
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(started).toEqual(ids.slice(0, 2));
+      await expect(waitWithin(poolDb.execute(sql`SELECT 1 AS available_during_dispatch`), 'ordinary max-ten pool query', 250)).resolves.toBeDefined();
+
+      releaseSignals.get(ids[0]!)?.();
+      await waitWithin(startWaiters.get(ids[2])!, 'third FIFO dispatch');
+      expect(started).toEqual(ids.slice(0, 3));
+      for (const release of releaseSignals.values()) release();
+      await expect(Promise.all(requests)).resolves.toEqual(ids);
+      expect(maximumActive).toBe(2);
+    } finally {
+      for (const release of releaseSignals.values()) release();
+      await Promise.allSettled(requests);
+      await client.end({ timeout: 5 });
+    }
+  }, 10_000);
+
+  it('serializes an in-flight AI dispatch with consent revocation across PostgreSQL repositories', async () => {
+    if (database === null) throw new Error('Integration database is not configured');
+    const userId = randomUUID();
+    await database.db.insert(users).values({
+      id: userId,
+      email: `consent-dispatch-${userId}@example.com`,
+      emailVerifiedAt: new Date(),
+    });
+    const firstRepository = createDrizzleSyncRepository(database.db);
+    const secondRepository = createDrizzleSyncRepository(database.db);
+    await firstRepository.updateAiConsent(userId, {
+      enabled: true,
+      homeProvider: 'openai',
+      expectedRevision: '1970-01-01T00:00:00.000Z',
+    });
+
+    let markDispatchStarted!: () => void;
+    let resumeDispatch!: () => void;
+    const dispatchStarted = new Promise<void>((resolve) => { markDispatchStarted = resolve; });
+    const dispatchGate = new Promise<void>((resolve) => { resumeDispatch = resolve; });
+    const inFlightDispatch = firstRepository.withAiConsentDispatch(userId, { kind: 'home', provider: 'openai' }, async () => {
+      markDispatchStarted();
+      await dispatchGate;
+      return 'provider completed';
+    });
+    await dispatchStarted;
+
+    let revokeAcknowledged = false;
+    const revoke = secondRepository.updateAiConsent(userId, { enabled: false }).then((consent) => {
+      revokeAcknowledged = true;
+      return consent;
+    });
+    let consentLockWaiters = 0;
+    for (let attempt = 0; attempt < 100 && consentLockWaiters === 0; attempt += 1) {
+      const waiting = await database.db.execute(sql`SELECT pid FROM pg_stat_activity
+        WHERE state = 'active' AND wait_event_type = 'Lock' AND query LIKE '%pg_advisory_%'`);
+      consentLockWaiters = waiting.length;
+      if (consentLockWaiters === 0) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(consentLockWaiters).toBeGreaterThan(0);
+    expect(revokeAcknowledged).toBe(false);
+
+    resumeDispatch();
+    await expect(inFlightDispatch).resolves.toBe('provider completed');
+    await expect(revoke).resolves.toMatchObject({ enabled: false });
+    await expect(secondRepository.withAiConsentDispatch(userId, { kind: 'home', provider: 'openai' }, async () => 'must not dispatch'))
+      .rejects.toMatchObject({ code: 'ai_consent_required' });
+  });
+
+  it('orders provider dispatch, API revocation, and generic sync across two independent PostgreSQL pools', async () => {
+    if (database === null || databaseUrl === undefined || cache === null) throw new Error('Integration services are not configured');
+    const integrationDatabase = database;
+    const integrationDatabaseUrl = databaseUrl;
+    const integrationCache = cache;
+    const firstDatabase = createDatabase(integrationDatabaseUrl);
+    const secondDatabase = createDatabase(integrationDatabaseUrl);
+    const firstRepository = createDrizzleSyncRepository(firstDatabase.db);
+    const secondRepository = createDrizzleSyncRepository(secondDatabase.db);
+    const authRepository = createDrizzleAuthRepository(secondDatabase.db);
+    const user = await authRepository.createUser({
+      email: `cross-pool-consent-${randomUUID()}@example.com`, passwordHash: null, emailVerifiedAt: new Date(),
+    });
+    const sessionToken = createOpaqueToken();
+    const csrfToken = `cross-pool-csrf-${randomUUID()}`;
+    await authRepository.createSession({
+      userId: user.id, tokenHash: sessionToken.hash, csrfTokenHash: hashOpaqueToken(csrfToken),
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    const authService = createAuthService({
+      repository: authRepository,
+      email: { send: async () => ({ messageId: 'cross-pool-test' }) },
+      appOrigin,
+      tokenFactory: () => ({ raw: `cross-pool-${randomUUID()}`, hash: randomUUID() }),
+    });
+    const headers = {
+      cookie: `ikuck_session=${sessionToken.raw}`,
+      origin: appOrigin,
+      'x-csrf-token': csrfToken,
+    };
+    await firstRepository.updateAiConsent(user.id, {
+      enabled: true,
+      homeProvider: 'openai',
+      expectedRevision: DEFAULT_AI_CONSENT_REVISION,
+    });
+
+    let signalProvider!: () => void;
+    let releaseProvider!: () => void;
+    const providerStarted = new Promise<void>((resolve) => { signalProvider = resolve; });
+    const providerGate = new Promise<void>((resolve) => { releaseProvider = resolve; });
+    let providerCalls = 0;
+    const provider: RecipeGenerationProvider = {
+      generate: async () => {
+        providerCalls += 1;
+        signalProvider();
+        await providerGate;
+        return {
+          title: 'Bozza cross-pool', description: 'Prova sintetica.', ingredients: [{ name: 'Ceci', amount: '200 g' }],
+          steps: ['Cuoci i ceci.'], diets: ['vegan'], allergens: [],
+        };
+      },
+    };
+    const limiter: GenerationRateLimiter = {
+      consume: async () => ({ allowed: true, used: 1, remaining: 9999 }),
+      reserve: async () => ({
+        quota: { allowed: true, used: 1, remaining: 9999 },
+        commit: async () => undefined,
+        release: async () => undefined,
+      }),
+    };
+    const dependencies = (databaseForApp: ReturnType<typeof createDatabase>, repository: ReturnType<typeof createDrizzleSyncRepository>, selectedProvider: RecipeGenerationProvider) => ({
+      database: databaseForApp,
+      cache: integrationCache,
+      aiRecipes: {
+        provider: selectedProvider,
+        dinnerReconstructionProvider: { reconstruct: async () => [] },
+        limiter,
+        repository,
+        authService,
+        appOrigin,
+        recipeProvider: 'openai' as const,
+      },
+    });
+    const dispatchApp = createApp(dependencies(firstDatabase, firstRepository, provider));
+    const revokeApp = createApp({
+      ...dependencies(secondDatabase, secondRepository, { generate: async () => ({
+        title: 'unused', description: 'unused', ingredients: [{ name: 'Ceci', amount: '1' }],
+        steps: ['unused'], diets: ['vegan'], allergens: [],
+      }) }),
+      sync: { repository: secondRepository, authService, appOrigin },
+    });
+
+    const generationPayload = {
+      ingredients: ['Ceci'], constraints: [],
+      dietProfile: { diet: 'vegan', excludedAllergens: [], nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null } },
+    };
+    const generation = dispatchApp.inject({ method: 'POST', url: '/v1/ai-recipes', headers, payload: generationPayload });
+    const pendingOperations: Promise<unknown>[] = [generation];
+    let apiRevocationAcknowledged = false;
+    let syncRevocationAcknowledged = false;
+
+    try {
+      await waitWithin(providerStarted, 'fake provider dispatch');
+      const apiRevocation = revokeApp.inject({
+        method: 'PUT', url: '/v1/ai-recipes/consent', headers, payload: { enabled: false },
+      }).then((response) => { apiRevocationAcknowledged = true; return response; });
+      const syncRevocation = revokeApp.inject({
+        method: 'POST', url: '/v1/sync', headers,
+        payload: {
+          deviceId: 'cross-pool-sync-device', cursor: 0,
+          mutations: [{
+            mutationId: `cross-pool-revoke-${randomUUID()}`, deviceId: 'cross-pool-sync-device', entityType: 'ai_consent',
+            entityId: 'profile', operation: 'upsert', payload: { enabled: false, updatedAt: new Date().toISOString() },
+            clientUpdatedAt: new Date().toISOString(), syncScope: `account:${user.id}`,
+          }],
+        },
+      }).then((response) => { syncRevocationAcknowledged = true; return response; });
+      pendingOperations.push(apiRevocation, syncRevocation);
+      let lockWaiters = 0;
+      for (let attempt = 0; attempt < 100 && lockWaiters < 2; attempt += 1) {
+        const waiting = await integrationDatabase.db.execute(sql`SELECT pid FROM pg_stat_activity
+          WHERE state = 'active' AND wait_event_type = 'Lock' AND query LIKE '%pg_advisory_%'`);
+        lockWaiters = waiting.length;
+        if (lockWaiters < 2) await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(lockWaiters).toBeGreaterThanOrEqual(2);
+      expect(apiRevocationAcknowledged).toBe(false);
+      expect(syncRevocationAcknowledged).toBe(false);
+
+      releaseProvider();
+      const [generated, revoked, synced] = await Promise.all([generation, apiRevocation, syncRevocation]);
+      expect(generated.statusCode).toBe(201);
+      expect(revoked.statusCode).toBe(200);
+      expect(synced.statusCode).toBe(200);
+
+      const nextProviderCall = await dispatchApp.inject({ method: 'POST', url: '/v1/ai-recipes', headers, payload: generationPayload });
+      expect(nextProviderCall.statusCode).toBe(403);
+      expect(nextProviderCall.json()).toMatchObject({ code: 'ai_consent_required' });
+      expect(providerCalls).toBe(1);
+
+      await firstDatabase.db.update(syncItems).set({
+        payload: { enabled: true, updatedAt: new Date().toISOString() },
+        clientUpdatedAt: new Date(), updatedAt: new Date(),
+        serverSequence: sql`nextval('sync_server_sequence')`,
+      }).where(and(
+        eq(syncItems.userId, user.id),
+        eq(syncItems.scopeType, 'user'),
+        eq(syncItems.scopeId, user.id),
+        eq(syncItems.entityType, 'ai_consent'),
+        eq(syncItems.entityId, 'profile'),
+      ));
+      const legacyProviderCall = await dispatchApp.inject({ method: 'POST', url: '/v1/ai-recipes', headers, payload: generationPayload });
+      expect(legacyProviderCall.statusCode).toBe(403);
+      expect(legacyProviderCall.json()).toMatchObject({ code: 'ai_consent_required' });
+      expect(providerCalls).toBe(1);
+    } finally {
+      releaseProvider();
+      await Promise.allSettled(pendingOperations);
+      await dispatchApp.close();
+      await revokeApp.close();
+      await firstDatabase.close();
+      await secondDatabase.close();
+    }
+  }, 15_000);
 
   it('confirms and reuses a diary recipe through the PostgreSQL-backed route', async () => {
     if (database === null) throw new Error('Integration database is not configured');
@@ -494,10 +917,10 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     const member = await authRepository.createUser({ email: `export-member-${suffix}@example.com`, passwordHash: null, emailVerifiedAt: new Date() });
     const houseId = (await service.createHouse(admin.id, 'Casa esportata')).state.house!.id;
     await service.addMember(admin.id, member.email);
-    await syncRepository.applyMutation(member.id, {
-      mutationId: randomUUID(), deviceId: `export-${suffix}`, entityType: 'ai_consent', entityId: 'profile',
-      operation: 'upsert', payload: { enabled: true, updatedAt: new Date().toISOString() },
-      clientUpdatedAt: new Date().toISOString(), syncScope: `account:${member.id}`,
+    await syncRepository.updateAiConsent(member.id, {
+      enabled: true,
+      homeProvider: 'openai',
+      expectedRevision: DEFAULT_AI_CONSENT_REVISION,
     });
     const itemId = `export-item-${suffix}`;
     await syncRepository.applyMutation(admin.id, {
@@ -984,11 +1407,17 @@ runIntegration('PostgreSQL and Redis auth/sync integration', () => {
     expect(dietProfileRead.statusCode).toBe(200);
     expect(dietProfileRead.json<{ profile: { diet: string } }>().profile.diet).toBe('vegetarian');
 
+    const currentAiConsent = await app.inject({
+      method: 'GET',
+      url: '/v1/ai-recipes/consent',
+      headers: { cookie },
+    });
+    expect(currentAiConsent.statusCode).toBe(200);
     const aiConsent = await app.inject({
       method: 'PUT',
       url: '/v1/ai-recipes/consent',
       headers: { origin: appOrigin, cookie, 'x-csrf-token': loginBody.csrfToken },
-      payload: { enabled: true },
+      payload: { enabled: true, homeProvider: 'openai', expectedRevision: currentAiConsent.json<{ consent: { updatedAt: string } }>().consent.updatedAt },
     });
     expect(aiConsent.statusCode).toBe(200);
     const aiRecipe = await app.inject({

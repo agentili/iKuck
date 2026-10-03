@@ -39,12 +39,14 @@ interface TestOptions {
   authenticated?: boolean;
   dinnerProvider?: DinnerReconstructionProvider;
   limiter?: GenerationRateLimiter;
+  recipeProvider?: 'openai' | 'gemini';
 }
 
 const createTestApp = ({
   authenticated = true,
   dinnerProvider = { reconstruct: vi.fn().mockResolvedValue([recipeDraft]) },
   limiter = { consume: vi.fn().mockResolvedValue({ allowed: true, used: 1, remaining: 9999 }) },
+  recipeProvider = 'openai',
 }: TestOptions = {}) => {
   const repository = createMemorySyncRepository();
   const authService = { authenticate: vi.fn().mockResolvedValue(session(authenticated)) } as unknown as AuthService;
@@ -59,14 +61,24 @@ const createTestApp = ({
       repository,
       authService,
       appOrigin,
+      recipeProvider,
     },
   });
   return { app, repository, dinnerProvider, limiter };
 };
 
-const enableConsent = async (app: ReturnType<typeof createApp>) => app.inject({
-  method: 'PUT', url: '/v1/ai-recipes/consent', headers, payload: { enabled: true },
-});
+const enableConsent = async (app: ReturnType<typeof createApp>, recipeProvider: 'openai' | 'gemini' = 'openai') => {
+  const current = await app.inject({ method: 'GET', url: '/v1/ai-recipes/consent', headers });
+  const globalConsent = await app.inject({
+    method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+    payload: { enabled: true, homeProvider: recipeProvider, expectedRevision: current.json().consent.updatedAt },
+  });
+  if (globalConsent.statusCode !== 200) return globalConsent;
+  return app.inject({
+    method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+    payload: { dinnerProvider: recipeProvider, expectedRevision: globalConsent.json().consent.updatedAt },
+  });
+};
 
 const requestDrafts = (app: ReturnType<typeof createApp>, payload: unknown, requestHeaders = headers) => app.inject({
   method: 'POST', url: '/v1/ai-dinner-reconstruction', headers: requestHeaders, payload,
@@ -93,10 +105,51 @@ describe('AI dinner reconstruction route', () => {
     expect(accepted.statusCode).toBe(200);
     expect(accepted.json()).toMatchObject({ drafts: [suppliedServingDraft], quota: { allowed: true } });
     expect(dinnerProvider.reconstruct).toHaveBeenCalledOnce();
-    expect(dinnerProvider.reconstruct).toHaveBeenCalledWith(payload);
+    expect(dinnerProvider.reconstruct).toHaveBeenCalledWith({ ...payload, signal: expect.any(AbortSignal) });
     expect(limiter.consume).toHaveBeenCalledWith('user-1');
     const mutations = await repository.readAll('user-1');
     expect(mutations.map(({ entityType }) => entityType)).toEqual(['ai_consent']);
+    await app.close();
+  });
+
+  it('fails closed for legacy global consent when the selected dinner provider has no explicit approval', async () => {
+    const dinnerProvider = { reconstruct: vi.fn().mockResolvedValue([recipeDraft]) };
+    const limiter = { consume: vi.fn().mockResolvedValue({ allowed: true, used: 1, remaining: 9999 }) };
+    const { app, repository } = createTestApp({ dinnerProvider, limiter, recipeProvider: 'gemini' });
+    await repository.applyMutation('user-1', {
+      mutationId: 'legacy-ai-consent',
+      deviceId: 'test-device',
+      entityType: 'ai_consent',
+      entityId: 'profile',
+      operation: 'upsert',
+      payload: { enabled: true, updatedAt: '2026-09-24T00:00:00.000Z' },
+      clientUpdatedAt: '2026-09-24T00:00:00.000Z',
+    });
+
+    const denied = await requestDrafts(app, { dinnerText: 'Pasta con zucchine', servings: null });
+
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json()).toMatchObject({ code: 'ai_consent_required' });
+    expect(limiter.consume).not.toHaveBeenCalled();
+    expect(dinnerProvider.reconstruct).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('denies a previously approved OpenAI provider after selection switches to Gemini', async () => {
+    const dinnerProvider = { reconstruct: vi.fn().mockResolvedValue([recipeDraft]) };
+    const limiter = { consume: vi.fn().mockResolvedValue({ allowed: true, used: 1, remaining: 9999 }) };
+    const { app, repository } = createTestApp({ dinnerProvider, limiter, recipeProvider: 'gemini' });
+    const globalConsent = await repository.updateAiConsent('user-1', {
+      enabled: true, homeProvider: 'openai', expectedRevision: '1970-01-01T00:00:00.000Z',
+    });
+    await repository.updateAiConsent('user-1', { dinnerProvider: 'openai', expectedRevision: globalConsent.updatedAt });
+
+    const denied = await requestDrafts(app, { dinnerText: 'Pasta con zucchine', servings: null });
+
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json()).toMatchObject({ code: 'ai_consent_required' });
+    expect(limiter.consume).not.toHaveBeenCalled();
+    expect(dinnerProvider.reconstruct).not.toHaveBeenCalled();
     await app.close();
   });
 
@@ -118,8 +171,8 @@ describe('AI dinner reconstruction route', () => {
     const providers = createProviders({ providers: {
       recipeProvider: 'gemini', geminiApiKey: 'synthetic-gemini-key', geminiModel: 'gemini-route-test',
     } }, { fetch });
-    const { app, repository, limiter } = createTestApp({ dinnerProvider: providers.dinnerReconstruction });
-    await enableConsent(app);
+    const { app, repository, limiter } = createTestApp({ dinnerProvider: providers.dinnerReconstruction, recipeProvider: 'gemini' });
+    await enableConsent(app, 'gemini');
 
     const result = await requestDrafts(app, { dinnerText: 'Pasta con zucchine, poi insalata.', servings: null });
 

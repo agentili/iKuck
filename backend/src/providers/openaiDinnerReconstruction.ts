@@ -14,7 +14,7 @@ import {
   RECIPE_MAX_INGREDIENTS,
 } from '@ikuck/shared/limits';
 import { DIARY_SUGGESTED_FIELDS, type DiaryRecipeDraft } from '@ikuck/shared/dinnerDiary';
-import { FetchTimeoutError, fetchWithTimeout } from './fetchWithTimeout.js';
+import { FetchTimeoutError, fetchWithTimeoutBody } from './fetchWithTimeout.js';
 import { ProviderRequestError, ProviderTimeoutError, type DinnerReconstructionProvider } from './types.js';
 import {
   DINNER_RECONSTRUCTION_INSTRUCTIONS,
@@ -132,26 +132,28 @@ export const createOpenAiDinnerReconstructionProvider = ({
       },
     };
 
-    let response: Response;
+    let responseData: { ok: boolean; body: unknown; invalidJson: boolean };
     try {
-      response = await fetchWithTimeout(requestFetch, OPENAI_RESPONSES_URL, {
+      responseData = await fetchWithTimeoutBody(requestFetch, OPENAI_RESPONSES_URL, {
         method: 'POST',
         headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
         body: JSON.stringify(body),
-      }, timeoutMs);
+        signal: request.signal,
+      }, timeoutMs, async (response) => {
+        if (!response.ok) return { ok: false, body: null, invalidJson: false };
+        try {
+          return { ok: true, body: await response.json(), invalidJson: false };
+        } catch {
+          return { ok: true, body: null, invalidJson: true };
+        }
+      });
     } catch (error) {
       if (error instanceof FetchTimeoutError) throw new ProviderTimeoutError('dinner_reconstruction');
       throw new ProviderRequestError('dinner_reconstruction');
     }
-    if (!response.ok) throw new ProviderRequestError('dinner_reconstruction');
-
-    let responseBody: unknown;
-    try {
-      responseBody = await response.json();
-    } catch {
-      throw new ProviderRequestError('dinner_reconstruction', 'OpenAI response is not valid JSON');
-    }
-    const outputText = readOutputText(responseBody);
+    if (!responseData.ok) throw new ProviderRequestError('dinner_reconstruction');
+    if (responseData.invalidJson) throw new ProviderRequestError('dinner_reconstruction', 'OpenAI response is not valid JSON');
+    const outputText = readOutputText(responseData.body);
     if (outputText === null) throw new ProviderRequestError('dinner_reconstruction', 'OpenAI response contains no structured output');
     try {
       const parsed = JSON.parse(outputText) as unknown;

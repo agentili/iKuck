@@ -35,6 +35,43 @@ const waitForDietProfilePersistence = async (page: Page): Promise<void> => {
   }));
 };
 
+const waitForActivityPersistence = async (page: Page): Promise<void> => {
+  await page.waitForFunction(() => new Promise<boolean>((resolve) => {
+    const request = indexedDB.open('ikuck-local-v2');
+    request.onerror = () => resolve(false);
+    request.onsuccess = () => {
+      const database = request.result;
+      try {
+        const store = database.transaction('keyValue', 'readonly').objectStore('keyValue');
+        const events = store.get('activity');
+        const preferences = store.get('recipe-preferences');
+        events.onerror = () => { database.close(); resolve(false); };
+        preferences.onerror = () => { database.close(); resolve(false); };
+        preferences.onsuccess = () => {
+          const eventValue = events.result;
+          const preferenceValue = preferences.result;
+          database.close();
+          if (typeof eventValue !== 'string' || typeof preferenceValue !== 'string') {
+            resolve(false);
+            return;
+          }
+          try {
+            const eventItems = JSON.parse(eventValue) as { items?: Array<{ recipeId?: string }> };
+            const preferenceItems = JSON.parse(preferenceValue) as { items?: Array<{ recipeId?: string; note?: string }> };
+            resolve(eventItems.items?.some((item) => item.recipeId === 'pasta-tonno-pomodoro') === true
+              && preferenceItems.items?.some((item) => item.recipeId === 'pasta-tonno-pomodoro' && item.note === 'Da rifare presto') === true);
+          } catch {
+            resolve(false);
+          }
+        };
+      } catch {
+        database.close();
+        resolve(false);
+      }
+    };
+  }));
+};
+
 test.beforeEach(async ({ context, page }) => {
   await context.clearCookies();
   await installOfflineBackend(page);
@@ -330,6 +367,8 @@ test('activity records cooking, preferences and private notes offline', async ({
   await page.getByLabel('Nota privata sulla ricetta').fill('Da rifare presto');
   await page.getByRole('button', { name: 'Salva preferenza' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Preferenza salvata.' })).toHaveText('Preferenza salvata.');
+  // The success message reflects in-memory state; a full navigation must wait for both IndexedDB writes.
+  await waitForActivityPersistence(page);
 
   await page.goto('/activity');
   await expect(page.getByRole('heading', { name: 'La tua attività' })).toBeVisible();
@@ -368,6 +407,7 @@ test('manifest is available and the application works offline after first load',
 
 test('verified users can consent to private AI recipes without changing pantry lots', async ({ page }) => {
   let consentEnabled = false;
+  let consentHomeProvider: 'openai' | 'gemini' | null = null;
   const recipes: Array<Record<string, unknown>> = [];
   const generationBodies: unknown[] = [];
   const saveBodies: unknown[] = [];
@@ -397,13 +437,14 @@ test('verified users can consent to private AI recipes without changing pantry l
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname === '/v1/ai-recipes/consent' && request.method() === 'GET') {
-      await route.fulfill({ json: { consent: { enabled: consentEnabled, updatedAt: '2026-09-13T12:00:00.000Z' } } });
+      await route.fulfill({ json: { consent: { enabled: consentEnabled, updatedAt: '2026-09-13T12:00:00.000Z', ...(consentHomeProvider === null ? {} : { homeProvider: consentHomeProvider }) }, selectedProvider: 'openai' } });
       return;
     }
     if (url.pathname === '/v1/ai-recipes/consent' && request.method() === 'PUT') {
-      const body = request.postDataJSON() as { enabled: boolean };
+      const body = request.postDataJSON() as { enabled: boolean; homeProvider?: 'openai' | 'gemini' };
       consentEnabled = body.enabled;
-      await route.fulfill({ json: { consent: { enabled: consentEnabled, updatedAt: '2026-09-13T12:01:00.000Z' } } });
+      consentHomeProvider = consentEnabled ? body.homeProvider ?? null : null;
+      await route.fulfill({ json: { consent: { enabled: consentEnabled, updatedAt: '2026-09-13T12:01:00.000Z', ...(consentHomeProvider === null ? {} : { homeProvider: consentHomeProvider }) } } });
       return;
     }
     if (url.pathname === '/v1/ai-recipes' && request.method() === 'GET') {
@@ -472,7 +513,7 @@ test('verified users can consent to private AI recipes without changing pantry l
   await page.getByRole('link', { name: 'Home' }).click();
   await expect(page.getByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
   const aiPanel = page.getByRole('region', { name: 'Ricette AI private' });
-  const consent = aiPanel.getByRole('checkbox', { name: /acconsento all’uso degli ingredienti/i });
+  const consent = aiPanel.getByRole('checkbox', { name: /acconsento all’invio a .*ingredienti della dispensa/i });
   await expect(consent).toBeVisible();
   await consent.check();
   await aiPanel.getByRole('button', { name: 'Salva consenso' }).click();
@@ -504,7 +545,7 @@ test('verified users can consent to private AI recipes without changing pantry l
   await page.reload();
   await expect(page.getByRole('region', { name: 'Ricette AI private' }).getByRole('heading', { name: 'Ceci croccanti al pomodoro' })).toBeVisible();
   const reloadedAiPanel = page.getByRole('region', { name: 'Ricette AI private' });
-  await reloadedAiPanel.getByRole('checkbox', { name: /acconsento all’uso degli ingredienti/i }).uncheck();
+  await reloadedAiPanel.getByRole('checkbox', { name: /acconsento all’invio a .*ingredienti della dispensa/i }).uncheck();
   await reloadedAiPanel.getByRole('button', { name: 'Salva consenso' }).click();
   await expect(reloadedAiPanel.getByRole('button', { name: 'Genera ricetta AI' })).toHaveCount(0);
   await expect(reloadedAiPanel.getByRole('heading', { name: 'Ceci croccanti al pomodoro' })).toBeVisible();

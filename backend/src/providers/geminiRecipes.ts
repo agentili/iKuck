@@ -1,4 +1,4 @@
-import { FetchTimeoutError, fetchWithTimeout } from './fetchWithTimeout.js';
+import { FetchTimeoutError, fetchWithTimeoutBody } from './fetchWithTimeout.js';
 import { RECIPE_GENERATION_INSTRUCTIONS, serializeRecipeGenerationInput } from './recipePrompt.js';
 import {
   ProviderRequestError,
@@ -70,26 +70,28 @@ export const createGeminiRecipeProvider = ({ apiKey, model, fetch, timeoutMs = 3
       },
     };
 
-    let response: Response;
+    let responseData: { ok: boolean; body: unknown; invalidJson: boolean };
     try {
-      response = await fetchWithTimeout(requestFetch, `${GEMINI_API_URL}/${encodeURIComponent(model)}:generateContent`, {
+      responseData = await fetchWithTimeoutBody(requestFetch, `${GEMINI_API_URL}/${encodeURIComponent(model)}:generateContent`, {
         method: 'POST',
         headers: { 'x-goog-api-key': apiKey, 'content-type': 'application/json' },
         body: JSON.stringify(body),
-      }, timeoutMs);
+        signal: request.signal,
+      }, timeoutMs, async (response) => {
+        if (!response.ok) return { ok: false, body: null, invalidJson: false };
+        try {
+          return { ok: true, body: await response.json(), invalidJson: false };
+        } catch {
+          return { ok: true, body: null, invalidJson: true };
+        }
+      });
     } catch (error) {
       if (error instanceof FetchTimeoutError) throw new ProviderTimeoutError('recipes');
       throw new ProviderRequestError('recipes');
     }
-    if (!response.ok) throw new ProviderRequestError('recipes');
-
-    let responseBody: unknown;
-    try {
-      responseBody = await response.json();
-    } catch {
-      throw new ProviderRequestError('recipes', 'Gemini response is not valid JSON');
-    }
-    const outputText = readOutputText(responseBody);
+    if (!responseData.ok) throw new ProviderRequestError('recipes');
+    if (responseData.invalidJson) throw new ProviderRequestError('recipes', 'Gemini response is not valid JSON');
+    const outputText = readOutputText(responseData.body);
     if (outputText === null) throw new ProviderRequestError('recipes', 'Gemini response contains no structured output');
     try {
       const parsed = JSON.parse(outputText) as unknown;

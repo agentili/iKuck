@@ -1,17 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { LockKeyhole, Save, Sparkles, Trash2, X } from 'lucide-react';
-import type { DietProfilePayload, GeneratedRecipe } from '@ikuck/shared/contracts';
-import { RECIPE_MAX_INGREDIENTS } from '@ikuck/shared/limits';
+import type { AiConsent, AiRecipeProvider, DietProfilePayload, GeneratedRecipe } from '@ikuck/shared/contracts';
 import { ApiClientError } from '../../api/apiClient';
 import { type AuthUser } from '../../auth/authStore';
+import { deleteAiRecipe, fetchAiConsentStatus, fetchAiRecipes, generateAiRecipe, saveAiRecipe, updateAiConsent } from '../../ai/aiRecipeApi';
 import {
-  deleteAiRecipe,
-  fetchAiConsent,
-  fetchAiRecipes,
-  generateAiRecipe,
-  saveAiRecipe,
-  updateAiConsent,
-} from '../../ai/aiRecipeApi';
+  AI_RECIPE_PROPOSAL_HISTORY_LIMIT,
+  captureAiRecipeProposalGeneration,
+  clearAiRecipeProposalHistory,
+  isAiRecipeProposalGenerationCurrent,
+  loadAiRecipeProposalHistory,
+  storeAiRecipeProposalHistory,
+  subscribeToAiRecipeProposalRevocation,
+  type ProposedAiRecipe,
+} from '../../ai/aiRecipeHistory';
 import { ALLERGEN_LABELS, DIET_LABELS } from '../../domain/dietary';
 import UndoToast from '../feedback/UndoToast';
 
@@ -29,7 +31,7 @@ const errorMessage = (error: unknown): string => {
       ? (error as { code?: unknown }).code
       : undefined;
 
-  if (code === 'ai_daily_limit_reached') return 'Hai raggiunto il limite di cinque ricette AI al giorno.';
+  if (code === 'ai_daily_limit_reached') return 'Hai raggiunto il limite giornaliero per le ricette AI.';
   if (code === 'ai_consent_required') return 'Salva il consenso prima di generare una ricetta AI.';
   if (code === 'ai_recipe_incompatible') return 'La ricetta generata non rispetta i filtri alimentari attivi.';
   if (code === 'ai_recipe_not_novel') return 'L’IA ha riproposto un’idea troppo simile: non l’ho mostrata. Riprova per una ricetta diversa.';
@@ -41,63 +43,6 @@ const errorMessage = (error: unknown): string => {
 const normalizedIngredients = (ingredients: string[]): string[] => [...new Set(
   ingredients.map((ingredient) => ingredient.trim()).filter((ingredient) => ingredient.length > 0),
 )];
-
-const PROPOSED_RECIPE_HISTORY_LIMIT = 50;
-type ProposedRecipe = Pick<GeneratedRecipe, 'title' | 'ingredients'>;
-
-const proposalHistoryKey = (userId: string): string => `ikuck.ai-recipe-proposals:${userId}`;
-
-const isProposedRecipe = (value: unknown): value is ProposedRecipe => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const candidate = value as { title?: unknown; ingredients?: unknown };
-  return typeof candidate.title === 'string'
-    && candidate.title.trim().length > 0
-    && candidate.title.length <= 120
-    && Array.isArray(candidate.ingredients)
-    && candidate.ingredients.length > 0
-    && candidate.ingredients.length <= RECIPE_MAX_INGREDIENTS
-    && candidate.ingredients.every((ingredient: unknown) => (
-      typeof ingredient === 'object'
-      && ingredient !== null
-      && 'name' in ingredient
-      && typeof ingredient.name === 'string'
-      && ingredient.name.trim().length > 0
-      && ingredient.name.length <= 120
-      && 'amount' in ingredient
-      && typeof ingredient.amount === 'string'
-      && ingredient.amount.trim().length > 0
-      && ingredient.amount.length <= 80
-    ));
-};
-
-const loadProposedRecipes = (userId: string): ProposedRecipe[] => {
-  try {
-    const stored = window.localStorage.getItem(proposalHistoryKey(userId));
-    if (stored === null) return [];
-    const parsed: unknown = JSON.parse(stored);
-    return Array.isArray(parsed)
-      ? parsed.filter(isProposedRecipe).slice(-PROPOSED_RECIPE_HISTORY_LIMIT)
-      : [];
-  } catch {
-    return [];
-  }
-};
-
-const storeProposedRecipes = (userId: string, recipes: ProposedRecipe[]): void => {
-  try {
-    window.localStorage.setItem(proposalHistoryKey(userId), JSON.stringify(recipes.slice(-PROPOSED_RECIPE_HISTORY_LIMIT)));
-  } catch {
-    // The current component state still prevents repeats if browser storage is unavailable.
-  }
-};
-
-const clearProposedRecipes = (userId: string): void => {
-  try {
-    window.localStorage.removeItem(proposalHistoryKey(userId));
-  } catch {
-    // Consent revocation still disables generation if browser storage is unavailable.
-  }
-};
 
 const RecipeBody = ({ recipe }: { recipe: GeneratedRecipe }) => (
   <>
@@ -123,11 +68,12 @@ const RecipeBody = ({ recipe }: { recipe: GeneratedRecipe }) => (
 export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToken }: AiRecipePanelProps) {
   const verified = user !== null && user.emailVerifiedAt.trim().length > 0 && csrfToken !== null;
   const userId = user?.id ?? null;
-  const [consent, setConsent] = useState<{ enabled: boolean; updatedAt: string } | null>(null);
+  const [consent, setConsent] = useState<AiConsent | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<AiRecipeProvider | null>(null);
   const [consentDraft, setConsentDraft] = useState(false);
   const [recipes, setRecipes] = useState<GeneratedRecipe[]>([]);
   const [drafts, setDrafts] = useState<GeneratedRecipe[]>([]);
-  const [proposedRecipes, setProposedRecipes] = useState<Array<{ title: string; ingredients: GeneratedRecipe['ingredients'] }>>([]);
+  const [proposedRecipes, setProposedRecipes] = useState<ProposedAiRecipe[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -135,25 +81,76 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
   const [error, setError] = useState<string | null>(null);
   const [pendingDeletes, setPendingDeletes] = useState<GeneratedRecipe[]>([]);
   const pantryLabels = normalizedIngredients(ingredients);
+  const selectedProviderLabel = selectedProvider === 'openai'
+    ? 'OpenAI'
+    : selectedProvider === 'gemini'
+      ? 'Gemini di Google'
+      : null;
+  const homeConsentEnabled = consent?.enabled === true
+    && selectedProvider !== null
+    && consent.homeProvider === selectedProvider;
+  const consentEpochRef = useRef<number | null>(null);
+  const mountedRef = useRef(false);
+  const sessionScopeRef = useRef({ userId, csrfToken, verified, generation: 0 });
+  const selectedProviderRef = useRef(selectedProvider);
+
+  useLayoutEffect(() => {
+    const previousScope = sessionScopeRef.current;
+    if (previousScope.userId !== userId
+      || previousScope.csrfToken !== csrfToken
+      || previousScope.verified !== verified) {
+      sessionScopeRef.current = { userId, csrfToken, verified, generation: previousScope.generation + 1 };
+      consentEpochRef.current = null;
+    }
+    selectedProviderRef.current = selectedProvider;
+  }, [userId, csrfToken, verified, selectedProvider]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!verified || userId === null) return undefined;
+    return subscribeToAiRecipeProposalRevocation(userId, () => {
+      consentEpochRef.current = null;
+      setConsent((current) => current === null ? null : { ...current, enabled: false });
+      setConsentDraft(false);
+      setProposedRecipes([]);
+    });
+  }, [verified, userId]);
 
   useEffect(() => {
     let cancelled = false;
+    const proposalGeneration = userId === null ? null : captureAiRecipeProposalGeneration(userId);
+    consentEpochRef.current = null;
     setConsent(null);
+    setSelectedProvider(null);
     setConsentDraft(false);
     setRecipes([]);
     setDrafts([]);
     setProposedRecipes([]);
+    setIsGenerating(false);
     setSavingDraftId(null);
     setError(null);
-    if (!verified || userId === null) return undefined;
-    setProposedRecipes(loadProposedRecipes(userId));
+    if (!verified || userId === null || proposalGeneration === null) return undefined;
+    setProposedRecipes(loadAiRecipeProposalHistory(proposalGeneration));
 
     setIsLoading(true);
-    void Promise.all([fetchAiConsent(), fetchAiRecipes()])
-      .then(([nextConsent, nextRecipes]) => {
+    void Promise.all([fetchAiConsentStatus(), fetchAiRecipes()])
+      .then(([consentStatus, nextRecipes]) => {
         if (cancelled) return;
-        setConsent(nextConsent);
-        setConsentDraft(nextConsent.enabled);
+        if (!isAiRecipeProposalGenerationCurrent(proposalGeneration)) {
+          setConsent(null);
+          setSelectedProvider(null);
+          setConsentDraft(false);
+          setProposedRecipes([]);
+          return;
+        }
+        consentEpochRef.current = proposalGeneration.epoch;
+        setConsent(consentStatus.consent);
+        setSelectedProvider(consentStatus.selectedProvider);
+        setConsentDraft(consentStatus.consent.enabled && consentStatus.consent.homeProvider === consentStatus.selectedProvider);
         setRecipes(nextRecipes);
       })
       .catch((loadError: unknown) => {
@@ -166,7 +163,7 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
     return () => {
       cancelled = true;
     };
-  }, [verified, userId]);
+  }, [verified, userId, csrfToken]);
 
   if (!verified) {
     return (
@@ -177,48 +174,85 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
           </span>
           <div className="min-w-0 flex-1">
             <h2 className="text-xl font-black text-gray-950">Ricette AI private</h2>
-            <p className="mt-1 text-sm leading-relaxed text-gray-700">Le ricette AI private sono disponibili dopo la verifica dell’account. Gli ospiti possono continuare a usare il catalogo locale offline.</p>
+            <p className="mt-1 text-sm leading-relaxed text-gray-700">Per ospiti e account non verificati, le ricette AI private restano disattivate: ingredienti, profilo alimentare e ricette non vengono inviati a un provider AI. Dopo la verifica vedrai il destinatario e potrai dare un consenso esplicito.</p>
           </div>
         </div>
       </section>
     );
   }
 
-  const saveConsent = async () => {
-    if (csrfToken === null || user === null) return;
+  const saveConsent = async (enabled = consentDraft) => {
+    if (csrfToken === null || user === null || (enabled && selectedProvider === null)) return;
     setIsSaving(true);
     setError(null);
     try {
-      const nextConsent = await updateAiConsent(consentDraft, csrfToken);
+      const nextConsent = await updateAiConsent(enabled, csrfToken, consent?.updatedAt, undefined, enabled ? selectedProvider ?? undefined : undefined);
       setConsent(nextConsent);
-      setConsentDraft(nextConsent.enabled);
-      if (!nextConsent.enabled) clearProposedRecipes(user.id);
+      consentEpochRef.current = nextConsent.enabled && selectedProvider !== null && nextConsent.homeProvider === selectedProvider
+        ? captureAiRecipeProposalGeneration(user.id).epoch
+        : null;
+      setConsentDraft(nextConsent.enabled && selectedProvider !== null && nextConsent.homeProvider === selectedProvider);
+      if (!nextConsent.enabled) {
+        const cleared = await clearAiRecipeProposalHistory(user.id);
+        setProposedRecipes([]);
+        if (!cleared) setError('Consenso revocato, ma non è stato possibile sincronizzare la revoca della cronologia tra schede. Chiudi le altre schede e ricarica la pagina.');
+      }
     } catch (saveError) {
-      setError(errorMessage(saveError));
+      if (saveError instanceof ApiClientError && saveError.code === 'ai_consent_revision_conflict') {
+        try {
+          const latestStatus = await fetchAiConsentStatus();
+          setConsent(latestStatus.consent);
+          setSelectedProvider(latestStatus.selectedProvider);
+          setConsentDraft(latestStatus.consent.enabled && latestStatus.consent.homeProvider === latestStatus.selectedProvider);
+          setError('Il consenso è cambiato in un’altra scheda. Ho aggiornato lo stato: controlla la scelta prima di salvare di nuovo.');
+        } catch {
+          setError('Il consenso è cambiato in un’altra scheda. Aggiorna la pagina e verifica la scelta prima di riprovare.');
+        }
+      } else {
+        setError(errorMessage(saveError));
+      }
     } finally {
       setIsSaving(false);
     }
   };
 
   const generate = async () => {
-    if (csrfToken === null || user === null || consent?.enabled !== true || pantryLabels.length === 0 || isGenerating) return;
+    if (csrfToken === null || user === null || homeConsentEnabled !== true || pantryLabels.length === 0 || isGenerating) return;
+    const generation = captureAiRecipeProposalGeneration(user.id);
+    const generationScope = sessionScopeRef.current;
+    const generationProvider = selectedProvider;
+    const isCurrentGeneration = (): boolean => mountedRef.current
+      && sessionScopeRef.current.generation === generationScope.generation
+      && sessionScopeRef.current.userId === user.id
+      && sessionScopeRef.current.csrfToken === csrfToken
+      && sessionScopeRef.current.verified
+      && selectedProviderRef.current === generationProvider
+      && consentEpochRef.current === generation.epoch
+      && isAiRecipeProposalGenerationCurrent(generation);
+    if (!isCurrentGeneration()) {
+      setError('Non posso verificare lo stato attuale del consenso. Aggiorna la pagina prima di generare.');
+      return;
+    }
+
     setIsGenerating(true);
     setError(null);
     try {
       const recipe = await generateAiRecipe({
         ingredients: pantryLabels,
         constraints: [],
-        existingRecipes: proposedRecipes.slice(-50),
+        existingRecipes: proposedRecipes.slice(-AI_RECIPE_PROPOSAL_HISTORY_LIMIT),
       }, dietProfile, csrfToken);
+      if (!isCurrentGeneration()) return;
       const proposedRecipe = { title: recipe.title, ingredients: recipe.ingredients };
-      const nextProposedRecipes = [...proposedRecipes, proposedRecipe].slice(-PROPOSED_RECIPE_HISTORY_LIMIT);
-      storeProposedRecipes(user.id, nextProposedRecipes);
+      const nextProposedRecipes = [...proposedRecipes, proposedRecipe].slice(-AI_RECIPE_PROPOSAL_HISTORY_LIMIT);
+      await storeAiRecipeProposalHistory(generation, nextProposedRecipes);
+      if (!isCurrentGeneration()) return;
       setProposedRecipes(nextProposedRecipes);
       setDrafts((current) => [recipe, ...current.filter((item) => item.id !== recipe.id)]);
     } catch (generationError) {
-      setError(errorMessage(generationError));
+      if (isCurrentGeneration()) setError(errorMessage(generationError));
     } finally {
-      setIsGenerating(false);
+      if (mountedRef.current && sessionScopeRef.current.generation === generationScope.generation) setIsGenerating(false);
     }
   };
 
@@ -285,7 +319,14 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
 
       {error !== null && <p role="alert" className="mt-4 rounded-xl bg-rose-100 p-3 text-sm font-semibold text-rose-900">{error}</p>}
 
-      {consent !== null && (
+      {consent !== null && selectedProviderLabel === null && (
+        <div data-ai-consent className="mt-5 rounded-2xl border border-emerald-200 bg-white p-4">
+          <p role="status" className="text-sm leading-relaxed text-gray-700">Il provider delle ricette AI non è disponibile: non inviamo dati e la generazione resta disattivata.</p>
+          {consent.enabled && <button type="button" onClick={() => void saveConsent(false)} disabled={isSaving} className="mt-3 min-h-11 rounded-xl border-2 border-rose-300 px-4 py-2 font-bold text-rose-900 disabled:opacity-60">{isSaving ? 'Salvataggio…' : 'Revoca consenso AI globale'}</button>}
+        </div>
+      )}
+
+      {consent !== null && selectedProviderLabel !== null && (
         <div data-ai-consent className="mt-5 rounded-2xl border border-emerald-200 bg-white p-4">
           <label className="flex items-start gap-3 text-sm font-semibold text-gray-800">
             <input
@@ -293,25 +334,30 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
               checked={consentDraft}
               onChange={(event) => setConsentDraft(event.target.checked)}
               disabled={isSaving}
-              aria-label="Acconsento all’uso degli ingredienti della dispensa, del profilo alimentare e dei titoli e ingredienti delle ricette AI già salvate o proposte per evitare ripetizioni"
+              aria-label={`Acconsento all’invio a ${selectedProviderLabel} degli ingredienti della dispensa, del profilo alimentare e dei titoli e ingredienti delle ricette AI salvate o proposte`}
               className="mt-0.5 h-5 w-5 accent-emerald-700"
             />
-            <span>Acconsento all’uso degli ingredienti della dispensa, del mio profilo alimentare e dei titoli/ingredienti delle ricette AI salvate o già proposte per evitarne la ripetizione.</span>
+            <span>Acconsento all’invio a {selectedProviderLabel} dei dati indicati per creare ricette AI.</span>
           </label>
+          <p className="mt-2 text-xs leading-relaxed text-gray-600">
+            I dati inviati a {selectedProviderLabel}: nomi degli ingredienti della dispensa; profilo alimentare (dieta scelta, allergeni esclusi, calorie massime e proteine minime per porzione); titoli e nomi/quantità degli ingredienti delle ricette AI salvate o già proposte. Home invia anche l’elenco dei vincoli di generazione, attualmente vuoto.
+          </p>
+          {consent.enabled && !homeConsentEnabled && <p className="mt-2 text-xs font-semibold leading-relaxed text-amber-900">Il provider è cambiato o il consenso precedente non specificava il destinatario: non inviamo dati a {selectedProviderLabel} finché non approvi questa scelta.</p>}
           <p className="mt-2 text-xs leading-relaxed text-gray-600">Puoi revocare il consenso in qualsiasi momento. Le ricette già salvate restano visibili finché non le elimini.</p>
-          {consentDraft !== consent.enabled && (
+          {consent.enabled && <button type="button" onClick={() => void saveConsent(false)} disabled={isSaving} className="mt-3 min-h-11 rounded-xl border-2 border-rose-300 px-4 py-2 font-bold text-rose-900 disabled:opacity-60">{isSaving ? 'Salvataggio…' : 'Revoca consenso AI globale'}</button>}
+          {consentDraft !== homeConsentEnabled && (
             <button type="button" onClick={() => void saveConsent()} disabled={isSaving} className="mt-3 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
               {isSaving ? 'Salvataggio…' : 'Salva consenso'}
             </button>
           )}
-          {consent.enabled && (
+          {homeConsentEnabled && (
             <button type="button" onClick={() => void generate()} disabled={isGenerating || pantryLabels.length === 0} className="mt-3 ml-2 inline-flex min-h-11 items-center gap-2 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50">
               <Sparkles size={17} aria-hidden="true" />
               {isGenerating ? 'Creo la ricetta…' : 'Genera ricetta AI'}
             </button>
           )}
-          {consent.enabled && pantryLabels.length > 0 && <p className="mt-3 text-xs leading-relaxed text-gray-600">La ricetta generata resta un’anteprima: premi «Salva ricetta» per conservarla nel tuo account.</p>}
-          {consent.enabled && pantryLabels.length === 0 && <p className="mt-3 text-sm font-semibold text-gray-700">Aggiungi almeno un ingrediente alla dispensa per generare.</p>}
+          {homeConsentEnabled && pantryLabels.length > 0 && <p className="mt-3 text-xs leading-relaxed text-gray-600">La ricetta generata resta un’anteprima: premi «Salva ricetta» per conservarla nel tuo account.</p>}
+          {homeConsentEnabled && pantryLabels.length === 0 && <p className="mt-3 text-sm font-semibold text-gray-700">Aggiungi almeno un ingrediente alla dispensa per generare.</p>}
         </div>
       )}
 

@@ -38,7 +38,7 @@ test.afterEach(async ({ page }) => {
 test('keeps the diary usable at 320px with 200% text zoom', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
   await page.route('**/v1/ai-recipes/consent', (route) => route.fulfill({
-    json: { consent: { enabled: false, updatedAt: '2026-09-29T18:00:00.000Z' } },
+    json: { consent: { enabled: false, updatedAt: '2026-09-29T18:00:00.000Z' }, selectedProvider: 'openai' },
   }));
   await page.goto('/dinner-diary');
   await expect(page.getByRole('heading', { name: 'Diario delle cene' })).toBeVisible();
@@ -53,6 +53,8 @@ test('keeps the diary usable at 320px with 200% text zoom', async ({ page }) => 
 
 test('records a dinner, edits and confirms an AI draft, then finds it in recipe suggestions', async ({ page }) => {
   let consentEnabled = false;
+  const homeConsentProvider = 'openai' as const;
+  let dinnerConsentProvider: 'openai' | 'gemini' | null = null;
   let confirmationBody: unknown;
   const draft = {
     draftId: 'draft-from-openai-fixture',
@@ -73,13 +75,28 @@ test('records a dinner, edits and confirms an AI draft, then finds it in recipe 
   await page.route('**/v1/ai-recipes/consent', async (route) => {
     const request = route.request();
     if (request.method() === 'GET') {
-      await route.fulfill({ json: { consent: { enabled: consentEnabled, updatedAt: '2026-09-29T18:00:00.000Z' } } });
+      await route.fulfill({ json: {
+        consent: { enabled: consentEnabled, updatedAt: '2026-09-29T18:00:00.000Z', ...(consentEnabled ? { homeProvider: homeConsentProvider } : {}), ...(dinnerConsentProvider === null ? {} : { dinnerProvider: dinnerConsentProvider }) },
+        selectedProvider: 'openai',
+      } });
       return;
     }
     if (request.method() === 'PUT') {
-      const body = request.postDataJSON() as { enabled: boolean };
-      consentEnabled = body.enabled;
-      await route.fulfill({ json: { consent: { enabled: consentEnabled, updatedAt: '2026-09-29T18:01:00.000Z' } } });
+      const body = request.postDataJSON() as { enabled?: boolean; homeProvider?: 'openai' | 'gemini'; dinnerProvider?: 'openai' | 'gemini' | null; expectedRevision?: string };
+      expect(body.expectedRevision).toBeDefined();
+      if (body.enabled !== undefined) {
+        if (body.enabled) expect(body.homeProvider).toBe(homeConsentProvider);
+        consentEnabled = body.enabled;
+        if (!consentEnabled) dinnerConsentProvider = null;
+      }
+      if (body.dinnerProvider !== undefined) {
+        if (body.dinnerProvider !== null) expect(body.dinnerProvider).toBe(homeConsentProvider);
+        dinnerConsentProvider = body.dinnerProvider;
+      }
+      await route.fulfill({ json: {
+        consent: { enabled: consentEnabled, updatedAt: '2026-09-29T18:01:00.000Z', ...(consentEnabled ? { homeProvider: homeConsentProvider } : {}), ...(dinnerConsentProvider === null ? {} : { dinnerProvider: dinnerConsentProvider }) },
+        selectedProvider: 'openai',
+      } });
       return;
     }
     await route.fallback();
@@ -139,10 +156,12 @@ test('records a dinner, edits and confirms an AI draft, then finds it in recipe 
 
   await page.getByRole('link', { name: 'Diario delle cene', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: 'Diario delle cene' })).toBeVisible();
-  const consent = page.getByRole('checkbox', { name: 'Acconsento all’uso AI del testo della cena e delle porzioni' });
-  await expect(consent).toBeVisible();
-  await consent.check();
-  await page.getByRole('button', { name: 'Salva consenso' }).click();
+  const globalConsent = page.getByRole('checkbox', { name: /OpenAI.*ingredienti della dispensa.*profilo alimentare/i });
+  await globalConsent.check();
+  await page.getByRole('button', { name: 'Salva consenso AI globale' }).click();
+  const dinnerConsent = page.getByRole('checkbox', { name: 'Acconsento all’invio a OpenAI del testo della cena e delle porzioni' });
+  await dinnerConsent.check();
+  await page.getByRole('button', { name: 'Salva consenso Dinner' }).click();
 
   await page.getByLabel('Data della cena').fill('2026-09-29');
   await page.getByLabel('Porzioni (facoltative)').fill('2');

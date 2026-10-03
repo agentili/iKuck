@@ -38,14 +38,21 @@ describe('OpenAI recipe provider', () => {
     const provider = createOpenAiRecipeProvider({ apiKey: 'secret-key', model: 'gpt-5.5', fetch });
     const existingRecipes = [{
       title: 'Pasta al pomodoro',
-      ingredients: [{ name: 'Pasta', amount: '80 g' }, { name: 'Pomodoro', amount: '100 g' }],
+      ingredients: [
+        { name: 'Pasta', amount: '80 g', ingredientId: 'ref-a', optional: false, provenance: 'provided' as const },
+        { name: 'Pomodoro', amount: '100 g', ingredientId: null, optional: false, provenance: 'provided' as const },
+      ],
     }];
 
     await provider.generate({ ingredients: ['Ceci'], constraints: [], existingRecipes });
 
     const [, init] = fetch.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(init.body as string) as { instructions: string; input: string };
-    expect(JSON.parse(body.input)).toMatchObject({ existingRecipes });
+    const encodedInput = JSON.parse(body.input) as { existingRecipes: unknown[] };
+    expect(encodedInput.existingRecipes).toEqual([{
+      title: 'Pasta al pomodoro',
+      ingredients: [{ name: 'Pasta', amount: '80 g' }, { name: 'Pomodoro', amount: '100 g' }],
+    }]);
     expect(body.instructions).toMatch(/30%/);
     expect(body.instructions).toMatch(/Jaccard/i);
   });
@@ -71,5 +78,32 @@ describe('OpenAI recipe provider', () => {
     await expect(provider.generate({ ingredients: ['Ceci'], constraints: [] })).rejects.toMatchObject({
       code: 'provider_timeout', provider: 'recipes',
     });
+  });
+
+  it('aborts a stalled response body before the provider dispatch lock can remain held indefinitely', async () => {
+    vi.useFakeTimers();
+    try {
+      const requestSignal: { current: AbortSignal | null } = { current: null };
+      const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation((_input, init) => {
+        requestSignal.current = init?.signal ?? null;
+        return Promise.resolve({
+          ok: true,
+          json: () => new Promise((_resolve, reject) => {
+            requestSignal.current?.addEventListener('abort', () => reject(new Error('response body aborted')), { once: true });
+          }),
+        } as Response);
+      });
+      const provider = createOpenAiRecipeProvider({ apiKey: 'synthetic-test-key', model: 'synthetic-test-model', fetch, timeoutMs: 25 });
+      const pending = provider.generate({ ingredients: ['Ceci'], constraints: [] });
+      const rejection = expect(pending).rejects.toMatchObject({ code: 'provider_timeout', provider: 'recipes' });
+      for (let turn = 0; turn < 5; turn += 1) await Promise.resolve();
+
+      await vi.advanceTimersByTimeAsync(25);
+
+      expect(requestSignal.current?.aborted).toBe(true);
+      await rejection;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

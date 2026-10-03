@@ -148,6 +148,29 @@ describe('sync repository', () => {
     expect(second.applied).toBe(false);
   });
 
+  it('rejects a wrong-ID ai_consent delete at the repository boundary', async () => {
+    const repository = createMemorySyncRepository();
+
+    await expect(repository.applyMutation('user-1', {
+      mutationId: 'wrong-consent-delete',
+      deviceId: 'device-1',
+      entityType: 'ai_consent',
+      entityId: 'wrong-profile',
+      operation: 'delete',
+      payload: null,
+      clientUpdatedAt: '2026-09-24T12:00:00.000Z',
+    } as SyncMutation)).rejects.toMatchObject({ code: 'INVALID_SYNC_MUTATION' });
+    await expect(repository.applyMutation('user-1', {
+      mutationId: 'wrong-consent-upsert',
+      deviceId: 'device-1',
+      entityType: 'ai_consent',
+      entityId: 'wrong-profile',
+      operation: 'upsert',
+      payload: { enabled: false, updatedAt: '2026-09-24T12:00:00.000Z' },
+      clientUpdatedAt: '2026-09-24T12:00:00.000Z',
+    } as SyncMutation)).rejects.toMatchObject({ code: 'INVALID_SYNC_MUTATION' });
+  });
+
   it('clamps a client timestamp ten minutes in the future and emits a private-data-free warning', async () => {
     const warn = vi.fn();
     const serverNow = new Date('2026-09-13T12:00:00.000Z');
@@ -170,6 +193,108 @@ describe('sync repository', () => {
     expect(warn).toHaveBeenCalledWith('Sync client timestamp exceeded the configured clock skew tolerance');
     expect(JSON.stringify(warn.mock.calls)).not.toContain('Private label');
     expect(JSON.stringify(warn.mock.calls)).not.toContain('device-future');
+  });
+
+  it('does not apply a legacy global-consent upsert with a timestamp one minute in the future', async () => {
+    const serverNow = new Date('2026-09-13T12:00:00.000Z');
+    const repository = createMemorySyncRepository({ clock: () => serverNow });
+
+    const result = await repository.applyMutation('user-1', {
+      mutationId: 'future-global-consent',
+      deviceId: 'device-legacy',
+      entityType: 'ai_consent',
+      entityId: 'profile',
+      operation: 'upsert',
+      payload: { enabled: true, updatedAt: '2026-09-13T12:01:00.000Z' },
+      clientUpdatedAt: '2026-09-13T12:01:00.000Z',
+    });
+
+    expect(result).toMatchObject({ applied: false, change: null });
+    await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toBeNull();
+  });
+
+  it('keeps a queued legacy global revocation while rejecting a later future-dated enable', async () => {
+    const repository = createMemorySyncRepository({ clock: () => new Date('2026-09-13T12:00:00.000Z') });
+    const enabled = await repository.updateAiConsent('user-1', {
+      enabled: true, homeProvider: 'openai', expectedRevision: '1970-01-01T00:00:00.000Z',
+    });
+    const dinnerGranted = await repository.updateAiConsent('user-1', {
+      dinnerProvider: 'openai', expectedRevision: enabled.updatedAt,
+    });
+    const revocation = await repository.applyMutation('user-1', {
+      ...mutation(dinnerGranted.updatedAt, 'offline-ai-revocation', 'x'),
+      entityType: 'ai_consent', entityId: 'profile',
+      payload: { enabled: false, updatedAt: dinnerGranted.updatedAt },
+    });
+
+    expect(revocation).toMatchObject({ applied: true, change: { operation: 'upsert', payload: { enabled: false } } });
+    const storedRevocation = await repository.readEntity('user-1', 'ai_consent', 'profile');
+    expect(storedRevocation?.syncScope).toBe('account:user-1');
+    expect(storedRevocation?.payload).not.toHaveProperty('dinnerProvider');
+
+    const delayedEnable = await repository.applyMutation('user-1', {
+      ...mutation('2026-09-13T12:01:00.000Z', 'delayed-offline-ai-enable', 'x'),
+      entityType: 'ai_consent', entityId: 'profile',
+      payload: { enabled: true, updatedAt: '2026-09-13T12:01:00.000Z' },
+    });
+
+    expect(delayedEnable).toMatchObject({ applied: false, change: null });
+    await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toMatchObject({
+      payload: { enabled: false },
+    });
+  });
+
+  it('requires an explicit Home provider marker for every consent enable', async () => {
+    const repository = createMemorySyncRepository();
+
+    await expect(repository.updateAiConsent('user-1', {
+      enabled: true,
+      expectedRevision: '1970-01-01T00:00:00.000Z',
+    })).rejects.toMatchObject({ code: 'ai_consent_revision_required' });
+    await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toBeNull();
+  });
+
+  it('keeps the Home provider binding exact and clears both bindings on global revocation', async () => {
+    const repository = createMemorySyncRepository();
+    const enabled = await repository.updateAiConsent('user-1', {
+      enabled: true,
+      homeProvider: 'openai',
+      expectedRevision: '1970-01-01T00:00:00.000Z',
+    });
+    const dinnerEnabled = await repository.updateAiConsent('user-1', {
+      dinnerProvider: 'gemini', expectedRevision: enabled.updatedAt,
+    });
+    expect(dinnerEnabled).toMatchObject({ enabled: true, homeProvider: 'openai', dinnerProvider: 'gemini' });
+
+    const revoked = await repository.updateAiConsent('user-1', { enabled: false });
+
+    expect(revoked).toMatchObject({ enabled: false });
+    expect(revoked).not.toHaveProperty('homeProvider');
+    expect(revoked).not.toHaveProperty('dinnerProvider');
+  });
+
+  it('compares consent revisions under the user lock and advances them monotonically', async () => {
+    const repository = createMemorySyncRepository({ clock: () => new Date('2026-09-13T12:00:00.000Z') });
+    const expectedRevision = '1970-01-01T00:00:00.000Z';
+    const attempts = await Promise.allSettled([
+      repository.updateAiConsent('user-1', { enabled: true, homeProvider: 'openai', expectedRevision }),
+      repository.updateAiConsent('user-1', { enabled: true, homeProvider: 'openai', expectedRevision }),
+    ]);
+
+    expect(attempts.map(({ status }) => status).sort()).toEqual(['fulfilled', 'rejected']);
+    const winner = attempts.find((attempt) => attempt.status === 'fulfilled');
+    const conflict = attempts.find((attempt) => attempt.status === 'rejected');
+    expect(winner?.status).toBe('fulfilled');
+    if (winner?.status !== 'fulfilled') throw new Error('A consent CAS winner is required');
+    expect(conflict?.status).toBe('rejected');
+    if (conflict?.status === 'rejected') expect(conflict.reason).toMatchObject({ code: 'ai_consent_revision_conflict' });
+
+    const next = await repository.updateAiConsent('user-1', {
+      enabled: true, homeProvider: 'openai', expectedRevision: winner.value.updatedAt,
+    });
+    expect(Date.parse(next.updatedAt)).toBeGreaterThan(Date.parse(winner.value.updatedAt));
+    await expect(repository.updateAiConsent('user-1', { enabled: true }))
+      .rejects.toMatchObject({ code: 'ai_consent_revision_required' });
   });
 
   it('resolves equally skewed devices deterministically by device id', async () => {
@@ -264,17 +389,67 @@ describe('sync repository', () => {
       });
     }
 
-    await repository.applyMutation('user-1', {
-      ...mutation(timestamp, 'personal-consent', 'x'),
-      entityType: 'ai_consent',
-      entityId: 'profile',
-      payload: { enabled: true, updatedAt: timestamp },
+    await repository.updateAiConsent('user-1', {
+      enabled: true, homeProvider: 'openai', expectedRevision: '1970-01-01T00:00:00.000Z',
     });
     await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toMatchObject({
       syncScope: 'account:user-1',
       payload: { enabled: true },
     });
     await expect(repository.readEntity('user-2', 'ai_consent', 'profile')).resolves.toBeNull();
+  });
+
+  it('serializes Dinner grants with global revocation and requires a fresh grant after re-enabling', async () => {
+    const repository = createMemorySyncRepository();
+    const enabled = await repository.updateAiConsent('user-1', {
+      enabled: true, homeProvider: 'openai', expectedRevision: '1970-01-01T00:00:00.000Z',
+    });
+    const dinnerEnabled = await repository.updateAiConsent('user-1', { dinnerProvider: 'gemini', expectedRevision: enabled.updatedAt });
+
+    const revoked = await repository.updateAiConsent('user-1', { enabled: false });
+    const stale = await repository.updateAiConsent('user-1', {
+      dinnerProvider: 'gemini', expectedRevision: dinnerEnabled.updatedAt,
+    }).then((value) => ({ status: 'fulfilled' as const, value }), (reason: unknown) => ({ status: 'rejected' as const, reason }));
+
+    expect(stale.status).toBe('rejected');
+    if (stale.status === 'rejected') expect(stale.reason).toMatchObject({ code: 'ai_consent_revision_conflict' });
+    await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toMatchObject({
+      payload: { enabled: false },
+    });
+    const revokedConsent = await repository.readEntity('user-1', 'ai_consent', 'profile');
+    expect(revokedConsent?.payload).not.toHaveProperty('dinnerProvider');
+
+    const reenabled = await repository.updateAiConsent('user-1', {
+      enabled: true, homeProvider: 'openai', expectedRevision: revoked.updatedAt,
+    });
+    expect(reenabled).toMatchObject({ enabled: true });
+    expect(reenabled).not.toHaveProperty('dinnerProvider');
+    await expect(repository.updateAiConsent('user-1', {
+      dinnerProvider: 'gemini', expectedRevision: reenabled.updatedAt,
+    })).resolves.toMatchObject({
+      enabled: true,
+      dinnerProvider: 'gemini',
+    });
+  });
+
+  it('rejects generic sync writes that attempt to restore a Dinner marker after revocation', async () => {
+    const repository = createMemorySyncRepository();
+    const enabled = await repository.updateAiConsent('user-1', {
+      enabled: true, homeProvider: 'openai', expectedRevision: '1970-01-01T00:00:00.000Z',
+    });
+    await repository.updateAiConsent('user-1', { dinnerProvider: 'gemini', expectedRevision: enabled.updatedAt });
+    await repository.updateAiConsent('user-1', { enabled: false });
+
+    await expect(repository.applyMutation('user-1', {
+      ...mutation(new Date(Date.now() + 1_000).toISOString(), 'forged-dinner-sync', 'x'),
+      entityType: 'ai_consent',
+      entityId: 'profile',
+      payload: { enabled: true, dinnerProvider: 'gemini', updatedAt: new Date(Date.now() + 1_000).toISOString() },
+    } as SyncMutation)).rejects.toMatchObject({ code: 'ai_consent_required' });
+
+    const stored = await repository.readEntity('user-1', 'ai_consent', 'profile');
+    expect(stored?.payload).toMatchObject({ enabled: false });
+    expect(stored?.payload).not.toHaveProperty('dinnerProvider');
   });
 
   it('rejects a stale account scope for a functional record after the account joins a house', async () => {
@@ -789,11 +964,8 @@ describe('sync repository', () => {
         updatedAt: '2026-09-12T12:00:00.000Z',
       },
     });
-    await repository.applyMutation('user-1', {
-      ...mutation('2026-09-12T12:01:00.000Z', 'personal-consent-mutation', 'Consenso personale'),
-      entityType: 'ai_consent',
-      entityId: 'profile',
-      payload: { enabled: true, updatedAt: '2026-09-12T12:01:00.000Z' },
+    await repository.updateAiConsent('user-1', {
+      enabled: true, homeProvider: 'openai', expectedRevision: '1970-01-01T00:00:00.000Z',
     });
 
     await expect(repository.readEntity('user-2', 'pantry_item', 'tomato')).resolves.toMatchObject({ payload: { label: 'Dispensa condivisa' } });
