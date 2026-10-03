@@ -44,9 +44,19 @@ test('keeps the diary usable at 320px with 200% text zoom', async ({ page }) => 
   await expect(page.getByRole('heading', { name: 'Diario delle cene' })).toBeVisible();
 
   const navigation = page.getByRole('navigation', { name: 'Navigazione principale' });
+  const consentDisclosure = page.getByRole('region', { name: 'Consenso per ricostruire ricette' }).locator('details');
+  await expect(consentDisclosure).not.toHaveAttribute('open', '');
+  await expect(page.getByRole('button', { name: 'Salva cena' })).toBeVisible();
   await expect(navigation).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
   await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
+  await consentDisclosure.locator('summary').click();
+  await expect(consentDisclosure).toHaveAttribute('open', '');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
+  await consentDisclosure.locator('summary').press('Enter');
+  await expect(consentDisclosure).not.toHaveAttribute('open', '');
+  await expect(page.getByRole('button', { name: 'Salva cena' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
   expect(await navigation.evaluate((element) => window.getComputedStyle(element).position)).toBe('fixed');
 });
@@ -83,7 +93,9 @@ test('records a dinner, edits and confirms an AI draft, then finds it in recipe 
     }
     if (request.method() === 'PUT') {
       const body = request.postDataJSON() as { enabled?: boolean; homeProvider?: 'openai' | 'gemini'; dinnerProvider?: 'openai' | 'gemini' | null; expectedRevision?: string };
-      expect(body.expectedRevision).toBeDefined();
+      if (body.enabled === true || (body.dinnerProvider !== undefined && body.dinnerProvider !== null)) {
+        expect(body.expectedRevision).toBeDefined();
+      }
       if (body.enabled !== undefined) {
         if (body.enabled) expect(body.homeProvider).toBe(homeConsentProvider);
         consentEnabled = body.enabled;
@@ -156,12 +168,19 @@ test('records a dinner, edits and confirms an AI draft, then finds it in recipe 
 
   await page.getByRole('link', { name: 'Diario delle cene', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: 'Diario delle cene' })).toBeVisible();
+  const consentDisclosure = page.getByRole('region', { name: 'Consenso per ricostruire ricette' }).locator('details');
   const globalConsent = page.getByRole('checkbox', { name: /OpenAI.*ingredienti della dispensa.*profilo alimentare/i });
+  await expect(consentDisclosure).not.toHaveAttribute('open', '');
+  await expect(globalConsent).not.toBeVisible();
+  await consentDisclosure.locator('summary').click();
   await globalConsent.check();
   await page.getByRole('button', { name: 'Salva consenso AI globale' }).click();
   const dinnerConsent = page.getByRole('checkbox', { name: 'Acconsento all’invio a OpenAI del testo della cena e delle porzioni' });
   await dinnerConsent.check();
   await page.getByRole('button', { name: 'Salva consenso Dinner' }).click();
+  await consentDisclosure.locator('summary').click();
+  await expect(dinnerConsent).not.toBeVisible();
+  await expect(page.getByRole('button', { name: 'Salva cena' })).toBeVisible();
 
   await page.getByLabel('Data della cena').fill('2026-09-29');
   await page.getByLabel('Porzioni (facoltative)').fill('2');
@@ -182,4 +201,17 @@ test('records a dinner, edits and confirms an AI draft, then finds it in recipe 
   await page.getByRole('link', { name: 'Apri Pasta e zucchine della cena' }).click();
   await expect(page.getByRole('heading', { name: 'Pasta e zucchine della cena' })).toBeVisible();
   await expect(page.getByText('zucchine', { exact: true })).toBeVisible();
+
+  await page.goto('/dinner-diary');
+  const closedConsent = page.getByRole('region', { name: 'Consenso per ricostruire ricette' }).locator('details');
+  await expect(closedConsent).not.toHaveAttribute('open', '');
+  await expect(page.getByRole('button', { name: 'Revoca consenso Dinner' })).toBeVisible();
+  await page.getByRole('button', { name: 'Revoca consenso Dinner' }).click();
+  await expect.poll(() => dinnerConsentProvider).toBeNull();
+  await expect(page.getByRole('button', { name: 'Revoca consenso Dinner' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Revoca consenso AI globale' })).toBeVisible();
+  await page.getByRole('button', { name: 'Revoca consenso AI globale' }).click();
+  await expect.poll(() => consentEnabled).toBe(false);
+  await expect(page.getByRole('button', { name: 'Revoca consenso AI globale' })).toHaveCount(0);
+  await expect(closedConsent).not.toHaveAttribute('open', '');
 });

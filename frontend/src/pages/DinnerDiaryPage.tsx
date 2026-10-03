@@ -97,6 +97,12 @@ export default function DinnerDiaryPage() {
   const dinnerConsentEnabled = consent?.enabled === true
     && selectedProvider !== null
     && consent.dinnerProvider === selectedProvider;
+  const dinnerConsentStatus = !verified
+    ? 'Disponibile con un account verificato'
+    : consentLoading ? 'Verifico il consenso AI…'
+      : consent === null ? 'Consenso non disponibile'
+        : dinnerProviderName === null ? 'Provider non disponibile'
+          : dinnerConsentEnabled ? `Attivo per ${dinnerProviderName}` : `Da autorizzare per ${dinnerProviderName}`;
 
   const refreshConsentState = async (): Promise<void> => {
     const status = await fetchAiConsentStatus();
@@ -241,9 +247,14 @@ export default function DinnerDiaryPage() {
         <p className="mt-3 text-base leading-relaxed text-gray-700">Segna cosa avete mangiato, senza modificare la dispensa. Potrai ricostruire una ricetta in un secondo momento.</p>
       </header>
 
-      <section aria-label="Consenso per ricostruire ricette" className="mt-6 rounded-2xl border-2 border-emerald-100 bg-emerald-50/70 p-4 sm:p-5">
-        <h2 className="text-xl font-black text-gray-950">Ricostruisci una ricetta con l’AI</h2>
-        {verified ? (
+      <section aria-label="Consenso per ricostruire ricette" className="mt-6 rounded-2xl border-2 border-emerald-100 bg-emerald-50/70 px-4 sm:px-5">
+        <details>
+          <summary className="min-h-11 cursor-pointer py-3 font-bold text-gray-950 focus-visible:rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">
+            Consenso AI per Dinner <span className="block pl-5 text-sm font-medium text-gray-700">{dinnerConsentStatus}</span>
+          </summary>
+          <div className="border-t border-emerald-200 py-4">
+            <h2 className="text-xl font-black text-gray-950">Ricostruisci una ricetta con l’AI</h2>
+            {verified ? (
           <>
             {dinnerProviderName !== null ? (
               <>
@@ -280,10 +291,8 @@ export default function DinnerDiaryPage() {
                     </label>
                     {!consent.enabled && <p className="mt-2 text-sm text-gray-700">Per usare Dinner, attiva prima il consenso AI generale e salva la scelta.</p>}
                     {dinnerConsentDraft !== dinnerConsentEnabled && consent.enabled && <button type="button" onClick={() => void saveDinnerConsent()} disabled={consentSaving} className="mt-3 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white disabled:opacity-60">{consentSaving ? 'Salvo…' : 'Salva consenso Dinner'}</button>}
-                    {consent.enabled && consent.dinnerProvider !== undefined && <button type="button" onClick={() => void saveDinnerConsent(null)} disabled={consentSaving} className="mt-3 ml-2 min-h-11 rounded-xl border-2 border-rose-300 px-4 py-2 font-bold text-rose-900 disabled:opacity-60">{consentSaving ? 'Salvataggio…' : 'Revoca consenso Dinner'}</button>}
                   </>
                 ) : <p role="status" className="mt-3 text-sm text-gray-700">Il consenso non è disponibile; la generazione resta disattivata.</p>}
-                {consent.enabled && <button type="button" onClick={() => void saveConsent(false)} disabled={consentSaving} className="mt-3 min-h-11 rounded-xl border-2 border-rose-300 px-4 py-2 font-bold text-rose-900 disabled:opacity-60">{consentSaving ? 'Salvataggio…' : 'Revoca consenso AI globale'}</button>}
               </>
             ) : <p role="status" className="mt-3 text-sm text-gray-700">Il consenso non è disponibile; la generazione resta disattivata.</p>}
           </>
@@ -292,7 +301,15 @@ export default function DinnerDiaryPage() {
         ) : (
           <p className="mt-3 text-sm text-gray-700">Con un account non verificato, la ricostruzione AI è disattivata: il testo della cena, le porzioni e le note non vengono inviati a un provider AI. Verifica l’account per vedere il provider attivo e decidere se consentire la ricostruzione.</p>
         )}
-        {consentError !== null && <p role="alert" className="mt-3 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-900">{consentError}</p>}
+          </div>
+        </details>
+        {verified && consent?.enabled && (
+          <div className="flex flex-wrap gap-2 border-t border-emerald-200 py-3">
+            {consent.dinnerProvider !== undefined && <button type="button" onClick={() => void saveDinnerConsent(null)} disabled={consentSaving} className="min-h-11 rounded-xl border-2 border-rose-300 px-4 py-2 font-bold text-rose-900 disabled:opacity-60">{consentSaving ? 'Salvataggio…' : 'Revoca consenso Dinner'}</button>}
+            <button type="button" onClick={() => void saveConsent(false)} disabled={consentSaving} className="min-h-11 rounded-xl border-2 border-rose-300 px-4 py-2 font-bold text-rose-900 disabled:opacity-60">{consentSaving ? 'Salvataggio…' : 'Revoca consenso AI globale'}</button>
+          </div>
+        )}
+        {consentError !== null && <p role="alert" className="mb-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-900">{consentError}</p>}
       </section>
 
       <section aria-labelledby="dinner-entry-form-title" className="mt-6 rounded-3xl border-2 border-emerald-100 bg-white p-4 shadow-sm sm:p-6">

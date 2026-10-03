@@ -323,12 +323,16 @@ test('shares confirmed dinner recipes with House members while isolating outside
 
   await page.goto('/dinner-diary');
   await expect(page.getByRole('heading', { name: 'Diario delle cene' })).toBeVisible();
+  const consentDisclosure = page.getByRole('region', { name: 'Consenso per ricostruire ricette' }).locator('details');
+  await expect(consentDisclosure).not.toHaveAttribute('open', '');
+  await consentDisclosure.locator('summary').click();
   const globalConsent = page.getByRole('checkbox', { name: /OpenAI.*ingredienti della dispensa.*profilo alimentare/i });
   await globalConsent.check();
   await page.getByRole('button', { name: 'Salva consenso AI globale' }).click();
   const dinnerConsent = page.getByRole('checkbox', { name: 'Acconsento all’invio a OpenAI del testo della cena e delle porzioni' });
   await dinnerConsent.check();
   await page.getByRole('button', { name: 'Salva consenso Dinner' }).click();
+  await consentDisclosure.locator('summary').click();
   await page.getByLabel('Data della cena').fill('2026-09-24');
   await page.getByLabel('Porzioni (facoltative)').fill('2');
   await page.getByLabel('Com’è andata la cena?').fill(dinnerText);
