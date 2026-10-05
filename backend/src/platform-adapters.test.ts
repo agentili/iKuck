@@ -27,6 +27,7 @@ describe('platform adapters', () => {
       incr: vi.fn().mockResolvedValue(1),
       expire: vi.fn().mockResolvedValue(1),
       quit: vi.fn().mockImplementation(async () => { isOpen = false; }),
+      destroy: vi.fn().mockImplementation(() => { isOpen = false; }),
     };
     const cache = createCacheWithClient(client);
 
@@ -39,7 +40,8 @@ describe('platform adapters', () => {
     expect(client.ping).toHaveBeenCalledTimes(1);
     expect(client.incr).toHaveBeenCalledWith('ikuck:test');
     expect(client.expire).toHaveBeenCalledWith('ikuck:test', 120);
-    expect(client.quit).toHaveBeenCalledTimes(1);
+    expect(client.destroy).toHaveBeenCalledTimes(1);
+    expect(client.quit).not.toHaveBeenCalled();
   });
 
   it('uses atomic Redis scripts for quota reservation and release', async () => {
@@ -55,6 +57,7 @@ describe('platform adapters', () => {
       ping: vi.fn().mockResolvedValue('PONG'),
       eval: evalScript,
       quit: vi.fn().mockImplementation(async () => { isOpen = false; }),
+      destroy: vi.fn().mockImplementation(() => { isOpen = false; }),
     };
     const cache = createCacheWithClient(client);
 

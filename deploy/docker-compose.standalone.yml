@@ -73,6 +73,7 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
       REDIS_URL: redis://redis:6379
+      S2S_DINNER_CONTEXT_ENABLED: ${S2S_DINNER_CONTEXT_ENABLED:-false}
       TRUST_PROXY: ${TRUST_PROXY:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     healthcheck:

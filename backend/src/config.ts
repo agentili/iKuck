@@ -26,6 +26,7 @@ export interface AppConfig {
   googleClientId?: string;
   trustProxy?: string | string[];
   nodeEnvironment: 'development' | 'test' | 'production';
+  s2sDinnerContextEnabled: boolean;
 }
 
 const developmentDefaults = {
@@ -77,6 +78,7 @@ const environmentSchema = z.object({
   GEMINI_API_KEY: optionalEnvironmentString(),
   GEMINI_MODEL: z.string().min(1).default('gemini-3.5-flash-lite'),
   GOOGLE_CLIENT_ID: optionalEnvironmentString(),
+  S2S_DINNER_CONTEXT_ENABLED: z.enum(['true', 'false']).default('false'),
 });
 
 export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
@@ -116,5 +118,6 @@ export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
     googleClientId: parsed.GOOGLE_CLIENT_ID,
     trustProxy,
     nodeEnvironment: parsed.NODE_ENV,
+    s2sDinnerContextEnabled: parsed.S2S_DINNER_CONTEXT_ENABLED === 'true',
   };
 };

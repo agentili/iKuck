@@ -1,7 +1,7 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { HouseMember, HouseRole, HouseState, HouseSummary } from '@ikuck/shared/contracts';
 import type { ApplicationDatabase } from '../db/client.js';
-import { houseMemberships, houses, processedSyncMutations, syncItems, userProfiles, users } from '../db/schema.js';
+import { houseMemberships, houses, processedSyncMutations, s2sServiceCredentials, s2sServiceGrants, syncItems, userProfiles, users } from '../db/schema.js';
 import type { HouseRole as ValidatedHouseRole } from './validation.js';
 
 export interface HouseUserRecord {
@@ -314,6 +314,10 @@ export const createDrizzleHouseRepository = (database: ApplicationDatabase['db']
           eq(houseMemberships.role, 'admin'),
         ));
         if (admins.length <= 1) return 'last_admin_required' as const;
+      }
+      if (target.role === 'admin' && role === 'member') {
+        await transaction.update(s2sServiceGrants).set({ revokedAt: now }).where(and(eq(s2sServiceGrants.sponsorMembershipId, target.id), sql`${s2sServiceGrants.revokedAt} IS NULL`));
+        await transaction.update(s2sServiceCredentials).set({ revokedAt: now }).where(and(sql`${s2sServiceCredentials.grantId} IN (SELECT id FROM s2s_service_grants WHERE sponsor_membership_id = ${target.id})` , sql`${s2sServiceCredentials.revokedAt} IS NULL`));
       }
       await transaction.update(houseMemberships).set({ role, updatedAt: now }).where(eq(houseMemberships.id, target.id));
       return 'updated' as const;
