@@ -16,7 +16,11 @@ test('registers, verifies, logs in, synchronizes and logs out against the live s
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Crea account' }).click();
 
-  const registrationStatus = page.getByRole('status');
+  const registrationStatus = page.getByRole('status').filter({
+    hasText: verificationToken === undefined
+      ? 'Account creato. Ora puoi accedere.'
+      : 'Controlla la tua email per verificare l’account.',
+  });
   await expect(registrationStatus).toBeVisible();
   if (verificationToken !== undefined) {
     await expect(registrationStatus).toHaveText('Controlla la tua email per verificare l’account.');
