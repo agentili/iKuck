@@ -1,4 +1,4 @@
-import Fastify, { type FastifyServerOptions } from 'fastify';
+import Fastify, { LogController, type FastifyServerOptions } from 'fastify';
 import { AuthServiceError } from './auth/service.js';
 import { AuthRateLimitError } from './auth/rateLimit.js';
 import type { PlatformDependencies } from './platform.js';
@@ -17,6 +17,9 @@ import { type RecipeNutritionRouteDependencies, registerRecipeNutritionRoutes } 
 import { type AiRecipeRouteDependencies, registerAiRecipeRoutes } from './routes/aiRecipes.js';
 import { type HouseRouteDependencies, registerHouseRoutes } from './routes/house.js';
 import { type DinnerDiaryRecipeRouteDependencies, registerDinnerDiaryRecipeRoutes } from './routes/dinnerDiaryRecipes.js';
+import { type S2sDinnerContextService } from './s2s/dinnerContext.js';
+import { registerS2sDinnerContextRoutes } from './routes/s2sDinnerContext.js';
+import { shouldDisableRequestLogging } from './serverLogging.js';
 
 export type { PlatformDependencies } from './platform.js';
 
@@ -33,17 +36,31 @@ export interface ExtendedPlatformDependencies extends PlatformDependencies {
   aiRecipes?: AiRecipeRouteDependencies;
   house?: HouseRouteDependencies;
   dinnerDiary?: DinnerDiaryRecipeRouteDependencies;
+  s2sDinnerContext?: S2sDinnerContextService;
 }
 
 export const createApp = (
   dependencies: ExtendedPlatformDependencies,
-  options: Pick<FastifyServerOptions, 'logger' | 'trustProxy'> = {},
+  options: Pick<FastifyServerOptions, 'logger' | 'trustProxy' | 'logController'> = {},
 ) => {
   const app = Fastify({
     logger: options.logger ?? false,
+    logController: options.logController ?? new LogController({ disableRequestLogging: shouldDisableRequestLogging }),
     ...(options.trustProxy === undefined ? {} : { trustProxy: options.trustProxy }),
   });
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error, request, reply) => {
+    if (reply.sent) return reply;
+    if (request.url.split('?')[0] === '/v1/s2s/dinner-context') {
+      reply.header('cache-control', 'no-store').header('vary', 'Authorization');
+      if (dependencies.s2sDinnerContext?.isRequestExpired(request.raw)) {
+        return reply.code(503).send({ code: 'service_unavailable' });
+      }
+      if (typeof error === 'object' && error !== null && 'statusCode' in error && typeof error.statusCode === 'number' && error.statusCode >= 400 && error.statusCode < 500) {
+        return reply.code(400).send({ code: 'invalid_request' });
+      }
+      app.log.error({ error: error instanceof Error ? error.name : 'unknown' }, 'S2S request failed');
+      return reply.code(503).send({ code: 'service_unavailable' });
+    }
     if (error instanceof SyncPayloadError || error instanceof SyncScopeInvalidError || error instanceof SyncScopeRequiredError || error instanceof SyncMembershipRequiredError || error instanceof SyncDiaryRecipeLimitError) {
       return reply.code(error.status).send({ code: error.code, message: error.message });
     }
@@ -69,5 +86,14 @@ export const createApp = (
   if (dependencies.aiRecipes !== undefined) app.register(registerAiRecipeRoutes(dependencies.aiRecipes));
   if (dependencies.house !== undefined) app.register(registerHouseRoutes(dependencies.house));
   if (dependencies.dinnerDiary !== undefined) app.register(registerDinnerDiaryRecipeRoutes(dependencies.dinnerDiary));
+  app.register(async (s2sScope) => {
+    s2sScope.setNotFoundHandler((_request, reply) => {
+      reply.header('cache-control', 'no-store');
+      return reply.code(404).send({ code: 'not_found' });
+    });
+    if (dependencies.s2sDinnerContext !== undefined) {
+      s2sScope.register(registerS2sDinnerContextRoutes(dependencies.s2sDinnerContext));
+    }
+  }, { prefix: '/v1/s2s' });
   return app;
 };

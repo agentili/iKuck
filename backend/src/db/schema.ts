@@ -58,6 +58,38 @@ export const houseMemberships = pgTable('house_memberships', {
   roleCheck: check('house_memberships_role_check', sql`${table.role} in ('admin', 'member')`),
 }));
 
+export const s2sServiceGrants = pgTable('s2s_service_grants', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  serviceId: text('service_id').notNull(),
+  houseId: uuid('house_id').notNull().references(() => houses.id, { onDelete: 'cascade' }),
+  sponsorUserId: uuid('sponsor_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  sponsorMembershipId: uuid('sponsor_membership_id').notNull().references(() => houseMemberships.id, { onDelete: 'cascade' }),
+  scope: text('scope').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => ({
+  houseIndex: index('s2s_service_grants_house_idx').on(table.houseId),
+  sponsorIndex: index('s2s_service_grants_sponsor_idx').on(table.sponsorUserId),
+  serviceIdCheck: check('s2s_service_grants_service_id_check', sql`${table.serviceId} = 'hermes-family-pantry-reader'`),
+  scopeCheck: check('s2s_service_grants_scope_check', sql`${table.scope} = 'dinner-context:read'`),
+  expiresAtCheck: check('s2s_service_grants_expires_at_check', sql`${table.expiresAt} > ${table.createdAt}`),
+}));
+
+export const s2sServiceCredentials = pgTable('s2s_service_credentials', {
+  keyId: text('key_id').primaryKey(),
+  grantId: uuid('grant_id').notNull().references(() => s2sServiceGrants.id, { onDelete: 'cascade' }),
+  secretDigest: text('secret_digest').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => ({
+  grantIndex: index('s2s_service_credentials_grant_idx').on(table.grantId),
+  keyIdCheck: check('s2s_service_credentials_key_id_check', sql`${table.keyId} ~ '^[A-Za-z0-9_-]{16,64}$'`),
+  secretDigestCheck: check('s2s_service_credentials_secret_digest_check', sql`${table.secretDigest} ~ '^[0-9a-f]{64}$'`),
+  expiresAtCheck: check('s2s_service_credentials_expires_at_check', sql`${table.expiresAt} > ${table.createdAt}`),
+}));
+
 export const accountIdentities = pgTable('account_identities', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),

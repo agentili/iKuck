@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from './config.js';
 
@@ -124,6 +125,19 @@ describe('loadConfig', () => {
     expect(config.providers.resendFrom).toBeUndefined();
     expect(config.providers.usdaApiKey).toBeUndefined();
     expect(config.providers.openAiApiKey).toBeUndefined();
+  });
+
+  it('keeps the S2S dinner context API disabled unless explicitly enabled', () => {
+    const base = { NODE_ENV: 'production', DATABASE_URL: 'postgres://ikuck:***@postgres:5432/ikuck', REDIS_URL: 'redis://redis:6379', APP_ORIGIN: 'https://app.ikuck.it' };
+    expect(loadConfig(base).s2sDinnerContextEnabled).toBe(false);
+    expect(loadConfig({ ...base, S2S_DINNER_CONTEXT_ENABLED: 'true' }).s2sDinnerContextEnabled).toBe(true);
+    expect(() => loadConfig({ ...base, S2S_DINNER_CONTEXT_ENABLED: 'yes' })).toThrow();
+  });
+  it('forwards the opt-in S2S flag with a false default to each API Compose service', async () => {
+    for (const file of ['../../compose.dev.yml', '../../deploy/docker-compose.standalone.yml', '../../deploy/docker-compose.production.yml']) {
+      const compose = await readFile(new URL(file, import.meta.url), 'utf8');
+      expect(compose).toMatch(/^ {6}S2S_DINNER_CONTEXT_ENABLED:\s*\$\{S2S_DINNER_CONTEXT_ENABLED:-false\}\s*$/m);
+    }
   });
 
 });

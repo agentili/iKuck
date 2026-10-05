@@ -16,7 +16,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node dist/db/migrate.js",
     "db:migrate:dev": "tsx src/db/migrate.ts",
-    "db:cleanup-auth": "node dist/db/cleanupExpiredAuth.js"
+    "db:cleanup-auth": "node dist/db/cleanupExpiredAuth.js",
+    "s2s-admin": "node --env-file-if-exists=.env dist/s2s/adminCli.js"
   },
   "dependencies": {
     "@ikuck/shared": "file:../shared",
