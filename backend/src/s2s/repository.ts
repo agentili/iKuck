@@ -39,10 +39,15 @@ const assertReadOnlyStatement = (query: string) => {
   const localTimeout = /^SET\s+LOCAL\s+(?:statement_timeout|lock_timeout)\s*=\s*'[0-9]+(?:ms|s)'$/i.test(statement);
   if (!transactionControl && !localTimeout && !READ_SNAPSHOT_SELECTS.has(statement)) throw new Error('s2s_read_only_violation');
 };
+const currentSponsorIsAuthorized = (row: any) => Boolean(row.verifiedAt)
+  && row.role === 'admin'
+  && row.membershipId === row.sponsorMembershipId
+  && row.membershipHouseId === row.houseId
+  && row.membershipUserId === row.sponsorUserId;
 const authorized = (row: any, credential: SuppliedServiceCredential) => {
   if (!row || row.credentialRevokedAt || new Date(row.credentialExpiresAt).getTime() <= Date.now() || !matches(credential.secret, row.secretDigest)) throw new S2sRepositoryError('service_auth_required');
   if (row.grantRevokedAt || new Date(row.grantExpiresAt).getTime() <= Date.now()) throw new S2sRepositoryError('service_auth_required');
-  if (row.verifiedAt === null || row.role !== 'admin' || row.membershipId !== row.sponsorMembershipId || row.membershipHouseId !== row.houseId || row.membershipUserId !== row.sponsorUserId) throw new S2sRepositoryError('service_access_denied');
+  if (!currentSponsorIsAuthorized(row)) throw new S2sRepositoryError('service_access_denied');
 };
 const selected = sql`SELECT c.key_id AS "keyId", c.secret_digest AS "secretDigest", c.revoked_at AS "credentialRevokedAt", c.expires_at AS "credentialExpiresAt", g.id AS "grantId", g.house_id AS "houseId", g.sponsor_user_id AS "sponsorUserId", g.sponsor_membership_id AS "sponsorMembershipId", g.scope, g.expires_at AS "grantExpiresAt", g.revoked_at AS "grantRevokedAt", u.email_verified_at AS "verifiedAt", m.id AS "membershipId", m.house_id AS "membershipHouseId", m.user_id AS "membershipUserId", m.role FROM s2s_service_credentials c JOIN s2s_service_grants g ON g.id=c.grant_id LEFT JOIN users u ON u.id=g.sponsor_user_id LEFT JOIN house_memberships m ON m.id=g.sponsor_membership_id WHERE c.key_id = `;
 
@@ -253,14 +258,14 @@ export const createDrizzleS2sRepository = (database: any, hooks: { afterAuthoriz
     return runAdminTransaction(async (tx: any) => {
       await setAdminTransactionTimeouts(tx);
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${keyId}))`);
-      const rows = await tx.execute(sql`SELECT c.key_id AS "keyId", c.secret_digest AS "secretDigest", c.revoked_at AS "credentialRevokedAt", c.expires_at AS "credentialExpiresAt", g.id AS "grantId", g.expires_at AS "grantExpiresAt", g.revoked_at AS "grantRevokedAt" FROM ${s2sServiceCredentials} c LEFT JOIN ${s2sServiceGrants} g ON g.id=c.grant_id WHERE c.key_id=${keyId}`);
+      const rows = await tx.execute(sql`SELECT c.key_id AS "keyId", c.secret_digest AS "secretDigest", c.revoked_at AS "credentialRevokedAt", c.expires_at AS "credentialExpiresAt", g.id AS "grantId", g.house_id AS "houseId", g.sponsor_user_id AS "sponsorUserId", g.sponsor_membership_id AS "sponsorMembershipId", g.scope, g.expires_at AS "grantExpiresAt", g.revoked_at AS "grantRevokedAt", u.email_verified_at AS "verifiedAt", m.id AS "membershipId", m.house_id AS "membershipHouseId", m.user_id AS "membershipUserId", m.role FROM ${s2sServiceCredentials} c LEFT JOIN ${s2sServiceGrants} g ON g.id=c.grant_id LEFT JOIN ${users} u ON u.id=g.sponsor_user_id LEFT JOIN ${houseMemberships} m ON m.id=g.sponsor_membership_id WHERE c.key_id=${keyId}`);
       const row = rows[0] as any;
       if (!row) { matches(secret, DUMMY_DIGEST); return null; }
       if (row.keyId !== keyId || !matches(secret, row.secretDigest) || !row.grantId || row.credentialExpiresAt == null || row.grantExpiresAt == null) throw new S2sRepositoryError('service_integrity_error');
       const expiryMs = Math.min(new Date(row.credentialExpiresAt).getTime(), new Date(row.grantExpiresAt).getTime());
       if (!Number.isFinite(expiryMs)) throw new S2sRepositoryError('service_integrity_error');
       const now = hooks.clock?.() ?? Date.now();
-      return { grantId: row.grantId, expiresAt: new Date(expiryMs), active: !row.credentialRevokedAt && !row.grantRevokedAt && expiryMs > now };
+      return { grantId: row.grantId, expiresAt: new Date(expiryMs), active: !row.credentialRevokedAt && !row.grantRevokedAt && expiryMs > now && currentSponsorIsAuthorized(row) && row.scope === 'dinner-context:read' };
     });
   },
   async createGrant(input: { serviceId: string; houseId: string; sponsorUserId: string; sponsorMembershipId: string; expiresAt: Date; keyId: string; secret: string; credentialExpiresAt: Date }) {

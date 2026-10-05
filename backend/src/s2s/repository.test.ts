@@ -197,7 +197,7 @@ describe('S2S dinner-context repository diet profile presence', () => {
     expect(snapshot.grant.expiresAt).toBe(expiresAt.toISOString());
   });
 
-  it('reconciles a credential using the stored digest and effective expiry', async () => {
+  it('reconciles a credential using the stored digest, current sponsor and effective expiry', async () => {
     const storedSecret = credential.secret;
     const row = {
       keyId: credential.keyId,
@@ -205,14 +205,56 @@ describe('S2S dinner-context repository diet profile presence', () => {
       credentialRevokedAt: null,
       credentialExpiresAt: new Date(10_000),
       grantId: 'grant-reconciled',
+      houseId: 'house-1',
+      sponsorUserId: 'user-1',
+      sponsorMembershipId: 'membership-1',
+      scope: 'dinner-context:read',
       grantExpiresAt: new Date(5_000),
       grantRevokedAt: null,
+      verifiedAt: new Date(),
+      membershipId: 'membership-1',
+      membershipHouseId: 'house-1',
+      membershipUserId: 'user-1',
+      role: 'admin',
     };
     let calls = 0;
     const database = { transaction: async (callback: (tx: { execute: () => Promise<unknown[]> }) => Promise<unknown>) => callback({ execute: async () => { calls += 1; return calls === 4 ? [row] : []; } }) };
     const repository = createDrizzleS2sRepository(database, { clock: () => 1_000 });
     await expect(repository.reconcileCredential(credential.keyId, storedSecret)).resolves.toEqual({ grantId: 'grant-reconciled', expiresAt: new Date(5_000), active: true });
     expect(calls).toBe(4);
+  });
+
+  it.each([
+    ['unverified sponsor', { verifiedAt: null }],
+    ['non-admin sponsor', { role: 'member' }],
+    ['missing membership identity', { membershipId: null }],
+    ['membership for another user', { membershipUserId: 'user-2' }],
+    ['membership in another house', { membershipHouseId: 'house-2' }],
+    ['unsupported grant scope', { scope: 'dinner-context:write' }],
+  ])('does not reconcile an unusable credential as active for %s', async (_reason, invalidFields) => {
+    const row = {
+      keyId: credential.keyId,
+      secretDigest: createHash('sha256').update(credential.secret).digest('hex'),
+      credentialRevokedAt: null,
+      credentialExpiresAt: new Date(10_000),
+      grantId: 'grant-reconciled',
+      houseId: 'house-1',
+      sponsorUserId: 'user-1',
+      sponsorMembershipId: 'membership-1',
+      scope: 'dinner-context:read',
+      grantExpiresAt: new Date(20_000),
+      grantRevokedAt: null,
+      verifiedAt: new Date(),
+      membershipId: 'membership-1',
+      membershipHouseId: 'house-1',
+      membershipUserId: 'user-1',
+      role: 'admin',
+      ...invalidFields,
+    };
+    let calls = 0;
+    const database = { transaction: async (callback: (tx: { execute: () => Promise<unknown[]> }) => Promise<unknown>) => callback({ execute: async () => { calls += 1; return calls === 4 ? [row] : []; } }) };
+    const repository = createDrizzleS2sRepository(database, { clock: () => 1_000 });
+    await expect(repository.reconcileCredential(credential.keyId, credential.secret)).resolves.toMatchObject({ active: false });
   });
 
   it('does not reconcile an expired or revoked credential as usable', async () => {

@@ -1,5 +1,5 @@
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm, lstat } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, lstat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,7 +31,7 @@ integration('S2S PostgreSQL repository integration', () => {
 
   const fixture = async (role = 'admin', grantExpiry = new Date(Date.now() + 7 * 86400_000)) => {
     const userId = randomUUID(), houseId = randomUUID(), membershipId = randomUUID();
-    const keyId = `integration_${randomUUID()}`, secret = randomUUID() + randomUUID(), now = new Date();
+    const keyId = `integration_${randomUUID()}`, secret = randomBytes(32).toString('base64url'), now = new Date();
     await database.db.insert(users).values({ id: userId, email: `${userId}@example.test`, emailVerifiedAt: now });
     await database.db.insert(houses).values({ id: houseId, name: 'S2S fixture', createdByUserId: userId });
     await database.db.insert(houseMemberships).values({ id: membershipId, houseId, userId, role });
@@ -485,6 +485,42 @@ integration('S2S PostgreSQL repository integration', () => {
     const after = await createDrizzleS2sRepository(database.db).readAuthorizedSnapshot({ keyId: f.keyId, secret: f.secret });
     if (entityType === 'pantry_lot') expect(after.pantryLots).toEqual([expect.objectContaining({ id: lot.id, quantity: 200, unit: 'g' })]);
     else expect(after.dietProfile).toEqual(dietProfile);
+  });
+
+  it('irreversibly revokes grants after old-writer-style direct SQL sponsor demotion and promotion', async () => {
+    const f = await fixture();
+
+    await database.db.execute(sql`UPDATE house_memberships SET role = 'member' WHERE id = ${f.membershipId}`);
+    await database.db.execute(sql`UPDATE house_memberships SET role = 'admin' WHERE id = ${f.membershipId}`);
+    const [grant] = await database.db.select().from(s2sServiceGrants).where(eq(s2sServiceGrants.id, f.grantId));
+    const credentials = await database.db.select().from(s2sServiceCredentials).where(eq(s2sServiceCredentials.grantId, f.grantId));
+    expect(grant?.revokedAt).not.toBeNull();
+    expect(credentials).toHaveLength(1);
+    expect(credentials[0]?.revokedAt).not.toBeNull();
+
+    await expect(createDrizzleS2sRepository(database.db).readAuthorizedSnapshot({ keyId: f.keyId, secret: f.secret }))
+      .rejects.toMatchObject({ code: 'service_auth_required' });
+  });
+
+  it('keeps a non-admin sponsor credential inactive during real PostgreSQL recovery', async () => {
+    const f = await fixture('member');
+    const directory = await mkdtemp(join(tmpdir(), 'ikuck-s2s-reconcile-'));
+    const path = join(directory, 'credential.json');
+    const token = `${f.keyId}.${f.secret}`;
+    try {
+      await writeFile(path, JSON.stringify({ keyId: f.keyId, token, outcome: 'unknown' }), { mode: 0o600 });
+      const repository = createDrizzleS2sRepository(database.db);
+      await expect(repository.readAuthorizedSnapshot({ keyId: f.keyId, secret: f.secret })).rejects.toMatchObject({ code: 'service_access_denied' });
+      const output = { stdout: '', stderr: '' };
+      await expect(executeS2sAdmin(['recover', '--file', path], {
+        repository,
+        output: { stdout: (text) => { output.stdout += text; }, stderr: (text) => { output.stderr += text; } },
+      })).rejects.toThrow('credential_not_active_after_reconciliation');
+      expect(JSON.parse(await readFile(path, 'utf8'))).toMatchObject({ keyId: f.keyId, grantId: f.grantId, outcome: 'inactive' });
+      expect(output.stdout + output.stderr).not.toContain(token);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('serializes a snapshot before concurrent sponsor demotion and revokes its credentials atomically', async () => {
