@@ -1,5 +1,5 @@
 import { MemoryRouter } from 'react-router-dom';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AiConsent } from '@ikuck/shared/contracts';
@@ -9,8 +9,15 @@ import { useAuthStore } from '../auth/authStore';
 import { useHouseStore } from '../house/houseStore';
 import { fetchAiConsentStatus, updateAiConsent, updateDinnerAiConsent } from '../ai/aiRecipeApi';
 import DinnerDiaryPage from './DinnerDiaryPage';
-import { useDinnerDiaryStore } from '../store/dinnerDiaryStore';
-import { setActiveDataScope } from '../sync/scopeContext';
+import { useDinnerDiaryStore, waitForPendingDinnerDiaryWrites } from '../store/dinnerDiaryStore';
+import { usePantryStore } from '../store/localPantryStore';
+import { coordinateDinnerConsumption } from '../store/dinnerConsumption';
+import { deleteLocalDatabase } from '../storage/indexedDb';
+import { readDinnerEntries } from '../storage/dinnerDiaryStorage';
+import { readDinnerConsumptionOutbox } from '../storage/dinnerConsumptionStorage';
+import { readPantrySnapshot, writePantrySnapshot } from '../storage/pantryStorage';
+import { resumeScope } from '../sync/scopeWriteFence';
+import { setActiveDataScope, setPersonalDataScope } from '../sync/scopeContext';
 
 const hydrateDinnerDiaryStoreMock = vi.hoisted(() => vi.fn());
 
@@ -28,9 +35,11 @@ const existingEntry: DinnerEntry = {
   id: 'dinner-1', date: '2026-09-28', text: 'Riso con verdure', servings: 2, note: 'Con basilico',
   recipes: [], authorId: null, createdAt: '2026-09-28T18:00:00.000Z', updatedAt: '2026-09-28T18:00:00.000Z',
 };
+const defaultConfirmEntry = useDinnerDiaryStore.getState().confirmEntry;
 
 describe('DinnerDiaryPage', () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     hydrateDinnerDiaryStoreMock.mockReset().mockResolvedValue(undefined);
     vi.mocked(fetchAiConsentStatus).mockReset();
     vi.mocked(updateAiConsent).mockReset();
@@ -38,7 +47,7 @@ describe('DinnerDiaryPage', () => {
     useAuthStore.setState({ user: null, csrfToken: null });
     useHouseStore.setState({ state: null });
     setActiveDataScope('guest');
-    useDinnerDiaryStore.setState({ hasHydrated: true, entries: [], recipes: [], drafts: [], error: null });
+    useDinnerDiaryStore.setState({ hasHydrated: true, entries: [], recipes: [], drafts: [], error: null, confirmEntry: defaultConfirmEntry });
   });
 
   it('keeps Dinner consent closed until requested, leaving the diary form available', async () => {
@@ -57,7 +66,7 @@ describe('DinnerDiaryPage', () => {
     expect(disclosure).not.toBeNull();
     expect(disclosure).not.toHaveAttribute('open');
     expect(checkbox).not.toBeVisible();
-    expect(screen.getByRole('button', { name: 'Salva cena' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Registra la cena' })).toBeVisible();
     expect(screen.getByText(/Attivo per Gemini di Google/)).toBeVisible();
 
     const summary = screen.getByText('Consenso AI per Dinner');
@@ -104,7 +113,7 @@ describe('DinnerDiaryPage', () => {
     renderPage();
 
     expect(screen.getByText(/Come ospite, le cene restano sul dispositivo/)).toHaveTextContent(/non inviamo testo, porzioni o note/i);
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Nessun ingrediente della dispensa utilizzato' })).toBeVisible();
     expect(screen.queryByText(/OpenAI|Gemini di Google/)).not.toBeInTheDocument();
     expect(fetchAiConsentStatus).not.toHaveBeenCalled();
   });
@@ -269,23 +278,174 @@ describe('DinnerDiaryPage', () => {
     expect(screen.getByText('Only in house')).toBeVisible();
   });
 
-  it('saves a dated text-only dinner without finalizing consumption or starting AI', async () => {
+  it('does not display a stale confirmation after the active scope changes', async () => {
+    const user = userEvent.setup();
+    let resolveConfirmation!: (confirmed: boolean) => void;
+    const pendingConfirmation = new Promise<boolean>((resolve) => { resolveConfirmation = resolve; });
+    const confirmEntry = vi.spyOn(useDinnerDiaryStore.getState(), 'confirmEntry').mockReturnValue(pendingConfirmation);
+
+    try {
+      renderPage();
+      await user.type(screen.getByRole('textbox', { name: /Com’è andata la cena\?/ }), 'Cena registrata in modalità ospite');
+      fireEvent.change(screen.getByLabelText('Data della cena'), { target: { value: '2026-09-29' } });
+      await user.type(screen.getByRole('spinbutton', { name: /Porzioni/ }), '2');
+      await user.click(screen.getByRole('checkbox', { name: 'Nessun ingrediente della dispensa utilizzato' }));
+      await user.click(screen.getByRole('button', { name: 'Registra la cena' }));
+
+      expect(screen.getByRole('button', { name: 'Registro…' })).toBeDisabled();
+      await act(async () => {
+        setActiveDataScope('account:user-1');
+        resolveConfirmation(true);
+        await pendingConfirmation;
+      });
+
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Registra la cena' })).toBeEnabled());
+      expect(screen.queryByText('Cena registrata. Nessun ingrediente della dispensa è stato scalato.')).not.toBeInTheDocument();
+      expect(screen.getByRole('textbox', { name: /Com’è andata la cena\?/ })).toHaveValue('Cena registrata in modalità ospite');
+    } finally {
+      confirmEntry.mockRestore();
+    }
+  });
+
+  it('retains dinner fields after the atomic confirmation reports failure', async () => {
+    const user = userEvent.setup();
+    const confirmEntry = vi.spyOn(useDinnerDiaryStore.getState(), 'confirmEntry').mockResolvedValue(false);
+
+    try {
+      renderPage();
+      const dinnerText = screen.getByRole('textbox', { name: /Com’è andata la cena\?/ });
+      const servings = screen.getByRole('spinbutton', { name: /Porzioni/ });
+      await user.type(dinnerText, 'Pasta con zucchine');
+      fireEvent.change(screen.getByLabelText('Data della cena'), { target: { value: '2026-09-29' } });
+      await user.type(servings, '2');
+      await user.click(screen.getByRole('checkbox', { name: 'Nessun ingrediente della dispensa utilizzato' }));
+      await user.click(screen.getByRole('button', { name: 'Registra la cena' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(/la dispensa non è stata aggiornata; il modulo resta disponibile per riprovare/i);
+      expect(dinnerText).toHaveValue('Pasta con zucchine');
+      expect(servings).toHaveValue(2);
+      expect(screen.getByRole('checkbox', { name: 'Nessun ingrediente della dispensa utilizzato' })).toBeChecked();
+      expect(screen.getByRole('button', { name: 'Registra la cena' })).toBeEnabled();
+    } finally {
+      confirmEntry.mockRestore();
+    }
+  });
+
+  it('maps a free-text dinner to a known pantry ingredient and commits the calculated quantity', async () => {
+    const user = userEvent.setup();
+    const scope = 'guest';
+    const lot = {
+      id: 'free-text-pasta-lot', ingredientId: 'pasta', label: 'Pasta', known: true,
+      quantity: 200, unit: 'g' as const, expiresAt: null,
+      createdAt: '2026-09-29T08:00:00.000Z', updatedAt: '2026-09-29T08:00:00.000Z',
+    };
+    const initialPantry = {
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: ['salt'], pantryLots: [lot],
+    };
+    await deleteLocalDatabase();
+    window.localStorage.clear();
+    setPersonalDataScope(scope);
+    setActiveDataScope(scope);
+    resumeScope(scope);
+    usePantryStore.setState(initialPantry);
+    await writePantrySnapshot(initialPantry, scope);
+    const servings = 2;
+    const amountPerServing = 80;
+    const expectedRemaining = lot.quantity - amountPerServing * servings;
+
+    renderPage();
+    await user.type(screen.getByRole('textbox', { name: /Com’è andata la cena\?/ }), 'Pasta con zucchine');
+    fireEvent.change(screen.getByLabelText('Data della cena'), { target: { value: '2026-09-29' } });
+    await user.type(screen.getByRole('spinbutton', { name: /Porzioni/ }), String(servings));
+    await user.click(screen.getByRole('button', { name: 'Aggiungi ingrediente utilizzato' }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Ingrediente usato 1' }), 'pasta');
+    await user.type(screen.getByRole('textbox', { name: 'Quantità per porzione di Pasta' }), `${amountPerServing} g`);
+
+    await user.click(screen.getByRole('button', { name: 'Registra la cena' }));
+
+    const summary = await screen.findByRole('status', { name: 'Riepilogo dispensa aggiornata' });
+    expect(summary).toHaveTextContent(`Scalati ${new Intl.NumberFormat('it-IT').format(lot.quantity - expectedRemaining)} g di Pasta.`);
+    await waitFor(() => expect(useDinnerDiaryStore.getState().entries).toHaveLength(1));
+    await expect(readDinnerEntries(scope)).resolves.toMatchObject([
+      expect.objectContaining({ text: 'Pasta con zucchine', servings }),
+    ]);
+    await expect(readPantrySnapshot(scope)).resolves.toMatchObject({
+      pantryLots: [expect.objectContaining({ id: lot.id, quantity: expectedRemaining })],
+      stapleIds: initialPantry.stapleIds,
+    });
+    await expect(readDinnerConsumptionOutbox(scope)).resolves.toHaveLength(1);
+    await expect(waitForPendingDinnerDiaryWrites()).resolves.toBeUndefined();
+    expect(fetchAiConsentStatus).not.toHaveBeenCalled();
+  });
+
+  it('requires an explicit pantry ingredient decision before confirming a free-text dinner', async () => {
     const user = userEvent.setup();
     const confirmEntry = vi.spyOn(useDinnerDiaryStore.getState(), 'confirmEntry');
     renderPage();
 
-    expect(screen.getByRole('heading', { name: 'Diario delle cene' })).toBeVisible();
-    expect(screen.getByText('Non hai ancora registrato una cena.')).toBeVisible();
     await user.type(screen.getByRole('textbox', { name: /Com’è andata la cena\?/ }), 'Pasta con zucchine e insalata');
     fireEvent.change(screen.getByLabelText('Data della cena'), { target: { value: '2026-09-29' } });
-    await user.click(screen.getByRole('button', { name: 'Salva cena' }));
+    await user.type(screen.getByRole('spinbutton', { name: /Porzioni/ }), '2');
+    await user.click(screen.getByRole('button', { name: 'Registra la cena' }));
 
-    expect(await screen.findByText('Pasta con zucchine e insalata')).toBeVisible();
-    expect(useDinnerDiaryStore.getState().entries).toHaveLength(1);
-    expect(useDinnerDiaryStore.getState().entries[0]?.value).toMatchObject({ date: '2026-09-29', text: 'Pasta con zucchine e insalata' });
+    expect(useDinnerDiaryStore.getState().entries).toHaveLength(0);
     expect(confirmEntry).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/indica gli ingredienti utilizzati oppure seleziona.*nessun ingrediente della dispensa/i);
     expect(fetchAiConsentStatus).not.toHaveBeenCalled();
     confirmEntry.mockRestore();
+  });
+
+  it('does not restore pantry stock when editing or deleting a consumed dinner', async () => {
+    const user = userEvent.setup();
+    const scope = 'guest';
+    const lot = {
+      id: 'history-pasta-lot', ingredientId: 'pasta', label: 'Pasta', known: true,
+      quantity: 500, unit: 'g' as const, expiresAt: null,
+      createdAt: '2026-09-29T08:00:00.000Z', updatedAt: '2026-09-29T08:00:00.000Z',
+    };
+    const initialPantry = {
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: ['salt'], pantryLots: [lot],
+    };
+    await deleteLocalDatabase();
+    window.localStorage.clear();
+    setPersonalDataScope(scope);
+    setActiveDataScope(scope);
+    resumeScope(scope);
+    usePantryStore.setState(initialPantry);
+    await writePantrySnapshot(initialPantry, scope);
+    await coordinateDinnerConsumption({
+      command: {
+        operationId: 'history-edit-operation', entryId: existingEntry.id, scope, servings: existingEntry.servings ?? 2,
+        ingredients: [{ ingredientId: 'pasta', name: 'Pasta', amount: '80 g', optional: false, used: true }],
+      },
+      entry: existingEntry,
+      updatedAt: '2026-09-29T18:03:00.000Z',
+    });
+    const expectedPantry = await readPantrySnapshot(scope);
+    useDinnerDiaryStore.setState({ hasHydrated: true, entries: [{ scope, value: existingEntry }] });
+    const confirmEntry = vi.spyOn(useDinnerDiaryStore.getState(), 'confirmEntry');
+    const confirmPrompt = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    try {
+      renderPage();
+      await user.click(screen.getByRole('button', { name: /Modifica cena del/ }));
+      await user.clear(screen.getByRole('textbox', { name: /Nota/ }));
+      await user.type(screen.getByRole('textbox', { name: /Nota/ }), 'Meno sale la prossima volta');
+      await user.click(screen.getByRole('button', { name: 'Salva modifiche' }));
+      await waitFor(() => expect(useDinnerDiaryStore.getState().entries[0]?.value.note).toBe('Meno sale la prossima volta'));
+      await waitForPendingDinnerDiaryWrites();
+      await expect(readPantrySnapshot(scope)).resolves.toEqual(expectedPantry);
+
+      await user.click(screen.getByRole('button', { name: /Elimina cena del/ }));
+      await waitFor(() => expect(useDinnerDiaryStore.getState().entries).toHaveLength(0));
+      await waitForPendingDinnerDiaryWrites();
+      await expect(readPantrySnapshot(scope)).resolves.toEqual(expectedPantry);
+      await expect(readDinnerConsumptionOutbox(scope)).resolves.toHaveLength(1);
+      expect(confirmEntry).not.toHaveBeenCalled();
+    } finally {
+      confirmEntry.mockRestore();
+      confirmPrompt.mockRestore();
+    }
   });
 
   it('edits a saved dinner without dropping its existing links', async () => {
@@ -324,10 +484,11 @@ describe('DinnerDiaryPage', () => {
     renderPage();
 
     await user.type(screen.getByRole('textbox', { name: /Com’è andata la cena\?/ }), '   ');
-    await user.click(screen.getByRole('button', { name: 'Salva cena' }));
+    await user.type(screen.getByRole('spinbutton', { name: /Porzioni/ }), '2');
+    await user.click(screen.getByRole('button', { name: 'Registra la cena' }));
 
     expect(useDinnerDiaryStore.getState().entries).toHaveLength(0);
-    expect(screen.getByRole('alert')).toHaveTextContent('Scrivi cosa avete mangiato prima di salvare.');
+    expect(screen.getByRole('alert')).toHaveTextContent('Scrivi cosa avete mangiato prima di registrare la cena.');
   });
 
   it.each([
