@@ -348,6 +348,24 @@ integration('S2S PostgreSQL repository integration', () => {
     expect(response.json()).toEqual({ code: 'service_unavailable' });
   });
 
+  it('returns a minimized snapshot from PostgreSQL when internal pantry lot IDs exceed the browser ID limit', async () => {
+    const fixture = await requestableGrant();
+    const now = new Date();
+    const privateLotId = `private-lot-${'x'.repeat(172)}`;
+    await database.db.insert(syncItems).values({
+      scopeType: 'house', scopeId: fixture.houseId, entityType: 'pantry_lot', entityId: randomUUID(),
+      userId: fixture.userId, deviceId: 'long-internal-id-fixture',
+      payload: { id: privateLotId, ingredientId: 'beans', label: 'Beans', known: true, quantity: 1, unit: 'g', expiresAt: null, createdAt: now.toISOString(), updatedAt: now.toISOString() },
+      deleted: false, clientUpdatedAt: now, mutationId: randomUUID(),
+    });
+
+    const response = await requestDinnerContext(fixture.repository, fixture.keyId, fixture.secret);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().pantry.lots).toEqual([{ ingredientId: 'beans', label: 'Beans', known: true, quantity: 1, unit: 'g', expiresAt: null }]);
+    expect(JSON.stringify(response.json())).not.toContain(privateLotId);
+  });
+
   it('returns 409 through the HTTP route for legacy pantry representation in the real repository', async () => {
     const fixture = await requestableGrant();
     const now = new Date();
