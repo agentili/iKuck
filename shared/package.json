@@ -24,6 +24,10 @@
       "types": "./src/bring.ts",
       "default": "./src/bring.ts"
     },
+    "./pantryConsumption": {
+      "types": "./src/pantryConsumption.ts",
+      "default": "./src/pantryConsumption.ts"
+    },
     "./sync-fixtures/valid.json": "./sync-fixtures/valid.json",
     "./sync-fixtures/invalid.json": "./sync-fixtures/invalid.json"
   }
