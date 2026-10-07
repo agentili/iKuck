@@ -1,16 +1,26 @@
 import { DIARY_MAX_RECIPES } from '@ikuck/shared/limits';
-import { isDinnerEntry } from '@ikuck/shared/dinnerDiary';
+import { isDinnerEntry, type DinnerEntry } from '@ikuck/shared/dinnerDiary';
 import { HOUSE_SYNC_ENTITY_TYPES } from '@ikuck/shared/contracts';
-import type { AiConsent, AiRecipeProvider, DietProfile, DietType, PantryLot, SyncChange, SyncMutation } from '@ikuck/shared/contracts';
+import type { AiConsent, AiRecipeProvider, CookEvent, DietProfile, DietType, PantryLot, SyncChange, SyncMutation, SyncMutationScope } from '@ikuck/shared/contracts';
 import { mergePantryLots, type PantryMergeSummary } from '@ikuck/shared/pantryMerge';
+import { planPantryConsumption, type DinnerConsumptionCommand } from '@ikuck/shared/pantryConsumption';
 import { and, asc, eq, gt, inArray, like, or, sql } from 'drizzle-orm';
 import { Buffer } from 'node:buffer';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { ApplicationDatabase } from '../db/client.js';
-import { processedSyncMutations, houseMemberships, houses, syncItems, users } from '../db/schema.js';
+import { dinnerConsumptionReceipts, processedSyncMutations, houseMemberships, houses, syncItems, users } from '../db/schema.js';
 import { isAiConsent } from '../ai/validation.js';
+import { isCookEvent } from '../activity/validation.js';
 import { isDietProfile } from '../diet/validation.js';
 import { isPantryLot } from '../pantry/validation.js';
+import {
+  assertDinnerConsumptionRequest,
+  DinnerConsumptionConflictError,
+  type DinnerConsumptionReceipt,
+  type DinnerConsumptionRequest,
+  type DinnerConsumptionResult,
+  type DinnerConsumptionRepository,
+} from '../pantry/consumptionService.js';
 import { assertStoredSyncMutation, assertSyncMutation } from './validation.js';
 import { createDispatchCapacityGate, DispatchAbortedError, DispatchCapacityError, type DispatchCapacityGate } from './dispatchCapacity.js';
 
@@ -247,7 +257,7 @@ export class SyncMembershipRequiredError extends Error {
   }
 }
 
-export interface SyncRepository {
+export interface SyncRepository extends DinnerConsumptionRepository {
   applyMutation: (userId: string, mutation: SyncMutation) => Promise<AppliedSyncMutation>;
   updateAiConsent: (userId: string, update: AiConsentUpdate) => Promise<AiConsent>;
   withAiConsentDispatch: <T>(
@@ -670,6 +680,9 @@ const entityIdFromKey = (key: string): string => key.slice(key.lastIndexOf(':') 
 const entityKey = (scope: SyncScope, entityType: SyncMutation['entityType'], entityId: string): string =>
   `${scopeKey(scope)}:${entityType}:${entityId}`;
 
+const isPostgresUniqueViolation = (value: unknown): boolean => typeof value === 'object' && value !== null
+  && 'code' in value && (value as { code?: unknown }).code === '23505';
+
 export const resolveScopeForCurrentMembership = (
   userId: string,
   entityType: SyncMutation['entityType'],
@@ -773,6 +786,52 @@ const toChange = (item: StoredSyncItem): SyncChange => ({
   serverSequence: item.serverSequence,
 });
 
+const scopeLabel = (scope: SyncScope): SyncMutationScope => `${scope.kind === 'house' ? 'house' : 'account'}:${scope.id}`;
+const dinnerEntryKey = (scope: SyncScope, entryId: string): string => `${scopeKey(scope)}:${entryId}`;
+const pantryScopeLockKey = (scope: SyncScope): string => `ikuck:pantry:${scopeKey(scope)}`;
+const consumptionProcessedMutationId = (operationId: string): string => `dinner-consumption:${operationId}`;
+
+const canonicalJson = (value: unknown): string => {
+  const normalize = (item: unknown): unknown => {
+    if (Array.isArray(item)) return item.map(normalize);
+    if (typeof item !== 'object' || item === null) return item;
+    return Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, normalize(nested)]));
+  };
+  return JSON.stringify(normalize(value));
+};
+
+const dinnerConsumptionRequestDigest = (request: DinnerConsumptionRequest): string => createHash('sha256')
+  .update(canonicalJson({
+    command: {
+      operationId: request.command.operationId,
+      entryId: request.command.entryId,
+      servings: request.command.servings,
+      ingredients: request.command.ingredients,
+    },
+    entry: request.entry,
+    cookEvent: request.cookEvent ?? null,
+  }))
+  .digest('hex');
+
+const pantrySnapshotFromStoredItems = (items: readonly StoredSyncItem[]): DinnerConsumptionResult['pantrySnapshot'] => {
+  const lots = items.map(storedPantryLot).filter((lot): lot is PantryLot => lot !== null)
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const pantryItems = new Map<string, { id: string; label: string; known: boolean }>();
+  for (const lot of lots) {
+    if (!pantryItems.has(lot.ingredientId)) pantryItems.set(lot.ingredientId, {
+      id: lot.ingredientId,
+      label: lot.label,
+      known: lot.known,
+    });
+  }
+  const stapleIds = items.filter((item) => item.entityType === 'staple_preference' && !item.deleted
+    && typeof item.payload === 'object' && item.payload !== null
+    && (item.payload as { enabled?: unknown }).enabled === true)
+    .map((item) => item.entityId).sort();
+  return { pantryItems: [...pantryItems.values()], stapleIds, pantryLots: lots };
+};
+
 const wins = (incoming: PreparedMutation, existing: StoredSyncItem): boolean => {
   const incomingTime = new Date(incoming.mutation.clientUpdatedAt).getTime();
   const existingTime = existing.clientUpdatedAt.getTime();
@@ -791,6 +850,9 @@ export const createMemorySyncRepository = (repositoryOptions: SyncRepositoryOpti
   const options = resolveOptions(repositoryOptions);
   const entities = new Map<string, StoredSyncItem>();
   const processed = new Set<string>();
+  const dinnerReceiptsByOperation = new Map<string, { receipt: DinnerConsumptionReceipt; requestDigest: string }>();
+  const dinnerOperationByEntry = new Map<string, string>();
+  const withPantryLock = createKeyedLock();
   let sequence = 0;
 
   const mergeMemoryPantry = (
@@ -1007,10 +1069,102 @@ export const createMemorySyncRepository = (repositoryOptions: SyncRepositoryOpti
       }
       return dispatch(current);
     }),
+    consumeDinner: async (userId, request) => {
+      assertDinnerConsumptionRequest(request);
+      const requestedScope = request.command.scope as Exclude<DinnerConsumptionCommand['scope'], 'guest'>;
+      const initialScope = await resolveEntityScope(userId, 'pantry_lot', options, requestedScope);
+      if (initialScope === null) throw new SyncMembershipRequiredError();
+      return withPantryLock(scopeKey(initialScope), async () => {
+        const scope = await resolveEntityScope(userId, 'pantry_lot', options, requestedScope);
+        if (scope === null || scopeKey(scope) !== scopeKey(initialScope)) throw new SyncMembershipRequiredError();
+        const requestDigest = dinnerConsumptionRequestDigest(request);
+        const priorOperationId = dinnerOperationByEntry.get(dinnerEntryKey(scope, request.command.entryId));
+        const prior = dinnerReceiptsByOperation.get(request.command.operationId)
+          ?? (priorOperationId === undefined ? undefined : dinnerReceiptsByOperation.get(priorOperationId));
+        if (prior !== undefined) {
+          if (prior.receipt.operationId !== request.command.operationId
+            || prior.receipt.entryId !== request.command.entryId
+            || prior.receipt.scope !== scopeLabel(scope)
+            || prior.requestDigest !== requestDigest) throw new DinnerConsumptionConflictError();
+          const entryItem = entities.get(entityKey(scope, 'dinner_entry', request.command.entryId));
+          if (entryItem === undefined || entryItem.deleted || !isDinnerEntry(entryItem.payload)) throw new DinnerConsumptionConflictError();
+          const eventItem = entities.get(entityKey(scope, 'cook_event', request.command.entryId));
+          const cookEvent = eventItem !== undefined && !eventItem.deleted && eventItem.payload !== null
+            ? eventItem.payload as CookEvent : undefined;
+          const currentItems = [...entities.entries()].filter(([key]) => entityScopeFor(scope, key)).map(([, item]) => item);
+          return {
+            duplicate: true,
+            entry: entryItem.payload,
+            ...(cookEvent === undefined ? {} : { cookEvent }),
+            pantrySnapshot: pantrySnapshotFromStoredItems(currentItems),
+            receipt: prior.receipt,
+            plan: prior.receipt.plan,
+          };
+        }
+
+        const entryKey = entityKey(scope, 'dinner_entry', request.command.entryId);
+        const cookEventKey = entityKey(scope, 'cook_event', request.command.entryId);
+        if (entities.has(entryKey) || entities.has(cookEventKey)) throw new DinnerConsumptionConflictError();
+        const scopeItems = [...entities.entries()].filter(([key]) => entityScopeFor(scope, key));
+        const pantryItems = scopeItems.filter(([, item]) => pantryTypes.has(item.entityType)).map(([, item]) => item);
+        const lots = pantryItems.map(storedPantryLot).filter((lot): lot is PantryLot => lot !== null);
+        const now = options.clock();
+        const committedAt = now.toISOString();
+        const plan = planPantryConsumption({ lots, command: request.command, updatedAt: committedAt });
+        const digest = requestDigest;
+        const changedItems: StoredSyncItem[] = [];
+        const addChange = (
+          entityType: SyncMutation['entityType'], entityId: string, payload: unknown | null, deleted: boolean,
+        ): void => {
+          const item: StoredSyncItem = {
+            entityType,
+            entityId,
+            deviceId: 'api-dinner-consumption',
+            payload,
+            deleted,
+            clientUpdatedAt: now,
+            serverUpdatedAt: now,
+            mutationId: randomUUID(),
+            syncScope: scopeLabel(scope),
+            serverSequence: ++sequence,
+          };
+          changedItems.push(item);
+        };
+        for (const lotId of plan.deleteLotIds) {
+          const source = pantryItems.find((item) => storedPantryLot(item)?.id === lotId);
+          if (source !== undefined) addChange(source.entityType, source.entityId, null, true);
+        }
+        for (const lot of plan.upsertLots) addChange('pantry_lot', lot.id, lot, false);
+        const savedEntry: DinnerEntry = { ...request.entry, authorId: userId };
+        addChange('dinner_entry', savedEntry.id, savedEntry, false);
+        if (request.cookEvent !== undefined) addChange('cook_event', request.cookEvent.id, request.cookEvent, false);
+        const receipt: DinnerConsumptionReceipt = {
+          operationId: request.command.operationId,
+          entryId: request.command.entryId,
+          scope: scopeLabel(scope),
+          committedAt,
+          plan,
+        };
+        for (const item of changedItems) entities.set(entityKey(scope, item.entityType, item.entityId), item);
+        const processedId = consumptionProcessedMutationId(request.command.operationId);
+        processed.add(`${scopeKey(scope)}:${processedId}`);
+        dinnerReceiptsByOperation.set(request.command.operationId, { receipt, requestDigest: digest });
+        dinnerOperationByEntry.set(dinnerEntryKey(scope, request.command.entryId), request.command.operationId);
+        const currentItems = [...entities.entries()].filter(([key]) => entityScopeFor(scope, key)).map(([, item]) => item);
+        return {
+          duplicate: false,
+          entry: savedEntry,
+          ...(request.cookEvent === undefined ? {} : { cookEvent: request.cookEvent }),
+          pantrySnapshot: pantrySnapshotFromStoredItems(currentItems),
+          receipt,
+          plan,
+        };
+      });
+    },
     applyMutation: async (userId, mutation) => {
-      const apply = async () => {
+      const apply = async (resolvedScope?: SyncScope | null) => {
         const prepared = prepareMutation(mutation, options);
-        const scope = await resolveEntityScope(userId, prepared.mutation.entityType, options, prepared.mutation.syncScope);
+        const scope = resolvedScope ?? await resolveEntityScope(userId, prepared.mutation.entityType, options, prepared.mutation.syncScope);
         if (scope === null) throw new SyncMembershipRequiredError();
         const processedKey = `${scopeKey(scope)}:${prepared.mutation.mutationId}`;
         if (processed.has(processedKey)) return { applied: false, change: null };
@@ -1064,6 +1218,15 @@ export const createMemorySyncRepository = (repositoryOptions: SyncRepositoryOpti
         entities.set(key, item);
         return { applied: true, change: toChange(item) };
       };
+      if (pantryItemTypes.has(mutation.entityType)) {
+        const requested = await resolveEntityScope(userId, mutation.entityType, options, mutation.syncScope);
+        if (requested === null) throw new SyncMembershipRequiredError();
+        return withPantryLock(scopeKey(requested), async () => {
+          const current = await resolveEntityScope(userId, mutation.entityType, options, mutation.syncScope);
+          if (current === null || scopeKey(current) !== scopeKey(requested)) throw new SyncMembershipRequiredError();
+          return apply(current);
+        });
+      }
       return mutation.entityType === 'ai_consent' ? withConsentLock(userId, apply) : apply();
     },
     readChanges: async (userId, cursor, limit, requestedScope) => {
@@ -1157,6 +1320,8 @@ export const createMemorySyncRepository = (repositoryOptions: SyncRepositoryOpti
     migrateUserSharedDataToHouse: async (userId, houseId, pendingAccountMutations = []) => {
       const entitiesBefore = new Map(entities);
       const processedBefore = new Set(processed);
+      const dinnerReceiptsBefore = new Map(dinnerReceiptsByOperation);
+      const dinnerEntriesBefore = new Map(dinnerOperationByEntry);
       const sequenceBefore = sequence;
       try {
         const sourceScope = userScope(userId);
@@ -1246,11 +1411,27 @@ export const createMemorySyncRepository = (repositoryOptions: SyncRepositoryOpti
         }
         entities.delete(key);
       }
+      const accountScope = scopeLabel(sourceScope);
+      const houseLabel = scopeLabel(houseScope);
+      for (const [operationId, stored] of dinnerReceiptsByOperation) {
+        if (stored.receipt.scope !== accountScope) continue;
+        const moved: DinnerConsumptionReceipt = { ...stored.receipt, scope: houseLabel };
+        dinnerReceiptsByOperation.set(operationId, { ...stored, receipt: moved });
+        dinnerOperationByEntry.delete(dinnerEntryKey(sourceScope, stored.receipt.entryId));
+        dinnerOperationByEntry.set(dinnerEntryKey(houseScope, stored.receipt.entryId), operationId);
+        const processedId = consumptionProcessedMutationId(operationId);
+        processed.delete(`${scopeKey(sourceScope)}:${processedId}`);
+        processed.add(`${scopeKey(houseScope)}:${processedId}`);
+      }
       } catch (error) {
         entities.clear();
         for (const [key, item] of entitiesBefore) entities.set(key, item);
         processed.clear();
         for (const marker of processedBefore) processed.add(marker);
+        dinnerReceiptsByOperation.clear();
+        for (const [operationId, receipt] of dinnerReceiptsBefore) dinnerReceiptsByOperation.set(operationId, receipt);
+        dinnerOperationByEntry.clear();
+        for (const [entryId, operationId] of dinnerEntriesBefore) dinnerOperationByEntry.set(entryId, operationId);
         sequence = sequenceBefore;
         throw error;
       }
@@ -1281,7 +1462,7 @@ export const createDrizzleSyncRepository = (
   const resolveTransactionScope = async (
     transaction: SyncDatabaseTransaction,
     userId: string,
-    mutation: SyncMutation,
+    mutation: Pick<SyncMutation, 'entityType' | 'syncScope'>,
   ): Promise<SyncScope> => {
     if (!isSharedEntityType(mutation.entityType)) {
       return resolveScopeForCurrentMembership(userId, mutation.entityType, null, mutation.syncScope);
@@ -1321,6 +1502,9 @@ export const createDrizzleSyncRepository = (
     await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${houseId} FOR UPDATE`);
     const membershipRows = await transaction.execute(sql`SELECT id FROM ${houseMemberships} WHERE user_id = ${userId} AND house_id = ${houseId} FOR UPDATE`);
     if (membershipRows.length === 0) throw new SyncMembershipRequiredError();
+    if (input.includePersonalRows) {
+      await transaction.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${pantryScopeLockKey(userScope(userId))}, 0))`);
+    }
     const houseRows = await transaction.select().from(syncItems).where(and(
       eq(syncItems.scopeType, 'house'),
       eq(syncItems.scopeId, houseId),
@@ -1725,6 +1909,182 @@ export const createDrizzleSyncRepository = (
       }
       return dispatch(current);
     }),
+    consumeDinner: async (userId, request) => {
+      assertDinnerConsumptionRequest(request);
+      try {
+        return await database.transaction(async (transaction) => {
+          await transaction.execute(sql`SET LOCAL lock_timeout = '30s'`);
+          const scope = await resolveTransactionScope(transaction, userId, {
+            entityType: 'pantry_lot',
+            syncScope: request.command.scope as SyncMutationScope,
+          });
+          await transaction.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${pantryScopeLockKey(scope)}, 0))`);
+          const requestDigest = dinnerConsumptionRequestDigest(request);
+          const [operationReceipt] = await transaction.select().from(dinnerConsumptionReceipts)
+            .where(eq(dinnerConsumptionReceipts.operationId, request.command.operationId)).limit(1).for('update');
+          const [entryReceipt] = await transaction.select().from(dinnerConsumptionReceipts).where(and(
+            eq(dinnerConsumptionReceipts.scopeType, scope.kind),
+            eq(dinnerConsumptionReceipts.scopeId, scope.id),
+            eq(dinnerConsumptionReceipts.entryId, request.command.entryId),
+          )).limit(1).for('update');
+
+          if (operationReceipt !== undefined || entryReceipt !== undefined) {
+            if (operationReceipt === undefined || entryReceipt === undefined
+              || operationReceipt.operationId !== entryReceipt.operationId
+              || operationReceipt.entryId !== request.command.entryId
+              || operationReceipt.scopeType !== scope.kind || operationReceipt.scopeId !== scope.id
+              || operationReceipt.requestDigest !== requestDigest) throw new DinnerConsumptionConflictError();
+            const [entryRow] = await transaction.select().from(syncItems).where(and(
+              eq(syncItems.scopeType, scope.kind),
+              eq(syncItems.scopeId, scope.id),
+              eq(syncItems.entityType, 'dinner_entry'),
+              eq(syncItems.entityId, request.command.entryId),
+            )).limit(1);
+            if (entryRow === undefined || entryRow.deleted || !isDinnerEntry(entryRow.payload)) throw new DinnerConsumptionConflictError();
+            const [eventRow] = await transaction.select().from(syncItems).where(and(
+              eq(syncItems.scopeType, scope.kind),
+              eq(syncItems.scopeId, scope.id),
+              eq(syncItems.entityType, 'cook_event'),
+              eq(syncItems.entityId, request.command.entryId),
+            )).limit(1);
+            const cookEvent = eventRow !== undefined && !eventRow.deleted && isCookEvent(eventRow.payload)
+              ? eventRow.payload : undefined;
+            const currentPantryRows = await transaction.select().from(syncItems).where(and(
+              eq(syncItems.scopeType, scope.kind),
+              eq(syncItems.scopeId, scope.id),
+              inArray(syncItems.entityType, [...pantryTypes]),
+            ));
+            const receipt: DinnerConsumptionReceipt = {
+              operationId: operationReceipt.operationId,
+              entryId: operationReceipt.entryId,
+              scope: scopeLabel(scope),
+              committedAt: operationReceipt.committedAt.toISOString(),
+              plan: operationReceipt.plan,
+            };
+            return {
+              duplicate: true,
+              entry: entryRow.payload,
+              ...(cookEvent === undefined ? {} : { cookEvent }),
+              pantrySnapshot: pantrySnapshotFromStoredItems(currentPantryRows.map(fromDatabaseItem)),
+              receipt,
+              plan: receipt.plan,
+            };
+          }
+
+          const processedMutationId = consumptionProcessedMutationId(request.command.operationId);
+          const [alreadyProcessed] = await transaction.select({ id: processedSyncMutations.id })
+            .from(processedSyncMutations).where(and(
+              eq(processedSyncMutations.scopeType, scope.kind),
+              eq(processedSyncMutations.scopeId, scope.id),
+              eq(processedSyncMutations.mutationId, processedMutationId),
+            )).limit(1);
+          if (alreadyProcessed !== undefined) throw new DinnerConsumptionConflictError();
+          const [existingEntry] = await transaction.select({ id: syncItems.id }).from(syncItems).where(and(
+            eq(syncItems.scopeType, scope.kind),
+            eq(syncItems.scopeId, scope.id),
+            eq(syncItems.entityType, 'dinner_entry'),
+            eq(syncItems.entityId, request.command.entryId),
+          )).limit(1).for('update');
+          const [existingCookEvent] = await transaction.select({ id: syncItems.id }).from(syncItems).where(and(
+            eq(syncItems.scopeType, scope.kind),
+            eq(syncItems.scopeId, scope.id),
+            eq(syncItems.entityType, 'cook_event'),
+            eq(syncItems.entityId, request.command.entryId),
+          )).limit(1).for('update');
+          if (existingEntry !== undefined || existingCookEvent !== undefined) throw new DinnerConsumptionConflictError();
+
+          const pantryRows = await transaction.select().from(syncItems).where(and(
+            eq(syncItems.scopeType, scope.kind),
+            eq(syncItems.scopeId, scope.id),
+            inArray(syncItems.entityType, [...pantryTypes]),
+          ));
+          const pantryItems = pantryRows.map(fromDatabaseItem);
+          const lots = pantryItems.map(storedPantryLot).filter((lot): lot is PantryLot => lot !== null);
+          const now = options.clock();
+          const committedAt = now.toISOString();
+          const plan = planPantryConsumption({ lots, command: request.command, updatedAt: committedAt });
+          const writeChange = async (
+            entityType: SyncMutation['entityType'],
+            entityId: string,
+            payload: unknown | null,
+            deleted: boolean,
+          ): Promise<void> => {
+            const [existing] = await transaction.select().from(syncItems).where(and(
+              eq(syncItems.scopeType, scope.kind),
+              eq(syncItems.scopeId, scope.id),
+              eq(syncItems.entityType, entityType),
+              eq(syncItems.entityId, entityId),
+            )).limit(1).for('update');
+            const values = {
+              userId,
+              scopeType: scope.kind,
+              scopeId: scope.id,
+              entityType,
+              entityId,
+              deviceId: 'api-dinner-consumption',
+              payload: deleted ? null : payload,
+              deleted,
+              clientUpdatedAt: now,
+              updatedAt: now,
+              mutationId: randomUUID(),
+            };
+            if (existing === undefined) await transaction.insert(syncItems).values(values);
+            else await transaction.update(syncItems).set({
+              ...values,
+              serverSequence: sql`nextval('sync_server_sequence')`,
+            }).where(eq(syncItems.id, existing.id));
+          };
+
+          for (const lotId of plan.deleteLotIds) {
+            const source = pantryItems.find((item) => storedPantryLot(item)?.id === lotId);
+            if (source !== undefined) await writeChange(source.entityType, source.entityId, null, true);
+          }
+          for (const lot of plan.upsertLots) await writeChange('pantry_lot', lot.id, lot, false);
+          const savedEntry: DinnerEntry = { ...request.entry, authorId: userId };
+          await writeChange('dinner_entry', savedEntry.id, savedEntry, false);
+          if (request.cookEvent !== undefined) await writeChange('cook_event', request.cookEvent.id, request.cookEvent, false);
+          await transaction.insert(processedSyncMutations).values({
+            userId,
+            scopeType: scope.kind,
+            scopeId: scope.id,
+            mutationId: processedMutationId,
+          });
+          await transaction.insert(dinnerConsumptionReceipts).values({
+            operationId: request.command.operationId,
+            entryId: request.command.entryId,
+            scopeType: scope.kind,
+            scopeId: scope.id,
+            requestDigest,
+            committedAt: now,
+            createdByUserId: userId,
+            plan,
+          });
+          const savedPantryRows = await transaction.select().from(syncItems).where(and(
+            eq(syncItems.scopeType, scope.kind),
+            eq(syncItems.scopeId, scope.id),
+            inArray(syncItems.entityType, [...pantryTypes]),
+          ));
+          const receipt: DinnerConsumptionReceipt = {
+            operationId: request.command.operationId,
+            entryId: request.command.entryId,
+            scope: scopeLabel(scope),
+            committedAt,
+            plan,
+          };
+          return {
+            duplicate: false,
+            entry: savedEntry,
+            ...(request.cookEvent === undefined ? {} : { cookEvent: request.cookEvent }),
+            pantrySnapshot: pantrySnapshotFromStoredItems(savedPantryRows.map(fromDatabaseItem)),
+            receipt,
+            plan,
+          };
+        });
+      } catch (error) {
+        if (isPostgresUniqueViolation(error)) throw new DinnerConsumptionConflictError();
+        throw error;
+      }
+    },
     applyMutation: async (userId, mutation) => {
       const prepared = prepareMutation(mutation, options);
       const apply = () => database.transaction(async (transaction) => {
@@ -1735,6 +2095,9 @@ export const createDrizzleSyncRepository = (
           await transaction.execute(sql`SELECT id FROM ${users} WHERE id = ${userId} FOR UPDATE`);
         }
         const scope = await resolveTransactionScope(transaction, userId, validMutation);
+        if (pantryItemTypes.has(validMutation.entityType)) {
+          await transaction.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${pantryScopeLockKey(scope)}, 0))`);
+        }
         const [alreadyProcessed] = await transaction.select({ id: processedSyncMutations.id })
           .from(processedSyncMutations)
           .where(and(
@@ -1991,6 +2354,7 @@ export const createDrizzleSyncRepository = (
       await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${houseId} FOR UPDATE`);
       const member = await transaction.execute(sql`SELECT id FROM ${houseMemberships} WHERE user_id = ${userId} AND house_id = ${houseId} FOR UPDATE`);
       if (member.length === 0) throw new SyncMembershipRequiredError();
+      await transaction.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${pantryScopeLockKey(userScope(userId))}, 0))`);
       for (const mutation of pending) {
         const [processed] = await transaction.select({ id: processedSyncMutations.id }).from(processedSyncMutations).where(and(
           eq(processedSyncMutations.scopeType, 'user'),
@@ -2099,6 +2463,38 @@ export const createDrizzleSyncRepository = (
         eq(syncItems.mutationId, personalRow.mutationId),
         eq(syncItems.clientUpdatedAt, personalRow.clientUpdatedAt),
       ));
+    }
+
+    const personalReceipts = await transaction.select().from(dinnerConsumptionReceipts).where(and(
+      eq(dinnerConsumptionReceipts.scopeType, 'user'),
+      eq(dinnerConsumptionReceipts.scopeId, userId),
+    )).for('update');
+    for (const receipt of personalReceipts) {
+      const [houseReceipt] = await transaction.select({ operationId: dinnerConsumptionReceipts.operationId })
+        .from(dinnerConsumptionReceipts).where(and(
+          eq(dinnerConsumptionReceipts.scopeType, 'house'),
+          eq(dinnerConsumptionReceipts.scopeId, houseId),
+          eq(dinnerConsumptionReceipts.entryId, receipt.entryId),
+        )).limit(1);
+      const processedMutationId = consumptionProcessedMutationId(receipt.operationId);
+      await transaction.insert(processedSyncMutations).values({
+        userId,
+        scopeType: 'house',
+        scopeId: houseId,
+        mutationId: processedMutationId,
+      }).onConflictDoNothing({ target: [processedSyncMutations.scopeType, processedSyncMutations.scopeId, processedSyncMutations.mutationId] });
+      await transaction.delete(processedSyncMutations).where(and(
+        eq(processedSyncMutations.scopeType, 'user'),
+        eq(processedSyncMutations.scopeId, userId),
+        eq(processedSyncMutations.mutationId, processedMutationId),
+      ));
+      if (houseReceipt === undefined) {
+        await transaction.update(dinnerConsumptionReceipts).set({ scopeType: 'house', scopeId: houseId })
+          .where(eq(dinnerConsumptionReceipts.operationId, receipt.operationId));
+      } else {
+        await transaction.delete(dinnerConsumptionReceipts)
+          .where(eq(dinnerConsumptionReceipts.operationId, receipt.operationId));
+      }
     }
   }),
 

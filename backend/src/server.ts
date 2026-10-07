@@ -87,6 +87,7 @@ export const start = async () => {
       sync: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       house: { service: houseService, authService: auth, appOrigin: config.appOrigin, rateLimiter: authRateLimiter },
       dinnerDiary: { repository: sync, authService: auth, appOrigin: config.appOrigin },
+      dinnerConsumption: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       bring: { service: bring, authService: auth, appOrigin: config.appOrigin, rateLimiter: authRateLimiter },
       s2sDinnerContext,
       pantryLots: { repository: sync, authService: auth, appOrigin: config.appOrigin },

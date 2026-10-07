@@ -64,6 +64,13 @@
       "when": 1791333795185,
       "tag": "0008_bring_connections",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791362992840,
+      "tag": "0009_dinner_consumption_receipts",
+      "breakpoints": true
     }
   ]
 }

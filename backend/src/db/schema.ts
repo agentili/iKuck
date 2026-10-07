@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import type { PantryConsumptionPlan } from '@ikuck/shared/pantryConsumption';
 import {
   bigint,
   boolean,
@@ -180,4 +181,22 @@ export const processedSyncMutations = pgTable('processed_sync_mutations', {
 }, (table) => ({
   mutationUnique: uniqueIndex('processed_sync_mutations_scope_unique').on(table.scopeType, table.scopeId, table.mutationId),
   scopeTypeCheck: check('processed_sync_mutations_scope_type_check', sql`${table.scopeType} in ('user', 'house')`),
+}));
+
+export const dinnerConsumptionReceipts = pgTable('dinner_consumption_receipts', {
+  operationId: text('operation_id').primaryKey(),
+  entryId: text('entry_id').notNull(),
+  scopeType: text('scope_type').notNull(),
+  scopeId: text('scope_id').notNull(),
+  requestDigest: text('request_digest').notNull(),
+  committedAt: timestamp('committed_at', { withTimezone: true }).notNull(),
+  createdByUserId: uuid('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  plan: jsonb('plan').$type<PantryConsumptionPlan>().notNull(),
+}, (table) => ({
+  entryUnique: uniqueIndex('dinner_consumption_receipts_scope_entry_unique').on(table.scopeType, table.scopeId, table.entryId),
+  scopeIndex: index('dinner_consumption_receipts_scope_index').on(table.scopeType, table.scopeId),
+  operationIdCheck: check('dinner_consumption_operation_id_check', sql`length(${table.operationId}) between 1 and 128`),
+  entryIdCheck: check('dinner_consumption_entry_id_check', sql`length(${table.entryId}) between 1 and 128`),
+  scopeTypeCheck: check('dinner_consumption_scope_type_check', sql`${table.scopeType} in ('user', 'house')`),
+  requestDigestCheck: check('dinner_consumption_request_digest_check', sql`${table.requestDigest} ~ '^[0-9a-f]{64}$'`),
 }));

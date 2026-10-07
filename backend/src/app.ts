@@ -8,6 +8,7 @@ import { type ProfileRouteDependencies, registerProfileRoutes } from './routes/p
 import { type SyncRouteDependencies, registerSyncRoutes } from './routes/sync.js';
 import { SyncPayloadError, SyncScopeRequiredError } from './routes/sync.js';
 import { SyncDiaryRecipeLimitError, SyncMembershipRequiredError, SyncScopeInvalidError } from './sync/repository.js';
+import { DinnerConsumptionConflictError, DinnerConsumptionInputError } from './pantry/consumptionService.js';
 import { type PantryLotRouteDependencies, registerPantryLotRoutes } from './routes/pantryLots.js';
 import { type ShoppingListRouteDependencies, registerShoppingListRoutes } from './routes/shoppingList.js';
 import { type ActivityRouteDependencies, registerActivityRoutes } from './routes/activity.js';
@@ -17,6 +18,7 @@ import { type RecipeNutritionRouteDependencies, registerRecipeNutritionRoutes } 
 import { type AiRecipeRouteDependencies, registerAiRecipeRoutes } from './routes/aiRecipes.js';
 import { type HouseRouteDependencies, registerHouseRoutes } from './routes/house.js';
 import { type DinnerDiaryRecipeRouteDependencies, registerDinnerDiaryRecipeRoutes } from './routes/dinnerDiaryRecipes.js';
+import { type DinnerConsumptionRouteDependencies, registerDinnerConsumptionRoutes } from './routes/dinnerConsumption.js';
 import { registerBringRoutes, type BringRouteDependencies } from './routes/bring.js';
 import { type S2sDinnerContextService } from './s2s/dinnerContext.js';
 import { registerS2sDinnerContextRoutes } from './routes/s2sDinnerContext.js';
@@ -37,6 +39,7 @@ export interface ExtendedPlatformDependencies extends PlatformDependencies {
   aiRecipes?: AiRecipeRouteDependencies;
   house?: HouseRouteDependencies;
   dinnerDiary?: DinnerDiaryRecipeRouteDependencies;
+  dinnerConsumption?: DinnerConsumptionRouteDependencies;
   bring?: BringRouteDependencies;
   s2sDinnerContext?: S2sDinnerContextService;
 }
@@ -63,7 +66,7 @@ export const createApp = (
       app.log.error({ error: error instanceof Error ? error.name : 'unknown' }, 'S2S request failed');
       return reply.code(503).send({ code: 'service_unavailable' });
     }
-    if (error instanceof SyncPayloadError || error instanceof SyncScopeInvalidError || error instanceof SyncScopeRequiredError || error instanceof SyncMembershipRequiredError || error instanceof SyncDiaryRecipeLimitError) {
+    if (error instanceof SyncPayloadError || error instanceof SyncScopeInvalidError || error instanceof SyncScopeRequiredError || error instanceof SyncMembershipRequiredError || error instanceof SyncDiaryRecipeLimitError || error instanceof DinnerConsumptionInputError || error instanceof DinnerConsumptionConflictError) {
       return reply.code(error.status).send({ code: error.code, message: error.message });
     }
     if (error instanceof AuthServiceError) {
@@ -88,6 +91,7 @@ export const createApp = (
   if (dependencies.aiRecipes !== undefined) app.register(registerAiRecipeRoutes(dependencies.aiRecipes));
   if (dependencies.house !== undefined) app.register(registerHouseRoutes(dependencies.house));
   if (dependencies.dinnerDiary !== undefined) app.register(registerDinnerDiaryRecipeRoutes(dependencies.dinnerDiary));
+  if (dependencies.dinnerConsumption !== undefined) app.register(registerDinnerConsumptionRoutes(dependencies.dinnerConsumption));
   if (dependencies.bring !== undefined) app.register(registerBringRoutes(dependencies.bring));
   app.register(async (s2sScope) => {
     s2sScope.setNotFoundHandler((_request, reply) => {
