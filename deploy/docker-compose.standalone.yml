@@ -76,6 +76,8 @@ services:
       S2S_DINNER_CONTEXT_ENABLED: ${S2S_DINNER_CONTEXT_ENABLED:-false}
       TRUST_PROXY: ${TRUST_PROXY:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      BRING_ENABLED: ${BRING_ENABLED:-false}
+      BRING_TOKEN_ENCRYPTION_KEY: ${BRING_TOKEN_ENCRYPTION_KEY:-}
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/healthz').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))\""]
       interval: 10s
