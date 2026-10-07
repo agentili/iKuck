@@ -20,7 +20,19 @@ export const shouldDisableRequestLogging = (request: FastifyRequest) => {
 
 export const createServerLoggerOptions = (level: string, stream?: FastifyLoggerOptions['stream']) => ({
   level,
-  redact: ['req.headers.cookie', 'req.headers.authorization'],
+  redact: [
+    'req.headers.cookie',
+    'req.headers.authorization',
+    'req.body.password',
+    'req.body.email',
+    'req.body.accessToken',
+    'req.body.refreshToken',
+    'body.password',
+    'body.email',
+    'body.accessToken',
+    'body.refreshToken',
+    '*.encryptedSession',
+  ],
   serializers: { req: serializeRequestWithoutQuery },
   ...(stream === undefined ? {} : { stream }),
 });
