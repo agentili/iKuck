@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DinnerConsumptionCommand } from '@ikuck/shared/pantryConsumption';
+import type { CookEvent } from '@ikuck/shared/contracts';
 import type { DinnerEntry } from '@ikuck/shared/dinnerDiary';
 import { setActiveDataScope, scopeStorageKey } from '../sync/scopeContext';
 import { resumeScope, revokeScope } from '../sync/scopeWriteFence';
@@ -7,6 +8,7 @@ import { closeLocalDatabase, deleteLocalDatabase, deleteQueueScope, DINNER_CONSU
 import * as indexedDb from './indexedDb';
 import { dinnerEntriesStorageKeyForScope, readDinnerEntries, serializeDinnerEntriesSnapshot, writeDinnerEntries } from './dinnerDiaryStorage';
 import { pantryStorageKeyForScope, readPantrySnapshot, serializePantrySnapshot, writePantrySnapshot } from './pantryStorage';
+import { readCookEvents } from './activityStorage';
 import {
   acknowledgeDinnerConsumption,
   commitDinnerConsumption,
@@ -18,6 +20,10 @@ const timestamp = '2026-10-07T09:00:00.000Z';
 const entry: DinnerEntry = {
   id: 'dinner-1', date: '2026-10-07', text: 'Pasta e pomodoro', servings: 2,
   note: null, recipes: [], authorId: null, createdAt: timestamp, updatedAt: timestamp,
+};
+const event: CookEvent = {
+  id: entry.id, recipeId: 'recipe-1', recipeTitle: 'Pasta e pomodoro', servings: 2,
+  cookedAt: timestamp, note: null, createdAt: timestamp, updatedAt: timestamp,
 };
 const command: DinnerConsumptionCommand = {
   operationId: 'consume-op-1', entryId: entry.id, scope: 'guest', servings: 2,
@@ -74,6 +80,27 @@ describe('dinner consumption storage', () => {
     await expect(readQueueValues('guest')).resolves.toEqual([]);
   });
 
+  it('commits cook-event history with pantry, diary, and outbox in one fallback journal', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'indexedDB');
+    Object.defineProperty(window, 'indexedDB', { configurable: true, value: undefined });
+    try {
+      await writePantrySnapshot({ pantryItems: [], stapleIds: ['salt'], pantryLots: [lot('pasta-lot', 'pasta', 500, 'g')] }, 'guest');
+
+      const first = await commitDinnerConsumption({ command, entry, cookEvent: event, updatedAt: timestamp });
+      const retry = await commitDinnerConsumption({ command, entry, cookEvent: event, updatedAt: timestamp });
+
+      expect(first.duplicate).toBe(false);
+      expect(retry.duplicate).toBe(true);
+      await expect(readCookEvents('guest')).resolves.toEqual([event]);
+      await expect(readDinnerEntries('guest')).resolves.toEqual([entry]);
+      await expect(readPantrySnapshot('guest')).resolves.toMatchObject({ pantryLots: [expect.objectContaining({ id: 'pasta-lot', quantity: 300 })] });
+      await expect(readDinnerConsumptionOutbox('guest')).resolves.toMatchObject([{ cookEvent: event, command }]);
+      expect(window.localStorage.getItem(LOCAL_STORAGE_JOURNAL_KEY)).toBeNull();
+    } finally {
+      if (descriptor) Object.defineProperty(window, 'indexedDB', descriptor);
+    }
+  });
+
   it('preserves cached pantry data when the IndexedDB connection cannot be opened', async () => {
     const pantry = { pantryItems: [], stapleIds: [], pantryLots: [lot('pasta-lot', 'pasta', 500, 'g')] };
     await writePantrySnapshot(pantry, 'guest');
@@ -118,6 +145,21 @@ describe('dinner consumption storage', () => {
     await expect(readPantrySnapshot('guest')).resolves.toMatchObject({ pantryLots: [expect.objectContaining({ id: 'pasta-lot', quantity: 300 })] });
     await expect(readDinnerConsumptionOutbox('guest')).resolves.toHaveLength(1);
     await expect(readDinnerConsumptionReceipt(secondCommand.operationId, 'guest')).resolves.toBeNull();
+  });
+
+  it('rejects a consumption command whose servings differ from the committed dinner', async () => {
+    const mismatchedEntry: DinnerEntry = { ...entry, id: 'dinner-mismatched-servings', servings: 1 };
+    const mismatchedCommand: DinnerConsumptionCommand = {
+      ...command, operationId: 'consume-op-mismatched-servings', entryId: mismatchedEntry.id, servings: 2,
+    };
+    await writePantrySnapshot({ pantryItems: [], stapleIds: [], pantryLots: [lot('pasta-lot', 'pasta', 500, 'g')] }, 'guest');
+
+    await expect(commitDinnerConsumption({ command: mismatchedCommand, entry: mismatchedEntry, updatedAt: timestamp }))
+      .rejects.toMatchObject({ code: 'dinner_consumption_conflict' });
+
+    await expect(readPantrySnapshot('guest')).resolves.toMatchObject({ pantryLots: [expect.objectContaining({ id: 'pasta-lot', quantity: 500 })] });
+    await expect(readDinnerEntries('guest')).resolves.toEqual([]);
+    await expect(readDinnerConsumptionOutbox('guest')).resolves.toEqual([]);
   });
 
   it('removes a lot when the confirmed quantity exactly exhausts it', async () => {

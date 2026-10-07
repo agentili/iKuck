@@ -1,5 +1,7 @@
 import type { DinnerConsumptionCommand, PantryConsumptionPlan } from '@ikuck/shared/pantryConsumption';
 import { planPantryConsumption } from '@ikuck/shared/pantryConsumption';
+import type { CookEvent } from '@ikuck/shared/contracts';
+import { isCookEvent } from '../domain/activity';
 import type { DinnerEntry } from '@ikuck/shared/dinnerDiary';
 import { isDinnerEntry } from '@ikuck/shared/dinnerDiary';
 import {
@@ -17,6 +19,12 @@ import {
   parseDinnerEntriesSnapshot,
   serializeDinnerEntriesSnapshot,
 } from './dinnerDiaryStorage';
+import {
+  activityEventsDatabaseKeyForScope,
+  activityEventsStorageKeyForScope,
+  parseCookEventsSnapshot,
+  serializeCookEventsSnapshot,
+} from './activityStorage';
 import {
   derivePantryItems,
   normalizePantrySnapshot,
@@ -44,6 +52,7 @@ export interface DinnerConsumptionOutboxRecord {
   scopeEntryId: string;
   command: DinnerConsumptionCommand;
   entry: DinnerEntry;
+  cookEvent?: CookEvent;
   receipt: DinnerConsumptionReceipt;
   createdAt: string;
   status: 'pending' | 'acknowledged';
@@ -91,8 +100,10 @@ const assertCurrentScope = (scope: SyncScope): void => {
 
 const cloneJson = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
-const validateInput = (command: DinnerConsumptionCommand, entry: DinnerEntry): void => {
+const validateInput = (command: DinnerConsumptionCommand, entry: DinnerEntry, cookEvent?: CookEvent): void => {
   if (command.operationId.trim() === '' || command.entryId.trim() === '' || command.entryId !== entry.id
+    || command.servings !== entry.servings
+    || (cookEvent !== undefined && (cookEvent.id !== command.entryId || !isCookEvent(cookEvent)))
     || command.scope !== getActiveDataScope() || !isDinnerEntry(entry)) {
     if (command.scope !== getActiveDataScope()) throw new DinnerConsumptionScopeChangedError();
     throw new DinnerConsumptionConflictError('Dinner entry and consumption command identifiers must match');
@@ -116,6 +127,7 @@ const isOutboxRecord = (value: unknown): value is DinnerConsumptionOutboxRecord 
     && typeof record.scopeEntryId === 'string'
     && record.command !== undefined
     && isDinnerEntry(record.entry)
+    && (record.cookEvent === undefined || isCookEvent(record.cookEvent))
     && typeof record.receipt === 'object'
     && record.receipt !== null
     && typeof record.createdAt === 'string'
@@ -170,6 +182,7 @@ const createOutboxRecord = (
   entry: DinnerEntry,
   receipt: DinnerConsumptionReceipt,
   createdAt: string,
+  cookEvent?: CookEvent,
 ): DinnerConsumptionOutboxRecord => ({
   operationId: command.operationId,
   entryId: command.entryId,
@@ -177,6 +190,7 @@ const createOutboxRecord = (
   scopeEntryId: scopeEntryId(command.scope, command.entryId),
   command,
   entry,
+  ...(cookEvent === undefined ? {} : { cookEvent }),
   receipt,
   createdAt,
   status: 'pending',
@@ -199,29 +213,34 @@ const resultFor = (
 export async function commitDinnerConsumption({
   command: inputCommand,
   entry: inputEntry,
+  cookEvent: inputCookEvent,
   updatedAt = new Date().toISOString(),
 }: {
   command: DinnerConsumptionCommand;
   entry: DinnerEntry;
+  cookEvent?: CookEvent;
   updatedAt?: string;
 }): Promise<CommittedDinnerConsumption> {
   const command = cloneJson(inputCommand);
   const entry = cloneJson(inputEntry);
+  const cookEvent = inputCookEvent === undefined ? undefined : cloneJson(inputCookEvent);
   const scope = command.scope;
-  validateInput(command, entry);
+  validateInput(command, entry, cookEvent);
   const capturedUpdatedAt = updatedAt;
 
   return trackScopedWrite(scope, async () => {
     assertCurrentScope(scope);
     if (!isIndexedDbAvailable()) {
-      return commitLocalConsumption(command, entry, capturedUpdatedAt);
+      return commitLocalConsumption(command, entry, capturedUpdatedAt, cookEvent);
     }
 
     recoverLocalStorageJournal();
     const pantryMirrorKey = pantryStorageKeyForScope(scope);
     const entriesMirrorKey = dinnerEntriesStorageKeyForScope(scope);
+    const activityMirrorKey = cookEvent === undefined ? null : activityEventsStorageKeyForScope(scope);
     const pantryMirror = window.localStorage.getItem(pantryMirrorKey);
     const entriesMirror = window.localStorage.getItem(entriesMirrorKey);
+    const activityMirror = activityMirrorKey === null ? null : window.localStorage.getItem(activityMirrorKey);
     const fallbackPantry = pantryMirror === null ? null : parsePantrySnapshot(pantryMirror);
     const database = await openLocalDatabase();
     assertCurrentScope(scope);
@@ -236,9 +255,11 @@ export async function commitDinnerConsumption({
       mirrorsTouched = true;
       window.localStorage.removeItem(pantryMirrorKey);
       window.localStorage.removeItem(entriesMirrorKey);
-      const [pantryRaw, entriesRaw, storedRecord, storedEntryRecord] = await Promise.all([
+      if (activityMirrorKey !== null) window.localStorage.removeItem(activityMirrorKey);
+      const [pantryRaw, entriesRaw, activityRaw, storedRecord, storedEntryRecord] = await Promise.all([
         values.get(pantryDatabaseKeyForScope(scope)),
         values.get(dinnerEntriesDatabaseKeyForScope(scope)),
+        cookEvent === undefined ? Promise.resolve(undefined) : values.get(activityEventsDatabaseKeyForScope(scope)),
         consumptionStore.get(command.operationId) as Promise<DinnerConsumptionOutboxRecord | undefined>,
         consumptionStore.index('byScopeEntryId').get(scopeEntryId(scope, command.entryId)) as Promise<DinnerConsumptionOutboxRecord | undefined>,
       ]);
@@ -247,10 +268,14 @@ export async function commitDinnerConsumption({
         ? parsePantrySnapshot(pantryRaw) ?? fallbackPantry ?? emptyPantry()
         : fallbackPantry ?? emptyPantry();
       const existingEntries = parseDinnerEntriesSnapshot(typeof entriesRaw === 'string' ? entriesRaw : entriesMirror);
+      const existingCookEvents = cookEvent === undefined
+        ? []
+        : parseCookEventsSnapshot(typeof activityRaw === 'string' ? activityRaw : activityMirror);
 
       if (storedRecord !== undefined) {
         if (storedRecord.scope !== scope || JSON.stringify(storedRecord.command) !== JSON.stringify(command)
-          || JSON.stringify(storedRecord.entry) !== JSON.stringify(entry)) {
+          || JSON.stringify(storedRecord.entry) !== JSON.stringify(entry)
+          || JSON.stringify(storedRecord.cookEvent ?? null) !== JSON.stringify(cookEvent ?? null)) {
           throw new DinnerConsumptionConflictError('The operation ID is already committed with different content or scope');
         }
         await completion;
@@ -258,20 +283,25 @@ export async function commitDinnerConsumption({
         assertCurrentScope(scope);
         return resultFor(true, storedRecord.entry, pantrySnapshot, storedRecord);
       }
-      if (storedEntryRecord !== undefined || existingEntries.some((current) => current.id === entry.id)) {
+      if (storedEntryRecord !== undefined || existingEntries.some((current) => current.id === entry.id)
+        || (cookEvent !== undefined && existingCookEvents.some((current) => current.id === cookEvent.id))) {
         throw new DinnerConsumptionConflictError('The dinner entry already exists without this consumption receipt');
       }
 
       const plan = planPantryConsumption({ lots: pantrySnapshot.pantryLots ?? [], command, updatedAt: capturedUpdatedAt });
       const nextPantrySnapshot = applyPlan(pantrySnapshot, plan);
       const receipt = createReceipt(command, capturedUpdatedAt, plan);
-      const outbox = createOutboxRecord(command, entry, receipt, capturedUpdatedAt);
+      const outbox = createOutboxRecord(command, entry, receipt, capturedUpdatedAt, cookEvent);
       assertCurrentScope(scope);
-      await Promise.all([
+      const writes: Promise<unknown>[] = [
         values.put(serializePantrySnapshot(nextPantrySnapshot), pantryDatabaseKeyForScope(scope)),
         values.put(serializeDinnerEntriesSnapshot([...existingEntries, entry]), dinnerEntriesDatabaseKeyForScope(scope)),
         consumptionStore.put(outbox),
-      ]);
+      ];
+      if (cookEvent !== undefined) {
+        writes.push(values.put(serializeCookEventsSnapshot([...existingCookEvents, cookEvent]), activityEventsDatabaseKeyForScope(scope)));
+      }
+      await Promise.all(writes);
       assertCurrentScope(scope);
       await completion;
       transactionCommitted = true;
@@ -290,6 +320,10 @@ export async function commitDinnerConsumption({
           else window.localStorage.setItem(pantryMirrorKey, pantryMirror);
           if (entriesMirror === null) window.localStorage.removeItem(entriesMirrorKey);
           else window.localStorage.setItem(entriesMirrorKey, entriesMirror);
+          if (activityMirrorKey !== null) {
+            if (activityMirror === null) window.localStorage.removeItem(activityMirrorKey);
+            else window.localStorage.setItem(activityMirrorKey, activityMirror);
+          }
         } catch {
           // The IndexedDB transaction remains authoritative if mirror restoration fails.
         }
@@ -303,33 +337,42 @@ function commitLocalConsumption(
   command: DinnerConsumptionCommand,
   entry: DinnerEntry,
   updatedAt: string,
+  cookEvent?: CookEvent,
 ): CommittedDinnerConsumption {
   recoverLocalStorageJournal();
   const existingOutbox = readLocalRecord(command.scope, command.operationId);
   const pantrySnapshot = currentPantryFromLocalStorage(command.scope);
   const entriesKey = dinnerEntriesStorageKeyForScope(command.scope);
   const existingEntries = parseDinnerEntriesSnapshot(window.localStorage.getItem(entriesKey));
+  const activityKey = cookEvent === undefined ? null : activityEventsStorageKeyForScope(command.scope);
+  const existingCookEvents = activityKey === null ? [] : parseCookEventsSnapshot(window.localStorage.getItem(activityKey));
   if (existingOutbox !== null) {
-    if (JSON.stringify(existingOutbox.command) !== JSON.stringify(command) || JSON.stringify(existingOutbox.entry) !== JSON.stringify(entry)) {
+    if (JSON.stringify(existingOutbox.command) !== JSON.stringify(command) || JSON.stringify(existingOutbox.entry) !== JSON.stringify(entry)
+      || JSON.stringify(existingOutbox.cookEvent ?? null) !== JSON.stringify(cookEvent ?? null)) {
       throw new DinnerConsumptionConflictError('The operation ID is already committed with different content or scope');
     }
     return resultFor(true, existingOutbox.entry, pantrySnapshot, existingOutbox);
   }
   if (readLocalRecords(command.scope).some((record) => record.entryId === entry.id)
-    || existingEntries.some((current) => current.id === entry.id)) {
+    || existingEntries.some((current) => current.id === entry.id)
+    || (cookEvent !== undefined && existingCookEvents.some((current) => current.id === cookEvent.id))) {
     throw new DinnerConsumptionConflictError('The dinner entry already exists without this consumption receipt');
   }
 
   const plan = planPantryConsumption({ lots: pantrySnapshot.pantryLots ?? [], command, updatedAt });
   const nextPantrySnapshot = applyPlan(pantrySnapshot, plan);
   const receipt = createReceipt(command, updatedAt, plan);
-  const outbox = createOutboxRecord(command, entry, receipt, updatedAt);
+  const outbox = createOutboxRecord(command, entry, receipt, updatedAt, cookEvent);
   const recordKey = storageRecordKey(command.scope, command.operationId);
-  commitLocalStorageJournal({
+  const changes: Record<string, string> = {
     [pantryStorageKeyForScope(command.scope)]: serializePantrySnapshot(nextPantrySnapshot),
     [entriesKey]: serializeDinnerEntriesSnapshot([...existingEntries, entry]),
     [recordKey]: JSON.stringify(outbox),
-  });
+  };
+  if (activityKey !== null && cookEvent !== undefined) {
+    changes[activityKey] = serializeCookEventsSnapshot([...existingCookEvents, cookEvent]);
+  }
+  commitLocalStorageJournal(changes);
   return resultFor(false, entry, nextPantrySnapshot, outbox);
 }
 

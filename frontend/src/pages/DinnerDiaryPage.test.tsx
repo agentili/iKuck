@@ -269,8 +269,9 @@ describe('DinnerDiaryPage', () => {
     expect(screen.getByText('Only in house')).toBeVisible();
   });
 
-  it('saves a dated dinner description to the local diary', async () => {
+  it('saves a dated text-only dinner without finalizing consumption or starting AI', async () => {
     const user = userEvent.setup();
+    const confirmEntry = vi.spyOn(useDinnerDiaryStore.getState(), 'confirmEntry');
     renderPage();
 
     expect(screen.getByRole('heading', { name: 'Diario delle cene' })).toBeVisible();
@@ -282,6 +283,9 @@ describe('DinnerDiaryPage', () => {
     expect(await screen.findByText('Pasta con zucchine e insalata')).toBeVisible();
     expect(useDinnerDiaryStore.getState().entries).toHaveLength(1);
     expect(useDinnerDiaryStore.getState().entries[0]?.value).toMatchObject({ date: '2026-09-29', text: 'Pasta con zucchine e insalata' });
+    expect(confirmEntry).not.toHaveBeenCalled();
+    expect(fetchAiConsentStatus).not.toHaveBeenCalled();
+    confirmEntry.mockRestore();
   });
 
   it('edits a saved dinner without dropping its existing links', async () => {
