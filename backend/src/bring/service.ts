@@ -5,6 +5,7 @@ import {
   BRING_TIMEOUT_MS,
   type BringConnected,
   type BringItem,
+  type BringMutation,
   type BringSnapshot,
   type BringStatus,
 } from '@ikuck/shared/bring';
@@ -12,6 +13,8 @@ import { BringError } from './errors.js';
 import type { BringRepository, ConnectionUnit } from './repository.js';
 import type { SessionCipher } from './sessionCipher.js';
 import { sessionSchema, type BringGateway, type CatalogEntry, type RawItems, type StoredSession } from './gateway.js';
+
+const normalized = (name: string): string => name.trim().toLocaleLowerCase('it-IT');
 
 const assertActive = (signal: AbortSignal): void => {
   if (signal.aborted) throw new BringError('bring_unavailable', 503);
@@ -126,6 +129,85 @@ export const createBringService = ({
       await authorizeList(session, listId, signal, gateway);
       const loaded = await load(session, listId, signal, gateway);
       return publicSnapshot(connectionId, listId, loaded.raw, loaded.catalog, loaded.labelsAvailable);
+    });
+  },
+
+  write: (userId: string, input: BringMutation): Promise<BringSnapshot> => {
+    const signal = AbortSignal.timeout(BRING_TIMEOUT_MS);
+    return repository.withUser(userId, async (unit) => {
+      const session = await readSession(unit, cipher, userId, input.connectionId);
+      await authorizeList(session, input.listId, signal, gateway);
+      const loaded = await load(session, input.listId, signal, gateway);
+      let name = input.name;
+      if (input.action === 'add') {
+        if (!loaded.labelsAvailable) throw new BringError('bring_unavailable', 503);
+        const matches = loaded.catalog.filter((entry) => normalized(entry.name) === normalized(input.name));
+        if (matches.length > 1) throw new BringError('bring_ambiguous_item', 409);
+        name = matches[0]?.itemId ?? input.name;
+        const existing = [...loaded.raw.purchase, ...loaded.raw.recently].filter((item) => item.name === name);
+        if (existing.length > 1) throw new BringError('bring_ambiguous_item', 409);
+        const existingPurchase = loaded.raw.purchase.find((item) => item.name === name);
+        if (existingPurchase !== undefined) {
+          if (existingPurchase.specification !== input.specification) throw new BringError('bring_item_exists', 409);
+          return publicSnapshot(input.connectionId, input.listId, loaded.raw, loaded.catalog, loaded.labelsAvailable);
+        }
+      } else {
+        if (
+          input.action !== 'update'
+          && input.action !== 'complete'
+          && input.action !== 'restore'
+          && input.action !== 'remove'
+        ) {
+          throw new BringError('bring_unavailable', 503);
+        }
+        const existing = [...loaded.raw.purchase, ...loaded.raw.recently].filter((item) => item.name === name);
+        const correctGroup = input.action === 'restore' ? loaded.raw.recently : loaded.raw.purchase;
+        if (existing.length > 1) throw new BringError('bring_ambiguous_item', 409);
+        if (
+          existing[0] === undefined
+          || input.expectedSpecification === undefined
+          || existing[0].specification !== input.expectedSpecification
+          || (input.action !== 'remove' && !correctGroup.some((item) => item.name === name))
+        ) {
+          throw new BringError('bring_item_changed', 409);
+        }
+      }
+
+      assertActive(signal);
+      try {
+        await gateway.change(session, {
+          listId: input.listId,
+          name,
+          specification: input.specification,
+          action: input.action,
+        }, signal);
+      } catch (error) {
+        if (error instanceof BringError && error.code !== 'bring_unavailable') throw error;
+        throw new BringError('bring_write_unconfirmed', 503);
+      }
+
+      let after: RawItems;
+      try {
+        assertActive(signal);
+        after = await gateway.items(session, input.listId, signal);
+        assertActive(signal);
+      } catch {
+        throw new BringError('bring_write_unconfirmed', 503);
+      }
+      if (after.uuid !== input.listId) throw new BringError('bring_write_unconfirmed', 503);
+      const matchingPurchase = after.purchase.filter((item) => item.name === name);
+      const matchingRecently = after.recently.filter((item) => item.name === name);
+      const confirmed = input.action === 'remove'
+        ? matchingPurchase.length === 0 && matchingRecently.length === 0
+        : input.action === 'complete'
+          ? matchingPurchase.length === 0
+            && matchingRecently.length === 1
+            && matchingRecently[0]?.specification === input.specification
+          : matchingPurchase.length === 1
+            && matchingRecently.length === 0
+            && matchingPurchase[0]?.specification === input.specification;
+      if (!confirmed) throw new BringError('bring_write_unconfirmed', 503);
+      return publicSnapshot(input.connectionId, input.listId, after, loaded.catalog, loaded.labelsAvailable);
     });
   },
 

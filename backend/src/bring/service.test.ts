@@ -3,8 +3,10 @@ import { BRING_NAME_MAX_LENGTH, BRING_SPEC_MAX_LENGTH } from '@ikuck/shared/brin
 import { createBringService } from './service.js';
 import { createMemoryBringRepository } from './repository.js';
 import { createSessionCipher } from './sessionCipher.js';
+import type { BringMutation } from '@ikuck/shared/bring';
 import type { BringGateway, RawItems } from './gateway.js';
 import type { BringRepository } from './repository.js';
+import { BringError } from './errors.js';
 
 const listId = '11111111-1111-4111-8111-111111111111';
 const session = { userId: 'bring-user', accessToken: 'synthetic-access' };
@@ -309,5 +311,458 @@ describe('Bring service', () => {
       status: 409,
     });
     expect(gateway.lists).toHaveBeenCalledTimes(2);
+  });
+
+  it('adds a catalog item only after the remote read-back confirms it', async () => {
+    const { service, gateway, setRaw } = fixture();
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+    const mutation: BringMutation = {
+      connectionId: connected.connectionId!,
+      listId,
+      action: 'add',
+      name: 'Latte',
+      specification: '2 l',
+    };
+    vi.mocked(gateway.change).mockImplementationOnce(async (_storedSession, input) => {
+      expect(input).toEqual({ listId, name: 'Milch', specification: '2 l', action: 'add' });
+      setRaw({
+        uuid: listId,
+        status: 'REGISTERED',
+        purchase: [{ name: input.name, specification: input.specification }],
+        recently: [],
+      });
+    });
+
+    await expect(service.write('owner-a', mutation)).resolves.toMatchObject({
+      connectionId: connected.connectionId!,
+      listId,
+      items: [{ name: 'Milch', label: 'Latte', specification: '2 l', state: 'purchase', mutable: true }],
+    });
+    expect(gateway.change).toHaveBeenCalledTimes(1);
+    expect(gateway.items).toHaveBeenCalledTimes(2);
+  });
+
+  it('updates a purchase item only when its expected specification still matches', async () => {
+    const { service, gateway, setRaw } = fixture();
+    setRaw({
+      uuid: listId,
+      status: 'REGISTERED',
+      purchase: [{ name: 'Milch', specification: '2 l' }],
+      recently: [],
+    });
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+    vi.mocked(gateway.change).mockImplementationOnce(async (_storedSession, input) => {
+      setRaw({
+        uuid: listId,
+        status: 'REGISTERED',
+        purchase: [{ name: input.name, specification: input.specification }],
+        recently: [],
+      });
+    });
+
+    await expect(service.write('owner-a', {
+      connectionId: connected.connectionId!,
+      listId,
+      action: 'update',
+      name: 'Milch',
+      specification: '3 l',
+      expectedSpecification: '2 l',
+    })).resolves.toMatchObject({
+      items: [{ name: 'Milch', specification: '3 l', state: 'purchase' }],
+    });
+    expect(gateway.change).toHaveBeenCalledWith(session, {
+      listId,
+      name: 'Milch',
+      specification: '3 l',
+      action: 'update',
+    }, expect.any(AbortSignal));
+  });
+
+  it('completes a purchase item only after it appears in recently', async () => {
+    const { service, gateway, setRaw } = fixture();
+    setRaw({
+      uuid: listId,
+      status: 'REGISTERED',
+      purchase: [{ name: 'custom & item', specification: 'nota + bio' }],
+      recently: [],
+    });
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+    vi.mocked(gateway.change).mockImplementationOnce(async (_storedSession, input) => {
+      setRaw({
+        uuid: listId,
+        status: 'REGISTERED',
+        purchase: [],
+        recently: [{ name: input.name, specification: input.specification }],
+      });
+    });
+
+    await expect(service.write('owner-a', {
+      connectionId: connected.connectionId!,
+      listId,
+      action: 'complete',
+      name: 'custom & item',
+      specification: 'nota + bio',
+      expectedSpecification: 'nota + bio',
+    })).resolves.toMatchObject({
+      items: [{ name: 'custom & item', specification: 'nota + bio', state: 'recently' }],
+    });
+    expect(gateway.change).toHaveBeenCalledWith(session, {
+      listId,
+      name: 'custom & item',
+      specification: 'nota + bio',
+      action: 'complete',
+    }, expect.any(AbortSignal));
+  });
+
+  it('restores a recently completed item only after it returns to purchase', async () => {
+    const { service, gateway, setRaw } = fixture();
+    setRaw({
+      uuid: listId,
+      status: 'REGISTERED',
+      purchase: [],
+      recently: [{ name: 'custom & item', specification: 'nota + bio' }],
+    });
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+    vi.mocked(gateway.change).mockImplementationOnce(async (_storedSession, input) => {
+      setRaw({
+        uuid: listId,
+        status: 'REGISTERED',
+        purchase: [{ name: input.name, specification: input.specification }],
+        recently: [],
+      });
+    });
+
+    await expect(service.write('owner-a', {
+      connectionId: connected.connectionId!,
+      listId,
+      action: 'restore',
+      name: 'custom & item',
+      specification: 'nota + bio',
+      expectedSpecification: 'nota + bio',
+    })).resolves.toMatchObject({
+      items: [{ name: 'custom & item', specification: 'nota + bio', state: 'purchase' }],
+    });
+    expect(gateway.change).toHaveBeenCalledWith(session, {
+      listId,
+      name: 'custom & item',
+      specification: 'nota + bio',
+      action: 'restore',
+    }, expect.any(AbortSignal));
+  });
+
+  it('removes a raw remote identity only after both remote groups no longer contain it', async () => {
+    const { service, gateway, setRaw } = fixture();
+    setRaw({
+      uuid: listId,
+      status: 'REGISTERED',
+      purchase: [{ name: 'custom & item', specification: 'nota + bio' }],
+      recently: [],
+    });
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+    vi.mocked(gateway.change).mockImplementationOnce(async (_storedSession, input) => {
+      setRaw({ uuid: listId, status: 'REGISTERED', purchase: [], recently: [] });
+      expect(input.name).toBe('custom & item');
+    });
+
+    await expect(service.write('owner-a', {
+      connectionId: connected.connectionId!,
+      listId,
+      action: 'remove',
+      name: 'custom & item',
+      specification: 'nota + bio',
+      expectedSpecification: 'nota + bio',
+    })).resolves.toMatchObject({ items: [] });
+    expect(gateway.change).toHaveBeenCalledWith(session, {
+      listId,
+      name: 'custom & item',
+      specification: 'nota + bio',
+      action: 'remove',
+    }, expect.any(AbortSignal));
+  });
+
+  it('reports an uncertain upstream mutation without retrying or dropping the connection', async () => {
+    const { service, gateway, setRaw } = fixture();
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+    vi.mocked(gateway.change).mockImplementationOnce(async (_storedSession, input) => {
+      setRaw({
+        uuid: listId,
+        status: 'REGISTERED',
+        purchase: [{ name: 'Milch', specification: input.specification }],
+        recently: [],
+      });
+      throw new BringError('bring_unavailable', 503);
+    });
+
+    await expect(service.write('owner-a', {
+      connectionId: connected.connectionId!,
+      listId,
+      action: 'add',
+      name: 'Latte',
+      specification: '2 l',
+    })).rejects.toMatchObject({ code: 'bring_write_unconfirmed', status: 503 });
+    expect(gateway.change).toHaveBeenCalledTimes(1);
+    await expect(service.status('owner-a')).resolves.toMatchObject({
+      connected: true,
+      connectionId: connected.connectionId!,
+    });
+  });
+
+  it('does not accept an upstream write response without matching read-back state', async () => {
+    const { service, gateway } = fixture();
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+
+    await expect(service.write('owner-a', {
+      connectionId: connected.connectionId!,
+      listId,
+      action: 'add',
+      name: 'Latte',
+      specification: '2 l',
+    })).rejects.toMatchObject({ code: 'bring_write_unconfirmed', status: 503 });
+    expect(gateway.change).toHaveBeenCalledTimes(1);
+    expect(gateway.items).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects updates with a stale expected specification before dispatch', async () => {
+    const { service, gateway, setRaw } = fixture();
+    setRaw({
+      uuid: listId,
+      status: 'REGISTERED',
+      purchase: [{ name: 'Milch', specification: '2 l' }],
+      recently: [],
+    });
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+
+    await expect(service.write('owner-a', {
+      connectionId: connected.connectionId!,
+      listId,
+      action: 'update',
+      name: 'Milch',
+      specification: '3 l',
+      expectedSpecification: '1 l',
+    })).rejects.toMatchObject({ code: 'bring_item_changed', status: 409 });
+    expect(gateway.change).not.toHaveBeenCalled();
+    expect(gateway.items).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a post-write duplicate even when one purchase row matches', async () => {
+    const { service, gateway, setRaw } = fixture();
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+    vi.mocked(gateway.change).mockImplementationOnce(async (_storedSession, input) => {
+      const duplicate = { name: input.name, specification: input.specification };
+      setRaw({
+        uuid: listId,
+        status: 'REGISTERED',
+        purchase: [duplicate],
+        recently: [{ ...duplicate }],
+      });
+    });
+
+    await expect(service.write('owner-a', {
+      connectionId: connected.connectionId!,
+      listId,
+      action: 'add',
+      name: 'Latte',
+      specification: '2 l',
+    })).rejects.toMatchObject({ code: 'bring_write_unconfirmed', status: 503 });
+    expect(gateway.change).toHaveBeenCalledTimes(1);
+    expect(gateway.items).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not let add overwrite an existing remote item with a different specification', async () => {
+    const { service, gateway, setRaw } = fixture();
+    setRaw({
+      uuid: listId,
+      status: 'REGISTERED',
+      purchase: [{ name: 'Milch', specification: '1 l' }],
+      recently: [],
+    });
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+
+    await expect(service.write('owner-a', {
+      connectionId: connected.connectionId!,
+      listId,
+      action: 'add',
+      name: 'Latte',
+      specification: '2 l',
+    })).rejects.toMatchObject({ code: 'bring_item_exists', status: 409 });
+    expect(gateway.change).not.toHaveBeenCalled();
+    expect(gateway.items).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a duplicate pre-write identity before dispatch', async () => {
+    const { service, gateway, setRaw } = fixture();
+    setRaw({
+      uuid: listId,
+      status: 'REGISTERED',
+      purchase: [
+        { name: 'Milch', specification: '1 l' },
+        { name: 'Milch', specification: '2 l' },
+      ],
+      recently: [],
+    });
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+
+    await expect(service.write('owner-a', {
+      connectionId: connected.connectionId!,
+      listId,
+      action: 'update',
+      name: 'Milch',
+      specification: '3 l',
+      expectedSpecification: '2 l',
+    })).rejects.toMatchObject({ code: 'bring_ambiguous_item', status: 409 });
+    expect(gateway.change).not.toHaveBeenCalled();
+    expect(gateway.items).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a stale connection revision before attempting a remote write', async () => {
+    const { service, gateway } = fixture();
+    const first = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'first-password',
+    });
+    await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'second-password',
+    });
+
+    await expect(service.write('owner-a', {
+      connectionId: first.connectionId!,
+      listId,
+      action: 'add',
+      name: 'Latte',
+      specification: '2 l',
+    })).rejects.toMatchObject({ code: 'bring_stale_connection', status: 409 });
+    expect(gateway.change).not.toHaveBeenCalled();
+    expect(gateway.items).not.toHaveBeenCalled();
+  });
+
+  it('does not add when the catalog needed to resolve its remote identity is unavailable', async () => {
+    const { service, gateway } = fixture();
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+    vi.mocked(gateway.catalog).mockRejectedValueOnce(new Error('synthetic catalog failure'));
+
+    await expect(service.write('owner-a', {
+      connectionId: connected.connectionId!,
+      listId,
+      action: 'add',
+      name: 'Latte',
+      specification: '2 l',
+    })).rejects.toMatchObject({ code: 'bring_unavailable', status: 503 });
+    expect(gateway.change).not.toHaveBeenCalled();
+    expect(gateway.catalog).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry a write when the signal expires before read-back', async () => {
+    const { service, gateway, setRaw } = fixture();
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+    const controller = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+    vi.mocked(gateway.change).mockImplementationOnce(async (_storedSession, input) => {
+      setRaw({
+        uuid: listId,
+        status: 'REGISTERED',
+        purchase: [{ name: 'Milch', specification: input.specification }],
+        recently: [],
+      });
+      controller.abort();
+    });
+
+    try {
+      await expect(service.write('owner-a', {
+        connectionId: connected.connectionId!,
+        listId,
+        action: 'add',
+        name: 'Latte',
+        specification: '2 l',
+      })).rejects.toMatchObject({ code: 'bring_write_unconfirmed', status: 503 });
+      expect(gateway.change).toHaveBeenCalledTimes(1);
+      expect(gateway.items).toHaveBeenCalledTimes(1);
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+
+  it('marks a timed-out read-back unconfirmed without retrying the mutation', async () => {
+    const { service, gateway, setRaw } = fixture();
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+    const controller = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+    let abortTimer: ReturnType<typeof setTimeout> | undefined;
+    vi.mocked(gateway.items)
+      .mockImplementationOnce(async () => ({
+        uuid: listId,
+        status: 'REGISTERED',
+        purchase: [],
+        recently: [],
+      }))
+      .mockImplementationOnce((_storedSession, _requestedListId, signal) => new Promise<RawItems>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('synthetic read-back timeout')), { once: true });
+        abortTimer = setTimeout(() => controller.abort(), 0);
+      }));
+    vi.mocked(gateway.change).mockImplementationOnce(async (_storedSession, input) => {
+      setRaw({
+        uuid: listId,
+        status: 'REGISTERED',
+        purchase: [{ name: input.name, specification: input.specification }],
+        recently: [],
+      });
+    });
+
+    try {
+      await expect(service.write('owner-a', {
+        connectionId: connected.connectionId!,
+        listId,
+        action: 'add',
+        name: 'Latte',
+        specification: '2 l',
+      })).rejects.toMatchObject({ code: 'bring_write_unconfirmed', status: 503 });
+      expect(gateway.change).toHaveBeenCalledTimes(1);
+      expect(gateway.items).toHaveBeenCalledTimes(2);
+    } finally {
+      if (abortTimer !== undefined) clearTimeout(abortTimer);
+      timeout.mockRestore();
+    }
   });
 });
