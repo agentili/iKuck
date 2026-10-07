@@ -29,6 +29,13 @@ export const users = pgTable('users', {
   emailUnique: uniqueIndex('users_email_unique').on(table.email),
 }));
 
+export const bringConnections = pgTable('bring_connections', {
+  userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  connectionId: uuid('connection_id').notNull(),
+  encryptedSession: text('encrypted_session').notNull(),
+  connectedAt: timestamp('connected_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const userProfiles = pgTable('user_profiles', {
   userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
   displayName: text('display_name'),

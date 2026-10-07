@@ -57,6 +57,13 @@
       "when": 1791235331439,
       "tag": "0007_s2s_admin_demotion_revocation",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791333795185,
+      "tag": "0008_bring_connections",
+      "breakpoints": true
     }
   ]
 }
