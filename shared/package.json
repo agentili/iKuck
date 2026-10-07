@@ -20,6 +20,10 @@
       "types": "./src/dinnerDiary.ts",
       "default": "./src/dinnerDiary.ts"
     },
+    "./bring": {
+      "types": "./src/bring.ts",
+      "default": "./src/bring.ts"
+    },
     "./sync-fixtures/valid.json": "./sync-fixtures/valid.json",
     "./sync-fixtures/invalid.json": "./sync-fixtures/invalid.json"
   }
