@@ -17,6 +17,7 @@ import { type RecipeNutritionRouteDependencies, registerRecipeNutritionRoutes } 
 import { type AiRecipeRouteDependencies, registerAiRecipeRoutes } from './routes/aiRecipes.js';
 import { type HouseRouteDependencies, registerHouseRoutes } from './routes/house.js';
 import { type DinnerDiaryRecipeRouteDependencies, registerDinnerDiaryRecipeRoutes } from './routes/dinnerDiaryRecipes.js';
+import { registerBringRoutes, type BringRouteDependencies } from './routes/bring.js';
 import { type S2sDinnerContextService } from './s2s/dinnerContext.js';
 import { registerS2sDinnerContextRoutes } from './routes/s2sDinnerContext.js';
 import { shouldDisableRequestLogging } from './serverLogging.js';
@@ -36,6 +37,7 @@ export interface ExtendedPlatformDependencies extends PlatformDependencies {
   aiRecipes?: AiRecipeRouteDependencies;
   house?: HouseRouteDependencies;
   dinnerDiary?: DinnerDiaryRecipeRouteDependencies;
+  bring?: BringRouteDependencies;
   s2sDinnerContext?: S2sDinnerContextService;
 }
 
@@ -86,6 +88,7 @@ export const createApp = (
   if (dependencies.aiRecipes !== undefined) app.register(registerAiRecipeRoutes(dependencies.aiRecipes));
   if (dependencies.house !== undefined) app.register(registerHouseRoutes(dependencies.house));
   if (dependencies.dinnerDiary !== undefined) app.register(registerDinnerDiaryRecipeRoutes(dependencies.dinnerDiary));
+  if (dependencies.bring !== undefined) app.register(registerBringRoutes(dependencies.bring));
   app.register(async (s2sScope) => {
     s2sScope.setNotFoundHandler((_request, reply) => {
       reply.header('cache-control', 'no-store');
