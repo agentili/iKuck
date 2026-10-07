@@ -324,6 +324,24 @@ describe('GET /v1/s2s/dinner-context', () => {
     expect(response.statusCode).toBe(401);
     expect(reads).toBe(0);
   });
+  it('projects pantry details without validating internal lot IDs that are not returned', async () => {
+    const privateLotId = `private-lot-${'x'.repeat(172)}`;
+    const sourceWithLongInternalId: DinnerContextSource = {
+      readAuthorizedSnapshot: async () => ({
+        grant,
+        pantryLots: [{ ingredientId: 'beans', label: 'Fagioli', known: true, quantity: 2, unit: 'pack', expiresAt: null, id: privateLotId, createdAt: '2026-10-04T10:00:00.000Z', updatedAt: '2026-10-04T10:00:00.000Z' }],
+        dietProfile: null,
+      }),
+    };
+    const service = createS2sDinnerContextService({ enabled: true, source: sourceWithLongInternalId, clock: () => new Date('2026-10-04T10:00:00.000Z'), rateLimiter: { allow: async () => true } });
+    const app = createApp({ database: { ping: async () => undefined }, cache: { ping: async () => undefined }, s2sDinnerContext: service }); apps.push(app);
+    const response = await app.inject({ method: 'GET', url: '/v1/s2s/dinner-context', headers: { authorization: 'Bearer key_0123456789abcdef.' + 'a'.repeat(43) } });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ schemaVersion: 1, retrievedAt: '2026-10-04T10:00:00.000Z', pantry: { lots: [{ ingredientId: 'beans', label: 'Fagioli', known: true, quantity: 2, unit: 'pack', expiresAt: null }] }, dietaryConstraints: { status: 'not_configured' } });
+    expect(response.body).not.toContain(privateLotId);
+  });
+
   it('returns an allowlisted, minimized snapshot from the authorized reader', async () => {
     const app = setup();
     const response = await app.inject({ method: 'GET', url: '/v1/s2s/dinner-context', headers: { authorization: 'Bearer key_0123456789abcdef.' + 'a'.repeat(43) } });

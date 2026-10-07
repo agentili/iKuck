@@ -1,5 +1,5 @@
 import type { DietProfile, PantryLot, EuAllergen, DietType } from '@ikuck/shared/contracts';
-import { isPantryLot } from '../pantry/validation.js';
+import { pantryLotDetailsSchema } from '../pantry/validation.js';
 import { isDietProfile } from '../diet/validation.js';
 
 export type DinnerContext = { schemaVersion: 1; retrievedAt: string; pantry: { lots: Array<Pick<PantryLot, 'ingredientId' | 'label' | 'known' | 'quantity' | 'unit' | 'expiresAt'>> }; dietaryConstraints: { status: 'configured'; diet: DietType; excludedAllergens: EuAllergen[] } | { status: 'not_configured' } };
@@ -125,9 +125,14 @@ export const createS2sDinnerContextService = (dependencies: S2sDinnerContextDepe
     if (grant.scope !== 'dinner-context:read' || !grant.enabled || Date.parse(grant.expiresAt) <= (dependencies.clock?.() ?? new Date()).getTime()) return { status: 401, body: { code: 'service_auth_required' } };
     if (pantryLots.length > 2000) return { status: 409, body: { code: 'snapshot_limit_exceeded' } };
     const lotFields = new Set(['id', 'ingredientId', 'label', 'known', 'quantity', 'unit', 'expiresAt', 'createdAt', 'updatedAt']);
-    if (pantryLots.some((lot) => !isPantryLot(lot) || Object.keys(lot).some((field) => !lotFields.has(field)))) return { status: 503, body: { code: 'service_unavailable' } };
+    const pantryLotsForResponse = pantryLots.flatMap((lot) => {
+      if (lot === null || typeof lot !== 'object' || Array.isArray(lot) || Object.keys(lot).some((field) => !lotFields.has(field))) return [];
+      const parsed = pantryLotDetailsSchema.safeParse(lot);
+      return parsed.success ? [parsed.data] : [];
+    });
+    if (pantryLotsForResponse.length !== pantryLots.length) return { status: 503, body: { code: 'service_unavailable' } };
     if (dietProfile !== null && (!isDietProfile(dietProfile) || !validProfile(dietProfile))) return { status: 503, body: { code: 'service_unavailable' } };
-    const result: DinnerContext = { schemaVersion: 1, retrievedAt: (dependencies.clock?.() ?? new Date()).toISOString(), pantry: { lots: pantryLots.map(({ ingredientId, label, known, quantity, unit, expiresAt }) => ({ ingredientId, label, known, quantity, unit, expiresAt })) }, dietaryConstraints: dietProfile === null ? { status: 'not_configured' } : { status: 'configured', diet: dietProfile.diet, excludedAllergens: [...dietProfile.excludedAllergens] } };
+    const result: DinnerContext = { schemaVersion: 1, retrievedAt: (dependencies.clock?.() ?? new Date()).toISOString(), pantry: { lots: pantryLotsForResponse }, dietaryConstraints: dietProfile === null ? { status: 'not_configured' } : { status: 'configured', diet: dietProfile.diet, excludedAllergens: [...dietProfile.excludedAllergens] } };
     if (Buffer.byteLength(JSON.stringify(result), 'utf8') > 1024 * 1024) return { status: 409, body: { code: 'snapshot_limit_exceeded' } };
     return { status: 200, body: result };
   };
