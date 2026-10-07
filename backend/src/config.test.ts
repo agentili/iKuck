@@ -140,4 +140,17 @@ describe('loadConfig', () => {
     }
   });
 
+  it('keeps Bring disabled by default', () => {
+    expect(loadConfig({ NODE_ENV: 'development' }).bringEnabled).toBe(false);
+  });
+
+  it('requires a valid key before enabling Bring', () => {
+    expect(() => loadConfig({ NODE_ENV: 'development', BRING_ENABLED: 'true' })).toThrow();
+    expect(() => loadConfig({ NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: 'invalid' })).toThrow();
+  });
+
+  it('accepts explicit encrypted Bring configuration', () => {
+    expect(loadConfig({ NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32) })).toMatchObject({ bringEnabled: true });
+  });
+
 });

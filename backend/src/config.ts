@@ -27,6 +27,8 @@ export interface AppConfig {
   trustProxy?: string | string[];
   nodeEnvironment: 'development' | 'test' | 'production';
   s2sDinnerContextEnabled: boolean;
+  bringEnabled: boolean;
+  bringTokenEncryptionKey?: string;
 }
 
 const developmentDefaults = {
@@ -79,6 +81,15 @@ const environmentSchema = z.object({
   GEMINI_MODEL: z.string().min(1).default('gemini-3.5-flash-lite'),
   GOOGLE_CLIENT_ID: optionalEnvironmentString(),
   S2S_DINNER_CONTEXT_ENABLED: z.enum(['true', 'false']).default('false'),
+  BRING_ENABLED: z.enum(['true', 'false']).default('false'),
+  BRING_TOKEN_ENCRYPTION_KEY: z.preprocess(
+    (value) => value === '' ? undefined : value,
+    z.string().regex(/^[0-9a-fA-F]{64}$/, 'Bring encryption key must be 32 bytes in hex').optional(),
+  ),
+}).superRefine((value, context) => {
+  if (value.BRING_ENABLED === 'true' && value.BRING_TOKEN_ENCRYPTION_KEY === undefined) {
+    context.addIssue({ code: 'custom', path: ['BRING_TOKEN_ENCRYPTION_KEY'], message: 'Bring encryption key is required when Bring is enabled' });
+  }
 });
 
 export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
@@ -119,5 +130,7 @@ export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
     trustProxy,
     nodeEnvironment: parsed.NODE_ENV,
     s2sDinnerContextEnabled: parsed.S2S_DINNER_CONTEXT_ENABLED === 'true',
+    bringEnabled: parsed.BRING_ENABLED === 'true',
+    bringTokenEncryptionKey: parsed.BRING_TOKEN_ENCRYPTION_KEY,
   };
 };
