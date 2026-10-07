@@ -1,13 +1,81 @@
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { SyncScope } from '../sync/scopeContext';
+import { scopeStorageKey, type SyncScope } from '../sync/scopeContext';
 
 export type { SyncScope } from '../sync/scopeContext';
 
 export const LOCAL_DATABASE_NAME = 'ikuck-local-v2';
-export const LOCAL_DATABASE_VERSION = 2;
+export const LOCAL_DATABASE_VERSION = 3;
 export const KEY_VALUE_STORE = 'keyValue';
 export const SYNC_QUEUE_STORE = 'syncQueue';
 export const SYNC_META_STORE = 'syncMeta';
+export const DINNER_CONSUMPTION_STORE = 'dinnerConsumption';
+export const DINNER_CONSUMPTION_RECORD_STORAGE_PREFIX = 'dinner-consumption-record:';
+export const LOCAL_STORAGE_JOURNAL_KEY = 'ikuck:local-storage-journal-v1';
+
+interface LocalStorageJournal {
+  version: 1;
+  state: 'prepared' | 'committed';
+  before: Record<string, string | null>;
+  after: Record<string, string | null>;
+}
+
+const applyLocalStorageValues = (values: Record<string, string | null>): void => {
+  for (const [key, value] of Object.entries(values)) {
+    if (value === null) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, value);
+  }
+};
+
+export function recoverLocalStorageJournal(): void {
+  if (typeof window === 'undefined') return;
+  const raw = window.localStorage.getItem(LOCAL_STORAGE_JOURNAL_KEY);
+  if (raw === null) return;
+
+  let journal: LocalStorageJournal;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || !('version' in parsed) || parsed.version !== 1
+      || !('state' in parsed) || (parsed.state !== 'prepared' && parsed.state !== 'committed')
+      || !('before' in parsed) || typeof parsed.before !== 'object' || parsed.before === null
+      || !('after' in parsed) || typeof parsed.after !== 'object' || parsed.after === null) {
+      window.localStorage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
+      return;
+    }
+    journal = parsed as LocalStorageJournal;
+  } catch {
+    window.localStorage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
+    return;
+  }
+
+  applyLocalStorageValues(journal.state === 'committed' ? journal.after : journal.before);
+  window.localStorage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
+}
+
+export function commitLocalStorageJournal(after: Record<string, string | null>): void {
+  recoverLocalStorageJournal();
+  const before = Object.fromEntries(Object.keys(after).map((key) => [key, window.localStorage.getItem(key)]));
+  const journal: LocalStorageJournal = { version: 1, state: 'prepared', before, after };
+  window.localStorage.setItem(LOCAL_STORAGE_JOURNAL_KEY, JSON.stringify(journal));
+
+  try {
+    applyLocalStorageValues(after);
+    window.localStorage.setItem(LOCAL_STORAGE_JOURNAL_KEY, JSON.stringify({ ...journal, state: 'committed' }));
+  } catch (error) {
+    try {
+      applyLocalStorageValues(before);
+      window.localStorage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
+    } catch {
+      // Keep the prepared journal so the next read can restore the before-image.
+    }
+    throw error;
+  }
+
+  try {
+    window.localStorage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
+  } catch {
+    // The committed journal is recoverable and is authoritative on the next read.
+  }
+}
 
 interface LocalDatabaseSchema extends DBSchema {
   keyValue: {
@@ -25,6 +93,14 @@ interface LocalDatabaseSchema extends DBSchema {
   syncMeta: {
     key: string;
     value: unknown;
+  };
+  dinnerConsumption: {
+    key: string;
+    value: unknown;
+    indexes: {
+      byScope: SyncScope;
+      byScopeEntryId: string;
+    };
   };
 }
 
@@ -60,6 +136,11 @@ export async function openLocalDatabase(): Promise<IDBPDatabase<LocalDatabaseSch
 
         if (!database.objectStoreNames.contains(SYNC_META_STORE)) {
           database.createObjectStore(SYNC_META_STORE);
+        }
+        if (!database.objectStoreNames.contains(DINNER_CONSUMPTION_STORE)) {
+          const consumption = database.createObjectStore(DINNER_CONSUMPTION_STORE, { keyPath: 'operationId' });
+          consumption.createIndex('byScope', 'scope');
+          consumption.createIndex('byScopeEntryId', 'scopeEntryId', { unique: true });
         }
       },
     }).catch((error: unknown) => {
@@ -314,15 +395,35 @@ export async function deleteQueueValue(
   await transaction.done;
 }
 
+const removeLocalDinnerConsumptionRecords = (scope: SyncScope): void => {
+  recoverLocalStorageJournal();
+  const localPrefix = scopeStorageKey(scope, DINNER_CONSUMPTION_RECORD_STORAGE_PREFIX);
+  const localRecordKeys = Array.from({ length: window.localStorage.length }, (_, index) => window.localStorage.key(index))
+    .filter((key): key is string => key !== null && key.startsWith(localPrefix));
+  for (const key of localRecordKeys) window.localStorage.removeItem(key);
+};
+
 export async function deleteQueueScope(scope: SyncScope): Promise<void> {
+  if (!isIndexedDbAvailable()) {
+    removeLocalDinnerConsumptionRecords(scope);
+    return;
+  }
   const database = await openLocalDatabase();
-  const transaction = database.transaction(SYNC_QUEUE_STORE, 'readwrite');
+  const transaction = database.transaction([SYNC_QUEUE_STORE, DINNER_CONSUMPTION_STORE], 'readwrite');
   const queue = transaction.objectStore(SYNC_QUEUE_STORE);
-  const values = await queue.index('byScope').getAll(scope) as Array<{ mutationId?: unknown }>;
-  for (const value of values) {
+  const consumption = transaction.objectStore(DINNER_CONSUMPTION_STORE);
+  const [queuedValues, consumptionValues] = await Promise.all([
+    queue.index('byScope').getAll(scope) as Promise<Array<{ mutationId?: unknown }>>,
+    consumption.index('byScope').getAll(scope) as Promise<Array<{ operationId?: unknown }>>,
+  ]);
+  for (const value of queuedValues) {
     if (typeof value.mutationId === 'string') await queue.delete(value.mutationId);
   }
+  for (const value of consumptionValues) {
+    if (typeof value.operationId === 'string') await consumption.delete(value.operationId);
+  }
   await transaction.done;
+  removeLocalDinnerConsumptionRecords(scope);
 }
 
 export async function readMeta<T>(key: string): Promise<T | null> {
@@ -342,7 +443,7 @@ export async function writeMeta<T>(key: string, value: T, assertWritable?: () =>
   await database.put(SYNC_META_STORE, value, key);
 }
 
-export async function deleteLocalDatabase(): Promise<void> {
+export async function closeLocalDatabase(): Promise<void> {
   const activeDatabase = databasePromise;
   databasePromise = null;
 
@@ -353,7 +454,10 @@ export async function deleteLocalDatabase(): Promise<void> {
       // The connection may already be closed after a failed open.
     }
   }
+}
 
+export async function deleteLocalDatabase(): Promise<void> {
+  await closeLocalDatabase();
   if (isIndexedDbAvailable()) {
     await deleteDB(LOCAL_DATABASE_NAME);
   }
