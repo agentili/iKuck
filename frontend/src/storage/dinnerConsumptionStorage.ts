@@ -1,6 +1,6 @@
 import type { DinnerConsumptionCommand, PantryConsumptionPlan } from '@ikuck/shared/pantryConsumption';
 import { planPantryConsumption } from '@ikuck/shared/pantryConsumption';
-import type { CookEvent } from '@ikuck/shared/contracts';
+import type { CookEvent, SyncMutation } from '@ikuck/shared/contracts';
 import { isCookEvent } from '../domain/activity';
 import type { DinnerEntry } from '@ikuck/shared/dinnerDiary';
 import { isDinnerEntry } from '@ikuck/shared/dinnerDiary';
@@ -10,6 +10,7 @@ import {
   DINNER_CONSUMPTION_STORE,
   isIndexedDbAvailable,
   KEY_VALUE_STORE,
+  SYNC_QUEUE_STORE,
   openLocalDatabase,
   recoverLocalStorageJournal,
 } from './indexedDb';
@@ -65,6 +66,21 @@ export interface CommittedDinnerConsumption {
   receipt: DinnerConsumptionReceipt;
   outbox: DinnerConsumptionOutboxRecord;
   plan: PantryConsumptionPlan;
+}
+
+export interface DinnerConsumptionServerResult {
+  entry: DinnerEntry;
+  cookEvent?: CookEvent;
+  pantrySnapshot: PantrySnapshot;
+  receipt: DinnerConsumptionReceipt;
+}
+
+export interface ReconciledDinnerConsumption {
+  entry: DinnerEntry;
+  cookEvent?: CookEvent;
+  pantrySnapshot: PantrySnapshot;
+  receipt: DinnerConsumptionReceipt;
+  outbox: DinnerConsumptionOutboxRecord;
 }
 
 export class DinnerConsumptionScopeChangedError extends Error {
@@ -390,14 +406,26 @@ export async function readDinnerConsumptionReceipt(
   return record?.scope === scope ? record.receipt : null;
 }
 
-export async function readDinnerConsumptionOutbox(scope: SyncScope): Promise<DinnerConsumptionOutboxRecord[]> {
+const assertOutboxReadContext = (scope: SyncScope, assertContext?: () => void): void => {
+  if (!isScopeWritable(scope)) throw new ScopeRevokedError();
+  if (assertContext !== undefined) {
+    assertContext();
+  } else {
+    assertCurrentScope(scope);
+  }
+};
+
+export async function readDinnerConsumptionOutbox(
+  scope: SyncScope,
+  assertContext?: () => void,
+): Promise<DinnerConsumptionOutboxRecord[]> {
   recoverLocalStorageJournal();
-  assertCurrentScope(scope);
+  assertOutboxReadContext(scope, assertContext);
   if (!isIndexedDbAvailable()) return readLocalRecords(scope).filter((record) => record.status === 'pending');
   const database = await openLocalDatabase();
-  assertCurrentScope(scope);
+  assertOutboxReadContext(scope, assertContext);
   const records = await database.getAllFromIndex(DINNER_CONSUMPTION_STORE, 'byScope', scope) as DinnerConsumptionOutboxRecord[];
-  assertCurrentScope(scope);
+  assertOutboxReadContext(scope, assertContext);
   return records.filter((record) => isOutboxRecord(record) && record.status === 'pending')
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.operationId.localeCompare(right.operationId));
 }
@@ -433,6 +461,248 @@ export async function acknowledgeDinnerConsumption(operationId: string, scope: S
         // The transaction may already have completed or aborted.
       }
       await completion.catch(() => undefined);
+      throw error;
+    }
+  });
+}
+
+const sameJsonValue = (left: unknown, right: unknown): boolean => JSON.stringify(left) === JSON.stringify(right);
+
+const mutationIsNotNewerThanConsumption = (
+  mutation: Partial<SyncMutation> & { clientUpdatedAt?: string },
+  record: DinnerConsumptionOutboxRecord,
+): boolean => {
+  if (typeof mutation.clientUpdatedAt !== 'string') return false;
+  const mutationTime = Date.parse(mutation.clientUpdatedAt);
+  const consumptionTime = Date.parse(record.createdAt);
+  return Number.isFinite(mutationTime) && Number.isFinite(consumptionTime) && mutationTime <= consumptionTime;
+};
+
+export const isDinnerConsumptionRelatedMutation = (
+  mutation: Partial<SyncMutation> & { scope?: SyncScope; mutationId?: string },
+  record: DinnerConsumptionOutboxRecord,
+): boolean => {
+  if (mutation.scope !== undefined && mutation.scope !== record.scope) return false;
+  if ((mutation.entityType === 'dinner_entry' || mutation.entityType === 'cook_event')
+    && mutation.entityId === record.entryId) return true;
+  if (mutation.entityType !== 'pantry_lot' || typeof mutation.entityId !== 'string') return false;
+  return record.receipt.plan.upsertLots.some((lot) => lot.id === mutation.entityId)
+    || record.receipt.plan.deleteLotIds.includes(mutation.entityId);
+};
+
+export const isDinnerConsumptionSupersededMutation = (
+  mutation: Partial<SyncMutation> & { scope?: SyncScope; mutationId?: string },
+  record: DinnerConsumptionOutboxRecord,
+): boolean => {
+  if (mutation.scope !== undefined && mutation.scope !== record.scope) return false;
+  if (mutation.entityType === 'dinner_entry' && mutation.entityId === record.entryId
+    && mutation.operation === 'upsert') {
+    return sameJsonValue(mutation.payload, record.entry) || mutationIsNotNewerThanConsumption(mutation, record);
+  }
+  if (record.cookEvent !== undefined && mutation.entityType === 'cook_event' && mutation.entityId === record.entryId
+    && mutation.operation === 'upsert') {
+    return sameJsonValue(mutation.payload, record.cookEvent) || mutationIsNotNewerThanConsumption(mutation, record);
+  }
+  if (mutation.entityType !== 'pantry_lot' || typeof mutation.entityId !== 'string') return false;
+  const plannedLot = record.receipt.plan.upsertLots.find((lot) => lot.id === mutation.entityId);
+  const isPlannedDelete = record.receipt.plan.deleteLotIds.includes(mutation.entityId);
+  if (plannedLot === undefined && !isPlannedDelete) return false;
+  if (mutation.operation === 'upsert' && plannedLot !== undefined && sameJsonValue(mutation.payload, plannedLot)) return true;
+  if (mutation.operation === 'delete' && isPlannedDelete && mutation.payload === null) return true;
+  return mutationIsNotNewerThanConsumption(mutation, record);
+};
+
+const upsertEntry = (entries: readonly DinnerEntry[], entry: DinnerEntry): DinnerEntry[] => [
+  ...entries.filter((value) => value.id !== entry.id), entry,
+];
+const removeEntry = (entries: readonly DinnerEntry[], entryId: string): DinnerEntry[] => entries.filter((value) => value.id !== entryId);
+const upsertCookEvent = (events: readonly CookEvent[], event: CookEvent): CookEvent[] => [
+  ...events.filter((value) => value.id !== event.id), event,
+];
+const removeCookEvent = (events: readonly CookEvent[], eventId: string): CookEvent[] => events.filter((value) => value.id !== eventId);
+
+const withScopedWrites = <T>(scopes: readonly SyncScope[], action: () => Promise<T>): Promise<T> => {
+  const uniqueScopes = [...new Set(scopes)];
+  const apply = (index: number): Promise<T> => index >= uniqueScopes.length
+    ? action()
+    : trackScopedWrite(uniqueScopes[index]!, () => apply(index + 1));
+  return apply(0);
+};
+
+export async function reconcileDinnerConsumption({
+  operationId,
+  originalScope,
+  canonicalScope,
+  result,
+  assertContext,
+}: {
+  operationId: string;
+  originalScope: SyncScope;
+  canonicalScope: SyncScope;
+  result: DinnerConsumptionServerResult;
+  assertContext: () => void;
+}): Promise<ReconciledDinnerConsumption> {
+  const assertCurrent = (): void => {
+    if (!isScopeWritable(originalScope) || !isScopeWritable(canonicalScope)) throw new ScopeRevokedError();
+    assertContext();
+  };
+  const pantrySnapshot = normalizePantrySnapshot(result.pantrySnapshot);
+  assertCurrent();
+
+  return withScopedWrites([originalScope, canonicalScope], async () => {
+    assertCurrent();
+    const sourceEntriesKey = dinnerEntriesDatabaseKeyForScope(originalScope);
+    const targetEntriesKey = dinnerEntriesDatabaseKeyForScope(canonicalScope);
+    const sourceEventsKey = activityEventsDatabaseKeyForScope(originalScope);
+    const targetEventsKey = activityEventsDatabaseKeyForScope(canonicalScope);
+    const sourceRecordKey = storageRecordKey(originalScope, operationId);
+    const targetRecordKey = storageRecordKey(canonicalScope, operationId);
+
+    if (!isIndexedDbAvailable()) {
+      recoverLocalStorageJournal();
+      const record = readLocalRecord(originalScope, operationId);
+      if (record === null || record.operationId !== result.receipt.operationId
+        || record.entryId !== result.receipt.entryId || result.entry.id !== record.entryId
+        || result.receipt.scope !== canonicalScope) {
+        throw new DinnerConsumptionConflictError('The server response does not match the pending dinner operation');
+      }
+      const sourceEntries = parseDinnerEntriesSnapshot(window.localStorage.getItem(dinnerEntriesStorageKeyForScope(originalScope)));
+      const targetEntries = originalScope === canonicalScope ? sourceEntries
+        : parseDinnerEntriesSnapshot(window.localStorage.getItem(dinnerEntriesStorageKeyForScope(canonicalScope)));
+      const changes: Record<string, string | null> = {
+        [pantryStorageKeyForScope(canonicalScope)]: serializePantrySnapshot(pantrySnapshot),
+        [dinnerEntriesStorageKeyForScope(canonicalScope)]: serializeDinnerEntriesSnapshot(upsertEntry(targetEntries, result.entry)),
+        [targetRecordKey]: JSON.stringify({ ...record, scope: canonicalScope, scopeEntryId: scopeEntryId(canonicalScope, record.entryId), receipt: result.receipt, status: 'acknowledged' }),
+      };
+      if (originalScope !== canonicalScope) {
+        changes[dinnerEntriesStorageKeyForScope(originalScope)] = serializeDinnerEntriesSnapshot(removeEntry(sourceEntries, record.entryId));
+        changes[sourceRecordKey] = null;
+      }
+      if (result.cookEvent !== undefined) {
+        const sourceEvents = parseCookEventsSnapshot(window.localStorage.getItem(activityEventsStorageKeyForScope(originalScope)));
+        const targetEvents = originalScope === canonicalScope ? sourceEvents
+          : parseCookEventsSnapshot(window.localStorage.getItem(activityEventsStorageKeyForScope(canonicalScope)));
+        changes[activityEventsStorageKeyForScope(canonicalScope)] = serializeCookEventsSnapshot(upsertCookEvent(targetEvents, result.cookEvent));
+        if (originalScope !== canonicalScope) {
+          changes[activityEventsStorageKeyForScope(originalScope)] = serializeCookEventsSnapshot(removeCookEvent(sourceEvents, record.entryId));
+        }
+      }
+      assertCurrent();
+      commitLocalStorageJournal(changes);
+      assertCurrent();
+      return {
+        entry: result.entry,
+        ...(result.cookEvent === undefined ? {} : { cookEvent: result.cookEvent }),
+        pantrySnapshot,
+        receipt: result.receipt,
+        outbox: { ...record, scope: canonicalScope, scopeEntryId: scopeEntryId(canonicalScope, record.entryId), receipt: result.receipt, status: 'acknowledged' },
+      };
+    }
+
+    recoverLocalStorageJournal();
+    const mirrorKeys = new Set([
+      pantryStorageKeyForScope(canonicalScope),
+      dinnerEntriesStorageKeyForScope(originalScope),
+      dinnerEntriesStorageKeyForScope(canonicalScope),
+      ...(result.cookEvent === undefined ? [] : [activityEventsStorageKeyForScope(originalScope), activityEventsStorageKeyForScope(canonicalScope)]),
+    ]);
+    const mirrors = new Map([...mirrorKeys].map((key) => [key, window.localStorage.getItem(key)]));
+    const database = await openLocalDatabase();
+    assertCurrent();
+    const transaction = database.transaction([KEY_VALUE_STORE, DINNER_CONSUMPTION_STORE, SYNC_QUEUE_STORE], 'readwrite');
+    const completion = transaction.done;
+    const values = transaction.objectStore(KEY_VALUE_STORE);
+    const consumption = transaction.objectStore(DINNER_CONSUMPTION_STORE);
+    const queue = transaction.objectStore(SYNC_QUEUE_STORE);
+    let mirrorsTouched = false;
+    let transactionCommitted = false;
+    try {
+      mirrorsTouched = true;
+      for (const key of mirrorKeys) window.localStorage.removeItem(key);
+      const queuedScopes = [...new Set([originalScope, canonicalScope])];
+      const [storedRecord, sourceEntriesRaw, targetEntriesRaw, sourceEventsRaw, targetEventsRaw, queuedByScope] = await Promise.all([
+        consumption.get(operationId) as Promise<DinnerConsumptionOutboxRecord | undefined>,
+        values.get(sourceEntriesKey),
+        originalScope === canonicalScope ? Promise.resolve(undefined) : values.get(targetEntriesKey),
+        result.cookEvent === undefined ? Promise.resolve(undefined) : values.get(sourceEventsKey),
+        result.cookEvent === undefined || originalScope === canonicalScope ? Promise.resolve(undefined) : values.get(targetEventsKey),
+        Promise.all(queuedScopes.map((scope) => queue.index('byScope').getAll(scope) as Promise<Array<Partial<SyncMutation> & { scope?: SyncScope; mutationId?: string }>>)),
+      ]);
+      assertCurrent();
+      if (storedRecord === undefined || !isOutboxRecord(storedRecord) || storedRecord.scope !== originalScope
+        || storedRecord.operationId !== result.receipt.operationId || storedRecord.entryId !== result.receipt.entryId
+        || result.entry.id !== storedRecord.entryId || result.receipt.scope !== canonicalScope) {
+        throw new DinnerConsumptionConflictError('The server response does not match the pending dinner operation');
+      }
+      const sourceEntries = parseDinnerEntriesSnapshot(typeof sourceEntriesRaw === 'string'
+        ? sourceEntriesRaw : mirrors.get(dinnerEntriesStorageKeyForScope(originalScope)) ?? null);
+      const targetEntries = originalScope === canonicalScope ? sourceEntries
+        : parseDinnerEntriesSnapshot(typeof targetEntriesRaw === 'string'
+          ? targetEntriesRaw : mirrors.get(dinnerEntriesStorageKeyForScope(canonicalScope)) ?? null);
+      const writes: Promise<unknown>[] = [
+        values.put(serializePantrySnapshot(pantrySnapshot), pantryDatabaseKeyForScope(canonicalScope)),
+        values.put(serializeDinnerEntriesSnapshot(upsertEntry(targetEntries, result.entry)), targetEntriesKey),
+      ];
+      if (originalScope !== canonicalScope) {
+        writes.push(values.put(serializeDinnerEntriesSnapshot(removeEntry(sourceEntries, storedRecord.entryId)), sourceEntriesKey));
+      }
+      let sourceEvents: CookEvent[] = [];
+      if (result.cookEvent !== undefined) {
+        sourceEvents = parseCookEventsSnapshot(typeof sourceEventsRaw === 'string'
+          ? sourceEventsRaw : mirrors.get(activityEventsStorageKeyForScope(originalScope)) ?? null);
+        const targetEvents = originalScope === canonicalScope ? sourceEvents
+          : parseCookEventsSnapshot(typeof targetEventsRaw === 'string'
+            ? targetEventsRaw : mirrors.get(activityEventsStorageKeyForScope(canonicalScope)) ?? null);
+        writes.push(values.put(serializeCookEventsSnapshot(upsertCookEvent(targetEvents, result.cookEvent)), targetEventsKey));
+        if (originalScope !== canonicalScope) {
+          writes.push(values.put(serializeCookEventsSnapshot(removeCookEvent(sourceEvents, storedRecord.entryId)), sourceEventsKey));
+        }
+      }
+      const acknowledgedRecord: DinnerConsumptionOutboxRecord = {
+        ...storedRecord,
+        scope: canonicalScope,
+        scopeEntryId: scopeEntryId(canonicalScope, storedRecord.entryId),
+        receipt: result.receipt,
+        status: 'acknowledged',
+      };
+      for (const queuedValues of queuedByScope) {
+        for (const mutation of queuedValues) {
+          if (typeof mutation.mutationId === 'string' && isDinnerConsumptionSupersededMutation(mutation, storedRecord)) {
+            writes.push(queue.delete(mutation.mutationId));
+          }
+        }
+      }
+      writes.push(consumption.put(acknowledgedRecord));
+      assertCurrent();
+      await Promise.all(writes);
+      assertCurrent();
+      await completion;
+      transactionCommitted = true;
+      assertCurrent();
+      return {
+        entry: result.entry,
+        ...(result.cookEvent === undefined ? {} : { cookEvent: result.cookEvent }),
+        pantrySnapshot,
+        receipt: result.receipt,
+        outbox: acknowledgedRecord,
+      };
+    } catch (error) {
+      try {
+        transaction.abort();
+      } catch {
+        // The transaction may already have completed or aborted.
+      }
+      await completion.catch(() => undefined);
+      if (mirrorsTouched && !transactionCommitted) {
+        try {
+          for (const [key, value] of mirrors) {
+            if (value === null) window.localStorage.removeItem(key);
+            else window.localStorage.setItem(key, value);
+          }
+        } catch {
+          // IndexedDB remains authoritative when mirror restoration fails.
+        }
+      }
       throw error;
     }
   });
