@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import type { PantryLot } from '@ikuck/shared/contracts';
+import { planPantryConsumption, type DinnerConsumptionCommand } from '@ikuck/shared/pantryConsumption';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
 
 interface FixtureUser {
@@ -27,6 +29,7 @@ const outsider: FixtureUser = { id: 'diary-house-outsider', email: 'outsider@exa
 const dinnerText = 'Pasta condivisa dopo la cena di famiglia.';
 const privateText = 'Cena privata offline dell’estraneo.';
 const memberDinnerText = 'Cena del membro con la ricetta condivisa.';
+const staleResponseText = 'Cena con risposta tardiva dopo il cambio di sessione.';
 const recipeTitle = 'Pasta condivisa dalla Casa';
 
 test.beforeEach(async ({ context, page }) => {
@@ -42,6 +45,7 @@ test('shares confirmed dinner recipes with House members while isolating outside
   let currentUser: FixtureUser | null = admin;
   let memberAdded = false;
   let apiUnavailable = false;
+  let browserOffline = false;
   let nextSequence = 0;
   const consentByUser = new Map<string, boolean>();
   const homeConsentByUser = new Map<string, 'openai' | 'gemini'>();
@@ -56,6 +60,22 @@ test('shares confirmed dinner recipes with House members while isolating outside
     returnedEntityIds: string[];
     unavailable: boolean;
   }> = [];
+  const consumptionCalls: Array<{
+    userId: string | null;
+    scope: string;
+    operationId: string;
+    entryId: string;
+    text: string;
+    csrfAuthorized: boolean;
+    unavailable: boolean;
+  }> = [];
+  const consumptionResults = new Map<string, Record<string, unknown>>();
+  let delayedConsumptionText: string | null = null;
+  let markDelayedConsumptionStarted: () => void = () => undefined;
+  const delayedConsumptionStarted = new Promise<void>((resolve) => { markDelayedConsumptionStarted = resolve; });
+  const delayedConsumptionControl: { release: (() => void) | null } = { release: null };
+  let markDelayedConsumptionCompleted: () => void = () => undefined;
+  const delayedConsumptionCompleted = new Promise<void>((resolve) => { markDelayedConsumptionCompleted = resolve; });
   let sharedDinnerId: string | null = null;
   let memberDinnerId: string | null = null;
   const savedRecipeId = 'confirmed-house-recipe';
@@ -73,6 +93,25 @@ test('shares confirmed dinner recipes with House members while isolating outside
   };
 
   const isMember = (userId: string): boolean => userId === admin.id || (userId === member.id && memberAdded);
+  const currentLots = (userId: string, scope: string): PantryLot[] => {
+    const changes = scope === houseScope ? houseChanges : accountChanges.get(userId) ?? [];
+    const lots = new Map<string, PantryLot>();
+    for (const change of changes) {
+      if (change.entityType !== 'pantry_lot') continue;
+      if (change.operation === 'delete') lots.delete(change.entityId);
+      else if (typeof change.payload === 'object' && change.payload !== null) {
+        lots.set(change.entityId, change.payload as PantryLot);
+      }
+    }
+    return [...lots.values()];
+  };
+  const pantrySnapshot = (userId: string, scope: string) => {
+    const pantryLots = currentLots(userId, scope);
+    const pantryItems = [...new Map(pantryLots.map((lot) => [lot.ingredientId, {
+      id: lot.ingredientId, label: lot.label, known: lot.known,
+    }])).values()];
+    return { pantryItems, stapleIds: [], pantryLots };
+  };
   const houseState = (userId: string) => ({
     house: { id: houseId, name: 'Casa Diario', createdAt: '2026-09-24T10:00:00.000Z' },
     membership: { role: userId === admin.id ? 'admin' : 'member', joinedAt: '2026-09-24T10:00:00.000Z' },
@@ -112,7 +151,7 @@ test('shares confirmed dinner recipes with House members while isolating outside
     operation: 'upsert',
     payload: {
       id: 'house-pasta-lot', ingredientId: 'pasta', label: 'Pasta', known: true,
-      quantity: null, unit: null, expiresAt: null,
+      quantity: 500, unit: 'g', expiresAt: null,
       createdAt: '2026-09-24T10:00:00.000Z', updatedAt: '2026-09-24T10:00:00.000Z',
     },
     clientUpdatedAt: '2026-09-24T10:00:00.000Z',
@@ -275,6 +314,84 @@ test('shares confirmed dinner recipes with House members while isolating outside
     currentUser = null;
     await route.fulfill({ status: 200, json: {} });
   });
+  await page.route('**/v1/dinner-consumption', async (route) => {
+    const body = route.request().postDataJSON() as {
+      command: DinnerConsumptionCommand;
+      entry: Record<string, unknown>;
+      cookEvent?: Record<string, unknown>;
+    };
+    const userId = currentUser?.id ?? null;
+    const command = body.command;
+    const csrfAuthorized = currentUser !== null
+      && route.request().headers()['x-csrf-token'] === `csrf-${currentUser.id}`;
+    const text = typeof body.entry?.text === 'string' ? body.entry.text : '';
+    consumptionCalls.push({
+      userId, scope: command.scope, operationId: command.operationId, entryId: command.entryId,
+      text, csrfAuthorized, unavailable: apiUnavailable || browserOffline,
+    });
+    if (apiUnavailable || browserOffline) {
+      await route.abort('failed');
+      return;
+    }
+    const expectedScope = userId === null ? 'guest' : isMember(userId) ? houseScope : `account:${userId}`;
+    if (userId === null || !csrfAuthorized || command.scope !== expectedScope) {
+      await route.fulfill({ status: 403, json: { code: 'sync_scope_mismatch', message: 'Dinner scope is not authorized' } });
+      return;
+    }
+
+    const resultKey = `${command.scope}:${command.operationId}`;
+    const priorResult = consumptionResults.get(resultKey);
+    if (priorResult !== undefined) {
+      await route.fulfill({ status: 200, json: { ...priorResult, duplicate: true } });
+      return;
+    }
+
+    const committedAt = '2026-09-24T10:03:00.000Z';
+    const plan = planPantryConsumption({ lots: currentLots(userId, command.scope), command, updatedAt: committedAt });
+    for (const id of plan.deleteLotIds) {
+      appendChange(userId, {
+        mutationId: `dinner-consumption-${command.operationId}-delete-${id}`,
+        deviceId: 'dinner-consumption-api', entityType: 'pantry_lot', entityId: id, operation: 'delete',
+        payload: null, clientUpdatedAt: committedAt,
+      }, command.scope);
+    }
+    for (const lot of plan.upsertLots) {
+      appendChange(userId, {
+        mutationId: `dinner-consumption-${command.operationId}-upsert-${lot.id}`,
+        deviceId: 'dinner-consumption-api', entityType: 'pantry_lot', entityId: lot.id, operation: 'upsert',
+        payload: lot, clientUpdatedAt: committedAt,
+      }, command.scope);
+    }
+    const savedEntry = { ...body.entry, authorId: userId };
+    appendChange(userId, {
+      mutationId: `dinner-consumption-${command.operationId}`, deviceId: 'dinner-consumption-api',
+      entityType: 'dinner_entry', entityId: command.entryId, operation: 'upsert', payload: savedEntry,
+      clientUpdatedAt: committedAt,
+    }, command.scope);
+    if (body.cookEvent !== undefined) {
+      appendChange(userId, {
+        mutationId: `dinner-consumption-${command.operationId}-cook-event`, deviceId: 'dinner-consumption-api',
+        entityType: 'cook_event', entityId: command.entryId, operation: 'upsert', payload: body.cookEvent,
+        clientUpdatedAt: committedAt,
+      }, command.scope);
+    }
+    const result: Record<string, unknown> = {
+      duplicate: false,
+      entry: savedEntry,
+      ...(body.cookEvent === undefined ? {} : { cookEvent: body.cookEvent }),
+      pantrySnapshot: pantrySnapshot(userId, command.scope),
+      receipt: { operationId: command.operationId, entryId: command.entryId, scope: command.scope, committedAt, plan },
+    };
+    consumptionResults.set(resultKey, result);
+    if (text === delayedConsumptionText) {
+      await new Promise<void>((resolve) => {
+        delayedConsumptionControl.release = resolve;
+        markDelayedConsumptionStarted();
+      });
+    }
+    await route.fulfill({ status: 200, json: result });
+    if (text === delayedConsumptionText) markDelayedConsumptionCompleted();
+  });
   await page.route('**/v1/sync', async (route) => {
     const body = route.request().postDataJSON() as { cursor?: number; syncScope?: string; mutations?: Array<Record<string, unknown>> };
     const userId = currentUser?.id ?? null;
@@ -282,7 +399,7 @@ test('shares confirmed dinner recipes with House members while isolating outside
       && route.request().headers()['x-csrf-token'] === `csrf-${currentUser.id}`;
     const requestedScope = body.syncScope ?? (userId === null ? 'guest' : `account:${userId}`);
     const mutations = body.mutations ?? [];
-    if (apiUnavailable) {
+    if (apiUnavailable || browserOffline) {
       syncCalls.push({ userId, scope: requestedScope, csrfAuthorized, mutations, returnedEntityIds: [], unavailable: true });
       await route.abort('failed');
       return;
@@ -334,10 +451,16 @@ test('shares confirmed dinner recipes with House members while isolating outside
   await page.getByRole('button', { name: 'Salva consenso Dinner' }).click();
   await consentDisclosure.locator('summary').click();
   await page.getByLabel('Data della cena').fill('2026-09-24');
-  await page.getByLabel('Porzioni (facoltative)').fill('2');
+  await page.getByLabel(/Porzioni/).fill('2');
   await page.getByLabel('Com’è andata la cena?').fill(dinnerText);
-  await page.getByRole('button', { name: 'Salva cena' }).click();
-  await expect(page.getByText(dinnerText)).toBeVisible();
+  await page.getByRole('button', { name: 'Aggiungi ingrediente utilizzato' }).click();
+  await page.getByLabel('Ingrediente usato 1').selectOption('pasta');
+  await page.getByLabel('Quantità per porzione di Pasta').fill('80 g');
+  await page.getByRole('button', { name: 'Registra la cena' }).click();
+  await expect(page.getByRole('article').getByText(dinnerText)).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect.poll(() => consumptionCalls.filter((call) => call.text === dinnerText && !call.unavailable)).toHaveLength(1);
+  expect(currentLots(admin.id, houseScope)).toMatchObject([expect.objectContaining({ id: 'house-pasta-lot', quantity: 340, unit: 'g' })]);
   await page.reload();
   await expect.poll(() => sharedDinnerId).not.toBeNull();
   await page.getByRole('button', { name: 'Prepara bozze ricetta' }).click();
@@ -361,35 +484,64 @@ test('shares confirmed dinner recipes with House members while isolating outside
   await expect(page.getByText(recipeTitle)).toHaveCount(0);
 
   await page.goto('/dinner-diary');
+  browserOffline = true;
   await page.context().setOffline(true);
   await page.getByLabel('Data della cena').fill('2026-09-25');
+  await page.getByLabel(/Porzioni/).fill('2');
   await page.getByLabel('Com’è andata la cena?').fill(privateText);
-  await page.getByRole('button', { name: 'Salva cena' }).click();
-  await expect(page.getByText(privateText)).toBeVisible();
-  await page.waitForFunction(async (text) => {
+  await page.getByRole('checkbox', { name: 'Nessun ingrediente della dispensa utilizzato' }).check();
+  await page.getByRole('button', { name: 'Registra la cena' }).click();
+  await expect(page.getByRole('article').filter({ hasText: privateText })).toBeVisible();
+  await expect.poll(async () => page.evaluate(async (text) => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('ikuck-local-v2');
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
-    const values = await new Promise<unknown[]>((resolve, reject) => {
-      const request = database.transaction('syncQueue', 'readonly').objectStore('syncQueue').getAll();
+    const records = await new Promise<unknown[]>((resolve, reject) => {
+      const request = database.transaction('dinnerConsumption', 'readonly').objectStore('dinnerConsumption').getAll();
       request.onsuccess = () => resolve(request.result as unknown[]);
       request.onerror = () => reject(request.error);
     });
     database.close();
-    return values.some((value) => typeof value === 'object' && value !== null
+    return records.some((value) => typeof value === 'object' && value !== null
       && 'scope' in value && value.scope === 'account:diary-house-outsider'
-      && 'entityType' in value && value.entityType === 'dinner_entry'
-      && 'payload' in value && typeof value.payload === 'object' && value.payload !== null
-      && 'text' in value.payload && value.payload.text === text);
-  }, privateText);
+      && 'entry' in value && typeof value.entry === 'object' && value.entry !== null
+      && 'text' in value.entry && value.entry.text === text);
+  }, privateText), { timeout: 5000 }).toBe(true);
   apiUnavailable = true;
+  browserOffline = false;
   await page.context().setOffline(false);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Diario delle cene' })).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await expect.poll(() => syncCalls.some((call) => call.userId === outsider.id && call.unavailable
-    && call.mutations.some((mutation) => mutation.entityType === 'dinner_entry'
-      && typeof mutation.payload === 'object' && mutation.payload !== null && 'text' in mutation.payload && mutation.payload.text === privateText))).toBe(true);
+  await expect.poll(() => syncCalls.some((call) => call.userId === outsider.id && call.unavailable)).toBe(true);
+  const offlineRetryState = await page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('ikuck-local-v2');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const records = await new Promise<unknown[]>((resolve, reject) => {
+      const request = database.transaction('dinnerConsumption', 'readonly').objectStore('dinnerConsumption').getAll();
+      request.onsuccess = () => resolve(request.result as unknown[]);
+      request.onerror = () => reject(request.error);
+    });
+    database.close();
+    return records;
+  });
+  expect(offlineRetryState).toContainEqual(expect.objectContaining({
+    scope: `account:${outsider.id}`,
+    entry: expect.objectContaining({ text: privateText }),
+  }));
+  await expect.poll(() => JSON.stringify(consumptionCalls)).toContain(privateText);
+  const offlineCalls = consumptionCalls.filter((call) => call.text === privateText);
+  expect(offlineCalls.length).toBeGreaterThan(0);
+  expect(offlineCalls.every((call) => call.userId === outsider.id
+    && call.scope === `account:${outsider.id}` && call.csrfAuthorized && call.unavailable)).toBe(true);
+  expect(new Set(offlineCalls.map((call) => call.operationId)).size).toBe(1);
+  expect(new Set(offlineCalls.map((call) => call.entryId)).size).toBe(1);
+  expect(syncCalls.filter((call) => call.userId === outsider.id).flatMap((call) => call.returnedEntityIds)).not.toContain(sharedDinnerId);
 
   currentUser = member;
   await page.reload();
@@ -441,9 +593,14 @@ test('shares confirmed dinner recipes with House members while isolating outside
   await expect(page.getByRole('article').filter({ hasText: dinnerText }).getByText('Nota: Nota della casa')).toBeVisible();
 
   await page.getByLabel('Data della cena').fill('2026-09-26');
+  await page.getByLabel(/Porzioni/).fill('2');
   await page.getByLabel('Com’è andata la cena?').fill(memberDinnerText);
-  await page.getByRole('button', { name: 'Salva cena' }).click();
-  await expect(page.getByText(memberDinnerText)).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Nessun ingrediente della dispensa utilizzato' }).check();
+  await page.getByRole('button', { name: 'Registra la cena' }).click();
+  await expect(page.getByRole('article').filter({ hasText: memberDinnerText })).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect.poll(() => consumptionCalls.filter((call) => call.userId === member.id && call.scope === houseScope
+    && call.text === memberDinnerText && !call.unavailable)).toHaveLength(1);
   await page.reload();
   await expect.poll(() => memberDinnerId).not.toBeNull();
   await page.getByLabel('Collega una ricetta già salvata').selectOption(savedRecipeId);
@@ -467,15 +624,32 @@ test('shares confirmed dinner recipes with House members while isolating outside
   await page.getByRole('link', { name: `Apri ${recipeTitle}` }).click();
   await expect(page.getByRole('heading', { name: recipeTitle })).toBeVisible();
 
-  await page.goto('/profile');
-  await page.getByRole('button', { name: 'Esci' }).click();
+  delayedConsumptionText = staleResponseText;
   await page.goto('/dinner-diary');
+  await page.getByLabel('Data della cena').fill('2026-09-27');
+  await page.getByLabel(/Porzioni/).fill('2');
+  await page.getByLabel('Com’è andata la cena?').fill(staleResponseText);
+  await page.getByRole('checkbox', { name: 'Nessun ingrediente della dispensa utilizzato' }).check();
+  await page.getByRole('button', { name: 'Registra la cena' }).click();
+  await expect(page.getByRole('article').filter({ hasText: staleResponseText })).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await delayedConsumptionStarted;
+  await page.getByRole('link', { name: 'Profilo', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Esci' }).click();
+  await expect.poll(() => currentUser).toBeNull();
+  delayedConsumptionControl.release?.();
+  await delayedConsumptionCompleted;
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  await page.getByRole('link', { name: 'Diario delle cene', exact: true }).first().click();
   await expect(page.getByText('Non hai ancora registrato una cena.')).toBeVisible();
   await expect(page.getByText(dinnerText)).toHaveCount(0);
   await expect(page.getByText(privateText)).toHaveCount(0);
+  await expect(page.getByText(staleResponseText)).toHaveCount(0);
 
   currentUser = outsider;
   await page.reload();
-  await expect(page.getByText(privateText)).toBeVisible();
-  await expect(page.getByText(dinnerText)).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Diario delle cene' })).toBeVisible();
+  await expect(page.getByRole('article').filter({ hasText: privateText })).toBeVisible();
+  await expect(page.getByRole('article').filter({ hasText: dinnerText })).toHaveCount(0);
+  await expect(page.getByText(recipeTitle)).toHaveCount(0);
 });
