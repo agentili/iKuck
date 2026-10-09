@@ -32,6 +32,9 @@ import {
   isPantryLot,
   normalizePantrySnapshot,
   readPantrySnapshot,
+  getPantrySnapshotConflictError,
+  isPantrySnapshotConflictActive,
+  PantrySnapshotConflictError,
   writePantrySnapshot,
   type PantrySnapshot,
 } from '../storage/pantryStorage';
@@ -51,7 +54,7 @@ import { clearDietProfile, readDietProfile, readPersistedDietProfile, writeDietP
 import { clearDinnerDiary, clearDinnerDiaryRecords, readDinnerEntries, readSavedRecipes, writeDinnerEntries, writeSavedRecipes } from '../storage/dinnerDiaryStorage';
 import { assertSyncMutation, isPantryItemPayload, isStaplePreferencePayload } from './validation';
 import { getActiveDataScope, getPersonalDataScope, setActiveDataScope, setPersonalDataScope } from './scopeContext';
-import { completeScopePurge, hasPendingScopePurge, revokeScope, resumeScope, trackScopedWrite, waitForScopedWrites } from './scopeWriteFence';
+import { completeScopePurge, hasPendingScopePurge, isScopeUncertain, markScopeUncertain, revokeScope, resumeScope, trackScopedWrite, waitForScopedWrites, ScopeUncertainError } from './scopeWriteFence';
 
 const DEVICE_ID_META_KEY = 'deviceId';
 const IMPORT_MUTATION_IDS_META_PREFIX = 'importMutationIds:';
@@ -66,6 +69,18 @@ export const GUEST_SYNC_SCOPE: SyncScope = 'guest';
 export const getAccountSyncScope = (userId: string): SyncScope => `account:${userId}`;
 
 const SHARED_ENTITY_TYPES = new Set<SyncEntityType>(HOUSE_SYNC_ENTITY_TYPES);
+const PANTRY_ENTITY_TYPES = new Set<SyncEntityType>(['pantry_item', 'pantry_lot', 'staple_preference']);
+
+const assertPantrySyncAvailable = async (scopes: readonly SyncScope[]): Promise<void> => {
+  for (const scope of new Set(scopes)) {
+    const conflict = await getPantrySnapshotConflictError(scope);
+    if (conflict !== null) throw conflict;
+    if (isPantrySnapshotConflictActive(scope)) {
+      throw new PantrySnapshotConflictError(scope, 'concurrent-write', { pantryItems: [], stapleIds: [] },
+        { pantryItems: [], stapleIds: [] }, null, null, []);
+    }
+  }
+};
 
 export const getMutationScope = (
   entityType: SyncEntityType,
@@ -277,17 +292,21 @@ const getImportMutationId = (
   payload: unknown | null,
 ): Promise<string> => {
   const previous = pendingImportMutationIdWrites;
-  const write = trackScopedWrite(scope, () => previous.then(async () => {
+  const write = trackScopedWrite(scope, async (assertWritable) => {
+    await previous;
+    assertWritable();
     const fingerprint = await fingerprintImportPayload(payload);
+    assertWritable();
     const metaKey = `${IMPORT_MUTATION_IDS_META_PREFIX}${scope}`;
     const ledger = await readMeta<ImportMutationIdLedger>(metaKey) ?? {};
+    assertWritable();
     const entityKey = JSON.stringify([entityType, entityId, operation]);
     const existing = ledger[entityKey];
     if (existing?.fingerprint === fingerprint) return existing.mutationId;
     const mutationId = `import:${createRandomId()}`;
-    await writeMeta(metaKey, { ...ledger, [entityKey]: { fingerprint, mutationId } });
+    await writeMeta(metaKey, { ...ledger, [entityKey]: { fingerprint, mutationId } }, assertWritable);
     return mutationId;
-  }));
+  });
   pendingImportMutationIdWrites = write.catch(() => undefined);
   return write;
 };
@@ -348,11 +367,19 @@ const createImportMutation = async (
 
 const queueMutationWrite = (scope: SyncScope, mutation: SyncMutation): Promise<void> => {
   const previous = pendingQueueWrites;
-  const operation = trackScopedWrite(scope, () => previous.then(() => writeQueueValue<QueuedMutation>({
-    ...mutation,
-    scope,
-    createdAt: new Date().toISOString(),
-  })));
+  const operation = trackScopedWrite(scope, async (assertWritable) => {
+    await previous;
+    assertWritable();
+    if (PANTRY_ENTITY_TYPES.has(mutation.entityType)) {
+      await assertPantrySyncAvailable([scope]);
+      assertWritable();
+    }
+    await writeQueueValue<QueuedMutation>({
+      ...mutation,
+      scope,
+      createdAt: new Date().toISOString(),
+    }, assertWritable);
+  });
   pendingQueueWrites = operation.catch(() => undefined);
   return operation;
 };
@@ -369,13 +396,21 @@ export function enqueuePantryMutation(
   payload: unknown | null,
 ): Promise<void> {
   const previous = pendingQueueWrites;
-  const operationPromise = trackScopedWrite(scope, () => previous
-    .then(() => createPantryMutation(entityType, entityId, operation, payload))
-    .then((mutation) => writeQueueValue<QueuedMutation>({
+  const operationPromise = trackScopedWrite(scope, async (assertWritable) => {
+    await previous;
+    assertWritable();
+    if (PANTRY_ENTITY_TYPES.has(entityType)) {
+      await assertPantrySyncAvailable([scope]);
+      assertWritable();
+    }
+    const mutation = await createPantryMutation(entityType, entityId, operation, payload);
+    assertWritable();
+    await writeQueueValue<QueuedMutation>({
       ...mutation,
       scope,
       createdAt: new Date().toISOString(),
-    })));
+    }, assertWritable);
+  });
   pendingQueueWrites = operationPromise.catch(() => undefined);
   return operationPromise;
 }
@@ -399,6 +434,7 @@ export async function importLocalData(session: SyncSession, isSessionCurrent: ()
   const accountScope = getAccountSyncScope(session.userId);
   const activeScope = getActiveDataScope();
   const personalScope = getPersonalDataScope();
+  await assertPantrySyncAvailable([activeScope, personalScope]);
   const isCurrentScope = (): boolean => getActiveDataScope() === activeScope
     && getPersonalDataScope() === personalScope && personalScope === accountScope && activeScope !== 'guest';
   const isCurrent = (): boolean => isSessionCurrent() && isCurrentScope();
@@ -517,7 +553,7 @@ export async function mergeGuestPantryIntoHouse(
     && !submittedPantryMutationIds.has(mutation.mutationId));
   if (guestSnapshotFingerprint(currentSnapshot) === submittedFingerprint) {
     await clearQueueScope(GUEST_SYNC_SCOPE, submittedPantryMutationIds);
-    if (!hasConcurrentPantryMutation) await clearPantrySnapshot(GUEST_SYNC_SCOPE);
+    if (!hasConcurrentPantryMutation) await clearPantrySnapshot(GUEST_SYNC_SCOPE, currentSnapshot);
   }
   return response.summary;
 }
@@ -541,6 +577,7 @@ export async function initializeSessionScope(
   const previousActiveScope = getActiveDataScope();
   const previousPersonalScope = getPersonalDataScope();
   let confirmedScope: SyncScope | null = null;
+  if (previousActiveScope.startsWith('house:')) markScopeUncertain(previousActiveScope);
   try {
     const state = await request<HouseState | null>('/v1/house');
     ensureCurrent();
@@ -651,7 +688,7 @@ async function importPendingAccountQueue(
     });
     assertCurrent();
     for (const mutation of batch) {
-      await deleteQueueValue(mutation.mutationId, accountScope);
+      await deleteQueueValue(mutation.mutationId, accountScope, assertCurrent);
       assertCurrent();
     }
   }
@@ -723,9 +760,14 @@ const applyServerChanges = async (
   if (changes.length === 0) return;
   const current = async <T>(operation: () => Promise<T>): Promise<T> => {
     assertCurrentContext();
-    const result = await operation();
-    assertCurrentContext();
-    return result;
+    try {
+      const result = await operation();
+      assertCurrentContext();
+      return result;
+    } catch (error) {
+      assertCurrentContext();
+      throw error;
+    }
   };
 
   const pantryChanges = changes.filter((change) => change.entityType === 'pantry_item'
@@ -915,6 +957,11 @@ export async function syncNow({ fetch, request = apiRequest, session, isSessionC
   const contextError = (): Error | null => {
     if (isSessionCurrent !== undefined && !isSessionCurrent()) return new SyncSessionChangedError();
     if (getActiveDataScope() !== activeScope || getPersonalDataScope() !== personalScope) return new SyncScopeChangedError();
+    if (isScopeUncertain(activeScope)) return new ScopeUncertainError();
+    if (isPantrySnapshotConflictActive(activeScope) || isPantrySnapshotConflictActive(personalScope)) {
+      return new PantrySnapshotConflictError(activeScope, 'concurrent-write', { pantryItems: [], stapleIds: [] },
+        { pantryItems: [], stapleIds: [] }, null, null, []);
+    }
     return null;
   };
 
@@ -924,12 +971,22 @@ export async function syncNow({ fetch, request = apiRequest, session, isSessionC
   };
   const current = async <T>(operation: () => Promise<T>): Promise<T> => {
     assertCurrentContext();
-    const result = await operation();
-    assertCurrentContext();
-    return result;
+    try {
+      await assertPantrySyncAvailable([activeScope, personalScope]);
+      assertCurrentContext();
+      const result = await operation();
+      assertCurrentContext();
+      await assertPantrySyncAvailable([activeScope, personalScope]);
+      assertCurrentContext();
+      return result;
+    } catch (error) {
+      assertCurrentContext();
+      throw error;
+    }
   };
 
   const operation = (async () => {
+    await assertPantrySyncAvailable([activeScope, personalScope]);
     await waitForPendingQueueWrites();
     assertCurrentContext();
     if (activeScope.startsWith('house:')) {
@@ -979,8 +1036,12 @@ export async function syncNow({ fetch, request = apiRequest, session, isSessionC
         }
       }
       const nextCursor = Math.max(cursor, result.nextCursor);
-      await current(() => trackScopedWrite(cursorScope, () => writeMeta(cursorMetaKey(cursorScope), nextCursor)));
-      for (const mutation of batch) await current(() => deleteQueueValue(mutation.mutationId, mutation.scope));
+      await current(() => trackScopedWrite(cursorScope, (assertWritable) => (
+        writeMeta(cursorMetaKey(cursorScope), nextCursor, assertWritable)
+      )));
+      for (const mutation of batch) {
+        await current(() => deleteQueueValue(mutation.mutationId, mutation.scope, assertCurrentContext));
+      }
 
       uploaded += batch.length;
       downloaded += result.changes.length;

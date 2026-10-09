@@ -20,7 +20,8 @@ import {
 } from '../storage/indexedDb';
 import { readCookEvents, readRecipePreferences, writeCookEvents, writeRecipePreferences } from '../storage/activityStorage';
 import { clearDinnerDiary, readDiaryDraftSets, readDinnerEntries, readSavedRecipes, writeDiaryDraftSets, writeDinnerEntries, writeSavedRecipes } from '../storage/dinnerDiaryStorage';
-import { readPantrySnapshot, writePantrySnapshot } from '../storage/pantryStorage';
+import { PANTRY_STORAGE_KEY, readPantrySnapshot, writePantrySnapshot } from '../storage/pantryStorage';
+import * as pantryStorage from '../storage/pantryStorage';
 import * as shoppingStorage from '../storage/shoppingListStorage';
 import { readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
 import { readDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
@@ -722,6 +723,115 @@ describe('sync queue', () => {
     await expect(readQueuedMutations(GUEST_SYNC_SCOPE)).resolves.toEqual([]);
   });
 
+  it.each(['indexed-db', 'localStorage'] as const)(
+    'clears an acknowledged legacy guest pantry from %s before a retry can re-import it',
+    async (source) => {
+      const state = {
+        state: {
+          pantryItems: [{ id: 'legacy-tomato', label: 'Pomodoro legacy', known: true }],
+          stapleIds: ['salt'],
+        },
+        version: 1,
+      };
+      if (source === 'indexed-db') {
+        await indexedDb.writeKeyValue('pantry', JSON.stringify({ ...state, revision: 42 }));
+      }
+      window.localStorage.setItem(PANTRY_STORAGE_KEY, JSON.stringify(state));
+
+      const requestMock = vi.fn(async (path: string, options: unknown) => {
+        expect(path).toBe('/v1/house/pantry/merge');
+        expect(options).toMatchObject({ method: 'POST' });
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return { summary: { addedLots: 1, mergedLots: 0, mergedGroups: 0, importedStaples: 1 } };
+      });
+      const request = requestMock as unknown as ApiRequest;
+
+      await mergeGuestPantryIntoHouse(session, 'house-a', request);
+
+      const firstBody = (requestMock.mock.calls[0]?.[1] as { body: { lots: unknown[]; stapleIds: string[] } }).body;
+      expect(firstBody.lots).toHaveLength(1);
+      expect(firstBody.stapleIds).toEqual(['salt']);
+      await expect(indexedDb.readKeyValue('pantry')).resolves.toBeNull();
+      expect(window.localStorage.getItem(PANTRY_STORAGE_KEY)).toBeNull();
+      expect(window.localStorage.getItem('iricetto-pantry-v1')).toBeNull();
+
+      await mergeGuestPantryIntoHouse(session, 'house-a', request);
+
+      expect(requestMock).toHaveBeenCalledTimes(2);
+      expect((requestMock.mock.calls[1]?.[1] as { body: { lots: unknown[]; stapleIds: string[] } }).body)
+        .toMatchObject({ lots: [], stapleIds: [] });
+      await expect(readPantrySnapshot(GUEST_SYNC_SCOPE)).resolves.toBeNull();
+    },
+  );
+
+  it('preserves a guest pantry write that races with clearing an acknowledged legacy import', async () => {
+    const raw = JSON.stringify({
+      state: {
+        pantryItems: [{ id: 'legacy-tomato', label: 'Pomodoro legacy', known: true }],
+        stapleIds: [],
+      },
+      version: 1,
+      revision: 42,
+    });
+    await indexedDb.writeKeyValue('pantry', raw);
+    const actualClear = pantryStorage.clearPantrySnapshot;
+    const clear = vi.spyOn(pantryStorage, 'clearPantrySnapshot').mockImplementation(async (scope, expectedSnapshot) => {
+      await writePantrySnapshot({
+        pantryItems: [{ id: 'concurrent-rice', label: 'Riso aggiunto dopo', known: true }],
+        stapleIds: [],
+        pantryLots: [],
+      }, scope);
+      return actualClear(scope, expectedSnapshot);
+    });
+    const requestMock = vi.fn(async (path: string, options: unknown) => {
+      expect(path).toBe('/v1/house/pantry/merge');
+      expect(options).toMatchObject({ method: 'POST' });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return { summary: { addedLots: 1, mergedLots: 0, mergedGroups: 0, importedStaples: 0 } };
+    });
+
+    try {
+      await mergeGuestPantryIntoHouse(session, 'house-a', requestMock as unknown as ApiRequest);
+
+      await expect(readPantrySnapshot(GUEST_SYNC_SCOPE)).resolves.toMatchObject({
+        pantryItems: [{ id: 'concurrent-rice' }],
+      });
+      await expect(indexedDb.readKeyValue<string>('pantry')).resolves.not.toBeNull();
+    } finally {
+      clear.mockRestore();
+    }
+  });
+
+  it('preserves pantry edits made after import comparison and before clearing guest data', async () => {
+    setActiveDataScope('guest');
+    await writePantrySnapshot({
+      pantryItems: [{ id: 'submitted-copy', label: 'Pasta', known: true }],
+      stapleIds: [],
+      pantryLots: [],
+    });
+    const actualClear = pantryStorage.clearPantrySnapshot;
+    const clear = vi.spyOn(pantryStorage, 'clearPantrySnapshot').mockImplementation(async (scope, expectedSnapshot) => {
+      await writePantrySnapshot({
+        pantryItems: [{ id: 'concurrent-copy', label: 'Modifica concorrente', known: true }],
+        stapleIds: [],
+        pantryLots: [],
+      }, scope);
+      return actualClear(scope, expectedSnapshot);
+    });
+    const request = vi.fn().mockResolvedValue({
+      summary: { addedLots: 1, mergedLots: 0, mergedGroups: 0, importedStaples: 0 },
+    });
+
+    try {
+      await mergeGuestPantryIntoHouse(session, 'house-a', request);
+      await expect(readPantrySnapshot(GUEST_SYNC_SCOPE)).resolves.toMatchObject({
+        pantryItems: [{ id: 'concurrent-copy' }],
+      });
+    } finally {
+      clear.mockRestore();
+    }
+  });
+
   it('does not treat a client-shaped merge tombstone as preserving pantry lots', async () => {
     const houseScope = 'house:forged-tombstone' as const;
     setActiveDataScope(houseScope);
@@ -805,6 +915,77 @@ describe('sync queue', () => {
     await expect(readPantrySnapshot(staleScope)).resolves.toBeNull();
     await expect(readQueuedMutations(staleScope)).resolves.toEqual([]);
     await expect(readSyncCursor(staleScope)).resolves.toBe(0);
+  });
+
+  it('fences house writes and stops an in-flight sync until membership is confirmed again', async () => {
+    const houseScope = 'house:uncertain-membership' as const;
+    const accountSnapshot = {
+      pantryItems: [{ id: 'personal-pasta', label: 'Pasta personale', known: true }],
+      stapleIds: ['salt'],
+      pantryLots: [],
+    };
+    const houseSnapshot = {
+      pantryItems: [{ id: 'shared-tomato', label: 'Pomodoro condiviso', known: true }],
+      stapleIds: ['olive-oil'],
+      pantryLots: [],
+    };
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    await writePantrySnapshot(accountSnapshot, accountScope);
+    await writePantrySnapshot(houseSnapshot, houseScope);
+    await enqueueMutation(houseScope, sampleMutation('house-pending-before-uncertainty'));
+    await writeMeta(`syncCursor:${houseScope}`, 7);
+
+    let resolveSync: ((response: SyncChangeSet) => void) | undefined;
+    const syncRequest = vi.fn(() => new Promise<SyncChangeSet>((resolve) => { resolveSync = resolve; }));
+    const synchronizing = syncNow({ session, request: syncRequest as ApiRequest });
+    try {
+      await vi.waitFor(() => expect(syncRequest).toHaveBeenCalledOnce());
+      await expect(initializeSessionScope(
+        session,
+        vi.fn().mockRejectedValue(new ApiClientError(0, 'network_error', 'House lookup unavailable')) as ApiRequest,
+      )).rejects.toMatchObject({ code: 'network_error' });
+
+      expect(isScopeWritable(houseScope)).toBe(false);
+      await expect(trackScopedWrite(houseScope, async () => undefined)).rejects.toMatchObject({ code: 'scope_unverified' });
+      await expect(trackScopedWrite(accountScope, async () => 'personal-write')).resolves.toBe('personal-write');
+      expect(getActiveDataScope()).toBe(houseScope);
+      expect(window.localStorage.getItem(`ikuck:pending-house-purge:${houseScope}`)).toBeNull();
+      await expect(readPantrySnapshot(accountScope)).resolves.toMatchObject({ pantryItems: [{ id: 'personal-pasta' }] });
+
+      const syncFailure = expect(synchronizing).rejects.toMatchObject({ code: 'scope_unverified' });
+      resolveSync?.({
+        changes: [{
+          ...sampleMutation('late-house-response'),
+          entityId: 'late-house-pasta',
+          payload: { id: 'late-house-pasta', label: 'Arrivato dopo', known: true },
+          syncScope: houseScope,
+          serverSequence: 44,
+        }],
+        nextCursor: 44,
+      });
+      await syncFailure;
+
+      await expect(readPantrySnapshot(houseScope)).resolves.toMatchObject({ pantryItems: [{ id: 'shared-tomato' }] });
+      await expect(readQueuedMutations(houseScope)).resolves.toEqual([
+        expect.objectContaining({ mutationId: 'house-pending-before-uncertainty' }),
+      ]);
+      await expect(readSyncCursor(houseScope)).resolves.toBe(7);
+
+      const confirmedState = {
+        house: { id: 'uncertain-membership', name: 'Casa', createdAt: '2026-10-01T10:00:00.000Z' },
+        membership: { role: 'member' as const, joinedAt: '2026-10-01T10:00:00.000Z' },
+        members: [],
+      };
+      await initializeSessionScope(session, vi.fn().mockResolvedValue(confirmedState) as ApiRequest);
+      expect(getActiveDataScope()).toBe(houseScope);
+      expect(isScopeWritable(houseScope)).toBe(true);
+      expect(window.localStorage.getItem(`ikuck:pending-house-purge:${houseScope}`)).toBeNull();
+    } finally {
+      resolveSync?.({ changes: [], nextCursor: 0 });
+      await synchronizing.catch(() => undefined);
+      setActiveDataScope('guest');
+    }
   });
 
   it('preserves a known house and unsent offline changes when membership lookup fails', async () => {

@@ -76,7 +76,7 @@ export default function HousePage() {
 
   if (user === null) {
     return (
-      <main id="main-content" className="mx-auto min-h-screen w-full max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+      <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-3xl px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
         <section className="rounded-3xl border-2 border-gray-200 bg-white p-6 shadow-sm sm:p-8">
           <h1 className="text-3xl font-black text-gray-950">La mia casa</h1>
           <p className="mt-3 text-gray-600">Accedi per creare o gestire una casa condivisa.</p>
@@ -89,7 +89,7 @@ export default function HousePage() {
   const isAdmin = houseState?.membership?.role === 'admin';
 
   return (
-    <main id="main-content" className="mx-auto min-h-screen w-full max-w-3xl px-4 py-8 pb-24 sm:px-6 sm:pb-8 lg:px-8">
+    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-3xl px-4 py-5 pb-24 sm:px-6 sm:py-8 lg:px-8">
       <div className="mb-5"><Link to="/profile" className="inline-flex min-h-11 items-center rounded-xl px-2 font-semibold text-gray-700 underline underline-offset-2">← Torna al profilo</Link></div>
       <section className="rounded-3xl border-2 border-gray-200 bg-white p-6 shadow-sm sm:p-8">
         <p className="text-sm font-bold uppercase tracking-wide text-emerald-700">Condivisione familiare</p>

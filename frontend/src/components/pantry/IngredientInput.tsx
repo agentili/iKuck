@@ -5,9 +5,10 @@ import type { ParsedIngredient } from '../../domain/types';
 
 interface IngredientInputProps {
   onAdd: (items: ParsedIngredient[]) => void;
+  idBase?: string;
 }
 
-export default function IngredientInput({ onAdd }: IngredientInputProps) {
+export default function IngredientInput({ onAdd, idBase = 'pantry' }: IngredientInputProps) {
   const [value, setValue] = useState('');
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
@@ -73,12 +74,12 @@ export default function IngredientInput({ onAdd }: IngredientInputProps) {
 
   return (
     <form onSubmit={handleSubmit} className="relative space-y-3">
-      <label htmlFor="pantry-input" className="block text-sm font-semibold text-gray-700">
+      <label htmlFor={`${idBase}-input`} className="block text-sm font-semibold text-gray-700">
         Ingredienti presenti
       </label>
       <div className="ik-ingredient-entry flex gap-3">
         <input
-          id="pantry-input"
+          id={`${idBase}-input`}
           role="combobox"
           value={value}
           onChange={(event) => {
@@ -91,10 +92,10 @@ export default function IngredientInput({ onAdd }: IngredientInputProps) {
           }}
           onKeyDown={handleKeyDown}
           aria-autocomplete="list"
-          aria-controls="pantry-suggestions"
+          aria-controls={`${idBase}-suggestions`}
           aria-expanded={showSuggestions}
-          aria-activedescendant={activeSuggestion === undefined ? undefined : `pantry-suggestion-${activeSuggestion.id}`}
-          aria-describedby="pantry-input-help"
+          aria-activedescendant={activeSuggestion === undefined ? undefined : `${idBase}-suggestion-${activeSuggestion.id}`}
+          aria-describedby={`${idBase}-input-help`}
           placeholder="es. pasta, pomodori, tonno"
           autoComplete="off"
           className="ik-input min-h-12 flex-1 rounded-2xl border-2 border-gray-200 bg-white px-4 py-3 text-base text-gray-900 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
@@ -104,13 +105,13 @@ export default function IngredientInput({ onAdd }: IngredientInputProps) {
           Aggiungi ingredienti
         </button>
       </div>
-      <p id="pantry-input-help" className="text-sm text-gray-600">Separa più ingredienti con una virgola. Puoi usare anche le frecce e Invio per scegliere un suggerimento.</p>
+      <p id={`${idBase}-input-help`} className="text-sm text-gray-600">Separa più ingredienti con una virgola. Puoi usare anche le frecce e Invio per scegliere un suggerimento.</p>
       {showSuggestions && (
-        <ul id="pantry-suggestions" role="listbox" aria-label="Ingredienti suggeriti" className="absolute left-0 right-0 z-20 grid gap-1 rounded-2xl border border-gray-200 bg-white p-2 shadow-xl sm:right-auto sm:min-w-72">
+        <ul id={`${idBase}-suggestions`} role="listbox" aria-label="Ingredienti suggeriti" className="absolute left-0 right-0 z-20 grid gap-1 rounded-2xl border border-gray-200 bg-white p-2 shadow-xl sm:right-auto sm:min-w-72">
           {suggestions.map((ingredient) => (
             <li
               key={ingredient.id}
-              id={`pantry-suggestion-${ingredient.id}`}
+              id={`${idBase}-suggestion-${ingredient.id}`}
               role="option"
               aria-selected={ingredient.id === activeSuggestion?.id}
               onMouseDown={(event) => event.preventDefault()}

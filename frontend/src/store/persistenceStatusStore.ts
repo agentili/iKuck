@@ -4,6 +4,20 @@ export type PersistenceState = 'saved' | 'saving' | 'memory-only' | 'sync-pendin
 export type PersistenceDomain = 'pantry' | 'shopping-list' | 'activity' | 'diet';
 export type PersistenceRetry = () => Promise<void>;
 
+export const isPantrySnapshotConflictError = (error: unknown): error is { code: 'pantry_snapshot_conflict' } => (
+  typeof error === 'object' && error !== null && 'code' in error
+    && (error as { code?: unknown }).code === 'pantry_snapshot_conflict'
+);
+
+export const isPantrySnapshotConflictBackupError = (error: unknown): error is {
+  code: 'pantry_snapshot_conflict';
+  corruptedBackup: true;
+} => (
+  isPantrySnapshotConflictError(error)
+    && 'corruptedBackup' in error
+    && (error as { corruptedBackup?: unknown }).corruptedBackup === true
+);
+
 export interface PersistenceStatus {
   state: PersistenceState;
   error: unknown | null;

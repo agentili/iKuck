@@ -1,26 +1,48 @@
 import { DEFAULT_STAPLE_IDS } from '../../domain/ingredients';
-import { vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
 import * as pantryStorage from '../../storage/pantryStorage';
 import { deleteLocalDatabase, readKeyValue, writeKeyValue } from '../../storage/indexedDb';
 import { GUEST_SYNC_SCOPE, readQueuedMutations, syncNow, waitForPendingQueueWrites } from '../../sync/syncQueue';
 import { setActiveDataScope } from '../../sync/scopeContext';
+import { waitForScopedWrites } from '../../sync/scopeWriteFence';
 import { hydratePantryStore, usePantryStore } from '../localPantryStore';
 import { usePersistenceStatusStore } from '../persistenceStatusStore';
 
 describe('pantry store', () => {
+  afterEach(async () => {
+    await Promise.all([
+      'guest',
+      'house:house-a',
+      'house:hydration-race',
+      'house:house-persisted',
+      'account:user-1',
+    ].map((scope) => waitForScopedWrites(scope as Parameters<typeof waitForScopedWrites>[0])));
+  });
+
   beforeEach(async () => {
+    await Promise.all([
+      'guest',
+      'house:house-a',
+      'house:hydration-race',
+      'house:house-persisted',
+      'account:user-1',
+    ].map((scope) => waitForScopedWrites(scope as Parameters<typeof waitForScopedWrites>[0])));
     await deleteLocalDatabase();
     window.localStorage.clear();
     setActiveDataScope('guest');
+    await pantryStorage.readPantrySnapshot();
     usePersistenceStatusStore.getState().reset();
-    usePantryStore.setState({
-      hasHydrated: false,
-      pantryItems: [],
-      stapleIds: [...DEFAULT_STAPLE_IDS],
-      pantryLots: [],
-    });
-    await readKeyValue('pantry');
-    await deleteLocalDatabase();
+    pantryStorage.setPantryPersistenceSuspended(true);
+    try {
+      usePantryStore.setState({
+        hasHydrated: false,
+        pantryItems: [],
+        stapleIds: [...DEFAULT_STAPLE_IDS],
+        pantryLots: [],
+      });
+    } finally {
+      pantryStorage.setPantryPersistenceSuspended(false);
+    }
   });
 
   it('starts with default staples and no pantry items', () => {
@@ -88,6 +110,71 @@ describe('pantry store', () => {
     await hydratePantryStore();
 
     expect(usePantryStore.getState().pantryLots).toEqual([expect.objectContaining({ id: 'house-lot', quantity: 500 })]);
+  });
+
+  it('surfaces preserved pantry snapshot conflicts as a recoverable persistence state', async () => {
+    const indexedDbRaw = JSON.stringify({
+      state: { pantryItems: [{ id: 'indexed-a', label: 'Indexed', known: true }], stapleIds: [] },
+      version: 1,
+      revision: 12,
+      mirrorObsolete: true,
+    });
+    const localRaw = JSON.stringify({
+      state: { pantryItems: [{ id: 'legacy-b', label: 'Legacy', known: true }], stapleIds: [] },
+      version: 1,
+    });
+    await writeKeyValue('pantry', indexedDbRaw);
+    window.localStorage.setItem(pantryStorage.PANTRY_STORAGE_KEY, localRaw);
+    window.localStorage.setItem(`${pantryStorage.PANTRY_STORAGE_KEY}-idb-pending`, '1');
+
+    await hydratePantryStore();
+
+    const status = usePersistenceStatusStore.getState().statuses.pantry;
+    expect(status.state).toBe('memory-only');
+    expect(status.error).toMatchObject({
+      code: 'pantry_snapshot_conflict',
+      reason: 'unrevisioned-local-write',
+      indexedDbSnapshot: { pantryItems: [{ id: 'indexed-a' }] },
+      localSnapshot: { pantryItems: [{ id: 'legacy-b' }] },
+    });
+    await expect(readKeyValue<string>('pantry')).resolves.toBe(indexedDbRaw);
+    expect(window.localStorage.getItem(pantryStorage.PANTRY_STORAGE_KEY)).toBe(localRaw);
+    expect(window.localStorage.getItem(`${pantryStorage.PANTRY_STORAGE_KEY}-idb-pending`)).toBe('1');
+  });
+
+  it('blocks pantry mutation, queue writes, and sync while preserved copies need explicit recovery', async () => {
+    const indexedDbRaw = JSON.stringify({
+      state: { pantryItems: [{ id: 'indexed-a', label: 'Indexed', known: true }], stapleIds: [] },
+      version: 1,
+      revision: 12,
+      mirrorObsolete: true,
+    });
+    const localRaw = JSON.stringify({
+      state: { pantryItems: [{ id: 'legacy-b', label: 'Legacy', known: true }], stapleIds: [] },
+      version: 1,
+    });
+    await writeKeyValue('pantry', indexedDbRaw);
+    window.localStorage.setItem(pantryStorage.PANTRY_STORAGE_KEY, localRaw);
+    window.localStorage.setItem(`${pantryStorage.PANTRY_STORAGE_KEY}-idb-pending`, '1');
+    await hydratePantryStore();
+
+    const beforeItems = usePantryStore.getState().pantryItems;
+    usePantryStore.getState().addIngredients([{ id: 'unsaved-edit', label: 'Non salvare', known: true }]);
+    await waitForPendingQueueWrites();
+
+    expect(usePantryStore.getState().pantryItems).toEqual(beforeItems);
+    await expect(readQueuedMutations(GUEST_SYNC_SCOPE)).resolves.toEqual([]);
+
+    const request = vi.fn(async () => ({ nextCursor: 0, changes: [], hasMore: false }));
+    await expect(syncNow({
+      session: {
+        userId: 'user-1',
+        emailVerifiedAt: '2026-09-12T10:00:00.000Z',
+        csrfToken: 'csrf-1',
+      },
+      request: request as never,
+    })).rejects.toMatchObject({ code: 'pantry_snapshot_conflict' });
+    expect(request).not.toHaveBeenCalled();
   });
 
   it('exposes hydration state and becomes ready after IndexedDB rehydration', async () => {
@@ -302,11 +389,15 @@ describe('pantry store', () => {
   it('persists pantry and staples across rehydration', async () => {
     usePantryStore.getState().addIngredients([{ id: 'pasta', label: 'Pasta', known: true }]);
     usePantryStore.getState().toggleStaple('salt');
+    await waitForScopedWrites('guest');
     const persisted = await readKeyValue<string>('pantry');
     expect(persisted).not.toBeNull();
-    usePantryStore.setState({ pantryItems: [], stapleIds: [], hasHydrated: false });
-    await readKeyValue('pantry');
-    await writeKeyValue('pantry', persisted!);
+    pantryStorage.setPantryPersistenceSuspended(true);
+    try {
+      usePantryStore.setState({ pantryItems: [], stapleIds: [], hasHydrated: false });
+    } finally {
+      pantryStorage.setPantryPersistenceSuspended(false);
+    }
 
     await usePantryStore.persist.rehydrate();
 
@@ -319,7 +410,8 @@ describe('pantry store', () => {
   it('recovers from unreadable persisted data', async () => {
     await writeKeyValue('pantry', '{not-json');
 
-    await usePantryStore.persist.rehydrate();
+    await hydratePantryStore();
+    await waitForScopedWrites('guest');
 
     expect(usePantryStore.getState().pantryItems).toEqual([]);
     expect(usePantryStore.getState().stapleIds).toEqual([...DEFAULT_STAPLE_IDS]);
@@ -338,8 +430,8 @@ describe('pantry store', () => {
     });
     window.localStorage.removeItem('ikuck-pantry-v1');
     window.localStorage.setItem('iricetto-pantry-v1', legacyPersisted);
-
-    await usePantryStore.persist.rehydrate();
+    await hydratePantryStore();
+    await waitForScopedWrites('guest');
 
     expect(usePantryStore.getState().pantryItems).toEqual([
       { id: 'pasta', label: 'Pasta', known: true },

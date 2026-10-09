@@ -1,7 +1,6 @@
-import { ArrowLeft } from 'lucide-react';
 import { useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import ActivityPanel from '../components/activity/ActivityPanel';
+import DiaryNavigation from '../components/layout/DiaryNavigation';
 import { hydrateActivityStore, useActivityStore } from '../store/activityStore';
 
 export default function ActivityPage() {
@@ -25,13 +24,9 @@ export default function ActivityPage() {
   }
 
   return (
-    <main id="main-content" className="mx-auto min-h-screen w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-      <Link to="/" className="inline-flex min-h-11 items-center gap-2 rounded-xl px-2 py-2 font-semibold text-emerald-800 hover:bg-emerald-50">
-        <ArrowLeft size={18} aria-hidden="true" /> Torna alle ricette
-      </Link>
-      <div className="mt-6">
-        <ActivityPanel events={events} preferences={preferences} onRemoveEvent={removeCookEvent} onRestoreEvent={restoreCookEvent} onClearActivity={clearActivity} />
-      </div>
+    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-4xl px-4 pb-8 pt-5 sm:px-6 sm:pt-8 lg:px-8">
+      <DiaryNavigation />
+      <ActivityPanel events={events} preferences={preferences} onRemoveEvent={removeCookEvent} onRestoreEvent={restoreCookEvent} onClearActivity={clearActivity} />
     </main>
   );
 }

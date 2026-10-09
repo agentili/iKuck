@@ -1,12 +1,11 @@
 import { defineConfig, devices, type PlaywrightTestConfig } from '@playwright/test';
 
-const localBaseURL = 'http://127.0.0.1:4173';
+const defaultLocalPreviewPort = 4173;
 
 export const createPlaywrightConfig = (env: NodeJS.ProcessEnv = process.env): PlaywrightTestConfig => {
   const production = env.E2E_PRODUCTION === 'true';
   const live = env.E2E_LIVE === 'true';
   const suppliedBaseURL = env.E2E_BASE_URL?.trim() || undefined;
-  const baseURL = suppliedBaseURL ?? localBaseURL;
 
   if (live && suppliedBaseURL === undefined) {
     throw new Error('E2E_BASE_URL is required when E2E_LIVE=true');
@@ -19,6 +18,14 @@ export const createPlaywrightConfig = (env: NodeJS.ProcessEnv = process.env): Pl
   }
 
   const useLocalWebServer = suppliedBaseURL === undefined && !production && !live;
+  const requestedPreviewPort = env.IKUCK_PLAYWRIGHT_PREVIEW_PORT;
+  const previewPort = requestedPreviewPort === undefined ? defaultLocalPreviewPort : Number(requestedPreviewPort);
+  if (useLocalWebServer && requestedPreviewPort !== undefined
+    && (!/^[0-9]+$/.test(requestedPreviewPort) || !Number.isInteger(previewPort) || previewPort < 1 || previewPort > 65535)) {
+    throw new Error('IKUCK_PLAYWRIGHT_PREVIEW_PORT must be a numeric TCP port from 1 to 65535');
+  }
+  const localBaseURL = `http://127.0.0.1:${useLocalWebServer ? previewPort : defaultLocalPreviewPort}`;
+  const baseURL = suppliedBaseURL ?? localBaseURL;
   const offlineTestIgnore = /(?:production-smoke|live-stack|pwa-update|accessibility)\.spec\.ts/;
   const offlineProjects = [
     { name: 'mobile-chromium', testIgnore: offlineTestIgnore, use: { ...devices['Pixel 5'] } },
@@ -43,7 +50,7 @@ export const createPlaywrightConfig = (env: NodeJS.ProcessEnv = process.env): Pl
       ? [{ name: 'live-chromium', testMatch: /live-stack\.spec\.ts/, use: { ...devices['Desktop Chrome'] } }]
       : offlineProjects,
     webServer: useLocalWebServer ? {
-      command: 'npm run build && npm run preview -- --host 127.0.0.1',
+      command: `npm run build && npm run preview -- --host 127.0.0.1 --port ${previewPort} --strictPort`,
       url: localBaseURL,
       reuseExistingServer: false,
     } : undefined,

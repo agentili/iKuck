@@ -8,6 +8,7 @@ import { ALLERGEN_LABELS } from '../domain/dietary';
 import { getRecipeMetadata } from '../domain/recipeMetadata';
 import { getRecipeById } from '../domain/recipes';
 import { toDiaryPantryRecipe } from '../domain/diaryRecipes';
+import { getQuantityWarning } from '../domain/pantryLots';
 import type { RecipeCategory } from '../domain/types';
 import { usePantryStore } from '../store/localPantryStore';
 import { useShoppingListStore } from '../store/shoppingListStore';
@@ -17,6 +18,7 @@ import { useDinnerDiaryStore } from '../store/dinnerDiaryStore';
 import { getActiveDataScope } from '../sync/scopeContext';
 import NotFoundPage from './NotFoundPage';
 import RecipeNutritionSummary from '../components/diet/RecipeNutritionSummary';
+import RecipeImage from '../components/suggestions/RecipeImage';
 
 const ratingLabel = (value: number): string => `${value} ${value === 1 ? 'stella' : 'stelle'}`;
 
@@ -71,6 +73,7 @@ export default function RecipeDetailPage() {
   const [privateNote, setPrivateNote] = useState('');
   const [cookedServings, setCookedServings] = useState('');
   const availableIds = usePantryStore((state) => state.getAvailableIngredientIds());
+  const quantitySummaries = usePantryStore((state) => state.getPantryQuantitySummary());
   const addMissingRecipeIngredients = useShoppingListStore((state) => state.addMissingRecipeIngredients);
   const preferences = useActivityStore((state) => state.preferences);
   const recordCookEvent = useActivityStore((state) => state.recordCookEvent);
@@ -79,6 +82,15 @@ export default function RecipeDetailPage() {
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const currentPreference = recipe === undefined ? undefined : preferences.find((item) => item.recipeId === recipe.id);
   const canRefreshNutrition = user !== null && user.emailVerifiedAt.trim() !== '' && csrfToken !== null;
+  const missingIngredientIds = recipe === undefined
+    ? []
+    : recipe.ingredients.filter((item) => !item.optional && !availableIds.includes(item.ingredientId)).map((item) => item.ingredientId);
+  const quantityWarnings = recipe === undefined
+    ? []
+    : recipe.ingredients
+      .filter((item) => !item.optional && availableIds.includes(item.ingredientId))
+      .filter((item) => getQuantityWarning(item, quantitySummaries.find((summary) => summary.ingredientId === item.ingredientId)))
+      .map((item) => item.ingredientId);
 
   useEffect(() => {
     setFavorite(currentPreference?.favorite ?? false);
@@ -155,7 +167,8 @@ export default function RecipeDetailPage() {
       </Link>
 
       <header className="ik-recipe-hero mt-6 rounded-3xl bg-gray-950 px-5 py-8 text-white sm:px-9 sm:py-10">
-        <p className="font-semibold text-amber-300">{CATEGORY_LABELS[recipe.category]}</p>
+        <RecipeImage recipeId={recipe.id} recipeTitle={recipe.title} variant="detail" />
+        <p className="mt-5 font-semibold text-amber-300">{CATEGORY_LABELS[recipe.category]}</p>
         <h1 className="mt-2 max-w-3xl text-4xl font-black leading-tight sm:text-6xl">{recipe.title}</h1>
         <p className="mt-4 max-w-2xl text-lg leading-relaxed text-gray-300">{recipe.description}</p>
         <dl className="mt-7 flex flex-wrap gap-3">
@@ -176,6 +189,13 @@ export default function RecipeDetailPage() {
           </div>
         </dl>
       </header>
+
+      <section aria-label="Disponibilità della ricetta" className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        <p className="font-bold text-amber-950">{quantityWarnings.length > 0 ? 'Verifica le quantità' : missingIngredientIds.length > 0 ? 'Ingredienti mancanti' : 'Ingredienti disponibili'}</p>
+        {quantityWarnings.length > 0 && <p className="mt-1 text-sm text-amber-950">La quantità potrebbe non bastare per: {quantityWarnings.map((id) => getIngredient(id)?.label ?? id).join(', ')}. Verifica prima di cucinare.</p>}
+        {missingIngredientIds.length > 0 && <p className="mt-1 text-sm text-amber-950">Da acquistare: {missingIngredientIds.map((id) => getIngredient(id)?.label ?? recipe.ingredients.find((item) => item.ingredientId === id)?.name ?? id).join(', ')}.</p>}
+        {missingIngredientIds.length === 0 && quantityWarnings.length === 0 && <p className="mt-1 text-sm text-amber-950">Gli ingredienti risultano presenti in dispensa; verifica le quantità effettive.</p>}
+      </section>
 
       <div className="grid gap-8 py-10 lg:grid-cols-[0.9fr_1.1fr]">
         <section aria-labelledby="ingredients-title">

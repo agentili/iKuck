@@ -11,15 +11,22 @@ import {
 } from '../sync/syncQueue';
 import {
   PANTRY_STORAGE_KEY,
+  PantrySnapshotConflictError,
   pantryStorage,
   createPresencePantryLot,
   derivePantryItems,
   normalizePantrySnapshot,
+  isPantrySnapshotConflictActive,
+  readPantryConflictBackup,
+  getPantrySnapshotConflictError,
+  recoverPantrySnapshot,
+  reopenPantryArchivedConflict,
   setPantryPersistenceSuspended,
   writePantrySnapshot,
 } from '../storage/pantryStorage';
 import type { PantrySnapshot } from '../storage/pantryStorage';
-import { trackPersistence, trackSync } from './persistenceStatusStore';
+import { ScopeRevokedError, ScopeUncertainError } from '../sync/scopeWriteFence';
+import { trackPersistence, trackSync, reportPersistenceMemoryOnly, reportPersistenceSaved } from './persistenceStatusStore';
 import { getActiveDataScope, getPersonalDataScope, subscribeActiveDataScope } from '../sync/scopeContext';
 
 export { LEGACY_PANTRY_STORAGE_KEY, PANTRY_STORAGE_KEY } from '../storage/pantryStorage';
@@ -66,8 +73,11 @@ const normalizeStateSnapshot = (state: Pick<PantryState, 'pantryItems' | 'staple
 
 const persistSnapshot = (snapshot: PantrySnapshot): void => {
   const scope = getActiveDataScope();
+  if (isPantrySnapshotConflictActive(scope)) return;
   void trackPersistence('pantry', () => writePantrySnapshot(snapshot, scope));
 };
+
+const pantryWritesBlocked = (): boolean => isPantrySnapshotConflictActive(getActiveDataScope());
 
 const queuePantryMutation = (
   entityType: Parameters<typeof enqueuePantryMutation>[1],
@@ -75,9 +85,53 @@ const queuePantryMutation = (
   operation: Parameters<typeof enqueuePantryMutation>[3],
   payload: Parameters<typeof enqueuePantryMutation>[4],
 ): void => {
+  if (pantryWritesBlocked()) return;
   const activeScope = getActiveDataScope();
   const personalScope = getPersonalDataScope();
   void trackSync('pantry', () => enqueuePantryMutation(getMutationScope(entityType, activeScope, personalScope), entityType, entityId, operation, payload));
+};
+
+const retryPantryPersistence = async (): Promise<void> => {
+  try {
+    hydratedScope = null;
+    setPantryPersistenceSuspended(true);
+    try {
+      usePantryStore.setState({ hasHydrated: false });
+    } finally {
+      setPantryPersistenceSuspended(false);
+    }
+    await hydratePantryStore();
+    await pantryStorage.getItem(PANTRY_STORAGE_KEY);
+    reportPersistenceSaved('pantry');
+  } catch (error) {
+    reportPersistenceMemoryOnly('pantry', error, retryPantryPersistence);
+  }
+};
+
+const pantryPersistStorage = {
+  async getItem(name: string): Promise<string | null> {
+    try {
+      return await pantryStorage.getItem(name);
+    } catch (error) {
+      if (error instanceof PantrySnapshotConflictError) {
+        reportPersistenceMemoryOnly('pantry', error, retryPantryPersistence);
+      }
+      throw error;
+    }
+  },
+  async setItem(name: string, value: string): Promise<void> {
+    try {
+      await pantryStorage.setItem(name, value);
+    } catch (error) {
+      if (error instanceof PantrySnapshotConflictError) {
+        reportPersistenceMemoryOnly('pantry', error, retryPantryPersistence);
+        return;
+      }
+      if (error instanceof ScopeRevokedError || error instanceof ScopeUncertainError) return;
+      throw error;
+    }
+  },
+  removeItem: (name: string) => pantryStorage.removeItem(name),
 };
 
 export const usePantryStore = create<PantryState>()(
@@ -91,6 +145,7 @@ export const usePantryStore = create<PantryState>()(
         stapleIds: [...DEFAULT_STAPLE_IDS],
         pantryLots: [],
         addIngredients: (items) => {
+          if (pantryWritesBlocked()) return;
           const current = normalizeStateSnapshot(get());
           const existingIds = new Set(current.pantryItems.map((item) => item.id));
           const additions = items.filter((item) => !existingIds.has(item.id));
@@ -111,6 +166,7 @@ export const usePantryStore = create<PantryState>()(
           }
         },
         addPantryLot: (input) => {
+          if (pantryWritesBlocked()) return null;
           const errors = validatePantryLotDetails(input.quantity, input.unit, input.expiresAt);
           if (errors.length > 0) return null;
 
@@ -129,6 +185,7 @@ export const usePantryStore = create<PantryState>()(
           return lot.id;
         },
         updatePantryLot: (id, details) => {
+          if (pantryWritesBlocked()) return false;
           const current = normalizeStateSnapshot(get());
           const existing = current.pantryLots?.find((lot) => lot.id === id);
           if (existing === undefined) return false;
@@ -142,6 +199,7 @@ export const usePantryStore = create<PantryState>()(
           return true;
         },
         removePantryLot: (id) => {
+          if (pantryWritesBlocked()) return;
           const current = normalizeStateSnapshot(get());
           if (!current.pantryLots?.some((lot) => lot.id === id)) return;
           const nextLots = (current.pantryLots ?? []).filter((lot) => lot.id !== id);
@@ -150,6 +208,7 @@ export const usePantryStore = create<PantryState>()(
           queuePantryMutation('pantry_lot', id, 'delete', null);
         },
         restorePantryLot: (lot) => {
+          if (pantryWritesBlocked()) return false;
           const current = normalizeStateSnapshot(get());
           if (current.pantryLots?.some((existing) => existing.id === lot.id)) return false;
           if (validatePantryLotDetails(lot.quantity, lot.unit, lot.expiresAt).length > 0) return false;
@@ -162,6 +221,7 @@ export const usePantryStore = create<PantryState>()(
         getLotsForIngredient: (ingredientId) => normalizeStateSnapshot(get()).pantryLots?.filter((lot) => lot.ingredientId === ingredientId) ?? [],
         getPantryQuantitySummary: () => aggregatePantryLots(normalizeStateSnapshot(get()).pantryLots ?? []),
         removeIngredient: (id) => {
+          if (pantryWritesBlocked()) return;
           const current = normalizeStateSnapshot(get());
           const removedLots = (current.pantryLots ?? []).filter((lot) => lot.ingredientId === id);
           if (removedLots.length === 0) return;
@@ -173,6 +233,7 @@ export const usePantryStore = create<PantryState>()(
           }
         },
         toggleStaple: (id) => {
+          if (pantryWritesBlocked()) return;
           const enabled = !get().stapleIds.includes(id);
           set((state) => ({
             stapleIds: enabled
@@ -183,6 +244,7 @@ export const usePantryStore = create<PantryState>()(
           queuePantryMutation('staple_preference', id, 'upsert', { enabled });
         },
         resetPantry: () => {
+          if (pantryWritesBlocked()) return;
           const current = normalizeStateSnapshot(get());
           const defaultStapleIds = new Set<string>(DEFAULT_STAPLE_IDS);
           const changedStaples = new Set<string>([...current.stapleIds, ...DEFAULT_STAPLE_IDS]);
@@ -212,7 +274,7 @@ export const usePantryStore = create<PantryState>()(
     {
       name: PANTRY_STORAGE_KEY,
       version: 1,
-      storage: createJSONStorage(() => pantryStorage),
+      storage: createJSONStorage(() => pantryPersistStorage),
       skipHydration: true,
       partialize: (state) => {
         const persistedState = { ...state };
@@ -236,6 +298,7 @@ export const usePantryStore = create<PantryState>()(
 );
 
 applyRemoteSnapshot = (snapshot) => {
+  if (pantryWritesBlocked()) return;
   const normalized = normalizePantrySnapshot(snapshot);
   usePantryStore.setState({
     pantryItems: normalized.pantryItems,
@@ -298,5 +361,72 @@ export async function hydratePantryStore(): Promise<void> {
     if (pendingHydration !== null) await pendingHydration;
     if (getActiveDataScope() === activeScope && hydrationGeneration === activeGeneration
       && usePantryStore.getState().hasHydrated && hydratedScope === activeScope) return;
+  }
+}
+
+export async function recoverPantryStoreConflict(selectedCopyId: string): Promise<void> {
+  const scope = getActiveDataScope();
+  try {
+    const backup = await readPantryConflictBackup(scope);
+    if (backup === null || !backup.copies.some((copy) => copy.id === selectedCopyId)) {
+      throw new Error('La copia selezionata non è disponibile per il recupero.');
+    }
+    const snapshot = normalizePantrySnapshot(await recoverPantrySnapshot(scope, selectedCopyId));
+    if (getActiveDataScope() !== scope) return;
+
+    setPantryPersistenceSuspended(true);
+    try {
+      usePantryStore.setState({
+        pantryItems: snapshot.pantryItems,
+        stapleIds: snapshot.stapleIds,
+        pantryLots: snapshot.pantryLots ?? [],
+        hasHydrated: true,
+      });
+    } finally {
+      setPantryPersistenceSuspended(false);
+    }
+    hydratedScope = scope;
+    reportPersistenceSaved('pantry');
+  } catch (error) {
+    if (error instanceof PantrySnapshotConflictError) {
+      reportPersistenceMemoryOnly('pantry', error, async () => {
+        await recoverPantryStoreConflict(selectedCopyId);
+      });
+    }
+    throw error;
+  }
+}
+
+export async function recoverPantryStoreArchivedConflict(archiveId: string, selectedCopyId: string): Promise<void> {
+  const scope = getActiveDataScope();
+  try {
+    const backup = await reopenPantryArchivedConflict(scope, archiveId);
+    if (!backup.copies.some((copy) => copy.id === selectedCopyId)) {
+      throw new Error('La copia selezionata non è disponibile per il recupero.');
+    }
+    const snapshot = normalizePantrySnapshot(await recoverPantrySnapshot(scope, selectedCopyId));
+    if (getActiveDataScope() !== scope) return;
+
+    setPantryPersistenceSuspended(true);
+    try {
+      usePantryStore.setState({
+        pantryItems: snapshot.pantryItems,
+        stapleIds: snapshot.stapleIds,
+        pantryLots: snapshot.pantryLots ?? [],
+        hasHydrated: true,
+      });
+    } finally {
+      setPantryPersistenceSuspended(false);
+    }
+    hydratedScope = scope;
+    reportPersistenceSaved('pantry');
+  } catch (error) {
+    const conflict = await getPantrySnapshotConflictError(scope);
+    if (conflict !== null) {
+      reportPersistenceMemoryOnly('pantry', conflict, async () => {
+        await recoverPantryStoreConflict(selectedCopyId);
+      });
+    }
+    throw error;
   }
 }

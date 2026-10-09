@@ -15,7 +15,7 @@ import {
 } from '../sync/syncQueue';
 import { trackPersistence, trackSync } from './persistenceStatusStore';
 import { getActiveDataScope, getPersonalDataScope, subscribeActiveDataScope, type SyncScope } from '../sync/scopeContext';
-import { isScopeWritable, ScopeRevokedError, trackScopedWrite } from '../sync/scopeWriteFence';
+import { trackScopedWrite } from '../sync/scopeWriteFence';
 
 export interface DietProfileState {
   hasHydrated: boolean;
@@ -36,9 +36,9 @@ const createDefaultProfile = (): DietProfile => normalizeDietProfile({
 
 const persistProfile = (profile: DietProfile, scope: SyncScope): Promise<void> => {
   const previous = pendingStorageWrites;
-  const operation = trackScopedWrite(scope, async () => {
+  const operation = trackScopedWrite(scope, async (assertWritable) => {
     await previous;
-    if (!isScopeWritable(scope)) throw new ScopeRevokedError();
+    assertWritable();
     await writeDietProfile(profile, scope);
   });
   pendingStorageWrites = operation.catch(() => undefined);

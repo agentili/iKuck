@@ -7,9 +7,13 @@ const PERSONAL_SCOPE_KEY = 'ikuck-personal-data-scope';
 const isSyncScope = (value: unknown): value is SyncScope => value === 'guest'
   || (typeof value === 'string' && (value.startsWith('account:') || value.startsWith('house:')) && value.length > value.indexOf(':') + 1);
 const readStoredScope = (key: string): SyncScope | null => {
-  if (typeof window === 'undefined') return null;
-  const stored = window.localStorage.getItem(key);
-  return isSyncScope(stored) ? stored : null;
+  try {
+    if (typeof window === 'undefined') return null;
+    const stored = window.localStorage.getItem(key);
+    return isSyncScope(stored) ? stored : null;
+  } catch {
+    return null;
+  }
 };
 
 let sharedScope: SyncScope = readStoredScope(ACTIVE_SCOPE_KEY) ?? 'guest';
@@ -28,8 +32,12 @@ export const setActiveDataScope = (scope: SyncScope): void => {
   sharedScope = scope;
   if (scope === 'guest' || scope.startsWith('account:')) personalScope = scope;
   if (typeof window !== 'undefined') {
-    window.localStorage.setItem(ACTIVE_SCOPE_KEY, scope);
-    window.localStorage.setItem(PERSONAL_SCOPE_KEY, personalScope);
+    try {
+      window.localStorage.setItem(ACTIVE_SCOPE_KEY, scope);
+      window.localStorage.setItem(PERSONAL_SCOPE_KEY, personalScope);
+    } catch {
+      // Keep the in-memory scope usable when browser storage is unavailable.
+    }
   }
   if (activeChanged) for (const listener of activeListeners) listener(scope);
   if (previousPersonalScope !== personalScope) {
@@ -40,7 +48,13 @@ export const setActiveDataScope = (scope: SyncScope): void => {
 export const setPersonalDataScope = (scope: SyncScope): void => {
   const changed = personalScope !== scope;
   personalScope = scope;
-  if (typeof window !== 'undefined') window.localStorage.setItem(PERSONAL_SCOPE_KEY, scope);
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(PERSONAL_SCOPE_KEY, scope);
+    } catch {
+      // Keep the in-memory scope usable when browser storage is unavailable.
+    }
+  }
   if (changed) for (const listener of personalListeners) listener(scope);
 };
 

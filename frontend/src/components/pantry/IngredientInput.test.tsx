@@ -24,6 +24,12 @@ describe('IngredientInput', () => {
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });
 
+  it('uses a distinct configurable combobox id namespace', () => {
+    render(<IngredientInput onAdd={vi.fn()} idBase="quick-add" />);
+    expect(screen.getByRole('combobox', { name: 'Ingredienti presenti' })).toHaveAttribute('id', 'quick-add-input');
+    expect(screen.getByRole('combobox', { name: 'Ingredienti presenti' })).toHaveAttribute('aria-controls', 'quick-add-suggestions');
+  });
+
   it('lets keyboard users close suggestions without changing the input', async () => {
     const user = userEvent.setup();
 

@@ -60,15 +60,19 @@ export async function readDietProfile(scope: SyncScope = getActiveDataScope()): 
 }
 
 export async function writeDietProfile(profile: DietProfile, scope: SyncScope = getActiveDataScope()): Promise<void> {
-  return trackScopedWrite(scope, async () => {
+  return trackScopedWrite(scope, async (assertWritable) => {
     const serialized = serialize(profile);
     if (!isIndexedDbAvailable()) {
+      assertWritable();
       window.localStorage.setItem(scopedKey(DIET_PROFILE_STORAGE_KEY, scope), serialized);
       return;
     }
     try {
-      await writeKeyValue(scopedKey(DIET_PROFILE_DATABASE_KEY, scope), serialized);
+      assertWritable();
+      await writeKeyValue(scopedKey(DIET_PROFILE_DATABASE_KEY, scope), serialized, assertWritable);
+      assertWritable();
     } catch (error) {
+      assertWritable();
       window.localStorage.setItem(scopedKey(DIET_PROFILE_STORAGE_KEY, scope), serialized);
       throw error;
     }

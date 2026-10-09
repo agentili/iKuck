@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { ArrowLeft, CalendarDays, Check, Pencil, Save, Trash2, X } from 'lucide-react';
+import { CalendarDays, Check, Pencil, Save, Trash2, X } from 'lucide-react';
 import type { AiConsent, AiRecipeProvider } from '@ikuck/shared/contracts';
 import type { DinnerEntry } from '@ikuck/shared/dinnerDiary';
 import { DIARY_NOTE_MAX_LENGTH, DIARY_SERVINGS_MAX, DIARY_SERVINGS_MIN, DIARY_TEXT_MAX_LENGTH } from '@ikuck/shared/limits';
-import { Link } from 'react-router-dom';
 import { ApiClientError } from '../api/apiClient';
 import { useAuthStore } from '../auth/authStore';
 import { fetchAiConsentStatus, updateAiConsent, updateDinnerAiConsent } from '../ai/aiRecipeApi';
 import { clearAiRecipeProposalHistory } from '../ai/aiRecipeHistory';
 import DinnerRecipePanel from '../components/dinnerDiary/DinnerRecipePanel';
+import DiaryNavigation from '../components/layout/DiaryNavigation';
 import { useHouseStore } from '../house/houseStore';
 import { getActiveDataScope } from '../sync/scopeContext';
 import { hydrateDinnerDiaryStore, useDinnerDiaryStore, type Scoped } from '../store/dinnerDiaryStore';
@@ -237,11 +237,9 @@ export default function DinnerDiaryPage() {
   }
 
   return (
-    <main id="main-content" className="mx-auto min-h-screen w-full max-w-4xl px-4 pb-24 pt-6 sm:px-6 sm:pb-10 sm:pt-8 lg:px-8">
-      <Link to="/" className="inline-flex min-h-11 items-center gap-2 rounded-xl px-2 py-2 font-semibold text-emerald-800 hover:bg-emerald-50">
-        <ArrowLeft size={18} aria-hidden="true" /> Torna alle ricette
-      </Link>
-      <header className="mt-5 max-w-2xl">
+    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-4xl px-4 pb-24 pt-5 sm:px-6 sm:pb-10 sm:pt-8 lg:px-8">
+      <DiaryNavigation />
+      <header className="max-w-2xl">
         <p className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">La memoria della tavola</p>
         <h1 className="mt-1 text-4xl font-black leading-tight text-gray-950 sm:text-5xl">Diario delle cene</h1>
         <p className="mt-3 text-base leading-relaxed text-gray-700">Segna cosa avete mangiato, senza modificare la dispensa. Potrai ricostruire una ricetta in un secondo momento.</p>

@@ -55,15 +55,19 @@ export async function readShoppingList(scope: SyncScope = getActiveDataScope()):
 }
 
 export async function writeShoppingList(items: readonly ShoppingListItem[], scope: SyncScope = getActiveDataScope()): Promise<void> {
-  return trackScopedWrite(scope, async () => {
+  return trackScopedWrite(scope, async (assertWritable) => {
     const serialized = serialize(items);
     if (!isIndexedDbAvailable()) {
+      assertWritable();
       window.localStorage.setItem(scopedStorageKey(scope), serialized);
       return;
     }
     try {
-      await writeKeyValue(scopedDatabaseKey(scope), serialized);
+      assertWritable();
+      await writeKeyValue(scopedDatabaseKey(scope), serialized, assertWritable);
+      assertWritable();
     } catch (error) {
+      assertWritable();
       window.localStorage.setItem(scopedStorageKey(scope), serialized);
       throw error;
     }

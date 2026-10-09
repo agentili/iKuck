@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { DiaryDraftSet, DinnerEntry, SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { isDiaryDraftSet, isDinnerEntry, isSavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { getActiveDataScope, getPersonalDataScope, subscribeActiveDataScope, subscribePersonalDataScope, type SyncScope } from '../sync/scopeContext';
-import { isScopeWritable, ScopeRevokedError, trackScopedWrite } from '../sync/scopeWriteFence';
+import { isScopeWritable, trackScopedWrite } from '../sync/scopeWriteFence';
 import { enqueueEntityMutation, registerDinnerDiarySnapshotListener } from '../sync/syncQueue';
 import { readDinnerEntries, readDiaryDraftSets, readSavedRecipes, writeDinnerEntries, writeDiaryDraftSets, writeSavedRecipes } from '../storage/dinnerDiaryStorage';
 import { useAuthStore } from '../auth/authStore';
@@ -45,9 +45,9 @@ const queueWrite = (scope: SyncScope, action: () => Promise<void>) => {
   const previous = writeChains.get(scope) ?? Promise.resolve();
   // Register before waiting on the store chain: a scope transition must also
   // drain the mutation that is enqueued only after persistence succeeds.
-  const pending = trackScopedWrite(scope, async () => {
+  const pending = trackScopedWrite(scope, async (assertWritable) => {
     await previous;
-    if (!isScopeWritable(scope)) throw new ScopeRevokedError();
+    assertWritable();
     await persistLater(scope, action);
   }).catch(error => { useDinnerDiaryStore.setState({ error }); });
   writeChains.set(scope, pending);

@@ -1,4 +1,4 @@
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,13 +6,21 @@ import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { DEFAULT_STAPLE_IDS, parseIngredientInput } from '../domain/ingredients';
 import { DEFAULT_DIET_PROFILE } from '../domain/dietary';
 import HomePage from '../pages/HomePage';
+import PantryPage from '../pages/PantryPage';
 import { usePantryStore } from '../store/localPantryStore';
 import { useActivityStore } from '../store/activityStore';
 import { useDietProfileStore } from '../store/dietProfileStore';
 import { useShoppingListStore } from '../store/shoppingListStore';
-import { useDinnerDiaryStore } from '../store/dinnerDiaryStore';
-import { getActiveDataScope } from '../sync/scopeContext';
+import { hydrateDinnerDiaryStore, useDinnerDiaryStore } from '../store/dinnerDiaryStore';
+import { getActiveDataScope, scopeStorageKey, setActiveDataScope } from '../sync/scopeContext';
 import { reportPersistenceMemoryOnly, usePersistenceStatusStore } from '../store/persistenceStatusStore';
+import {
+  getPantrySnapshotConflictError,
+  PantrySnapshotConflictBackupError,
+  PantrySnapshotConflictError,
+  readPantrySnapshot,
+} from '../storage/pantryStorage';
+import { writeKeyValue } from '../storage/indexedDb';
 
 const hydratePantryStoreMock = vi.hoisted(() => vi.fn());
 
@@ -53,6 +61,7 @@ const renderHome = (): void => {
 describe('HomePage recipe search', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    setActiveDataScope('guest');
     hydratePantryStoreMock.mockReset();
     hydratePantryStoreMock.mockResolvedValue(undefined);
     usePersistenceStatusStore.getState().reset();
@@ -75,9 +84,9 @@ describe('HomePage recipe search', () => {
     seedPantry('pasta');
     renderHome();
 
-    expect(screen.getByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
     expect(screen.queryByLabelText('Ingredienti presenti')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Gestisci la dispensa' })).toHaveAttribute('href', '/pantry');
+    expect(screen.getByRole('link', { name: 'Apri tutta la dispensa' })).toHaveAttribute('href', '/pantry');
     expect(screen.getByRole('button', { name: 'Trova ricette' })).toBeEnabled();
     expect(screen.queryByRole('region', { name: 'Ricette AI private' })).not.toBeInTheDocument();
   });
@@ -85,9 +94,24 @@ describe('HomePage recipe search', () => {
   it('explains the empty pantry and disables search until ingredients are saved', () => {
     renderHome();
 
-    expect(screen.getByRole('link', { name: 'Apri la dispensa' })).toHaveAttribute('href', '/pantry');
+    expect(screen.getByRole('link', { name: 'Apri tutta la dispensa' })).toHaveAttribute('href', '/pantry');
     expect(screen.getByRole('button', { name: 'Trova ricette' })).toBeDisabled();
-    expect(screen.getByRole('status')).toHaveTextContent('Aggiungi almeno un ingrediente nella dispensa');
+    expect(screen.getByRole('status')).toHaveTextContent('Nessun ingrediente ancora aggiunto');
+  });
+
+  it('adds ingredients from Home through the shared pantry store', async () => {
+    const user = userEvent.setup();
+    renderHome();
+    await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
+    const dialog = screen.getByRole('dialog', { name: 'Aggiungi ingredienti' });
+    await user.type(within(dialog).getByRole('combobox', { name: 'Ingredienti presenti' }), 'pomodoro, spezia speciale');
+    await user.click(within(dialog).getByRole('button', { name: 'Aggiungi ingredienti' }));
+    expect(usePantryStore.getState().pantryItems).toEqual([
+      { id: 'tomato', label: 'Pomodoro', known: true },
+      { id: 'custom:spezia-speciale', label: 'spezia speciale', known: false },
+    ]);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText('Pomodoro')).toBeVisible();
   });
 
   it('finds recipes from saved pantry items only after an explicit request', async () => {
@@ -101,6 +125,7 @@ describe('HomePage recipe search', () => {
     expect(screen.getByRole('heading', { name: 'Ricette per te' })).toBeVisible();
     expect(screen.getByText('Pasta tonno e pomodoro')).toBeVisible();
     expect(screen.getByText('Hai tutto')).toBeVisible();
+    expect(within(screen.getByRole('article', { name: 'Pasta tonno e pomodoro' })).getByText('2 porzioni')).toBeVisible();
     expect(screen.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' })).toHaveAttribute('href', '/recipes/pasta-tonno-pomodoro');
   });
 
@@ -144,6 +169,7 @@ describe('HomePage recipe search', () => {
     const readyRecipes = screen.getByRole('region', { name: 'Pronte da cucinare' });
     const onePurchaseRecipes = screen.getByRole('region', { name: 'Con un solo acquisto' });
     expect(within(readyRecipes).getByRole('article', { name: 'Pasta tonno e pomodoro' })).toHaveAttribute('data-availability', 'ready');
+    expect(within(readyRecipes).getByText('Hai tutti gli ingredienti necessari; controlla le quantità indicate nella ricetta.')).toBeVisible();
     expect(within(onePurchaseRecipes).getByRole('article', { name: 'Carbonara semplice' })).toHaveAttribute('data-availability', 'one-missing');
   });
 
@@ -202,7 +228,7 @@ describe('HomePage recipe search', () => {
     renderHome();
 
     await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
-    await waitFor(() => expect(screen.getAllByRole('link', { name: /^Apri / })).toHaveLength(4));
+    await waitFor(() => expect(screen.getAllByRole('link', { name: /^Apri (?!tutta la dispensa)/ })).toHaveLength(4));
 
     act(() => {
       useActivityStore.setState({ preferences: [{
@@ -211,7 +237,7 @@ describe('HomePage recipe search', () => {
       }] });
     });
 
-    await waitFor(() => expect(screen.getAllByRole('link', { name: /^Apri / })[0]).toHaveAccessibleName('Apri Pasta e ceci'));
+    await waitFor(() => expect(screen.getAllByRole('link', { name: /^Apri (?!tutta la dispensa)/ })[0]).toHaveAccessibleName('Apri Pasta e ceci'));
   });
 
   it('keeps results visible and varies their order with Altre idee', async () => {
@@ -220,15 +246,54 @@ describe('HomePage recipe search', () => {
     renderHome();
 
     await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
-    await waitFor(() => expect(screen.getAllByRole('link', { name: /^Apri / })).toHaveLength(4));
-    const initialOrder = screen.getAllByRole('link', { name: /^Apri / }).map((link) => link.getAttribute('href'));
+    await waitFor(() => expect(screen.getAllByRole('link', { name: /^Apri (?!tutta la dispensa)/ })).toHaveLength(4));
+    const initialOrder = screen.getAllByRole('link', { name: /^Apri (?!tutta la dispensa)/ }).map((link) => link.getAttribute('href'));
 
     await user.click(screen.getByRole('button', { name: 'Altre idee' }));
 
     await waitFor(() => {
-      const nextOrder = screen.getAllByRole('link', { name: /^Apri / }).map((link) => link.getAttribute('href'));
+      const nextOrder = screen.getAllByRole('link', { name: /^Apri (?!tutta la dispensa)/ }).map((link) => link.getAttribute('href'));
       expect(nextOrder).not.toEqual(initialOrder);
     });
+  });
+
+  it.each([
+    ['account', 'account:account-1'],
+    ['House', 'house:house-1'],
+  ] as const)('hides a guest pantry conflict when the mounted Home changes to %s scope', async (_label, nextScope) => {
+    const retry = vi.fn(async () => undefined);
+    reportPersistenceMemoryOnly('pantry', {
+      code: 'pantry_snapshot_conflict',
+      scope: 'guest',
+      detail: 'GUEST PANTRY CONFLICT LEAK 7B91',
+      copies: [{
+        id: 'guest-copy',
+        label: 'Guest pantry backup',
+        revision: 42,
+        snapshot: { pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: [] },
+      }],
+    }, retry);
+    seedPantry('pasta');
+    renderHome();
+
+    expect(screen.getByRole('alert')).toHaveTextContent('copia recuperabile');
+    expect(screen.getByRole('link', { name: 'Scegli una copia della dispensa' })).toBeVisible();
+
+    await act(async () => {
+      setActiveDataScope(nextScope);
+      await hydrateDinnerDiaryStore();
+      usePantryStore.setState({
+        hasHydrated: true,
+        pantryItems: parseIngredientInput('riso'),
+        pantryLots: [],
+        stapleIds: [...DEFAULT_STAPLE_IDS],
+      });
+    });
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Scegli una copia della dispensa' })).not.toBeInTheDocument();
+    expect(screen.getByText('Riso')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Trova ricette' })).toBeEnabled();
   });
 
   it('shows an accessible persistence warning with an explicit retry action', async () => {
@@ -240,5 +305,88 @@ describe('HomePage recipe search', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('disponibili solo in memoria');
     await userEvent.setup().click(screen.getByRole('button', { name: 'Riprova' }));
     expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it('routes a recoverable Home pantry conflict through an explicit choice and returns with the recovered snapshot', async () => {
+    const user = userEvent.setup();
+    const selectedSnapshot = { pantryItems: parseIngredientInput('riso'), stapleIds: [] };
+    await writeKeyValue(scopeStorageKey('guest', 'ikuck-pantry-conflict-backup-v1'), {
+      id: 'home-active-conflict',
+      scope: 'guest',
+      reason: 'concurrent-write',
+      copies: [{ id: 'home-recovery-copy', label: 'Copia da recuperare', revision: 42, snapshot: selectedSnapshot }],
+      createdAt: '2026-10-09T10:00:00.000Z',
+    });
+    const conflict = await getPantrySnapshotConflictError('guest');
+    if (conflict === null) throw new Error('Expected the stored pantry conflict');
+    expect(conflict.copies).toHaveLength(1);
+    act(() => reportPersistenceMemoryOnly('pantry', conflict, vi.fn(async () => undefined)));
+    seedPantry('pasta');
+
+    render(
+      <MemoryRouter>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/pantry" element={<PantryPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const homeAlert = screen.getByRole('alert');
+    expect(homeAlert).toHaveTextContent('una copia recuperabile');
+    expect(homeAlert).not.toHaveTextContent('Puoi riprovare quando vuoi.');
+    expect(within(homeAlert).queryByRole('button', { name: 'Riprova' })).not.toBeInTheDocument();
+    await user.click(within(homeAlert).getByRole('link', { name: 'Scegli una copia della dispensa' }));
+
+    expect(await screen.findByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
+    const copyChoice = screen.getByRole('radio', { name: /Copia da recuperare.*Riso/s });
+    expect(copyChoice).not.toBeChecked();
+    await user.click(copyChoice);
+    await user.click(screen.getByRole('button', { name: 'Usa questa copia' }));
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(usePantryStore.getState().pantryItems).toEqual(selectedSnapshot.pantryItems);
+    await expect(readPantrySnapshot('guest')).resolves.toMatchObject(selectedSnapshot);
+    await user.click(screen.getByRole('link', { name: 'Vai alle ricette' }));
+
+    expect(screen.getByText('Riso')).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Riprova' })).not.toBeInTheDocument();
+  });
+
+  it('describes one retained pantry conflict copy without inventing a second copy', () => {
+    const retry = vi.fn(async () => undefined);
+    const copy = {
+      id: 'only-home-copy',
+      label: 'Backup selezionabile',
+      revision: 42,
+      snapshot: { pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: [] },
+    };
+    const conflict = new PantrySnapshotConflictError(
+      'guest', 'concurrent-write', copy.snapshot, copy.snapshot, 42, 42, [copy],
+    );
+    reportPersistenceMemoryOnly('pantry', conflict, retry);
+    renderHome();
+
+    const alert = screen.getByRole('alert');
+    expect(alert).not.toHaveTextContent(/due copie|entrambe le copie/i);
+    expect(alert).toHaveTextContent('una copia recuperabile');
+    expect(screen.getByRole('link', { name: 'Scegli una copia della dispensa' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Riprova' })).not.toBeInTheDocument();
+  });
+
+  it('explains malformed pantry backup is preserved but no safe copy is selectable on Home', () => {
+    const retry = vi.fn(async () => undefined);
+    reportPersistenceMemoryOnly('pantry', new PantrySnapshotConflictBackupError('guest'), retry);
+    renderHome();
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('Il backup della dispensa è stato conservato, ma i dati non sono leggibili.');
+    expect(alert).toHaveTextContent('Non è disponibile alcuna copia sicura da scegliere');
+    expect(alert).toHaveTextContent('le modifiche e la sincronizzazione restano sospese');
+    expect(alert).not.toHaveTextContent(/due copie|entrambe le copie|scegli una copia/i);
+    expect(alert).not.toHaveTextContent('Puoi riprovare quando vuoi.');
+    expect(screen.queryByRole('button', { name: 'Riprova' })).not.toBeInTheDocument();
+    expect(retry).not.toHaveBeenCalled();
   });
 });

@@ -404,6 +404,212 @@ details:not([open]) > :not(summary) {
   }
 }
 
+.app-shell {
+  min-height: 100vh;
+  padding-top: 3.5rem;
+}
+
+.app-sidebar {
+  height: 3.5rem;
+}
+
+.app-sidebar-account,
+.app-mobile-scope,
+.app-mobile-links {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .app-shell {
+    padding-top: 0;
+    padding-left: 16rem;
+  }
+
+  .app-sidebar {
+    width: 16rem;
+    height: 100vh;
+    border-right: 1px solid var(--ik-border);
+    border-bottom: 0;
+  }
+
+  .app-sidebar-brand {
+    min-height: 5rem;
+    justify-content: flex-start;
+  }
+
+  .app-navigation {
+    position: static;
+    width: 100%;
+    margin: 1rem 0 0;
+    padding: 0 0.75rem;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .app-navigation > ul {
+    display: grid;
+    max-width: none;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.35rem;
+    padding: 0;
+  }
+
+  .app-navigation a {
+    min-height: 3rem;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9375rem;
+    text-align: left;
+  }
+
+  .app-navigation-label-full {
+    display: inline !important;
+    overflow: visible !important;
+  }
+
+  .app-navigation-label-compact,
+  .app-navigation-label-narrow {
+    display: none !important;
+  }
+
+  .app-sidebar-account {
+    display: block;
+  }
+
+  .app-mobile-scope {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .app-shell {
+    padding-bottom: calc(max(5rem, 7em) + env(safe-area-inset-bottom));
+  }
+
+  .app-sidebar-account {
+    display: none;
+  }
+
+  .app-navigation {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+  }
+
+  .app-overlay {
+    bottom: calc(max(5rem, 7em) + env(safe-area-inset-bottom));
+  }
+
+  .app-mobile-scope {
+    display: block;
+    max-width: 25vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-mobile-links {
+    display: flex;
+    flex-shrink: 0;
+  }
+
+  .app-navigation > ul {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.ik-recipe-image {
+  min-width: 0;
+  margin: 0 0 1rem;
+  overflow: hidden;
+  border: 1px solid var(--ik-border);
+  border-radius: var(--ik-radius-panel);
+  background: var(--ik-mist);
+}
+
+.ik-recipe-image img,
+.ik-recipe-image-fallback {
+  display: block;
+  width: 100%;
+  height: 9rem;
+  object-fit: cover;
+}
+
+.ik-recipe-image-fallback {
+  display: grid;
+  place-items: center;
+  color: var(--ik-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.ik-recipe-image figcaption {
+  padding: 0.35rem 0.65rem;
+  color: var(--ik-ink-muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.ik-recipe-image--detail {
+  margin-bottom: 1.5rem;
+}
+
+.ik-recipe-image--detail img,
+.ik-recipe-image--detail .ik-recipe-image-fallback {
+  height: auto;
+  aspect-ratio: 16 / 9;
+}
+
+.ik-quick-add-dialog {
+  box-sizing: border-box;
+  width: min(calc(100vw - 2rem), 36rem);
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.ik-quick-add-dialog::backdrop {
+  background: transparent;
+}
+
+.ik-recipe-hero .ik-recipe-image figcaption {
+  color: var(--ik-ink-muted);
+}
+
+.ik-kitchen-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 1rem;
+}
+
+.ik-kitchen-results {
+  min-width: 0;
+}
+
+.ik-home-pantry-items {
+  max-height: 12rem;
+  overflow: auto;
+  padding: 0.25rem;
+  scrollbar-color: var(--ik-border-strong) transparent;
+}
+
+@media (min-width: 1180px) {
+  .ik-kitchen-layout {
+    grid-template-columns: minmax(18rem, 0.86fr) minmax(0, 1.7fr);
+    gap: 1.5rem;
+  }
+
+  .ik-pantry-workbench {
+    position: sticky;
+    top: 1.5rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -414,4 +620,14 @@ details:not([open]) > :not(summary) {
     transition-delay: 0s !important;
     transition-duration: 0ms !important;
   }
+}
+
+html[data-motion='reduced'] *,
+html[data-motion='reduced'] *::before,
+html[data-motion='reduced'] *::after {
+  scroll-behavior: auto !important;
+  animation-duration: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-delay: 0s !important;
+  transition-duration: 0s !important;
 }
