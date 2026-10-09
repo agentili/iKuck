@@ -107,7 +107,7 @@ Use Bricolage Grotesque Variable throughout. Headlines are compact, weighty, and
 
 # Layout
 
-Use a fluid single-column mobile flow with 16px side gutters and 44px minimum hit targets. The primary recipe action must remain above fixed mobile navigation at 390×844. Optional pantry ideas, filters, lots, and staples use closed disclosures. Result groups separate ready recipes from recipes needing one purchase rather than mixing equal cards in an undifferentiated grid.
+Use a fluid single-column mobile flow with 16px side gutters and 44px minimum hit targets. The primary recipe action must remain above the fixed four-item mobile navigation at 390×844. At desktop widths use a fixed left sidebar with Cucina, Dispensa, Spesa and Diario; account/Profile/Casa stay in the sidebar footer. Optional pantry ideas, filters, lots, and staples use closed disclosures. Result groups separate ready recipes from recipes needing one purchase rather than mixing equal cards in an undifferentiated grid.
 
 # Elevation & Depth
 

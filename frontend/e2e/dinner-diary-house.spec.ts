@@ -356,7 +356,8 @@ test('shares confirmed dinner recipes with House members while isolating outside
   await expect.poll(() => syncCalls.some((call) => call.userId === outsider.id && !call.unavailable)).toBe(true);
   expect(syncCalls.filter((call) => call.userId === outsider.id).flatMap((call) => call.returnedEntityIds)).not.toContain(sharedDinnerId);
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Aggiungi prima gli ingredienti' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Partiamo da cosa hai' })).toBeVisible();
   await expect(page.getByText(recipeTitle)).toHaveCount(0);
 
   await page.goto('/dinner-diary');

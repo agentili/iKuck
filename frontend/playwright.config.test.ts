@@ -20,13 +20,30 @@ describe('Playwright execution profiles', () => {
     })).toThrow(/HTTPS/);
   });
 
-  it('keeps the local preview server for the default profile', () => {
+  it('keeps the local preview server on port 4173 by default', () => {
     const config = createPlaywrightConfig({});
 
     expect(config.use?.baseURL).toBe('http://127.0.0.1:4173');
     expect(config.webServer).toMatchObject({
+      command: 'npm run build && npm run preview -- --host 127.0.0.1 --port 4173 --strictPort',
       url: 'http://127.0.0.1:4173',
+      reuseExistingServer: false,
     });
+  });
+
+  it('uses the selected local preview port in the web server command and URL', () => {
+    const config = createPlaywrightConfig({ IKUCK_PLAYWRIGHT_PREVIEW_PORT: '4179' });
+
+    expect(config.use?.baseURL).toBe('http://127.0.0.1:4179');
+    expect(config.webServer).toMatchObject({
+      command: 'npm run build && npm run preview -- --host 127.0.0.1 --port 4179 --strictPort',
+      url: 'http://127.0.0.1:4179',
+      reuseExistingServer: false,
+    });
+  });
+
+  it.each(['0', '65536', '-1', '4abc', ''])('rejects an invalid local preview port: %j', (port) => {
+    expect(() => createPlaywrightConfig({ IKUCK_PLAYWRIGHT_PREVIEW_PORT: port })).toThrow(/port/i);
   });
 
   it('requires an explicit target for the live-stack profile', () => {

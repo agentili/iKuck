@@ -45,14 +45,18 @@ const serializeCollection = <T>(items: readonly T[], normalize: (values: readonl
 });
 
 const writeCollection = (scope: SyncScope, databaseKey: string, storageKey: string, serialized: string): Promise<void> => (
-  trackScopedWrite(scope, async () => {
+  trackScopedWrite(scope, async (assertWritable) => {
     if (!isIndexedDbAvailable()) {
+      assertWritable();
       window.localStorage.setItem(scopedKey(storageKey, scope), serialized);
       return;
     }
     try {
-      await writeKeyValue(scopedKey(databaseKey, scope), serialized);
+      assertWritable();
+      await writeKeyValue(scopedKey(databaseKey, scope), serialized, assertWritable);
+      assertWritable();
     } catch (error) {
+      assertWritable();
       window.localStorage.setItem(scopedKey(storageKey, scope), serialized);
       throw error;
     }

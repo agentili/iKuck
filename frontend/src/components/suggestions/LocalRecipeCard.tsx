@@ -1,9 +1,10 @@
-import { Clock, ShoppingBasket } from 'lucide-react';
+import { Clock, ShoppingBasket, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getIngredient } from '../../domain/ingredients';
 import { getRecipeMetadata } from '../../domain/recipeMetadata';
 import type { RecipeCategory, RecipeSuggestion } from '../../domain/types';
 import RecipeNutritionSummary from '../diet/RecipeNutritionSummary';
+import RecipeImage from './RecipeImage';
 
 const CATEGORY_LABELS: Record<RecipeCategory, string> = {
   meat: 'Carne',
@@ -33,9 +34,10 @@ export default function LocalRecipeCard({ suggestion, missingIngredientInShoppin
 
   return (
     <article aria-labelledby={titleId} data-availability={availability} className={missingLabel ? 'ik-recipe-card flex flex-col rounded-3xl border-2 border-amber-200 bg-white p-5' : 'ik-recipe-card flex flex-col rounded-3xl border-2 border-emerald-200 bg-white p-5'}>
+      <RecipeImage recipeId={suggestion.recipe.id} recipeTitle={suggestion.recipe.title} />
       <p className={missingLabel ? 'mb-4 flex items-center gap-2 font-semibold text-red-700' : 'mb-4 font-semibold text-emerald-700'}>
         {missingLabel ? <ShoppingBasket size={18} aria-hidden="true" /> : null}
-        {missingLabel ? `Ti manca solo: ${missingLabel}` : 'Hai tutto'}
+        {missingLabel ? `Ti manca solo: ${missingLabel}` : suggestion.quantityWarnings.length > 0 ? 'Verifica le quantità' : 'Hai tutto'}
       </p>
       <h3 id={titleId} className="text-xl font-bold leading-tight text-gray-950">{suggestion.recipe.title}</h3>
       <p className="mt-2 flex-1 leading-relaxed text-gray-600">{suggestion.recipe.description}</p>
@@ -50,6 +52,11 @@ export default function LocalRecipeCard({ suggestion, missingIngredientInShoppin
           <dt className="sr-only">Tempo</dt>
           <Clock size={17} aria-hidden="true" />
           <dd>{suggestion.recipe.durationMinutes === null ? 'Tempo non indicato' : `${suggestion.recipe.durationMinutes} min`}</dd>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <dt className="sr-only">Porzioni</dt>
+          <Users size={17} aria-hidden="true" />
+          <dd>{suggestion.recipe.servings === null ? 'Porzioni non indicate' : `${suggestion.recipe.servings} porzioni`}</dd>
         </div>
         <div>
           <dt className="sr-only">Categoria</dt>

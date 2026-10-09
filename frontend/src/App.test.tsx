@@ -9,7 +9,7 @@ import { useHouseStore } from './house/houseStore';
 import { usePantryMergeNoticeStore } from './store/pantryMergeNoticeStore';
 import { getActiveDataScope, setActiveDataScope, setPersonalDataScope } from './sync/scopeContext';
 import { clearDataScope } from './sync/syncQueue';
-import { trackScopedWrite } from './sync/scopeWriteFence';
+import { isScopeWritable, trackScopedWrite } from './sync/scopeWriteFence';
 import { writeDinnerEntries } from './storage/dinnerDiaryStorage';
 
 const syncVerifiedSession = vi.hoisted(() => vi.fn().mockResolvedValue(null));
@@ -130,17 +130,62 @@ describe('App synchronization lifecycle', () => {
     expect(listenForReconnect).toHaveBeenCalledOnce();
   });
 
-  it('does not sync an account while the known House membership is unresolved', async () => {
-    setActiveDataScope('house:offline-home');
+  it('keeps verified navigation available and retries a transient House lookup without exposing scoped data', async () => {
+    const actual = await vi.importActual<typeof import('./sync/syncQueue')>('./sync/syncQueue');
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 'temporary_unavailable' }), { status: 503 }))
+      .mockResolvedValueOnce(new Response('null', { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const houseScope = 'house:offline-home' as const;
+    setActiveDataScope(houseScope);
+    setPersonalDataScope('account:user-1');
+    usePantryStore.setState({ hasHydrated: true, pantryItems: [{ id: 'secret-pasta', label: 'Dispensa privata House', known: true }] });
+    initializeSessionScope.mockImplementation((...args: Parameters<typeof actual.initializeSessionScope>) => actual.initializeSessionScope(...args));
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
+    const { unmount } = render(<App />);
+
+    try {
+      await waitFor(() => expect(initializeSessionScope).toHaveBeenCalled());
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(/verificare l’ambito della Casa/i);
+      expect(screen.getByRole('navigation', { name: 'Navigazione principale' })).toBeVisible();
+      expect(screen.getByRole('button', { name: 'Riprova' })).toBeVisible();
+      expect(screen.queryByText('Dispensa privata House')).not.toBeInTheDocument();
+      expect(getActiveDataScope()).toBe(houseScope);
+      expect(isScopeWritable(houseScope)).toBe(false);
+      await expect(trackScopedWrite(houseScope, async () => undefined)).rejects.toMatchObject({ code: 'scope_unverified' });
+      expect(syncVerifiedSession).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenNthCalledWith(1, '/v1/house', expect.objectContaining({ method: 'GET' }));
+
+      screen.getByRole('button', { name: 'Riprova' }).click();
+      expect(await screen.findByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+      expect(fetchMock).toHaveBeenNthCalledWith(2, '/v1/house', expect.objectContaining({ method: 'GET' }));
+      expect(getActiveDataScope()).toBe('account:user-1');
+      await waitFor(() => expect(syncVerifiedSession).toHaveBeenCalledOnce());
+    } finally {
+      unmount();
+      vi.unstubAllGlobals();
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  it('keeps verified navigation but does not hydrate or sync an unresolved House scope', async () => {
+    setActiveDataScope('house:unresolved-membership-test');
     setPersonalDataScope('account:user-1');
     initializeSessionScope.mockRejectedValue(new Error('House lookup offline'));
+    usePantryStore.setState({ hasHydrated: false, pantryItems: [{ id: 'secret-house-item', label: 'Dispensa Casa riservata', known: true }] });
     useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
 
     render(<App />);
 
     await waitFor(() => expect(initializeSessionScope).toHaveBeenCalled());
-    await waitFor(() => expect(usePantryStore.getState().hasHydrated).toBe(true));
-    expect(getActiveDataScope()).toBe('house:offline-home');
+    expect(await screen.findByRole('alert')).toHaveTextContent(/ambito della Casa/i);
+    expect(screen.getByRole('navigation', { name: 'Navigazione principale' })).toBeVisible();
+    expect(screen.getAllByText('Ambito da verificare')).not.toHaveLength(0);
+    expect(screen.queryByText('Dispensa Casa riservata')).not.toBeInTheDocument();
+    expect(usePantryStore.getState().hasHydrated).toBe(false);
+    expect(getActiveDataScope()).toBe('house:unresolved-membership-test');
     expect(syncVerifiedSession).not.toHaveBeenCalled();
     expect(listenForReconnect).not.toHaveBeenCalled();
   });
@@ -251,7 +296,7 @@ describe('App synchronization lifecycle', () => {
     render(<App />);
 
     expect(restoreSession).toHaveBeenCalledOnce();
-    await screen.findByRole('heading', { name: 'Cosa cuciniamo oggi?' });
+    await screen.findByRole('heading', { name: 'Cucina viva' });
   });
 
   it('hydrates pantry data before an authenticated profile uses it', async () => {
@@ -315,7 +360,7 @@ describe('App synchronization lifecycle', () => {
     window.history.pushState({}, '', '/');
   });
 
-  it('keeps Home focused on recipes and sends pantry editing to its section', async () => {
+  it('keeps Home focused on cooking and sends pantry editing to its section', async () => {
     usePantryStore.setState({
       hasHydrated: true,
       pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
@@ -325,14 +370,14 @@ describe('App synchronization lifecycle', () => {
 
     render(<App />);
 
-    expect(await screen.findByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Cucina viva' })).toBeVisible();
     expect(screen.queryByLabelText('Ingredienti presenti')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Gestisci la dispensa' })).toHaveAttribute('href', '/pantry');
+    expect(screen.getByRole('link', { name: 'Apri tutta la dispensa' })).toHaveAttribute('href', '/pantry');
     expect(screen.getByRole('button', { name: 'Trova ricette' })).toBeEnabled();
   });
 
   it.each([
-    ['/', 'Cosa cuciniamo oggi?'],
+    ['/', 'Cucina viva'],
     ['/pantry', 'La tua dispensa'],
     ['/recipes/pasta-tonno-pomodoro', 'Pasta tonno e pomodoro'],
     ['/profile', 'Accedi al tuo profilo'],

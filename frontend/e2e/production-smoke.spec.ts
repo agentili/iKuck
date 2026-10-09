@@ -13,7 +13,7 @@ test.describe('production target smoke checks', () => {
 
   test('serves the guest flow and keeps primary navigation reachable', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Profilo', exact: true })).toBeVisible();
 
     await page.getByRole('link', { name: 'Dispensa', exact: true }).click();
@@ -22,7 +22,7 @@ test.describe('production target smoke checks', () => {
     await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
     await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
 
-    await page.getByRole('link', { name: 'Lista', exact: true }).click();
+    await page.getByRole('link', { name: 'Spesa', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Lista della spesa' })).toBeVisible();
     await page.getByRole('link', { name: 'Torna alle ricette', exact: true }).click();
 

@@ -7,6 +7,24 @@ import { useAuthStore } from '../auth/authStore';
 import { importLocalData } from '../sync/syncQueue';
 import GoogleSignInButton from '../components/account/GoogleSignInButton';
 import { appVersion, buildId } from '../version';
+import { hasUnpersistedMotionPreference, isReducedMotionPreference, saveReducedMotionPreference } from '../domain/motionPreference';
+
+function MotionPreferenceControl() {
+  const [reduced, setReduced] = useState(isReducedMotionPreference);
+  const [storageUnavailable, setStorageUnavailable] = useState(hasUnpersistedMotionPreference);
+  return (
+    <section aria-labelledby="motion-preference-title" className="ik-surface ik-profile-surface mt-5 rounded-3xl border-2 p-5">
+      <h2 id="motion-preference-title" className="text-xl font-black text-gray-950">Movimento</h2>
+      <label className="mt-3 flex min-h-11 items-start gap-3 font-semibold text-gray-800">
+        <input type="checkbox" checked={reduced} onChange={(event) => { setReduced(event.target.checked); setStorageUnavailable(!saveReducedMotionPreference(event.target.checked)); }} className="mt-1 h-5 w-5 accent-emerald-700" />
+        <span>Riduci le animazioni su questo dispositivo</span>
+      </label>
+      {storageUnavailable
+        ? <p role="status" className="mt-2 text-sm font-semibold text-amber-900">La scelta vale solo finché l’app resta aperta: questo browser non consente di salvarla.</p>
+        : <p className="mt-2 text-sm text-gray-600">Impostazione conservata solo in questo browser; il movimento ridotto del sistema operativo resta sempre rispettato.</p>}
+    </section>
+  );
+}
 
 interface ProfileResponse {
   profile: {
@@ -59,13 +77,14 @@ export default function ProfilePage() {
 
   if (user === null) {
     return (
-      <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-2xl px-4 py-8 sm:px-6">
+      <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-2xl px-4 py-5 sm:px-6 sm:py-8">
         <div className="mb-5"><Link to="/" className="inline-flex min-h-11 items-center rounded-xl px-2 font-semibold text-gray-700 underline underline-offset-2">← Torna alle ricette</Link></div>
         <section className="ik-surface ik-profile-surface rounded-3xl border-2 border-gray-200 bg-white p-6 shadow-sm sm:p-8">
           <h1 className="text-3xl font-black text-gray-950">Accedi al tuo profilo</h1>
           <p className="mt-3 text-gray-600">La dispensa ospite resta sul dispositivo. Il login non importa automaticamente i dati locali: l’importazione è un’azione separata.</p>
           <div className="mt-6"><AccountPanel /></div>
         </section>
+        <MotionPreferenceControl />
       </main>
     );
   }
@@ -174,7 +193,7 @@ export default function ProfilePage() {
   };
 
   return (
-    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-3xl px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
       <div className="mb-5"><Link to="/" className="ik-back-link inline-flex min-h-11 items-center rounded-xl px-2 font-semibold text-gray-700 underline underline-offset-2">← Torna alle ricette</Link></div>
       <section className="ik-surface ik-profile-surface rounded-3xl border-2 border-gray-200 bg-white p-6 shadow-sm sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -259,6 +278,7 @@ export default function ProfilePage() {
           )}
         </div>
       </section>
+      <MotionPreferenceControl />
     </main>
   );
 }

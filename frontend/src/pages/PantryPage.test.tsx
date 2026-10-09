@@ -1,5 +1,5 @@
 import { MemoryRouter } from 'react-router-dom';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_STAPLE_IDS, parseIngredientInput } from '../domain/ingredients';
@@ -8,6 +8,10 @@ import PantryPage from './PantryPage';
 import { usePantryStore } from '../store/localPantryStore';
 import { useDietProfileStore } from '../store/dietProfileStore';
 import { reportPersistenceMemoryOnly, usePersistenceStatusStore } from '../store/persistenceStatusStore';
+import { readPantrySnapshot, PANTRY_STORAGE_KEY } from '../storage/pantryStorage';
+import * as pantryStorageModule from '../storage/pantryStorage';
+import { writeKeyValue, readKeyValue } from '../storage/indexedDb';
+import { setActiveDataScope, setPersonalDataScope, scopeStorageKey } from '../sync/scopeContext';
 
 const hydratePantryStoreMock = vi.hoisted(() => vi.fn());
 
@@ -42,18 +46,47 @@ const openDisclosure = async (user: ReturnType<typeof userEvent.setup>, name: st
   if (!disclosure.hasAttribute('open')) await user.click(summary);
 };
 
+const seedPantryConflict = async (): Promise<void> => {
+  await writeKeyValue('pantry', JSON.stringify({
+    state: { pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: ['salt'] },
+    version: 1,
+    revision: 42,
+    mirrorObsolete: true,
+  }));
+  window.localStorage.setItem(PANTRY_STORAGE_KEY, JSON.stringify({
+    state: { pantryItems: [{ id: 'rice', label: 'Riso', known: true }], stapleIds: [] },
+    version: 1,
+  }));
+  window.localStorage.setItem(`${PANTRY_STORAGE_KEY}-idb-pending`, '1');
+
+  try {
+    await readPantrySnapshot('guest');
+    throw new Error('Expected a pantry snapshot conflict');
+  } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'pantry_snapshot_conflict') throw error;
+    reportPersistenceMemoryOnly('pantry', error, vi.fn(async () => undefined));
+  }
+};
+
 describe('PantryPage', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    setActiveDataScope('guest');
+    setPersonalDataScope('guest');
     hydratePantryStoreMock.mockReset();
     hydratePantryStoreMock.mockResolvedValue(undefined);
     usePersistenceStatusStore.getState().reset();
-    usePantryStore.setState({
-      hasHydrated: true,
-      pantryItems: [],
-      pantryLots: [],
-      stapleIds: [...DEFAULT_STAPLE_IDS],
-    });
+    pantryStorageModule.setPantryPersistenceSuspended(true);
+    try {
+      usePantryStore.setState({
+        hasHydrated: true,
+        pantryItems: [],
+        pantryLots: [],
+        stapleIds: [...DEFAULT_STAPLE_IDS],
+      });
+    } finally {
+      pantryStorageModule.setPantryPersistenceSuspended(false);
+    }
     useDietProfileStore.setState({
       hasHydrated: true,
       profile: { ...DEFAULT_DIET_PROFILE, updatedAt: '2026-09-13T12:00:00.000Z' },
@@ -152,6 +185,361 @@ describe('PantryPage', () => {
     await user.click(salt);
     expect(salt).not.toBeChecked();
     expect(screen.getByText('Dettagli lotti', { exact: true })).toBeVisible();
+  });
+
+  it('hides previous-scope conflict and archive copies after a mounted pantry switches to an account', async () => {
+    const guestCopies = [
+      {
+        id: 'guest-indexed-db',
+        label: 'Guest conflict PRIVATE indexed copy',
+        revision: 42,
+        snapshot: { pantryItems: [{ id: 'guest-conflict-item', label: 'Guest conflict PRIVATE ingredient', known: true }], stapleIds: [] },
+      },
+      {
+        id: 'guest-local-storage',
+        label: 'Guest conflict PRIVATE local copy',
+        revision: null,
+        snapshot: { pantryItems: [{ id: 'guest-local-item', label: 'Guest local PRIVATE ingredient', known: true }], stapleIds: [] },
+      },
+    ];
+    const guestConflict = new pantryStorageModule.PantrySnapshotConflictError(
+      'guest', 'concurrent-write', guestCopies[0]!.snapshot, guestCopies[1]!.snapshot, 42, null, guestCopies,
+    );
+    await writeKeyValue(scopeStorageKey('guest', 'ikuck-pantry-conflict-archive-v1'), {
+      entries: [{
+        id: 'guest-archive',
+        scope: 'guest',
+        reason: 'concurrent-write',
+        createdAt: '2026-10-08T10:00:00.000Z',
+        resolvedAt: '2026-10-08T10:01:00.000Z',
+        selectedCopyId: 'guest-indexed-db',
+        copies: guestCopies,
+      }],
+    });
+    await writeKeyValue(scopeStorageKey('account:alice', 'ikuck-pantry-conflict-archive-v1'), {
+      entries: [{
+        id: 'account-archive',
+        scope: 'account:alice',
+        reason: 'concurrent-write',
+        createdAt: '2026-10-08T11:00:00.000Z',
+        resolvedAt: '2026-10-08T11:01:00.000Z',
+        selectedCopyId: 'account-indexed-db',
+        copies: [
+          {
+            id: 'account-indexed-db',
+            label: 'Account archive PRIVATE indexed copy',
+            revision: 43,
+            snapshot: { pantryItems: [{ id: 'account-indexed-item', label: 'Account archive PRIVATE ingredient', known: true }], stapleIds: [] },
+          },
+          {
+            id: 'account-local-storage',
+            label: 'Account archive PRIVATE local copy',
+            revision: null,
+            snapshot: { pantryItems: [{ id: 'account-local-item', label: 'Account local PRIVATE ingredient', known: true }], stapleIds: [] },
+          },
+        ],
+      }],
+    });
+    await expect(pantryStorageModule.readPantryConflictArchive('account:alice')).resolves.toMatchObject([{ id: 'account-archive' }]);
+    const user = userEvent.setup();
+    renderPantry();
+
+    expect(await screen.findByText('Copie archiviate della dispensa', { exact: true })).toBeVisible();
+    await openDisclosure(user, 'Copie archiviate della dispensa');
+    expect(await screen.findByRole('radio', { name: /Guest conflict PRIVATE local copy/ })).toBeVisible();
+    act(() => reportPersistenceMemoryOnly('pantry', guestConflict, vi.fn(async () => undefined)));
+    expect(screen.getByRole('radiogroup', { name: 'Seleziona la copia da ripristinare' })).toBeVisible();
+
+    await act(async () => {
+      setActiveDataScope('account:alice');
+      usePantryStore.setState({
+        hasHydrated: true,
+        pantryItems: parseIngredientInput('Account-only ingredient'),
+        pantryLots: [],
+        stapleIds: [...DEFAULT_STAPLE_IDS],
+      });
+    });
+
+    expect(screen.getByText('Account-only ingredient')).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup', { name: 'Seleziona la copia da ripristinare' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Guest conflict PRIVATE|Guest local PRIVATE/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Guest conflict PRIVATE ingredient|Guest local PRIVATE ingredient/)).not.toBeInTheDocument();
+
+    expect(await screen.findByText('Copie archiviate della dispensa', { exact: true })).toBeVisible();
+    await openDisclosure(user, 'Copie archiviate della dispensa');
+    expect(await screen.findByRole('radio', { name: /Account archive PRIVATE indexed copy/ })).toBeVisible();
+    expect(screen.queryByText(/Guest conflict PRIVATE|Guest local PRIVATE/)).not.toBeInTheDocument();
+  });
+
+  it('does not claim a second preserved copy for a one-copy pantry conflict', () => {
+    const copy = {
+      id: 'only-recoverable-copy',
+      label: 'Backup selezionabile',
+      revision: 42,
+      snapshot: { pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: [] },
+    };
+    const conflict = new pantryStorageModule.PantrySnapshotConflictError(
+      'guest', 'concurrent-write', copy.snapshot, copy.snapshot, 42, 42, [copy],
+    );
+    reportPersistenceMemoryOnly('pantry', conflict, vi.fn(async () => undefined));
+    renderPantry();
+
+    const alert = screen.getByRole('alert');
+    expect(alert).not.toHaveTextContent(/due copie|entrambe le copie|copia non scelta/i);
+    expect(alert).toHaveTextContent('una copia recuperabile');
+    expect(alert).toHaveTextContent('La copia resta nel backup');
+    expect(within(alert).getByRole('radio', { name: /Backup selezionabile/ })).toBeVisible();
+    expect(within(alert).getByRole('button', { name: 'Usa questa copia' })).toBeDisabled();
+  });
+
+  it('explains the number of recoverable pantry copies when snapshots conflict', () => {
+    const conflict = Object.assign(new Error('Pantry snapshots conflict'), {
+      code: 'pantry_snapshot_conflict',
+      scope: 'guest',
+      copies: [
+        { id: 'first-copy', label: 'Prima', snapshot: { pantryItems: [], stapleIds: [] } },
+        { id: 'second-copy', label: 'Seconda', snapshot: { pantryItems: [], stapleIds: [] } },
+      ],
+    });
+    reportPersistenceMemoryOnly('pantry', conflict, vi.fn(async () => undefined));
+    renderPantry();
+
+    expect(screen.getByRole('alert')).toHaveTextContent('2 copie recuperabili');
+    expect(screen.getByRole('alert')).toHaveTextContent('Sono tutte conservate');
+    expect(screen.getByRole('alert')).toHaveTextContent('scritture sono sospese');
+  });
+
+  it('explains that a malformed pantry backup is preserved but no safe copy is selectable', () => {
+    const error = new pantryStorageModule.PantrySnapshotConflictBackupError('guest');
+    reportPersistenceMemoryOnly('pantry', error, vi.fn(async () => undefined));
+    renderPantry();
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('Il backup della dispensa è stato conservato, ma i dati non sono leggibili.');
+    expect(alert).toHaveTextContent('Non è disponibile alcuna copia sicura da scegliere');
+    expect(alert).toHaveTextContent('le modifiche e la sincronizzazione restano sospese');
+    expect(alert).not.toHaveTextContent(/due copie|entrambe le copie|scegli una copia/i);
+    expect(screen.queryByRole('radiogroup', { name: 'Seleziona la copia da ripristinare' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Usa questa copia' })).not.toBeInTheDocument();
+  });
+
+  it('offers an accessible explicit choice between both preserved pantry copies', async () => {
+    const conflict = Object.assign(new Error('Pantry snapshots conflict'), {
+      code: 'pantry_snapshot_conflict',
+      scope: 'guest',
+      copies: [
+        {
+          id: 'indexed-db',
+          label: 'Copia IndexedDB',
+          snapshot: { pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: ['salt'] },
+        },
+        {
+          id: 'local-storage',
+          label: 'Copia localStorage',
+          snapshot: { pantryItems: [{ id: 'rice', label: 'Riso', known: true }], stapleIds: [] },
+        },
+      ],
+    });
+    reportPersistenceMemoryOnly('pantry', conflict, vi.fn(async () => undefined));
+    renderPantry();
+
+    const choices = screen.getByRole('radiogroup', { name: 'Seleziona la copia da ripristinare' });
+    const indexedCopy = within(choices).getByRole('radio', { name: /Copia IndexedDB.*Pasta/s });
+    const localCopy = within(choices).getByRole('radio', { name: /Copia localStorage.*Riso/s });
+    const recover = screen.getByRole('button', { name: 'Usa questa copia' });
+    expect(indexedCopy).toBeVisible();
+    expect(localCopy).toBeVisible();
+    expect(recover).toBeDisabled();
+
+    await userEvent.setup().click(localCopy);
+
+    expect(recover).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Riprova' })).not.toBeInTheDocument();
+  });
+
+  it('shows newly appended conflict copies and requires a fresh choice when recovery races a writer', async () => {
+    const copies = [
+      {
+        id: 'indexed-db',
+        label: 'Copia IndexedDB',
+        revision: 42,
+        snapshot: { pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: ['salt'] },
+      },
+      {
+        id: 'local-storage',
+        label: 'Copia localStorage',
+        revision: null,
+        snapshot: { pantryItems: [{ id: 'rice', label: 'Riso', known: true }], stapleIds: [] },
+      },
+    ];
+    const initialConflict = new pantryStorageModule.PantrySnapshotConflictError(
+      'guest', 'concurrent-write', copies[0].snapshot, copies[1].snapshot, 42, null, copies,
+    );
+    reportPersistenceMemoryOnly('pantry', initialConflict, vi.fn(async () => undefined));
+    await writeKeyValue(scopeStorageKey('guest', 'ikuck-pantry-conflict-backup-v1'), {
+      id: 'active-conflict',
+      scope: 'guest',
+      reason: 'concurrent-write',
+      createdAt: '2026-10-08T10:00:00.000Z',
+      copies,
+    });
+    const concurrentCopy = {
+      id: 'concurrent-tab',
+      label: 'Modifica concorrente',
+      revision: 43,
+      snapshot: { pantryItems: [{ id: 'beans', label: 'Fagioli', known: true }], stapleIds: [] },
+    };
+    const expandedConflict = new pantryStorageModule.PantrySnapshotConflictError(
+      'guest', 'concurrent-write', copies[0].snapshot, concurrentCopy.snapshot, 42, 43, [...copies, concurrentCopy],
+    );
+    const failedRecovery = vi.spyOn(pantryStorageModule, 'recoverPantrySnapshot').mockRejectedValue(expandedConflict);
+
+    try {
+      renderPantry();
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('radio', { name: /Copia localStorage.*Riso/s }));
+      await user.click(screen.getByRole('button', { name: 'Usa questa copia' }));
+
+      expect(await screen.findByRole('radio', { name: /Modifica concorrente.*Fagioli/s })).toBeVisible();
+      expect(screen.getByRole('button', { name: 'Usa questa copia' })).toBeDisabled();
+      expect(screen.getByText(/Il recupero non è riuscito/)).toBeVisible();
+    } finally {
+      failedRecovery.mockRestore();
+    }
+  });
+
+  it('refreshes archived conflict copies immediately after active-conflict recovery', async () => {
+    await seedPantryConflict();
+    const user = userEvent.setup();
+    renderPantry();
+
+    await user.click(screen.getByRole('radio', { name: /Copia localStorage.*Riso/s }));
+    await user.click(screen.getByRole('button', { name: 'Usa questa copia' }));
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(within(screen.getByRole('list', { name: 'La tua dispensa' })).getByText('Riso')).toBeVisible();
+    const archiveSummary = await screen.findByText('Copie archiviate della dispensa', { exact: true });
+    expect(archiveSummary).toBeVisible();
+
+    await user.click(archiveSummary);
+    const archivedChoices = screen.getByRole('radiogroup', { name: /Seleziona una copia archiviata del recupero/ });
+    expect(within(archivedChoices).getByRole('radio', { name: /Copia IndexedDB.*Pasta/s })).toBeVisible();
+    const archivedRice = within(archivedChoices).getByRole('radio', { name: /Copia localStorage.*Riso/s });
+    expect(archivedRice).toBeVisible();
+    const restore = screen.getByRole('button', { name: 'Ripristina copia archiviata' });
+    expect(restore).toBeDisabled();
+    await user.click(archivedRice);
+    expect(restore).toBeEnabled();
+  });
+
+  it('recovers the selected copy only after confirmation and preserves the other in the archive', async () => {
+    await seedPantryConflict();
+    const user = userEvent.setup();
+    renderPantry();
+
+    const localCopy = screen.getByRole('radio', { name: /Copia localStorage.*Riso/s });
+    const recover = screen.getByRole('button', { name: 'Usa questa copia' });
+    expect(recover).toBeDisabled();
+    await user.click(localCopy);
+    await user.click(recover);
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(within(screen.getByRole('list', { name: 'La tua dispensa' })).getByText('Riso')).toBeVisible();
+    const archive = await readKeyValue<{ entries: Array<{ selectedCopyId: string }> }>(
+      'ikuck:guest:ikuck-pantry-conflict-archive-v1',
+    );
+    expect(archive?.entries[0]?.selectedCopyId).toBe('local-storage');
+  });
+
+  it('lets a user explicitly restore a visible archived copy while preserving the current pantry', async () => {
+    const currentSnapshot = { pantryItems: parseIngredientInput('Pomodoro'), stapleIds: [...DEFAULT_STAPLE_IDS] };
+    const archivedConflict = {
+      id: 'historic-conflict',
+      scope: 'guest',
+      reason: 'concurrent-write',
+      createdAt: '2026-10-07T10:00:00.000Z',
+      resolvedAt: '2026-10-07T10:01:00.000Z',
+      selectedCopyId: 'indexed-db',
+      copies: [
+        {
+          id: 'indexed-db',
+          label: 'Copia IndexedDB',
+          revision: 41,
+          snapshot: { pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: [] },
+        },
+        {
+          id: 'local-storage',
+          label: 'Copia localStorage',
+          revision: null,
+          snapshot: { pantryItems: [{ id: 'rice', label: 'Riso', known: true }], stapleIds: ['pepper'] },
+        },
+      ],
+    };
+    const persistedCurrent = JSON.stringify({ state: currentSnapshot, version: 1, revision: 60, mirrorObsolete: false });
+    window.localStorage.setItem(PANTRY_STORAGE_KEY, persistedCurrent);
+    await writeKeyValue('pantry', persistedCurrent);
+    await expect(readPantrySnapshot('guest')).resolves.toMatchObject(currentSnapshot);
+    await writeKeyValue(scopeStorageKey('guest', 'ikuck-pantry-conflict-archive-v1'), { entries: [archivedConflict] });
+    pantryStorageModule.setPantryPersistenceSuspended(true);
+    try {
+      seedPantry('Pomodoro');
+    } finally {
+      pantryStorageModule.setPantryPersistenceSuspended(false);
+    }
+    const user = userEvent.setup();
+    renderPantry();
+
+    await user.click(await screen.findByText('Copie archiviate della dispensa', { exact: true }));
+    const choices = screen.getByRole('radiogroup', { name: /Seleziona una copia archiviata del recupero/ });
+    expect(within(choices).getByRole('radio', { name: /Copia IndexedDB.*Pasta/s })).toBeVisible();
+    const archivedRice = within(choices).getByRole('radio', { name: /Copia localStorage.*Riso/s });
+    expect(archivedRice).toBeVisible();
+    const restore = screen.getByRole('button', { name: 'Ripristina copia archiviata' });
+    expect(restore).toBeDisabled();
+    await user.click(archivedRice);
+    await user.click(restore);
+
+    await waitFor(() => expect(within(screen.getByRole('list', { name: 'La tua dispensa' })).getByText('Riso')).toBeVisible());
+    const updatedArchive = await readKeyValue<{ entries: Array<{
+      id: string;
+      selectedCopyId?: string;
+      copies: Array<{ snapshot: { pantryItems: Array<{ id: string }> } }>;
+    }> }>(scopeStorageKey('guest', 'ikuck-pantry-conflict-archive-v1'));
+    expect(updatedArchive?.entries.some((entry) => entry.selectedCopyId === 'local-storage'
+      && entry.copies.some((copy) => copy.snapshot.pantryItems.some((item) => item.id === currentSnapshot.pantryItems[0]?.id))
+      && entry.copies.some((copy) => copy.snapshot.pantryItems.some((item) => item.id === 'rice')))).toBe(true);
+    expect(updatedArchive?.entries.some((entry) => entry.id === 'historic-conflict')).toBe(true);
+  });
+
+  it('keeps the recovery choice visible and writes blocked when confirmation cannot persist', async () => {
+    await seedPantryConflict();
+    const user = userEvent.setup();
+    renderPantry();
+    await user.click(screen.getByRole('radio', { name: /Copia localStorage.*Riso/s }));
+
+    const originalSetItem = Storage.prototype.setItem;
+    const blockedMirrorWrite = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (key === PANTRY_STORAGE_KEY && value.includes('"id":"rice"')) {
+        throw new DOMException('Storage disabled', 'SecurityError');
+      }
+      return originalSetItem.call(this, key, value);
+    });
+
+    try {
+      await user.click(screen.getByRole('button', { name: 'Usa questa copia' }));
+      expect(await screen.findByText(/Il recupero non è riuscito/)).toHaveAttribute('role', 'status');
+      expect(screen.getByRole('radio', { name: /Copia localStorage.*Riso/s })).toBeVisible();
+      expect(screen.getByRole('button', { name: 'Usa questa copia' })).toBeEnabled();
+      const backup = await readKeyValue<{ resolvedAt?: string; copies: unknown[] }>(
+        'ikuck:guest:ikuck-pantry-conflict-backup-v1',
+      );
+      expect(backup?.resolvedAt).toBeUndefined();
+      expect(backup?.copies).toHaveLength(2);
+      await expect(readPantrySnapshot()).rejects.toMatchObject({ code: 'pantry_snapshot_conflict' });
+    } finally {
+      blockedMirrorWrite.mockRestore();
+    }
   });
 
   it('shows a persistence warning and retry action in the section that owns pantry data', async () => {

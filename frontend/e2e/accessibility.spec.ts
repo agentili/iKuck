@@ -43,14 +43,14 @@ test.afterEach(async ({ page }) => {
 
 test('guest home passes the critical and serious axe gate', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
   await auditPage(page, 'guest home');
 });
 
 test('verified home passes the critical and serious axe gate', async ({ page }) => {
   await installVerifiedBackend(page);
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
   await auditPage(page, 'verified home');
 });
 
@@ -96,7 +96,7 @@ test('keeps focus indicators visible for links, controls and summaries', async (
   await page.goto('/shopping-list');
 
   const focusableSelectors = [
-    page.getByRole('link', { name: 'Home' }),
+    page.getByRole('link', { name: 'Cucina' }),
     page.getByLabel('Cosa ti serve?'),
     page.getByRole('button', { name: 'Aggiungi alla lista' }),
     page.getByText('Aggiungi dettagli (facoltativi)'),
@@ -152,7 +152,7 @@ test('keeps primary navigation fixed and touch-friendly on mobile', async ({ pag
   const navigation = page.getByRole('navigation', { name: 'Navigazione principale' });
   expect(await navigation.evaluate((element) => window.getComputedStyle(element).position)).toBe('fixed');
 
-  for (const name of ['Home', 'Dispensa', 'Lista', 'Attività', 'Profilo']) {
+  for (const name of ['Cucina', 'Dispensa', 'Spesa', 'Diario']) {
     const box = await navigation.getByRole('link', { name }).boundingBox();
     expect(box, `${name} should have a measurable touch target`).not.toBeNull();
     expect(box!.width).toBeGreaterThanOrEqual(44);
@@ -168,8 +168,8 @@ test('keeps primary navigation fixed and touch-friendly on mobile', async ({ pag
 
 test('keeps mobile navigation labels concise and on one line', async ({ page }) => {
   const scenarios = [
-    { width: 390, height: 844, zoom: false, labels: ['Home', 'Dispensa', 'Spesa', 'Attività', 'Cene', 'Profilo'] },
-    { width: 320, height: 700, zoom: true, labels: ['Home', 'Disp.', 'Lista', 'Att.', 'Cene', 'Io'] },
+    { width: 390, height: 844, zoom: false, labels: ['Cucina', 'Dispensa', 'Spesa', 'Diario'] },
+    { width: 320, height: 700, zoom: true, labels: ['Cucina', 'Disp.', 'Spesa', 'Diario'] },
   ];
 
   for (const scenario of scenarios) {
@@ -203,9 +203,7 @@ test('keeps mobile navigation labels concise and on one line', async ({ page }) 
 
     expect(items.map((item) => item.label)).toEqual(scenario.labels);
     expect(items.every((item) => !item.wraps), JSON.stringify(items)).toBe(true);
-    expect(items.map((item) => item.accessibleName)).toEqual([
-      'Home', 'Dispensa', 'Lista', 'Attività', 'Diario delle cene', 'Profilo',
-    ]);
+    expect(items.map((item) => item.accessibleName)).toEqual(['Cucina', 'Dispensa', 'Spesa', 'Diario']);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
   }
 });
@@ -236,7 +234,7 @@ test('respects reduced motion, heading order and icon-only accessible names', as
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/recipes/pasta-tonno-pomodoro');
 
-  const transitionDuration = await page.getByRole('link', { name: 'Home' }).evaluate((element) => (
+  const transitionDuration = await page.getByRole('link', { name: 'Cucina' }).evaluate((element) => (
     window.getComputedStyle(element).transitionDuration
   ));
   expect(transitionDuration).toBe('0s');

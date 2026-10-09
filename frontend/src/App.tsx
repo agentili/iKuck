@@ -18,7 +18,7 @@ import PantryMergeNotice from './components/feedback/PantryMergeNotice';
 import { apiRequest } from './api/apiClient';
 import { initializeSessionScope, listenForReconnect, syncVerifiedSession, type SyncSession } from './sync/syncQueue';
 import { getActiveDataScope, setActiveDataScope, subscribeActiveDataScope } from './sync/scopeContext';
-import { isScopeWritable, subscribeScopeAvailability } from './sync/scopeWriteFence';
+import { isScopePurgeMarkerUnavailable, isScopeWritable, subscribeScopeAvailability } from './sync/scopeWriteFence';
 import { hydrateShoppingListStore } from './store/shoppingListStore';
 import { hydrateActivityStore } from './store/activityStore';
 import { hydrateDietProfileStore } from './store/dietProfileStore';
@@ -57,6 +57,8 @@ export default function App() {
   const previousSessionKey = useRef<string | null>(null);
   const [sessionRestored, setSessionRestored] = useState(false);
   const [readySessionKey, setReadySessionKey] = useState<string | null>(null);
+  const [scopeInitializationFailed, setScopeInitializationFailed] = useState(false);
+  const [scopeRetryCount, setScopeRetryCount] = useState(0);
   const verifiedSession = user !== null && csrfToken !== null && user.emailVerifiedAt !== '';
   const currentSessionKey = verifiedSession ? `${user.id}:${csrfToken}` : 'guest';
 
@@ -74,10 +76,12 @@ export default function App() {
     const sessionKey = session === null ? 'guest' : `${session.userId}:${session.csrfToken}`;
     const sessionChanged = previousSessionKey.current !== sessionKey;
     previousSessionKey.current = sessionKey;
+    setScopeInitializationFailed(false);
     let active = true;
     let removeReconnectListener: (() => void) | null = null;
 
     const hydrateAndSync = async (shouldSync = true): Promise<void> => {
+      if (session !== null && !isScopeWritable(getActiveDataScope())) return;
       await hydratePantryStore();
       if (!active) return;
       await Promise.all([
@@ -131,7 +135,7 @@ export default function App() {
           return hydrateAndSync();
         })
         .catch(() => {
-          if (active) void hydrateAndSync(false);
+          if (active) setScopeInitializationFailed(true);
         });
     }
 
@@ -139,11 +143,45 @@ export default function App() {
       active = false;
       removeReconnectListener?.();
     };
-  }, [csrfToken, houseId, sessionRestored, user]);
+  }, [csrfToken, houseId, scopeRetryCount, sessionRestored, user]);
 
   const expectedVisibleScope = verifiedSession
     ? (houseId === null ? `account:${user.id}` : `house:${houseId}`)
     : 'guest';
+  const currentHouseScope: `house:${string}` | null = houseId !== null
+    ? `house:${houseId}`
+    : getActiveDataScope().startsWith('house:') ? getActiveDataScope() as `house:${string}` : null;
+  const housePurgeMarkerUnavailable = verifiedSession
+    && currentHouseScope !== null
+    && isScopePurgeMarkerUnavailable(currentHouseScope);
+  if (verifiedSession && (housePurgeMarkerUnavailable || scopeInitializationFailed)) {
+    return (
+      <BrowserRouter>
+        <div className="app-shell min-h-screen">
+          <AppHeader scopeUnverified={scopeInitializationFailed} />
+          <main id="main-content" className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-24 pt-24 sm:px-6 sm:pt-28">
+            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-950" role="alert">
+              <p>
+                {housePurgeMarkerUnavailable
+                  ? 'Non posso verificare la sicurezza dei dati della Casa perché la memoria locale del browser non è disponibile. Le scritture restano disabilitate; verifica la memoria locale e ricarica l’app.'
+                  : 'Non è stato possibile verificare l’ambito della Casa. Dispensa, spesa e diario restano nascosti e le scritture funzionali sono sospese finché il controllo non riesce. Verifica la connessione e riprova.'}
+              </p>
+              <button
+                type="button"
+                className="mt-4 min-h-11 rounded-xl bg-emerald-800 px-4 py-2 font-bold text-white hover:bg-emerald-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-800"
+                onClick={() => {
+                  if (housePurgeMarkerUnavailable) window.location.reload();
+                  else setScopeRetryCount((count) => count + 1);
+                }}
+              >
+                {housePurgeMarkerUnavailable ? 'Ricarica l’app' : 'Riprova'}
+              </button>
+            </div>
+          </main>
+        </div>
+      </BrowserRouter>
+    );
+  }
   if (!sessionRestored || readySessionKey !== currentSessionKey || visibleScope !== expectedVisibleScope) {
     return <div className="app-shell min-h-screen" role="status">Caricamento dati…</div>;
   }

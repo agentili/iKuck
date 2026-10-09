@@ -19,11 +19,13 @@ describe('AppHeader', () => {
     expect(screen.getByRole('link', { name: 'Salta al contenuto' })).toHaveAttribute('href', '#main-content');
     const navigation = screen.getByRole('navigation', { name: 'Navigazione principale' });
     expect(navigation).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'Cucina' })).not.toHaveAttribute('aria-current');
     expect(screen.getByRole('link', { name: 'Dispensa' })).not.toHaveAttribute('aria-current');
-    expect(screen.getByRole('link', { name: 'Lista' })).not.toHaveAttribute('aria-current');
-    expect(screen.getByRole('link', { name: 'Attività' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: 'Profilo' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'Spesa' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'Diario' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getAllByRole('link', { name: 'Profilo' })).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: 'Casa' })).toHaveLength(2);
+    expect(screen.queryByRole('link', { name: 'Attività' })).not.toBeInTheDocument();
   });
 
   it('marks the dinner diary as an accessible primary destination', () => {
@@ -33,11 +35,11 @@ describe('AppHeader', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('link', { name: 'Diario delle cene' })).toHaveAttribute('href', '/dinner-diary');
-    expect(screen.getByRole('link', { name: 'Diario delle cene' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Diario' })).toHaveAttribute('href', '/dinner-diary');
+    expect(screen.getByRole('link', { name: 'Diario' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('shows an accessible profile icon instead of connected text for authenticated users', () => {
+  it('exposes profile and house destinations with the real connected scope', () => {
     useAuthStore.setState({
       user: { id: 'user-1', email: 'ale@example.com', emailVerifiedAt: '2026-09-12T10:00:00.000Z' },
       connection: 'online',
@@ -45,8 +47,9 @@ describe('AppHeader', () => {
 
     render(<MemoryRouter><AppHeader /></MemoryRouter>);
 
-    expect(screen.getByRole('img', { name: 'Profilo connesso' })).toBeInTheDocument();
-    expect(screen.queryByText('Connesso')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Profilo' })).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: 'Casa' })).toHaveLength(2);
+    expect(screen.getAllByText('Account verificato')).toHaveLength(2);
     expect(screen.queryByText('ale@example.com')).not.toBeInTheDocument();
   });
 });

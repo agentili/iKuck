@@ -128,7 +128,7 @@ export default defineConfig({
       },
       workbox: {
         clientsClaim: true,
-        globPatterns: ['**/*.{js,css,html,json,png,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,json,png,svg,webp,avif,woff2}'],
         navigateFallback: '/index.html',
       },
     }),

@@ -52,17 +52,21 @@ async function readCollection<T>(databaseKey: string, storageKey: string, scope:
 }
 
 async function writeCollection<T>(databaseKey: string, storageKey: string, values: readonly T[], scope: SyncScope, normalize: (items: readonly unknown[]) => T[]): Promise<void> {
-  return trackScopedWrite(scope, async () => {
+  return trackScopedWrite(scope, async (assertWritable) => {
     const serialized = serializeCollection(values, normalize);
     const scopedDbKey = keyFor(scope, databaseKey);
     const scopedStorageKey = keyFor(scope, storageKey);
     if (!isIndexedDbAvailable()) {
+      assertWritable();
       window.localStorage.setItem(scopedStorageKey, serialized);
       return;
     }
     try {
-      await writeKeyValue(scopedDbKey, serialized);
+      assertWritable();
+      await writeKeyValue(scopedDbKey, serialized, assertWritable);
+      assertWritable();
     } catch (error) {
+      assertWritable();
       window.localStorage.setItem(scopedStorageKey, serialized);
       throw error;
     }

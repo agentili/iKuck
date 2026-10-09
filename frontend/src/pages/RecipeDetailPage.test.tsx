@@ -76,6 +76,30 @@ describe('RecipeDetailPage integration', () => {
     expect(screen.getByRole('heading', { name: 'Ricetta non trovata' })).toBeInTheDocument();
   });
 
+  it('shows availability and quantity warnings in the recipe detail', () => {
+    usePantryStore.setState({
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+      pantryLots: [],
+      stapleIds: [],
+    });
+    renderRoute('/recipes/pasta-tonno-pomodoro');
+
+    expect(screen.getByText('Ingredienti mancanti')).toBeVisible();
+    expect(screen.getByText(/Da acquistare:/)).toBeVisible();
+  });
+
+  it('shows quantity warnings alongside missing ingredients in recipe detail', () => {
+    usePantryStore.setState({
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+      pantryLots: [{ id: 'lot-pasta', ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 10, unit: 'g', expiresAt: null, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }],
+      stapleIds: [],
+    });
+    renderRoute('/recipes/pasta-tonno-pomodoro');
+    const availability = screen.getByRole('region', { name: 'Disponibilità della ricetta' });
+    expect(availability).toHaveTextContent('Verifica le quantità');
+    expect(availability).toHaveTextContent('Da acquistare:');
+  });
+
   it('marks optional ingredients in the cooking details', () => {
     renderRoute('/recipes/pasta-tonno-pomodoro');
 
