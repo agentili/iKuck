@@ -29,6 +29,10 @@ const callGateway = async <T>(operation: () => Promise<T>): Promise<T> => {
   }
 };
 
+const assertTestList = (testListId: string, listId: string): void => {
+  if (listId !== testListId) throw new BringError('bring_list_not_allowed', 403);
+};
+
 const readSession = async (
   unit: ConnectionUnit,
   cipher: SessionCipher,
@@ -101,10 +105,12 @@ export const createBringService = ({
   repository,
   cipher,
   gateway,
+  testListId,
 }: {
   repository: BringRepository;
   cipher: SessionCipher;
   gateway: BringGateway;
+  testListId: string;
 }) => ({
   status: (userId: string): Promise<BringStatus> => repository.withUser(userId, async (unit) => {
     const row = await unit.get();
@@ -125,6 +131,7 @@ export const createBringService = ({
   read: (userId: string, connectionId: string, listId: string): Promise<BringSnapshot> => {
     const signal = AbortSignal.timeout(BRING_TIMEOUT_MS);
     return repository.withUser(userId, async (unit) => {
+      assertTestList(testListId, listId);
       const session = await readSession(unit, cipher, userId, connectionId);
       await authorizeList(session, listId, signal, gateway);
       const loaded = await load(session, listId, signal, gateway);
@@ -135,6 +142,7 @@ export const createBringService = ({
   write: (userId: string, input: BringMutation): Promise<BringSnapshot> => {
     const signal = AbortSignal.timeout(BRING_TIMEOUT_MS);
     return repository.withUser(userId, async (unit) => {
+      assertTestList(testListId, input.listId);
       const session = await readSession(unit, cipher, userId, input.connectionId);
       await authorizeList(session, input.listId, signal, gateway);
       const loaded = await load(session, input.listId, signal, gateway);

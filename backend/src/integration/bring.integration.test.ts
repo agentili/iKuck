@@ -132,6 +132,7 @@ runIntegration('PostgreSQL and Redis Bring integration', () => {
     repository: createDrizzleBringRepository(databaseForService.db),
     cipher: createSessionCipher('11'.repeat(32)),
     gateway,
+    testListId: bringListId,
   });
 
   const createAuthSession = async (databaseForAuth: ReturnType<typeof createDatabase>, label: string) => {

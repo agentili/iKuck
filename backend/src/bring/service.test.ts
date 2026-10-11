@@ -22,7 +22,7 @@ const fixture = () => {
   };
   const repository = createMemoryBringRepository();
   const cipher = createSessionCipher('11'.repeat(32));
-  const service = createBringService({ repository, gateway, cipher });
+  const service = createBringService({ repository, gateway, cipher, testListId: listId });
   return { service, gateway, repository, cipher, setRaw: (next: RawItems) => { raw = next; } };
 };
 
@@ -168,6 +168,7 @@ describe('Bring service', () => {
       repository,
       gateway,
       cipher: createSessionCipher('11'.repeat(32)),
+      testListId: listId,
     });
     const connected = await service.connect('owner-a', {
       email: 'test@example.com',
@@ -278,14 +279,15 @@ describe('Bring service', () => {
     ]);
   });
 
-  it('rejects a list not returned for the saved Bring session before reading its items', async () => {
+  it('rejects the designated test list when the connected account cannot see it before reading its items', async () => {
     const { service, gateway } = fixture();
+    vi.mocked(gateway.lists).mockResolvedValue([{ id: '22222222-2222-4222-8222-222222222222', name: 'Altra lista' }]);
     const connected = await service.connect('owner-a', {
       email: 'test@example.com',
       password: 'synthetic-password',
     });
 
-    await expect(service.read('owner-a', connected.connectionId!, 'foreign-list')).rejects.toMatchObject({
+    await expect(service.read('owner-a', connected.connectionId!, listId)).rejects.toMatchObject({
       code: 'bring_list_not_found',
       status: 404,
     });
@@ -764,5 +766,91 @@ describe('Bring service', () => {
       if (abortTimer !== undefined) clearTimeout(abortTimer);
       timeout.mockRestore();
     }
+  });
+});
+
+describe('Bring test-list feature gate', () => {
+  const otherListId = '22222222-2222-4222-8222-222222222222';
+
+  it('keeps every account list selectable while refusing operations outside the designated test list', async () => {
+    const { service, gateway } = fixture();
+    vi.mocked(gateway.lists).mockResolvedValue([
+      { id: otherListId, name: 'Spesa di famiglia' },
+      { id: listId, name: 'Lista Prova' },
+    ]);
+
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+
+    const accountLists = [
+      { id: otherListId, name: 'Spesa di famiglia' },
+      { id: listId, name: 'Lista Prova' },
+    ];
+    expect(connected).toMatchObject({ enabled: true, connected: true, lists: accountLists });
+    await expect(service.lists('owner-a', connected.connectionId!)).resolves.toEqual({
+      connectionId: connected.connectionId!,
+      lists: accountLists,
+    });
+    await expect(service.read('owner-a', connected.connectionId!, otherListId))
+      .rejects.toMatchObject({ code: 'bring_list_not_allowed', status: 403 });
+  });
+
+  it('refuses to read any list other than the designated test list', async () => {
+    const { service, gateway } = fixture();
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+    vi.mocked(gateway.items).mockClear();
+    vi.mocked(gateway.lists).mockClear();
+
+    await expect(service.read('owner-a', connected.connectionId!, otherListId))
+      .rejects.toMatchObject({ code: 'bring_list_not_allowed', status: 403 });
+    expect(gateway.items).not.toHaveBeenCalled();
+    expect(gateway.lists).not.toHaveBeenCalled();
+  });
+
+  it('refuses to write any list other than the designated test list', async () => {
+    const { service, gateway } = fixture();
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+    vi.mocked(gateway.items).mockClear();
+    vi.mocked(gateway.change).mockClear();
+
+    await expect(service.write('owner-a', {
+      connectionId: connected.connectionId!,
+      listId: otherListId,
+      action: 'add',
+      name: 'Latte',
+      specification: '2 l',
+    })).rejects.toMatchObject({ code: 'bring_list_not_allowed', status: 403 });
+    expect(gateway.change).not.toHaveBeenCalled();
+    expect(gateway.items).not.toHaveBeenCalled();
+  });
+
+  it('keeps the designated test list fully operable', async () => {
+    const { service, gateway, setRaw } = fixture();
+    const connected = await service.connect('owner-a', {
+      email: 'test@example.com',
+      password: 'synthetic-password',
+    });
+    setRaw({
+      uuid: listId,
+      status: 'REGISTERED',
+      purchase: [{ name: 'Milch', specification: '2 l' }],
+      recently: [],
+    });
+    vi.mocked(gateway.items).mockClear();
+
+    await expect(service.read('owner-a', connected.connectionId!, listId)).resolves.toMatchObject({
+      connectionId: connected.connectionId!,
+      listId,
+      items: [{ name: 'Milch', state: 'purchase' }],
+    });
+    expect(gateway.items).toHaveBeenCalledWith(session, listId, expect.any(AbortSignal));
   });
 });

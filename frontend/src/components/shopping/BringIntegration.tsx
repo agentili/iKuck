@@ -17,6 +17,7 @@ const messages: Record<string, string> = {
   bring_write_unconfirmed: 'Non posso confermare la modifica. Aggiorna la lista prima di riprovare.',
   bring_invalid_credentials: 'Non è stato possibile accedere a Bring!. Controlla email e password Bring!.',
   bring_list_not_found: 'Questa lista non è più accessibile. Aggiorna le liste.',
+  bring_list_not_allowed: 'Questa lista non è abilitata: Bring! è attivo solo sulla lista di prova configurata.',
   rate_limited: 'Troppe richieste. Attendi prima di riprovare.',
 };
 

@@ -154,6 +154,19 @@ describe('Bring integration panel', () => {
     expect(screen.queryByText('Non ci sono liste Bring! disponibili.')).not.toBeInTheDocument();
   });
 
+  it('explains when Bring refuses a list outside the enabled test list', async () => {
+    const user = userEvent.setup();
+    mocks.status.mockResolvedValue({ enabled: true, connected: true, connectionId });
+    mocks.lists.mockResolvedValue({ connectionId, lists: [{ id: listId, name: 'Casa' }] });
+    mocks.items.mockRejectedValue(new ApiClientError(403, 'bring_list_not_allowed', 'synthetic gate refusal'));
+
+    render(<BringIntegration userId="user-a" csrfToken="synthetic-csrf" />);
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'Lista Bring!' }), listId);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Questa lista non è abilitata: Bring! è attivo solo sulla lista di prova configurata.');
+    expect(screen.queryByRole('button', { name: 'Ricollega Bring!' })).not.toBeInTheDocument();
+  });
+
   it('announces the initial connection check while the status request is pending', async () => {
     const pendingStatus = deferred<{ enabled: boolean; connected: false; connectionId: null }>();
     mocks.status.mockReturnValue(pendingStatus.promise);

@@ -4,6 +4,11 @@
     "noEmit": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["src/integration/bring.integration.test.ts"],
+  "include": [
+    "src/integration/bring.integration.test.ts",
+    "src/bring/**/*.test.ts",
+    "src/routes/bring.test.ts",
+    "src/config.test.ts"
+  ],
   "exclude": ["dist", "node_modules"]
 }

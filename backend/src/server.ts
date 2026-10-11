@@ -43,6 +43,7 @@ export const start = async () => {
     repository: createDrizzleBringRepository(database.db),
     cipher: createSessionCipher(config.bringTokenEncryptionKey!),
     gateway: createBringGateway(),
+    testListId: config.bringTestListId!,
   }) : undefined;
   const houseRepository = createDrizzleHouseRepository(database.db);
   const sync = createDrizzleSyncRepository(database.db, {
