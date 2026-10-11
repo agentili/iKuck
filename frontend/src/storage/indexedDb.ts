@@ -396,6 +396,7 @@ export async function deleteQueueValue(
 }
 
 const removeLocalDinnerConsumptionRecords = (scope: SyncScope): void => {
+  if (isIndexedDbAvailable()) return;
   recoverLocalStorageJournal();
   const localPrefix = scopeStorageKey(scope, DINNER_CONSUMPTION_RECORD_STORAGE_PREFIX);
   const localRecordKeys = Array.from({ length: window.localStorage.length }, (_, index) => window.localStorage.key(index))

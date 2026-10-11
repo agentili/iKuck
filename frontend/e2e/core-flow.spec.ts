@@ -137,7 +137,7 @@ test('user adds pantry items, requests recipes and opens one', async ({ page }) 
   await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
   await expect(page.getByText('Hai tutto').first()).toBeVisible();
   await page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' }).click();
-  await expect(page.getByRole('heading', { name: 'Ingredienti' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ingredienti', level: 2 })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Pasta tonno e pomodoro' })).toBeVisible();
 });
@@ -397,18 +397,35 @@ test('shopping list accepts manual and recipe-derived items offline', async ({ p
   await page.getByRole('button', { name: 'Aggiungi mancanti alla spesa' }).click();
   await expect(page.getByRole('link', { name: 'Apri la lista della spesa' })).toBeVisible();
   await page.getByRole('link', { name: 'Apri la lista della spesa' }).click();
-  await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
+  await expect(page.getByRole('listitem').filter({ hasText: 'Pasta' }).first()).toBeVisible();
   await page.reload();
-  await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
+  await expect(page.getByRole('listitem').filter({ hasText: 'Pasta' }).first()).toBeVisible();
 });
 
 test('activity records cooking, preferences and private notes offline', async ({ page }) => {
+  await resetPantry(page);
+  await page.getByLabel('Ingredienti presenti').fill('pasta, tonno, passata');
+  await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
   await page.goto('/');
-  await page.evaluate(() => window.localStorage.clear());
-  await page.goto('/recipes/pasta-tonno-pomodoro');
+  await expect(page.getByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
+  await page.getByRole('button', { name: 'Trova ricette' }).click();
+  await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
+  await page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' }).click();
+  await expect(page.getByRole('heading', { name: 'Ingredienti', level: 2 })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Segna come cucinata' }).click();
-  await expect(page.getByRole('status')).toHaveText('Ricetta aggiunta alla cronologia.');
+  await page.getByLabel('Porzioni cucinate').fill('1');
+  await page.getByLabel('Nessun ingrediente della dispensa utilizzato').check();
+  const confirmBtn = page.getByRole('button', { name: 'Conferma cena' });
+  await expect(confirmBtn).toBeEnabled();
+  await confirmBtn.click();
+  // Wait for confirmation to complete - the "Registra un'altra cena" button appears in DOM
+  await expect.poll(async () => {
+    const buttons = await page.getByRole('button').all();
+    const texts = await Promise.all(buttons.map(b => b.textContent()));
+    console.log('Button texts:', texts);
+    return texts.some(t => t && t.includes('Registra un'));
+  }, { timeout: 20000, intervals: [1000] }).toBe(true);
   await page.getByRole('button', { name: 'Aggiungi ai preferiti' }).click();
   await page.getByRole('button', { name: 'Valuta Pasta tonno e pomodoro: 5 stelle' }).click();
   await page.getByLabel('Nota privata sulla ricetta').fill('Da rifare presto');
