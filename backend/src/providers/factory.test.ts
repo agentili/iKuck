@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createProviders } from './factory.js';
+import type { SmtpTransportFactory } from './smtp.js';
 
 describe('createProviders', () => {
   it('returns a typed unavailable error without provider credentials', async () => {
@@ -99,14 +100,85 @@ describe('createProviders', () => {
     expect(fetch.mock.calls[0]?.[0]).toBe('https://api.openai.com/v1/responses');
   });
 
-  it('injects the same fetch implementation into the Resend adapter', async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(JSON.stringify({ id: 'email-1' })));
+  it('keeps the email provider unavailable when no SMTP configuration is present', async () => {
+    const createTransport = vi.fn();
+    const providers = createProviders({ providers: {} }, { createTransport: createTransport as unknown as SmtpTransportFactory });
+
+    await expect(providers.email.send({
+      to: 'person@example.com',
+      subject: 'Verification',
+      html: '<p>Verify</p>',
+    })).rejects.toMatchObject({
+      code: 'provider_unavailable', provider: 'email', reason: 'missing_configuration',
+    });
+    expect(createTransport).not.toHaveBeenCalled();
+  });
+
+  it('keeps the email provider unavailable when only part of the SMTP configuration is present', async () => {
+    const createTransport = vi.fn();
+    const options = { createTransport: createTransport as unknown as SmtpTransportFactory };
+
+    const hostOnly = createProviders({ providers: { smtpHost: 'smtp.example' } }, options);
+    await expect(hostOnly.email.send({ to: 'person@example.com', subject: 'Verify', html: '<p>Verify</p>' }))
+      .rejects.toMatchObject({ code: 'provider_unavailable', reason: 'adapter_not_enabled' });
+
+    const userWithoutPassword = createProviders({ providers: {
+      smtpHost: 'smtp.example',
+      smtpUser: 'smtp-user',
+      emailFrom: 'no-reply@ikuck.example',
+    } }, options);
+    await expect(userWithoutPassword.email.send({ to: 'person@example.com', subject: 'Verify', html: '<p>Verify</p>' }))
+      .rejects.toMatchObject({ code: 'provider_unavailable', reason: 'missing_configuration' });
+
+    expect(createTransport).not.toHaveBeenCalled();
+  });
+
+  it('selects the SMTP adapter when host, sender and credentials are configured', async () => {
+    const sendMail = vi.fn().mockResolvedValue({ messageId: 'smtp-1' });
+    const createTransport = vi.fn(() => ({ sendMail }));
     const providers = createProviders({ providers: {
-      resendApiKey: 'test-key', resendFrom: 'no-reply@ikuck.example',
-    } }, { fetch });
+      smtpHost: 'smtp.example',
+      smtpPort: 587,
+      smtpUser: 'smtp-user',
+      smtpPass: 'app-pass',
+      emailFrom: 'no-reply@ikuck.example',
+    } }, { createTransport: createTransport as unknown as SmtpTransportFactory });
 
-    await providers.email.send({ to: 'person@example.com', subject: 'Verify', html: '<p>Verify</p>' });
+    await expect(providers.email.send({ to: 'person@example.com', subject: 'Verify', html: '<p>Verify</p>' }))
+      .resolves.toEqual({ messageId: 'smtp-1' });
 
-    expect(fetch).toHaveBeenCalledOnce();
+    expect(createTransport).toHaveBeenCalledWith(expect.objectContaining({
+      host: 'smtp.example',
+      port: 587,
+      secure: false,
+      requireTLS: true,
+      auth: { user: 'smtp-user', pass: 'app-pass' },
+    }));
+    expect(sendMail).toHaveBeenCalledWith({
+      from: 'no-reply@ikuck.example',
+      to: 'person@example.com',
+      subject: 'Verify',
+      html: '<p>Verify</p>',
+    });
+  });
+
+  it('selects the SMTP adapter for an unauthenticated relay on the implicit TLS port', async () => {
+    const sendMail = vi.fn().mockResolvedValue({ messageId: 'smtp-2' });
+    const createTransport = vi.fn(() => ({ sendMail }));
+    const providers = createProviders({ providers: {
+      smtpHost: 'smtp.example',
+      smtpPort: 465,
+      emailFrom: 'no-reply@ikuck.example',
+    } }, { createTransport: createTransport as unknown as SmtpTransportFactory });
+
+    await expect(providers.email.send({ to: 'person@example.com', subject: 'Verify', html: '<p>Verify</p>' }))
+      .resolves.toEqual({ messageId: 'smtp-2' });
+
+    expect(createTransport).toHaveBeenCalledWith(expect.objectContaining({
+      port: 465,
+      secure: true,
+      requireTLS: false,
+      auth: undefined,
+    }));
   });
 });
