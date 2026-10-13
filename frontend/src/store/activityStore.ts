@@ -10,6 +10,9 @@ import {
   writeCookEvents,
   writeRecipePreferences,
 } from '../storage/activityStorage';
+import { coordinateDinnerConsumption } from './dinnerConsumption';
+import type { DinnerConsumptionCommand } from '@ikuck/shared/pantryConsumption';
+import type { DinnerEntry } from '@ikuck/shared/dinnerDiary';
 import {
   getMutationScope,
   enqueueEntityMutation,
@@ -24,7 +27,7 @@ export interface ActivityState {
   hasHydrated: boolean;
   events: CookEvent[];
   preferences: RecipePreference[];
-  recordCookEvent: (recipe: PantryRecipe, servings?: number, note?: string | null) => string | null;
+  recordCookEvent: (recipe: PantryRecipe, servings?: number, note?: string | null, consumptionContext?: { command: DinnerConsumptionCommand; event: CookEvent; entry: DinnerEntry }) => Promise<string | null>;
   removeCookEvent: (id: string) => boolean;
   restoreCookEvent: (event: CookEvent) => boolean;
   clearActivity: () => number;
@@ -81,29 +84,58 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
   hasHydrated: false,
   events: [],
   preferences: [],
-  recordCookEvent: (recipe, servings = recipe.servings ?? undefined, note = null) => {
-    const cookedAt = new Date().toISOString();
-    const normalizedNote = normalizeNote(note);
-    const servingsToRecord = servings ?? recipe.servings;
-    if (servingsToRecord === null || servingsToRecord === undefined) return null;
-    if (validateCookEventDetails(recipe.id, recipe.title, servingsToRecord, cookedAt, normalizedNote).length > 0) return null;
-    const event: CookEvent = {
-      id: createEventId(),
-      recipeId: recipe.id,
-      recipeTitle: recipe.title,
-      servings: servingsToRecord,
-      cookedAt,
-      note: normalizedNote,
-      createdAt: cookedAt,
-      updatedAt: cookedAt,
-    };
-    const events = [...get().events, event];
-    set({ events });
-    const activeScope = getActiveDataScope();
-    void trackPersistence('activity', () => persistEvents(events, activeScope));
-    void trackSync('activity', () => enqueueEntityMutation(getMutationScope('cook_event', activeScope, activeScope), 'cook_event', event.id, 'upsert', event));
-    return event.id;
-  },
+  recordCookEvent: (recipe: PantryRecipe, servings?: number, note?: string | null, consumptionContext?: { command: DinnerConsumptionCommand; event: CookEvent; entry: DinnerEntry }): Promise<string | null> => {
+      const cookedAt = new Date().toISOString();
+      const normalizedNote = normalizeNote(note ?? null);
+      const servingsToRecord = servings ?? recipe.servings;
+      if (servingsToRecord === null || servingsToRecord === undefined) return Promise.resolve(null);
+      if (validateCookEventDetails(recipe.id, recipe.title, servingsToRecord, cookedAt, normalizedNote).length > 0) return Promise.resolve(null);
+
+      // If consumption context is provided, commit the dinner consumption atomically first
+      if (consumptionContext !== undefined) {
+        return coordinateDinnerConsumption({
+          command: consumptionContext.command,
+          entry: consumptionContext.entry,
+          cookEvent: consumptionContext.event,
+          updatedAt: cookedAt,
+        })
+          .then(() => {
+            // On success, add the cook event to the store if not already present
+            const event = consumptionContext.event;
+            if (!get().events.some((existing) => existing.id === event.id)) {
+              const events = [...get().events, event];
+              set({ events });
+              const activeScope = getActiveDataScope();
+              void trackPersistence('activity', () => persistEvents(events, activeScope));
+            }
+            // Do not enqueue a separate sync mutation for the cook event;
+            // the dinner consumption commit handles persistence and sync.
+            return event.id;
+          })
+          .catch(() => {
+            // If consumption commit fails, don't record the cook event
+            return null;
+          });
+      }
+
+      // Normal flow without consumption context
+      const event: CookEvent = {
+        id: createEventId(),
+        recipeId: recipe.id,
+        recipeTitle: recipe.title,
+        servings: servingsToRecord,
+        cookedAt,
+        note: normalizedNote,
+        createdAt: cookedAt,
+        updatedAt: cookedAt,
+      };
+      const events = [...get().events, event];
+      set({ events });
+      const activeScope = getActiveDataScope();
+      void trackPersistence('activity', () => persistEvents(events, activeScope));
+      void trackSync('activity', () => enqueueEntityMutation(getMutationScope('cook_event', activeScope, activeScope), 'cook_event', event.id, 'upsert', event));
+      return Promise.resolve(event.id);
+    },
   removeCookEvent: (id) => {
     const existing = get().events.find((event) => event.id === id);
     if (existing === undefined) return false;

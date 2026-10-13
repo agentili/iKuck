@@ -7,7 +7,9 @@ import {
   commitPantryRecoverySnapshot,
   finalizePantryRecoverySnapshot,
   isIndexedDbAvailable,
+  onLocalDatabaseReset,
   readKeyValue,
+  recoverLocalStorageJournal,
   updateKeyValue,
   writeKeyValue,
   type KeyValueCompareAndWrite,
@@ -22,6 +24,13 @@ const knownObsoleteLocalMirrors = new Map<SyncScope, string | null>();
 const pantryWriteLocks = new Map<SyncScope, Promise<void>>();
 const observedPantryCanonicalSnapshots = new Map<SyncScope, string | null>();
 const activePantryConflicts = new Map<SyncScope, PantrySnapshotConflictError>();
+
+// Deleting the local database invalidates every in-memory observation of it;
+// comparing a fresh store against the previous session's raw value would fabricate conflicts.
+onLocalDatabaseReset(() => {
+  observedPantryCanonicalSnapshots.clear();
+  knownObsoleteLocalMirrors.clear();
+});
 const pendingIndexedDbStorageKey = (scope: SyncScope): string => `${scopedPantryStorageKey(scope)}-idb-pending`;
 const obsoleteMirrorDatabaseKey = (scope: SyncScope): string => `${scopedPantryDatabaseKey(scope)}-mirror-obsolete`;
 
@@ -77,12 +86,16 @@ export const LEGACY_PANTRY_STORAGE_KEY = 'iricetto-pantry-v1';
 export const PANTRY_DATABASE_KEY = 'pantry';
 export const PANTRY_CONFLICT_BACKUP_KEY = 'ikuck-pantry-conflict-backup-v1';
 const PANTRY_CONFLICT_ARCHIVE_KEY = 'ikuck-pantry-conflict-archive-v1';
-const scopedPantryStorageKey = (scope: SyncScope = getActiveDataScope()): string => scope === 'guest'
+export const pantryStorageKeyForScope = (scope: SyncScope = getActiveDataScope()): string => scope === 'guest'
   ? PANTRY_STORAGE_KEY
   : scopeStorageKey(scope, PANTRY_STORAGE_KEY);
-const scopedPantryDatabaseKey = (scope: SyncScope = getActiveDataScope()): string => scope === 'guest'
+
+export const pantryDatabaseKeyForScope = (scope: SyncScope = getActiveDataScope()): string => scope === 'guest'
   ? PANTRY_DATABASE_KEY
   : scopeStorageKey(scope, PANTRY_DATABASE_KEY);
+
+const scopedPantryStorageKey = pantryStorageKeyForScope;
+const scopedPantryDatabaseKey = pantryDatabaseKeyForScope;
 
 export interface PantrySnapshot {
   pantryItems: ParsedIngredient[];
@@ -303,6 +316,14 @@ function parsePantrySnapshot(raw: string): PantrySnapshot | null {
     return null;
   }
 }
+
+export { parsePantrySnapshot };
+
+export const serializePantrySnapshot = (snapshot: PantrySnapshot, revision?: number): string => JSON.stringify({
+  state: normalizePantrySnapshot(snapshot),
+  version: 1,
+  ...(revision === undefined ? {} : { revision }),
+});
 
 function getLocalStorage(): Storage | null {
   try {
@@ -1095,6 +1116,8 @@ function readLocalStorageSource(): LocalStorageSource | null {
 }
 
 const readLocalStorageData = (scope: SyncScope = getActiveDataScope()): LocalStoragePantryData => {
+  // Finish any interrupted fallback journal before comparing mirror values.
+  recoverLocalStorageJournal();
   const storage = getLocalStorage();
   if (storage === null) return { raw: null, snapshot: null };
   let raw: string | null;
@@ -1664,6 +1687,9 @@ const readPantrySnapshotInternal = async (
   pantryWriteLockHeld: boolean,
 ): Promise<PantrySnapshot | null> => {
   await throwIfPantryConflictActive(scope);
+  // Reads must observe a committed before/after image, never a half-applied one.
+  // Recovery stays behind the conflict gate so a paused scope never touches the mirror.
+  recoverLocalStorageJournal();
   const pending = pendingPantrySnapshots.get(scope);
   if (pending !== undefined) return parsePantrySnapshot(pending);
   if (!isIndexedDbAvailable()) {

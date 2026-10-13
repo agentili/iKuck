@@ -19,16 +19,54 @@ interface LocalStorageJournal {
   after: Record<string, string | null>;
 }
 
-const applyLocalStorageValues = (values: Record<string, string | null>): void => {
+const applyLocalStorageValues = (storage: Storage, values: Record<string, string | null>): void => {
   for (const [key, value] of Object.entries(values)) {
-    if (value === null) window.localStorage.removeItem(key);
-    else window.localStorage.setItem(key, value);
+    if (value === null) storage.removeItem(key);
+    else storage.setItem(key, value);
   }
 };
 
+// The localStorage getter itself can be denied (privacy mode, enterprise policy).
+// Callers that only maintain a mirror must treat a denied getter as "nothing to do";
+// callers that rely on localStorage as the durable store must use requireLocalStorage.
+function getLocalStorage(): Storage | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function requireLocalStorage(): Storage {
+  const storage = getLocalStorage();
+  if (storage === null) {
+    throw new Error('localStorage is unavailable for the durable local fallback');
+  }
+  return storage;
+}
+
+type LocalDatabaseResetListener = () => void;
+const localDatabaseResetListeners = new Set<LocalDatabaseResetListener>();
+
+// In-memory observations of the durable stores become stale as soon as the local
+// database is deleted; subscribers drop them instead of comparing against ghosts.
+export function onLocalDatabaseReset(listener: LocalDatabaseResetListener): () => void {
+  localDatabaseResetListeners.add(listener);
+  return () => localDatabaseResetListeners.delete(listener);
+}
+
 export function recoverLocalStorageJournal(): void {
-  if (typeof window === 'undefined') return;
-  const raw = window.localStorage.getItem(LOCAL_STORAGE_JOURNAL_KEY);
+  const storage = getLocalStorage();
+  if (storage === null) return;
+  let raw: string | null;
+  try {
+    raw = storage.getItem(LOCAL_STORAGE_JOURNAL_KEY);
+  } catch {
+    // Best-effort mirror maintenance: a denied read cannot be recovered here,
+    // and recovery must never break the IndexedDB-backed caller.
+    return;
+  }
   if (raw === null) return;
 
   let journal: LocalStorageJournal;
@@ -38,32 +76,43 @@ export function recoverLocalStorageJournal(): void {
       || !('state' in parsed) || (parsed.state !== 'prepared' && parsed.state !== 'committed')
       || !('before' in parsed) || typeof parsed.before !== 'object' || parsed.before === null
       || !('after' in parsed) || typeof parsed.after !== 'object' || parsed.after === null) {
-      window.localStorage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
-      return;
+      throw new Error('Malformed local storage journal');
     }
     journal = parsed as LocalStorageJournal;
   } catch {
-    window.localStorage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
+    try {
+      storage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
+    } catch {
+      // A denied cleanup leaves the journal for the next successful recovery attempt.
+    }
     return;
   }
 
-  applyLocalStorageValues(journal.state === 'committed' ? journal.after : journal.before);
-  window.localStorage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
+  try {
+    // Applying either image is idempotent, so a partially applied recovery can be retried.
+    applyLocalStorageValues(storage, journal.state === 'committed' ? journal.after : journal.before);
+    storage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
+  } catch {
+    // Keep the journal: the next read retries the recovery instead of trusting a half-applied image.
+  }
 }
 
 export function commitLocalStorageJournal(after: Record<string, string | null>): void {
   recoverLocalStorageJournal();
-  const before = Object.fromEntries(Object.keys(after).map((key) => [key, window.localStorage.getItem(key)]));
+  // This is the durable path used only when IndexedDB is unavailable: a denied
+  // localStorage access must fail the operation instead of fabricating success.
+  const storage = requireLocalStorage();
+  const before = Object.fromEntries(Object.keys(after).map((key) => [key, storage.getItem(key)]));
   const journal: LocalStorageJournal = { version: 1, state: 'prepared', before, after };
-  window.localStorage.setItem(LOCAL_STORAGE_JOURNAL_KEY, JSON.stringify(journal));
+  storage.setItem(LOCAL_STORAGE_JOURNAL_KEY, JSON.stringify(journal));
 
   try {
-    applyLocalStorageValues(after);
-    window.localStorage.setItem(LOCAL_STORAGE_JOURNAL_KEY, JSON.stringify({ ...journal, state: 'committed' }));
+    applyLocalStorageValues(storage, after);
+    storage.setItem(LOCAL_STORAGE_JOURNAL_KEY, JSON.stringify({ ...journal, state: 'committed' }));
   } catch (error) {
     try {
-      applyLocalStorageValues(before);
-      window.localStorage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
+      applyLocalStorageValues(storage, before);
+      storage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
     } catch {
       // Keep the prepared journal so the next read can restore the before-image.
     }
@@ -71,7 +120,7 @@ export function commitLocalStorageJournal(after: Record<string, string | null>):
   }
 
   try {
-    window.localStorage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
+    storage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
   } catch {
     // The committed journal is recoverable and is authoritative on the next read.
   }
@@ -395,18 +444,29 @@ export async function deleteQueueValue(
   await transaction.done;
 }
 
-const removeLocalDinnerConsumptionRecords = (scope: SyncScope): void => {
+const removeLocalDinnerConsumptionRecords = (scope: SyncScope, durable: boolean): void => {
   if (isIndexedDbAvailable()) return;
   recoverLocalStorageJournal();
-  const localPrefix = scopeStorageKey(scope, DINNER_CONSUMPTION_RECORD_STORAGE_PREFIX);
-  const localRecordKeys = Array.from({ length: window.localStorage.length }, (_, index) => window.localStorage.key(index))
-    .filter((key): key is string => key !== null && key.startsWith(localPrefix));
-  for (const key of localRecordKeys) window.localStorage.removeItem(key);
+  const storage = getLocalStorage();
+  if (storage === null) {
+    if (durable) throw new Error('The dinner outbox could not be purged because localStorage is unavailable');
+    return;
+  }
+  try {
+    const localPrefix = scopeStorageKey(scope, DINNER_CONSUMPTION_RECORD_STORAGE_PREFIX);
+    const localRecordKeys = Array.from({ length: storage.length }, (_, index) => storage.key(index))
+      .filter((key): key is string => key !== null && key.startsWith(localPrefix));
+    for (const key of localRecordKeys) storage.removeItem(key);
+  } catch (error) {
+    // Without IndexedDB localStorage is the durable store: a denied purge must fail
+    // loudly instead of leaving records behind as if the scope had been cleared.
+    if (durable) throw error;
+  }
 };
 
 export async function deleteQueueScope(scope: SyncScope): Promise<void> {
   if (!isIndexedDbAvailable()) {
-    removeLocalDinnerConsumptionRecords(scope);
+    removeLocalDinnerConsumptionRecords(scope, true);
     return;
   }
   const database = await openLocalDatabase();
@@ -424,7 +484,7 @@ export async function deleteQueueScope(scope: SyncScope): Promise<void> {
     if (typeof value.operationId === 'string') await consumption.delete(value.operationId);
   }
   await transaction.done;
-  removeLocalDinnerConsumptionRecords(scope);
+  removeLocalDinnerConsumptionRecords(scope, false);
 }
 
 export async function readMeta<T>(key: string): Promise<T | null> {
@@ -462,4 +522,5 @@ export async function deleteLocalDatabase(): Promise<void> {
   if (isIndexedDbAvailable()) {
     await deleteDB(LOCAL_DATABASE_NAME);
   }
+  for (const listener of [...localDatabaseResetListeners]) listener();
 }

@@ -2,7 +2,7 @@ import type { DiaryDraftSet, DinnerEntry, SavedRecipe } from '@ikuck/shared/dinn
 import { isDiaryDraftSet, isDinnerEntry, isSavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { getActiveDataScope, scopeStorageKey, type SyncScope } from '../sync/scopeContext';
 import { trackScopedWrite } from '../sync/scopeWriteFence';
-import { deleteKeyValue, isIndexedDbAvailable, readKeyValue, writeKeyValue } from './indexedDb';
+import { deleteKeyValue, isIndexedDbAvailable, readKeyValue, recoverLocalStorageJournal, writeKeyValue } from './indexedDb';
 
 const ENTRIES_DATABASE_KEY = 'dinner-entries';
 const RECIPES_DATABASE_KEY = 'saved-recipes';
@@ -10,7 +10,18 @@ const ENTRIES_STORAGE_KEY = 'ikuck-dinner-entries-v1';
 const RECIPES_STORAGE_KEY = 'ikuck-saved-recipes-v1';
 const DRAFTS_DATABASE_KEY = 'dinner-drafts';
 const DRAFTS_STORAGE_KEY = 'ikuck-dinner-drafts-v1';
+
+export const dinnerEntriesStorageKeyForScope = (scope: SyncScope): string => scopeStorageKey(scope, ENTRIES_STORAGE_KEY);
+
+export const dinnerEntriesDatabaseKeyForScope = (scope: SyncScope): string => scopeStorageKey(scope, ENTRIES_DATABASE_KEY);
+
 const keyFor = (scope: SyncScope, key: string): string => scopeStorageKey(scope, key);
+
+export function parseDinnerEntriesSnapshot(raw: string | null): DinnerEntry[] {
+  return parseCollection(raw, normalizeEntries);
+}
+
+export const serializeDinnerEntriesSnapshot = (entries: readonly DinnerEntry[]): string => serializeCollection(entries, normalizeEntries);
 
 const normalizeByNewest = <T extends { id: string; updatedAt: string }>(items: readonly unknown[], guard: (item: unknown) => item is T): T[] => {
   const unique = new Map<string, T>();
@@ -42,6 +53,8 @@ const serializeCollection = <T>(items: readonly T[], normalize: (values: readonl
 async function readCollection<T>(databaseKey: string, storageKey: string, scope: SyncScope, normalize: (items: readonly unknown[]) => T[]): Promise<T[]> {
   const scopedDbKey = keyFor(scope, databaseKey);
   const scopedStorageKey = keyFor(scope, storageKey);
+  // Finish any interrupted fallback journal first so a committed write is never read back stale.
+  recoverLocalStorageJournal();
   const fallback = () => parseCollection(window.localStorage.getItem(scopedStorageKey), normalize);
   if (!isIndexedDbAvailable()) return fallback();
   try {

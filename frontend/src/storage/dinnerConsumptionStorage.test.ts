@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DinnerConsumptionCommand } from '@ikuck/shared/pantryConsumption';
 import type { CookEvent } from '@ikuck/shared/contracts';
 import type { DinnerEntry } from '@ikuck/shared/dinnerDiary';
-import { setActiveDataScope, scopeStorageKey } from '../sync/scopeContext';
+import { getActiveDataScope, setActiveDataScope, scopeStorageKey } from '../sync/scopeContext';
 import { resumeScope, revokeScope } from '../sync/scopeWriteFence';
 import { closeLocalDatabase, deleteLocalDatabase, deleteQueueScope, DINNER_CONSUMPTION_RECORD_STORAGE_PREFIX, LOCAL_STORAGE_JOURNAL_KEY, readQueueValues } from './indexedDb';
 import * as indexedDb from './indexedDb';
@@ -14,6 +14,7 @@ import {
   commitDinnerConsumption,
   readDinnerConsumptionOutbox,
   readDinnerConsumptionReceipt,
+  reconcileDinnerConsumption,
 } from './dinnerConsumptionStorage';
 
 const timestamp = '2026-10-07T09:00:00.000Z';
@@ -417,5 +418,193 @@ describe('dinner consumption storage', () => {
       releaseOpen?.();
       open.mockRestore();
     }
+  });
+
+  describe('denied localStorage access while IndexedDB is durable', () => {
+    const denyLocalStorageGetter = (): (() => void) => {
+      const ownDescriptor = Object.getOwnPropertyDescriptor(window, 'localStorage');
+      Object.defineProperty(window, 'localStorage', {
+        configurable: true,
+        get() {
+          throw new DOMException('The localStorage getter was denied', 'SecurityError');
+        },
+      });
+      return () => {
+        if (ownDescriptor !== undefined) Object.defineProperty(window, 'localStorage', ownDescriptor);
+        else Reflect.deleteProperty(window, 'localStorage');
+      };
+    };
+
+    const denyStorageMethod = (method: 'getItem' | 'setItem' | 'removeItem'): (() => void) => {
+      const denied = (): never => {
+        throw new DOMException(`Storage.${method} was denied`, 'SecurityError');
+      };
+      const spy = method === 'getItem'
+        ? vi.spyOn(Storage.prototype, 'getItem').mockImplementation(denied)
+        : method === 'setItem'
+          ? vi.spyOn(Storage.prototype, 'setItem').mockImplementation(denied)
+          : vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(denied);
+      return () => spy.mockRestore();
+    };
+
+    const stockPantry = () => writePantrySnapshot({
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+      stapleIds: ['salt'],
+      pantryLots: [lot('pasta-lot', 'pasta', 500, 'g')],
+    }, 'guest');
+
+    const expectCommittedReceipt = async (): Promise<void> => {
+      const result = await commitDinnerConsumption({ command, entry, cookEvent: event, updatedAt: timestamp });
+      expect(result.duplicate).toBe(false);
+      await expect(readDinnerConsumptionReceipt(command.operationId, 'guest')).resolves.toEqual(result.receipt);
+      await expect(readDinnerConsumptionOutbox('guest')).resolves.toMatchObject([
+        { operationId: command.operationId, status: 'pending', cookEvent: event },
+      ]);
+      const retry = await commitDinnerConsumption({ command, entry, cookEvent: event, updatedAt: timestamp });
+      expect(retry.duplicate).toBe(true);
+    };
+
+    it('commits the dinner when the localStorage getter is denied', async () => {
+      await stockPantry();
+      const restore = denyLocalStorageGetter();
+      try {
+        await expectCommittedReceipt();
+      } finally {
+        restore();
+      }
+    });
+
+    it.each(['getItem', 'setItem', 'removeItem'] as const)('commits the dinner when Storage.%s is denied', async (method) => {
+      await stockPantry();
+      const restore = denyStorageMethod(method);
+      try {
+        await expectCommittedReceipt();
+      } finally {
+        restore();
+      }
+    });
+
+    const withoutIndexedDb = async (action: () => Promise<void>): Promise<void> => {
+      const descriptor = Object.getOwnPropertyDescriptor(window, 'indexedDB');
+      Object.defineProperty(window, 'indexedDB', { configurable: true, value: undefined });
+      try {
+        await action();
+      } finally {
+        if (descriptor) Object.defineProperty(window, 'indexedDB', descriptor);
+      }
+    };
+
+    const expectNoDurableCommit = async (): Promise<void> => {
+      await expect(readDinnerConsumptionOutbox('guest')).resolves.toEqual([]);
+      await expect(readDinnerConsumptionReceipt(command.operationId, 'guest')).resolves.toBeNull();
+    };
+
+    it('fails closed when the localStorage getter is denied without IndexedDB', async () => {
+      const restore = denyLocalStorageGetter();
+      try {
+        await withoutIndexedDb(() => expect(commitDinnerConsumption({ command, entry, updatedAt: timestamp })).rejects.toThrow());
+      } finally {
+        restore();
+      }
+      await expectNoDurableCommit();
+    });
+
+    it.each(['getItem', 'setItem'] as const)('fails closed when Storage.%s is denied without IndexedDB', async (method) => {
+      const restore = denyStorageMethod(method);
+      try {
+        await withoutIndexedDb(() => expect(commitDinnerConsumption({ command, entry, updatedAt: timestamp })).rejects.toThrow());
+      } finally {
+        restore();
+      }
+      await expectNoDurableCommit();
+    });
+
+    it('keeps a durable local commit when only journal cleanup is denied without IndexedDB', async () => {
+      const restore = denyStorageMethod('removeItem');
+      try {
+        await withoutIndexedDb(async () => {
+          const result = await commitDinnerConsumption({ command, entry, updatedAt: timestamp });
+          expect(result.duplicate).toBe(false);
+          await expect(readDinnerConsumptionReceipt(command.operationId, 'guest'))
+            .resolves.toEqual(expect.objectContaining({ operationId: command.operationId }));
+          await expect(readDinnerConsumptionOutbox('guest')).resolves.toHaveLength(1);
+        });
+      } finally {
+        restore();
+      }
+      // Once cleanup is allowed again, the pending committed journal is finished by the next read.
+      await withoutIndexedDb(async () => {
+        await expect(readDinnerConsumptionOutbox('guest')).resolves.toHaveLength(1);
+      });
+      expect(window.localStorage.getItem(LOCAL_STORAGE_JOURNAL_KEY)).toBeNull();
+    });
+
+    it('acknowledges an IndexedDB-backed outbox record when mirror reads are denied', async () => {
+      await stockPantry();
+      const committed = await commitDinnerConsumption({ command, entry, updatedAt: timestamp });
+      const restore = denyStorageMethod('getItem');
+      try {
+        await acknowledgeDinnerConsumption(command.operationId, 'guest');
+        await expect(readDinnerConsumptionReceipt(command.operationId, 'guest')).resolves.toEqual(committed.receipt);
+        await expect(readDinnerConsumptionOutbox('guest')).resolves.toEqual([]);
+      } finally {
+        restore();
+      }
+    });
+
+    it('reconciles an IndexedDB-backed dinner when mirror reads are denied', async () => {
+      await stockPantry();
+      const committed = await commitDinnerConsumption({ command, entry, cookEvent: event, updatedAt: timestamp });
+      const restore = denyStorageMethod('getItem');
+      try {
+        const reconciled = await reconcileDinnerConsumption({
+          operationId: command.operationId,
+          originalScope: 'guest',
+          canonicalScope: 'guest',
+          result: {
+            entry,
+            cookEvent: event,
+            pantrySnapshot: committed.pantrySnapshot,
+            receipt: committed.receipt,
+          },
+          assertContext: () => {
+            if (getActiveDataScope() !== 'guest') throw new Error('The active data scope changed');
+          },
+        });
+        expect(reconciled.outbox.status).toBe('acknowledged');
+        await expect(readDinnerConsumptionOutbox('guest')).resolves.toEqual([]);
+        await expect(readDinnerConsumptionReceipt(command.operationId, 'guest')).resolves.toEqual(committed.receipt);
+      } finally {
+        restore();
+      }
+    });
+
+    it('keeps the durable IndexedDB purge working when mirror cleanup is denied', async () => {
+      await commitDinnerConsumption({ command, entry, updatedAt: timestamp });
+      const restore = denyStorageMethod('removeItem');
+      try {
+        await deleteQueueScope('guest');
+      } finally {
+        restore();
+      }
+      await expect(readDinnerConsumptionReceipt(command.operationId, 'guest')).resolves.toBeNull();
+      await expect(readDinnerConsumptionOutbox('guest')).resolves.toEqual([]);
+    });
+
+    it('fails the local purge closed instead of dropping records it cannot clear', async () => {
+      await withoutIndexedDb(async () => {
+        await commitDinnerConsumption({ command, entry, updatedAt: timestamp });
+      });
+      const restore = denyStorageMethod('removeItem');
+      try {
+        await withoutIndexedDb(() => expect(deleteQueueScope('guest')).rejects.toThrow());
+      } finally {
+        restore();
+      }
+      // The records survived the failed purge, so the scope is not silently cleared.
+      await withoutIndexedDb(async () => {
+        await expect(readDinnerConsumptionOutbox('guest')).resolves.toHaveLength(1);
+      });
+    });
   });
 });

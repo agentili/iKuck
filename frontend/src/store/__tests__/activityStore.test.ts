@@ -135,7 +135,6 @@ describe('activity store', () => {
       ingredients: [{ ingredientId: 'pasta', name: 'Pasta', amount: '100 g', optional: false, used: true }],
     };
     await writePantrySnapshot(initialPantry, scope);
-    usePantryStore.setState(initialPantry);
 
     const recordCookEvent = useActivityStore.getState().recordCookEvent;
     const firstConfirmation = recordCookEvent(recipe, event.servings, null, { command, event, entry });
@@ -234,16 +233,16 @@ describe('activity store', () => {
   });
 
   it('removes events and clears all activity explicitly', async () => {
-    const first = useActivityStore.getState().recordCookEvent(RECIPES[0]);
-    useActivityStore.getState().recordCookEvent(RECIPES[1]);
+    const first = await useActivityStore.getState().recordCookEvent(RECIPES[0]);
+    await useActivityStore.getState().recordCookEvent(RECIPES[1]);
     expect(first).not.toBeNull();
     expect(useActivityStore.getState().removeCookEvent(first!)).toBe(true);
     expect(useActivityStore.getState().clearActivity()).toBe(1);
     expect(useActivityStore.getState().events).toEqual([]);
   });
 
-  it('restores a removed cooking event with the same identity', () => {
-    const id = useActivityStore.getState().recordCookEvent(RECIPES[0]);
+  it('restores a removed cooking event with the same identity', async () => {
+    const id = await useActivityStore.getState().recordCookEvent(RECIPES[0]);
     const removedEvent = useActivityStore.getState().events[0];
 
     useActivityStore.getState().removeCookEvent(id!);
@@ -257,7 +256,7 @@ describe('activity store', () => {
     const houseScope = 'house:activity-home' as const;
     setPersonalDataScope(accountScope);
     setActiveDataScope(houseScope);
-    useActivityStore.getState().recordCookEvent(RECIPES[0]);
+    await useActivityStore.getState().recordCookEvent(RECIPES[0]);
     useActivityStore.getState().setRecipePreference(RECIPES[0].id, true, 5, null);
     await waitForPendingActivityWrites();
 
