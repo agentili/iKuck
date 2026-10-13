@@ -21,6 +21,20 @@ import { closeServerResources } from './serverShutdown.js';
 
 export const start = async () => {
   const config = loadConfig(process.env);
+  // Deferred fastify logger: the Google provider must exist before createApp,
+  // but real verification failures only happen at request time (after app exists).
+  let googleLog: ((details: Record<string, unknown>, message: string) => void) | undefined = undefined;
+  const google = config.googleClientId === undefined
+    ? undefined
+    : createGoogleIdentityProvider({
+      clientId: config.googleClientId,
+      logger: {
+        error: (details, message) => {
+          if (googleLog !== undefined) googleLog(details, message);
+          else console.error(JSON.stringify({ level: 'error', msg: message, ...details }));
+        },
+      },
+    });
   const database = createDatabase(config.databaseUrl);
   const s2sDatabase = config.s2sDinnerContextEnabled ? createRecoveringDatabase(config.databaseUrl) : undefined;
   const cache = createCache(config.redisUrl);
@@ -64,7 +78,7 @@ export const start = async () => {
       cache,
       auth: {
         service: auth,
-        google: config.googleClientId === undefined ? undefined : createGoogleIdentityProvider({ clientId: config.googleClientId }),
+        google,
         appOrigin: config.appOrigin,
         secureCookies: config.nodeEnvironment === 'production',
         rateLimiter: authRateLimiter,
@@ -100,6 +114,7 @@ export const start = async () => {
       trustProxy: config.trustProxy,
     },
   );
+  googleLog = (details, message) => { app.log.error(details, message); };
 
   const shutdown = async () => {
     await closeServerResources(
