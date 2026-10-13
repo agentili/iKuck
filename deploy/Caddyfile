@@ -21,6 +21,9 @@
 
     root * /srv/frontend
     try_files {path} /index.html
+    header /sw.js Cache-Control "no-cache, no-store, must-revalidate"
+    header /version.json Cache-Control "no-cache, must-revalidate"
+    header /index.html Cache-Control "no-cache, must-revalidate"
     file_server
   }
 }
