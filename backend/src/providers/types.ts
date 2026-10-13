@@ -30,7 +30,7 @@ export class ProviderRequestError extends Error {
 export class ProviderTimeoutError extends Error {
   readonly code = 'provider_timeout' as const;
 
-  constructor(readonly provider: ProviderName | 'resend') {
+  constructor(readonly provider: ProviderName) {
     super(`${provider} provider request timed out`);
     this.name = 'ProviderTimeoutError';
   }
