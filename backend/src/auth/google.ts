@@ -33,9 +33,15 @@ export interface GoogleIdentityProvider {
   verifyCredential: (credential: string) => Promise<GoogleIdentity>;
 }
 
+/** Minimal logger shape so verification failures can surface their real cause. */
+export interface GoogleIdentityLogger {
+  error: (details: Record<string, unknown>, message: string) => void;
+}
+
 export const createGoogleIdentityProvider = (input: {
   clientId: string;
   client?: GoogleTokenClient;
+  logger?: GoogleIdentityLogger;
 }): GoogleIdentityProvider => {
   const client = input.client ?? new OAuth2Client(input.clientId);
 
@@ -54,6 +60,16 @@ export const createGoogleIdentityProvider = (input: {
           displayName: payload.name,
         };
       } catch (error) {
+        // Log the real cause (never the credential itself) so operators can
+        // distinguish invalid signatures, audience mismatches, clock skew, etc.
+        const reason = error instanceof Error ? error.message : String(error);
+        const code = typeof error === 'object' && error !== null && 'code' in error
+          ? String((error as { code?: unknown }).code)
+          : undefined;
+        input.logger?.error(
+          { provider: 'google', reason, ...(code === undefined ? {} : { code }) },
+          'Google credential verification failed',
+        );
         if (error instanceof GoogleIdentityError) throw error;
         throw new GoogleIdentityError('Google credential could not be verified');
       }
