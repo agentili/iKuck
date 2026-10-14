@@ -1,5 +1,5 @@
 import type { AppConfig, ProviderConfig } from '../config.js';
-import { createResendEmailProvider } from './resend.js';
+import { createSmtpEmailProvider, type SmtpTransportFactory } from './smtp.js';
 import { createUsdaNutritionProvider } from './usda.js';
 import { createOpenAiRecipeProvider } from './openaiRecipes.js';
 import { createOpenAiDinnerReconstructionProvider } from './openaiDinnerReconstruction.js';
@@ -16,10 +16,29 @@ import type { ProviderBundle } from './types.js';
 
 export interface ProviderFactoryOptions {
   fetch?: typeof globalThis.fetch;
+  createTransport?: SmtpTransportFactory;
 }
 
 const reasonFor = (configured: string | undefined): ProviderUnavailableReason => (
   configured === undefined ? 'missing_configuration' : 'adapter_not_enabled'
+);
+
+type ConfiguredSmtpProviderConfig = ProviderConfig & { smtpHost: string; emailFrom: string };
+
+const isSmtpAuthConfigured = ({ smtpUser, smtpPass }: ProviderConfig): boolean => (
+  (smtpUser === undefined) === (smtpPass === undefined)
+);
+
+const isSmtpConfigured = (providers: ProviderConfig): providers is ConfiguredSmtpProviderConfig => (
+  providers.smtpHost !== undefined
+  && providers.emailFrom !== undefined
+  && isSmtpAuthConfigured(providers)
+);
+
+const emailUnavailableReason = (providers: ProviderConfig): ProviderUnavailableReason => (
+  providers.smtpHost === undefined || !isSmtpAuthConfigured(providers)
+    ? 'missing_configuration'
+    : 'adapter_not_enabled'
 );
 
 export const createProviders = (
@@ -29,14 +48,18 @@ export const createProviders = (
   const providers: ProviderConfig = config.providers;
 
   return {
-    email: providers.resendApiKey !== undefined && providers.resendFrom !== undefined
-      ? createResendEmailProvider({
-        apiKey: providers.resendApiKey,
-        from: providers.resendFrom,
-        fetch: options.fetch,
-        timeoutMs: providers.resendTimeoutMs,
+    email: isSmtpConfigured(providers)
+      ? createSmtpEmailProvider({
+        host: providers.smtpHost,
+        port: providers.smtpPort ?? 587,
+        secure: (providers.smtpPort ?? 587) === 465,
+        user: providers.smtpUser,
+        pass: providers.smtpPass,
+        from: providers.emailFrom,
+        timeoutMs: providers.smtpTimeoutMs,
+        createTransport: options.createTransport,
       })
-      : createUnavailableEmailProvider(reasonFor(providers.resendApiKey)),
+      : createUnavailableEmailProvider(emailUnavailableReason(providers)),
     nutrition: providers.usdaApiKey !== undefined
       ? createUsdaNutritionProvider({ apiKey: providers.usdaApiKey, fetch: options.fetch, timeoutMs: providers.usdaTimeoutMs })
       : createUnavailableNutritionProvider(reasonFor(providers.usdaApiKey)),

@@ -3,9 +3,12 @@ import { BRING_LIST_ID_MAX_LENGTH } from '@ikuck/shared/bring';
 
 export interface ProviderConfig {
   recipeProvider?: 'openai' | 'gemini';
-  resendApiKey?: string;
-  resendFrom?: string;
-  resendTimeoutMs?: number;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpUser?: string;
+  smtpPass?: string;
+  emailFrom?: string;
+  smtpTimeoutMs?: number;
   usdaApiKey?: string;
   usdaTimeoutMs?: number;
   openAiApiKey?: string;
@@ -51,9 +54,12 @@ const optionalEnvironmentString = () => z.preprocess(
   z.string().min(1).optional(),
 );
 
-const optionalEnvironmentEmail = () => z.preprocess(
+// Accepts both `sender@example.com` and `Display Name <sender@example.com>`.
+const SENDER_PATTERN = /^[^<>]*<[^<>]+@[^<>]+\.[^<>]+>$|^[^<>\s@]+@[^<>\s@]+\.[^<>\s]+$/;
+
+const optionalEnvironmentSender = () => z.preprocess(
   (value) => value === '' ? undefined : value,
-  z.string().email().optional(),
+  z.string().min(1).regex(SENDER_PATTERN, 'EMAIL_FROM must be an email address').optional(),
 );
 
 const environmentSchema = z.object({
@@ -66,16 +72,24 @@ const environmentSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   SYNC_MAX_CLIENT_CLOCK_SKEW_SECONDS: z.coerce.number().int().min(0).max(86400).default(300),
-  RESEND_TIMEOUT_MS: z.coerce.number().int().min(100).max(120000).default(10000),
   USDA_TIMEOUT_MS: z.coerce.number().int().min(100).max(120000).default(8000),
   OPENAI_TIMEOUT_MS: z.coerce.number().int().min(100).max(120000).default(30000),
   TRUST_PROXY: z.preprocess(
     (value) => value === '' ? undefined : value,
     z.string().min(1).optional(),
   ),
-  RESEND_API_KEY: optionalEnvironmentString(),
-  RESEND_FROM_EMAIL: optionalEnvironmentEmail(),
-  RESEND_FROM: optionalEnvironmentEmail(),
+  SMTP_HOST: optionalEnvironmentString(),
+  SMTP_PORT: z.preprocess(
+    (value) => value === '' ? undefined : value,
+    z.coerce.number().int().min(1).max(65535).default(587),
+  ),
+  SMTP_USER: optionalEnvironmentString(),
+  SMTP_PASS: optionalEnvironmentString(),
+  EMAIL_FROM: optionalEnvironmentSender(),
+  SMTP_TIMEOUT_MS: z.preprocess(
+    (value) => value === '' ? undefined : value,
+    z.coerce.number().int().min(100).max(120000).default(10000),
+  ),
   USDA_API_KEY: optionalEnvironmentString(),
   OPENAI_API_KEY: optionalEnvironmentString(),
   OPENAI_MODEL: z.string().min(1).default('gpt-5.5'),
@@ -124,9 +138,12 @@ export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
     syncMaxClientClockSkewMs: parsed.SYNC_MAX_CLIENT_CLOCK_SKEW_SECONDS * 1000,
     providers: {
       recipeProvider: parsed.RECIPE_PROVIDER,
-      resendApiKey: parsed.RESEND_API_KEY,
-      resendFrom: parsed.RESEND_FROM_EMAIL ?? parsed.RESEND_FROM,
-      resendTimeoutMs: parsed.RESEND_TIMEOUT_MS,
+      smtpHost: parsed.SMTP_HOST,
+      smtpPort: parsed.SMTP_PORT,
+      smtpUser: parsed.SMTP_USER,
+      smtpPass: parsed.SMTP_PASS,
+      emailFrom: parsed.EMAIL_FROM,
+      smtpTimeoutMs: parsed.SMTP_TIMEOUT_MS,
       usdaApiKey: parsed.USDA_API_KEY,
       usdaTimeoutMs: parsed.USDA_TIMEOUT_MS,
       openAiApiKey: parsed.OPENAI_API_KEY,
