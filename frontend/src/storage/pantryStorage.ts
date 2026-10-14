@@ -1340,7 +1340,10 @@ const selectPantrySnapshot = async (
       || (localRevision === null && mirrorIsObsolete))) {
     return indexedSnapshot;
   }
-  if (hasPendingIndexedDbWrite(scope) && localSnapshot !== null && !mirrorIsObsolete) return localSnapshot;
+  // A pending IndexedDB write marker means another tab has newer data in localStorage
+  // that hasn't reached IndexedDB yet. Prefer the local snapshot regardless of the
+  // mirrorObsolete flag, which may reflect a previous failed attempt.
+  if (hasPendingIndexedDbWrite(scope) && localSnapshot !== null) return localSnapshot;
   if (!mirrorIsObsolete && indexedSnapshot !== null && localSnapshot !== null
     && pantrySnapshotsDiffer(indexedDbRaw, indexedSnapshot, localRaw, localSnapshot)) {
     // Unversioned legacy clients could leave their latest edit only in the local mirror.

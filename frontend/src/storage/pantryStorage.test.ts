@@ -2652,6 +2652,33 @@ describe('pantry storage', () => {
     await expect(readPantrySnapshot()).rejects.toMatchObject({ code: 'pantry_snapshot_conflict' });
   });
 
+  it('prefers the pending local mirror over an obsolete IndexedDB copy when neither side is revisioned', async () => {
+    const indexedDbRaw = JSON.stringify({
+      state: { pantryItems: [{ id: 'indexed-obsolete', label: 'Pasta', known: true }], stapleIds: ['salt'] },
+      version: 1,
+      mirrorObsolete: true,
+    });
+    const localRaw = JSON.stringify({
+      state: { pantryItems: [{ id: 'local-pending', label: 'Riso', known: true }], stapleIds: [] },
+      version: 1,
+    });
+    await indexedDb.writeKeyValue('pantry', indexedDbRaw);
+    window.localStorage.setItem(PANTRY_STORAGE_KEY, localRaw);
+
+    // Control: without a pending marker the obsolete IndexedDB copy still wins.
+    await expect(readPantrySnapshot()).resolves.toMatchObject({
+      pantryItems: [{ id: 'indexed-obsolete' }],
+    });
+
+    // A pending marker means another tab holds newer local data that has not reached
+    // IndexedDB yet: the local mirror must win even though the copy is flagged obsolete
+    // (the flag can be left over from a previous failed mirror update).
+    window.localStorage.setItem(`${PANTRY_STORAGE_KEY}-idb-pending`, '1');
+    await expect(readPantrySnapshot()).resolves.toMatchObject({
+      pantryItems: [{ id: 'local-pending' }],
+    });
+  });
+
   it.each(['indexed-db', 'local-storage'] as const)(
     'keeps recovery retryable after marker cleanup fails in %s mode and the tab reloads',
     async (mode) => {
