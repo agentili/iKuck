@@ -1,13 +1,130 @@
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { SyncScope } from '../sync/scopeContext';
+import { scopeStorageKey, type SyncScope } from '../sync/scopeContext';
 
 export type { SyncScope } from '../sync/scopeContext';
 
 export const LOCAL_DATABASE_NAME = 'ikuck-local-v2';
-export const LOCAL_DATABASE_VERSION = 2;
+export const LOCAL_DATABASE_VERSION = 3;
 export const KEY_VALUE_STORE = 'keyValue';
 export const SYNC_QUEUE_STORE = 'syncQueue';
 export const SYNC_META_STORE = 'syncMeta';
+export const DINNER_CONSUMPTION_STORE = 'dinnerConsumption';
+export const DINNER_CONSUMPTION_RECORD_STORAGE_PREFIX = 'dinner-consumption-record:';
+export const LOCAL_STORAGE_JOURNAL_KEY = 'ikuck:local-storage-journal-v1';
+
+interface LocalStorageJournal {
+  version: 1;
+  state: 'prepared' | 'committed';
+  before: Record<string, string | null>;
+  after: Record<string, string | null>;
+}
+
+const applyLocalStorageValues = (storage: Storage, values: Record<string, string | null>): void => {
+  for (const [key, value] of Object.entries(values)) {
+    if (value === null) storage.removeItem(key);
+    else storage.setItem(key, value);
+  }
+};
+
+// The localStorage getter itself can be denied (privacy mode, enterprise policy).
+// Callers that only maintain a mirror must treat a denied getter as "nothing to do";
+// callers that rely on localStorage as the durable store must use requireLocalStorage.
+function getLocalStorage(): Storage | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function requireLocalStorage(): Storage {
+  const storage = getLocalStorage();
+  if (storage === null) {
+    throw new Error('localStorage is unavailable for the durable local fallback');
+  }
+  return storage;
+}
+
+type LocalDatabaseResetListener = () => void;
+const localDatabaseResetListeners = new Set<LocalDatabaseResetListener>();
+
+// In-memory observations of the durable stores become stale as soon as the local
+// database is deleted; subscribers drop them instead of comparing against ghosts.
+export function onLocalDatabaseReset(listener: LocalDatabaseResetListener): () => void {
+  localDatabaseResetListeners.add(listener);
+  return () => localDatabaseResetListeners.delete(listener);
+}
+
+export function recoverLocalStorageJournal(): void {
+  const storage = getLocalStorage();
+  if (storage === null) return;
+  let raw: string | null;
+  try {
+    raw = storage.getItem(LOCAL_STORAGE_JOURNAL_KEY);
+  } catch {
+    // Best-effort mirror maintenance: a denied read cannot be recovered here,
+    // and recovery must never break the IndexedDB-backed caller.
+    return;
+  }
+  if (raw === null) return;
+
+  let journal: LocalStorageJournal;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || !('version' in parsed) || parsed.version !== 1
+      || !('state' in parsed) || (parsed.state !== 'prepared' && parsed.state !== 'committed')
+      || !('before' in parsed) || typeof parsed.before !== 'object' || parsed.before === null
+      || !('after' in parsed) || typeof parsed.after !== 'object' || parsed.after === null) {
+      throw new Error('Malformed local storage journal');
+    }
+    journal = parsed as LocalStorageJournal;
+  } catch {
+    try {
+      storage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
+    } catch {
+      // A denied cleanup leaves the journal for the next successful recovery attempt.
+    }
+    return;
+  }
+
+  try {
+    // Applying either image is idempotent, so a partially applied recovery can be retried.
+    applyLocalStorageValues(storage, journal.state === 'committed' ? journal.after : journal.before);
+    storage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
+  } catch {
+    // Keep the journal: the next read retries the recovery instead of trusting a half-applied image.
+  }
+}
+
+export function commitLocalStorageJournal(after: Record<string, string | null>): void {
+  recoverLocalStorageJournal();
+  // This is the durable path used only when IndexedDB is unavailable: a denied
+  // localStorage access must fail the operation instead of fabricating success.
+  const storage = requireLocalStorage();
+  const before = Object.fromEntries(Object.keys(after).map((key) => [key, storage.getItem(key)]));
+  const journal: LocalStorageJournal = { version: 1, state: 'prepared', before, after };
+  storage.setItem(LOCAL_STORAGE_JOURNAL_KEY, JSON.stringify(journal));
+
+  try {
+    applyLocalStorageValues(storage, after);
+    storage.setItem(LOCAL_STORAGE_JOURNAL_KEY, JSON.stringify({ ...journal, state: 'committed' }));
+  } catch (error) {
+    try {
+      applyLocalStorageValues(storage, before);
+      storage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
+    } catch {
+      // Keep the prepared journal so the next read can restore the before-image.
+    }
+    throw error;
+  }
+
+  try {
+    storage.removeItem(LOCAL_STORAGE_JOURNAL_KEY);
+  } catch {
+    // The committed journal is recoverable and is authoritative on the next read.
+  }
+}
 
 interface LocalDatabaseSchema extends DBSchema {
   keyValue: {
@@ -25,6 +142,14 @@ interface LocalDatabaseSchema extends DBSchema {
   syncMeta: {
     key: string;
     value: unknown;
+  };
+  dinnerConsumption: {
+    key: string;
+    value: unknown;
+    indexes: {
+      byScope: SyncScope;
+      byScopeEntryId: string;
+    };
   };
 }
 
@@ -60,6 +185,11 @@ export async function openLocalDatabase(): Promise<IDBPDatabase<LocalDatabaseSch
 
         if (!database.objectStoreNames.contains(SYNC_META_STORE)) {
           database.createObjectStore(SYNC_META_STORE);
+        }
+        if (!database.objectStoreNames.contains(DINNER_CONSUMPTION_STORE)) {
+          const consumption = database.createObjectStore(DINNER_CONSUMPTION_STORE, { keyPath: 'operationId' });
+          consumption.createIndex('byScope', 'scope');
+          consumption.createIndex('byScopeEntryId', 'scopeEntryId', { unique: true });
         }
       },
     }).catch((error: unknown) => {
@@ -314,15 +444,47 @@ export async function deleteQueueValue(
   await transaction.done;
 }
 
+const removeLocalDinnerConsumptionRecords = (scope: SyncScope, durable: boolean): void => {
+  if (isIndexedDbAvailable()) return;
+  recoverLocalStorageJournal();
+  const storage = getLocalStorage();
+  if (storage === null) {
+    if (durable) throw new Error('The dinner outbox could not be purged because localStorage is unavailable');
+    return;
+  }
+  try {
+    const localPrefix = scopeStorageKey(scope, DINNER_CONSUMPTION_RECORD_STORAGE_PREFIX);
+    const localRecordKeys = Array.from({ length: storage.length }, (_, index) => storage.key(index))
+      .filter((key): key is string => key !== null && key.startsWith(localPrefix));
+    for (const key of localRecordKeys) storage.removeItem(key);
+  } catch (error) {
+    // Without IndexedDB localStorage is the durable store: a denied purge must fail
+    // loudly instead of leaving records behind as if the scope had been cleared.
+    if (durable) throw error;
+  }
+};
+
 export async function deleteQueueScope(scope: SyncScope): Promise<void> {
+  if (!isIndexedDbAvailable()) {
+    removeLocalDinnerConsumptionRecords(scope, true);
+    return;
+  }
   const database = await openLocalDatabase();
-  const transaction = database.transaction(SYNC_QUEUE_STORE, 'readwrite');
+  const transaction = database.transaction([SYNC_QUEUE_STORE, DINNER_CONSUMPTION_STORE], 'readwrite');
   const queue = transaction.objectStore(SYNC_QUEUE_STORE);
-  const values = await queue.index('byScope').getAll(scope) as Array<{ mutationId?: unknown }>;
-  for (const value of values) {
+  const consumption = transaction.objectStore(DINNER_CONSUMPTION_STORE);
+  const [queuedValues, consumptionValues] = await Promise.all([
+    queue.index('byScope').getAll(scope) as Promise<Array<{ mutationId?: unknown }>>,
+    consumption.index('byScope').getAll(scope) as Promise<Array<{ operationId?: unknown }>>,
+  ]);
+  for (const value of queuedValues) {
     if (typeof value.mutationId === 'string') await queue.delete(value.mutationId);
   }
+  for (const value of consumptionValues) {
+    if (typeof value.operationId === 'string') await consumption.delete(value.operationId);
+  }
   await transaction.done;
+  removeLocalDinnerConsumptionRecords(scope, false);
 }
 
 export async function readMeta<T>(key: string): Promise<T | null> {
@@ -342,7 +504,7 @@ export async function writeMeta<T>(key: string, value: T, assertWritable?: () =>
   await database.put(SYNC_META_STORE, value, key);
 }
 
-export async function deleteLocalDatabase(): Promise<void> {
+export async function closeLocalDatabase(): Promise<void> {
   const activeDatabase = databasePromise;
   databasePromise = null;
 
@@ -353,8 +515,12 @@ export async function deleteLocalDatabase(): Promise<void> {
       // The connection may already be closed after a failed open.
     }
   }
+}
 
+export async function deleteLocalDatabase(): Promise<void> {
+  await closeLocalDatabase();
   if (isIndexedDbAvailable()) {
     await deleteDB(LOCAL_DATABASE_NAME);
   }
+  for (const listener of [...localDatabaseResetListeners]) listener();
 }

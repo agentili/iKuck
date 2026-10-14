@@ -1,5 +1,9 @@
 import { pathToFileURL } from 'node:url';
 import { createApp } from './app.js';
+import { createBringGateway } from './bring/gateway.js';
+import { createDrizzleBringRepository } from './bring/repository.js';
+import { createBringService } from './bring/service.js';
+import { createSessionCipher } from './bring/sessionCipher.js';
 import { createAuthService } from './auth/service.js';
 import { createCache } from './cache/client.js';
 import { loadConfig } from './config.js';
@@ -49,6 +53,12 @@ export const start = async () => {
     appOrigin: config.appOrigin,
     autoVerifyEmail: config.nodeEnvironment === 'development',
   });
+  const bring = config.bringEnabled ? createBringService({
+    repository: createDrizzleBringRepository(database.db),
+    cipher: createSessionCipher(config.bringTokenEncryptionKey!),
+    gateway: createBringGateway(),
+    testListId: config.bringTestListId!,
+  }) : undefined;
   const houseRepository = createDrizzleHouseRepository(database.db);
   const sync = createDrizzleSyncRepository(database.db, {
     maxClientClockSkewMs: config.syncMaxClientClockSkewMs,
@@ -92,6 +102,8 @@ export const start = async () => {
       sync: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       house: { service: houseService, authService: auth, appOrigin: config.appOrigin, rateLimiter: authRateLimiter },
       dinnerDiary: { repository: sync, authService: auth, appOrigin: config.appOrigin },
+      dinnerConsumption: { repository: sync, authService: auth, appOrigin: config.appOrigin },
+      bring: { service: bring, authService: auth, appOrigin: config.appOrigin, rateLimiter: authRateLimiter },
       s2sDinnerContext,
       pantryLots: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       shoppingList: { repository: sync, authService: auth, appOrigin: config.appOrigin },

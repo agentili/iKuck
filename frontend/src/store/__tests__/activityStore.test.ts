@@ -1,8 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECIPES } from '../../domain/recipes';
-import { deleteLocalDatabase, readMeta } from '../../storage/indexedDb';
+import type { CookEvent } from '@ikuck/shared/contracts';
+import type { DinnerConsumptionCommand } from '@ikuck/shared/pantryConsumption';
+import type { DinnerEntry } from '@ikuck/shared/dinnerDiary';
+import { closeLocalDatabase, deleteLocalDatabase, readMeta } from '../../storage/indexedDb';
 import * as activityStorage from '../../storage/activityStorage';
 import { readCookEvents, readRecipePreferences } from '../../storage/activityStorage';
+import { readDinnerEntries } from '../../storage/dinnerDiaryStorage';
+import * as dinnerConsumptionStorage from '../../storage/dinnerConsumptionStorage';
+import { readDinnerConsumptionOutbox } from '../../storage/dinnerConsumptionStorage';
+import { readPantrySnapshot, writePantrySnapshot } from '../../storage/pantryStorage';
 import { GUEST_SYNC_SCOPE, readQueuedMutations } from '../../sync/syncQueue';
 import { setActiveDataScope, setPersonalDataScope } from '../../sync/scopeContext';
 import { waitForScopedWrites } from '../../sync/scopeWriteFence';
@@ -111,6 +118,80 @@ describe('activity store', () => {
     } finally { release?.(); await waitForPendingActivityWrites(); spy.mockRestore(); }
   });
 
+  it('confirms and retries a cook event through the shared consumption commit', async () => {
+    const scope = 'guest' as const;
+    const now = '2026-10-07T09:00:00.000Z';
+    const recipe = RECIPES.find((item) => item.ingredients.some((ingredient) => ingredient.ingredientId === 'pasta')) ?? RECIPES[0];
+    const lot = { id: 'activity-pasta-lot', ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 500, unit: 'g' as const, expiresAt: null, createdAt: now, updatedAt: now };
+    const initialPantry = { pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: ['salt'], pantryLots: [lot] };
+    const event: CookEvent = { id: 'event:shared-consumption-1', recipeId: recipe.id, recipeTitle: recipe.title, servings: 2, cookedAt: now, note: null, createdAt: now, updatedAt: now };
+    const entry: DinnerEntry = {
+      id: event.id, date: '2026-10-07', text: recipe.title, servings: event.servings, note: event.note,
+      recipes: [{ recipeId: recipe.id, title: recipe.title, source: recipe.source === 'diary' ? 'diary' : 'catalog' }],
+      authorId: null, createdAt: now, updatedAt: now,
+    };
+    const command: DinnerConsumptionCommand = {
+      operationId: 'activity-consumption-op-1', entryId: entry.id, scope, servings: event.servings,
+      ingredients: [{ ingredientId: 'pasta', name: 'Pasta', amount: '100 g', optional: false, used: true }],
+    };
+    await writePantrySnapshot(initialPantry, scope);
+
+    const recordCookEvent = useActivityStore.getState().recordCookEvent;
+    const firstConfirmation = recordCookEvent(recipe, event.servings, null, { command, event, entry });
+    const duplicateClick = recordCookEvent(recipe, event.servings, null, { command, event, entry });
+    await expect(Promise.all([firstConfirmation, duplicateClick])).resolves.toEqual([event.id, event.id]);
+    await closeLocalDatabase();
+    useActivityStore.setState({ events: [] });
+    await hydrateActivityStore();
+    await expect(recordCookEvent(recipe, event.servings, null, { command, event, entry })).resolves.toBe(event.id);
+
+    const expectedRemaining = lot.quantity - 100 * command.servings;
+    await expect(readPantrySnapshot(scope)).resolves.toMatchObject({
+      pantryLots: [expect.objectContaining({ id: lot.id, quantity: expectedRemaining })],
+      stapleIds: initialPantry.stapleIds,
+    });
+    await expect(readCookEvents(scope)).resolves.toEqual([event]);
+    await expect(readDinnerEntries(scope)).resolves.toEqual([entry]);
+    await expect(readDinnerConsumptionOutbox(scope)).resolves.toMatchObject([
+      { operationId: command.operationId, entryId: entry.id, command, cookEvent: event },
+    ]);
+    await expect(readQueuedMutations(scope)).resolves.toEqual([]);
+    expect(useActivityStore.getState().events).toEqual([event]);
+    expect(usePantryStore.getState().pantryLots).toEqual([expect.objectContaining({ id: lot.id, quantity: expectedRemaining })]);
+  });
+
+  it('does not publish a cook event or consume pantry when the atomic persistence fails', async () => {
+    const now = '2026-10-07T09:00:00.000Z';
+    const recipe = RECIPES[0];
+    const lot = { id: 'failed-activity-lot', ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 500, unit: 'g' as const, expiresAt: null, createdAt: now, updatedAt: now };
+    const initialPantry = { pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: ['salt'], pantryLots: [lot] };
+    const event: CookEvent = { id: 'event:failed-consumption', recipeId: recipe.id, recipeTitle: recipe.title, servings: 2, cookedAt: now, note: null, createdAt: now, updatedAt: now };
+    const entry: DinnerEntry = {
+      id: event.id, date: '2026-10-07', text: recipe.title, servings: 2, note: null,
+      recipes: [{ recipeId: recipe.id, title: recipe.title, source: recipe.source === 'diary' ? 'diary' : 'catalog' }],
+      authorId: null, createdAt: now, updatedAt: now,
+    };
+    const command: DinnerConsumptionCommand = {
+      operationId: 'failed-activity-operation', entryId: entry.id, scope: 'guest', servings: 2,
+      ingredients: [{ ingredientId: 'pasta', name: 'Pasta', amount: '100 g', optional: false, used: true }],
+    };
+    await writePantrySnapshot(initialPantry, 'guest');
+    usePantryStore.setState(initialPantry);
+    const failure = new Error('IndexedDB unavailable');
+    const commit = vi.spyOn(dinnerConsumptionStorage, 'commitDinnerConsumption').mockRejectedValueOnce(failure);
+
+    const result = await useActivityStore.getState().recordCookEvent(recipe, 2, null, { command, event, entry });
+
+    expect(result).toBeNull();
+    expect(useActivityStore.getState().events).toEqual([]);
+    expect(usePantryStore.getState().pantryLots).toEqual([lot]);
+    await expect(readCookEvents('guest')).resolves.toEqual([]);
+    await expect(readDinnerEntries('guest')).resolves.toEqual([]);
+    await expect(readDinnerConsumptionOutbox('guest')).resolves.toEqual([]);
+    await expect(readPantrySnapshot('guest')).resolves.toMatchObject({ pantryLots: [lot] });
+    commit.mockRestore();
+  });
+
   it('records cooking without changing the pantry lots', async () => {
     const before = JSON.stringify(usePantryStore.getState());
     const id = useActivityStore.getState().recordCookEvent(RECIPES[0], 2, 'Con poco limone');
@@ -152,16 +233,16 @@ describe('activity store', () => {
   });
 
   it('removes events and clears all activity explicitly', async () => {
-    const first = useActivityStore.getState().recordCookEvent(RECIPES[0]);
-    useActivityStore.getState().recordCookEvent(RECIPES[1]);
+    const first = await useActivityStore.getState().recordCookEvent(RECIPES[0]);
+    await useActivityStore.getState().recordCookEvent(RECIPES[1]);
     expect(first).not.toBeNull();
     expect(useActivityStore.getState().removeCookEvent(first!)).toBe(true);
     expect(useActivityStore.getState().clearActivity()).toBe(1);
     expect(useActivityStore.getState().events).toEqual([]);
   });
 
-  it('restores a removed cooking event with the same identity', () => {
-    const id = useActivityStore.getState().recordCookEvent(RECIPES[0]);
+  it('restores a removed cooking event with the same identity', async () => {
+    const id = await useActivityStore.getState().recordCookEvent(RECIPES[0]);
     const removedEvent = useActivityStore.getState().events[0];
 
     useActivityStore.getState().removeCookEvent(id!);
@@ -175,7 +256,7 @@ describe('activity store', () => {
     const houseScope = 'house:activity-home' as const;
     setPersonalDataScope(accountScope);
     setActiveDataScope(houseScope);
-    useActivityStore.getState().recordCookEvent(RECIPES[0]);
+    await useActivityStore.getState().recordCookEvent(RECIPES[0]);
     useActivityStore.getState().setRecipePreference(RECIPES[0].id, true, 5, null);
     await waitForPendingActivityWrites();
 

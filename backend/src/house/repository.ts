@@ -1,7 +1,7 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { HouseMember, HouseRole, HouseState, HouseSummary } from '@ikuck/shared/contracts';
 import type { ApplicationDatabase } from '../db/client.js';
-import { houseMemberships, houses, processedSyncMutations, s2sServiceCredentials, s2sServiceGrants, syncItems, userProfiles, users } from '../db/schema.js';
+import { dinnerConsumptionReceipts, houseMemberships, houses, processedSyncMutations, s2sServiceCredentials, s2sServiceGrants, syncItems, userProfiles, users } from '../db/schema.js';
 import type { HouseRole as ValidatedHouseRole } from './validation.js';
 
 export interface HouseUserRecord {
@@ -359,6 +359,10 @@ export const createDrizzleHouseRepository = (database: ApplicationDatabase['db']
       if (currentMembership.role === 'admin' && adminCount <= 1 && members.length > 1) return 'last_admin_required' as const;
       await transaction.delete(houseMemberships).where(eq(houseMemberships.id, currentMembership.id));
       if (members.length === 1) {
+        await transaction.delete(dinnerConsumptionReceipts).where(and(
+          eq(dinnerConsumptionReceipts.scopeType, 'house'),
+          eq(dinnerConsumptionReceipts.scopeId, currentMembership.houseId),
+        ));
         await transaction.delete(syncItems).where(and(eq(syncItems.scopeType, 'house'), eq(syncItems.scopeId, currentMembership.houseId)));
         await transaction.delete(processedSyncMutations).where(and(
           eq(processedSyncMutations.scopeType, 'house'),
