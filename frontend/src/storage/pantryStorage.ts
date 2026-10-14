@@ -15,7 +15,7 @@ import {
   type KeyValueCompareAndWrite,
 } from './indexedDb';
 import { getActiveDataScope, scopeStorageKey, type SyncScope } from '../sync/scopeContext';
-import { ScopeUncertainError, trackScopedWrite } from '../sync/scopeWriteFence';
+import { ScopeUncertainError, isScopePurgeMarkerUnavailable, trackScopedWrite } from '../sync/scopeWriteFence';
 
 let pantryPersistenceSuspended = false;
 const pendingPantrySnapshots = new Map<SyncScope, string>();
@@ -1290,6 +1290,19 @@ const assertPantrySnapshotsUnambiguous = async (
   }
 };
 
+// One selection rule for both readers (readPantrySnapshot and pantryStorage.getItem):
+// pantry writes persist a comparable monotonic write revision in both stores, so the newest
+// readable write wins and neither store is preferred wholesale. The remaining rules only order
+// the cases where the persisted revisions cannot be compared:
+//   - equal revisions with different content, or a mirror that a failed IndexedDB write already
+//     marked obsolete while it carries no comparable revision, fails closed with both copies
+//     preserved for explicit recovery;
+//   - an unrevisioned IndexedDB row means this client never persisted there, so a revisioned
+//     local write stays visible;
+//   - an unrevisioned mirror stays visible unless IndexedDB marked it obsolete, because a legacy
+//     writer can leave its latest edit only in the browser mirror;
+//   - a pending-IndexedDB-write marker keeps the local copy visible until the canonical write
+//     is accepted, so a committed local edit never disappears behind an older canonical row.
 const selectPantrySnapshot = async (
   scope: SyncScope,
   indexedDbRaw: string | null,
@@ -1888,6 +1901,11 @@ export async function clearPantrySnapshot(scope: SyncScope, expectedSnapshot?: P
   const storageKey = scopedPantryStorageKey(scope);
   const databaseKey = scopedPantryDatabaseKey(scope);
   return withLocalPantryWriteLock(scope, async () => {
+    // An unreadable house purge marker leaves the purge state unknown: never run a destructive
+    // clear behind a marker this tab cannot verify.
+    if (isScopePurgeMarkerUnavailable(scope)) {
+      throw new Error('Pantry snapshot could not be cleared because the scope purge marker is unavailable');
+    }
     const storage = getLocalStorage();
     if (storage === null) throw new Error('Pantry mirror could not be cleared');
 
@@ -1915,8 +1933,10 @@ export async function clearPantrySnapshot(scope: SyncScope, expectedSnapshot?: P
         || pantrySnapshotFingerprint(legacySnapshot) !== expectedFingerprint)) return;
     }
 
-    if (indexedDbAvailable && !await deleteKeyValueIfValue(databaseKey, indexedDbRaw)) return;
-
+    // Remove every readable mirror copy before the canonical row. A mirror left behind by a
+    // failed clear is read as legacy data and migrated back into IndexedDB, which would
+    // resurrect the records this purge deleted. A denied removal keeps all copies intact so the
+    // clear fails closed and stays retryable instead of clearing only half of the scope.
     try {
       if (storage.getItem(storageKey) !== localRaw) return;
       if (localRaw !== null) storage.removeItem(storageKey);
@@ -1927,6 +1947,14 @@ export async function clearPantrySnapshot(scope: SyncScope, expectedSnapshot?: P
       }
     } catch {
       throw new Error('Pantry mirror could not be cleared');
+    }
+
+    if (indexedDbAvailable && !await deleteKeyValueIfValue(databaseKey, indexedDbRaw)) {
+      // The canonical row changed after the comparison. A caller that supplied the expected
+      // snapshot keeps the concurrent edit; an unqualified scoped purge stays unconfirmed and
+      // fails closed so its durable retry marker survives.
+      if (expectedSnapshot === undefined) throw new Error('Scoped pantry purge could not be confirmed');
+      return;
     }
     observedPantryCanonicalSnapshots.delete(scope);
   });
@@ -2025,11 +2053,21 @@ export const pantryStorage: StateStorage = {
       return;
     }
 
-    await deleteKeyValue(scopedPantryDatabaseKey());
-    try {
-      storage?.removeItem(scopedPantryStorageKey());
-    } catch {
-      // IndexedDB deletion is authoritative; a failed mirror cleanup is harmless.
+    // The mirror is the only other copy of the canonical row: when it cannot be read there is no
+    // way to confirm that removing the canonical row is not leaving records behind it.
+    if (storage === null) throw new Error('Pantry mirror could not be cleared');
+    const scope = getActiveDataScope();
+    if (isScopePurgeMarkerUnavailable(scope)) {
+      throw new Error('Pantry snapshot could not be cleared because the scope purge marker is unavailable');
     }
+    // Remove the readable mirror copy before the canonical row: deleting only the canonical row
+    // would let the leftover mirror be migrated back into IndexedDB on the next read.
+    try {
+      storage.removeItem(scopedPantryStorageKey());
+    } catch {
+      throw new Error('Pantry mirror could not be cleared');
+    }
+    await deleteKeyValue(scopedPantryDatabaseKey());
+    observedPantryCanonicalSnapshots.delete(scope);
   },
 };
