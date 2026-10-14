@@ -2,7 +2,7 @@ import type { AccountSummary } from '@ikuck/shared/contracts';
 import { and, eq, sql } from 'drizzle-orm';
 import { AuthServiceError } from '../auth/service.js';
 import type { ApplicationDatabase } from '../db/client.js';
-import { houseMemberships, houses, processedSyncMutations, syncItems, userProfiles, users } from '../db/schema.js';
+import { houseMemberships, houses, dinnerConsumptionReceipts, processedSyncMutations, syncItems, userProfiles, users } from '../db/schema.js';
 import { isSharedEntityType, type SyncRepository } from '../sync/repository.js';
 
 type ExportedSyncData = Awaited<ReturnType<SyncRepository['readAll']>>;
@@ -110,6 +110,9 @@ export const createDrizzleProfileRepository = (
             throw new AuthServiceError('house_last_admin_required', 409, 'The house must keep at least one admin');
           }
           if (members.length === 1) {
+            await transaction.delete(dinnerConsumptionReceipts).where(and(
+              eq(dinnerConsumptionReceipts.scopeType, 'house'), eq(dinnerConsumptionReceipts.scopeId, membership.houseId),
+            ));
             await transaction.delete(syncItems).where(and(eq(syncItems.scopeType, 'house'), eq(syncItems.scopeId, membership.houseId)));
             await transaction.delete(processedSyncMutations).where(and(
               eq(processedSyncMutations.scopeType, 'house'), eq(processedSyncMutations.scopeId, membership.houseId),
@@ -119,6 +122,9 @@ export const createDrizzleProfileRepository = (
         }
       }
       // Account-scoped rows must not survive as orphaned personal data.
+      await transaction.delete(dinnerConsumptionReceipts).where(and(
+        eq(dinnerConsumptionReceipts.scopeType, 'user'), eq(dinnerConsumptionReceipts.scopeId, userId),
+      ));
       await transaction.delete(syncItems).where(and(eq(syncItems.scopeType, 'user'), eq(syncItems.scopeId, userId)));
       await transaction.delete(processedSyncMutations).where(and(
         eq(processedSyncMutations.scopeType, 'user'), eq(processedSyncMutations.scopeId, userId),

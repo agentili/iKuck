@@ -20,6 +20,10 @@ const normalizeById = <T extends { id: string }>(items: readonly unknown[], guar
 };
 
 export const normalizeCookEvents = (items: readonly unknown[]): CookEvent[] => normalizeById(items, isCookEvent);
+export const activityEventsDatabaseKeyForScope = (scope: SyncScope): string => scopedKey(ACTIVITY_DATABASE_KEY, scope);
+export const activityEventsStorageKeyForScope = (scope: SyncScope): string => scopedKey(ACTIVITY_STORAGE_KEY, scope);
+export const parseCookEventsSnapshot = (raw: string | null): CookEvent[] => parseCollection(raw, normalizeCookEvents);
+export const serializeCookEventsSnapshot = (events: readonly CookEvent[]): string => serializeCollection(events, normalizeCookEvents);
 
 export const normalizeRecipePreferences = (items: readonly unknown[]): RecipePreference[] => {
   const unique = new Map<string, RecipePreference>();

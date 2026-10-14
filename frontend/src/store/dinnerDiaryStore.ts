@@ -4,6 +4,8 @@ import { isDiaryDraftSet, isDinnerEntry, isSavedRecipe } from '@ikuck/shared/din
 import { getActiveDataScope, getPersonalDataScope, subscribeActiveDataScope, subscribePersonalDataScope, type SyncScope } from '../sync/scopeContext';
 import { isScopeWritable, trackScopedWrite } from '../sync/scopeWriteFence';
 import { enqueueEntityMutation, registerDinnerDiarySnapshotListener } from '../sync/syncQueue';
+import { coordinateDinnerConsumption } from './dinnerConsumption';
+import type { DinnerConsumptionCommand } from '@ikuck/shared/pantryConsumption';
 import { readDinnerEntries, readDiaryDraftSets, readSavedRecipes, writeDinnerEntries, writeDiaryDraftSets, writeSavedRecipes } from '../storage/dinnerDiaryStorage';
 import { useAuthStore } from '../auth/authStore';
 import { useHouseStore } from '../house/houseStore';
@@ -12,6 +14,7 @@ export interface Scoped<T> { scope: SyncScope; value: T }
 export interface DinnerDiaryState {
   hasHydrated: boolean; entries: Scoped<DinnerEntry>[]; recipes: Scoped<SavedRecipe>[]; drafts: Scoped<DiaryDraftSet>[]; error: unknown | null;
   createEntry: (input: { date: string; text: string; servings: number | null; note: string | null }) => string | null;
+  confirmEntry: (command: DinnerConsumptionCommand, entry: DinnerEntry) => Promise<boolean>;
   updateEntry: (scope: SyncScope, id: string, changes: Partial<Pick<DinnerEntry, 'date' | 'text' | 'servings' | 'note'>>) => boolean;
   deleteEntry: (scope: SyncScope, id: string) => boolean;
   saveRecipe: (scope: SyncScope, recipe: SavedRecipe) => boolean;
@@ -71,6 +74,24 @@ export const useDinnerDiaryStore = create<DinnerDiaryState>((set, get) => ({
     const scopedEntries = get().entries.filter(item => item.scope === scope).map(item => item.value);
     queueWrite(scope, async () => { await writeDinnerEntries(scopedEntries, scope); if (scope !== 'guest') await enqueueEntityMutation(scope, 'dinner_entry', entry.id, 'upsert', entry); });
     return entry.id;
+  },
+  confirmEntry: async (command, entry) => {
+    const scope = command.scope;
+    if (scope !== getActiveDataScope() || command.entryId !== entry.id || command.servings !== entry.servings || !isDinnerEntry(entry)
+      || (scope !== 'guest' && !canEdit(scope))) return false;
+    try {
+      await coordinateDinnerConsumption({ command, entry });
+      if (scope !== getActiveDataScope() || !isScopeWritable(scope)
+        || (scope !== 'guest' && !canEdit(scope))) return false;
+      set(state => ({
+        entries: [...state.entries.filter(item => !(item.scope === scope && item.value.id === entry.id)), { scope, value: entry }],
+        error: null,
+      }));
+      return true;
+    } catch (error) {
+      if (scope === getActiveDataScope() && isScopeWritable(scope)) set({ error });
+      return false;
+    }
   },
   updateEntry: (scope, id, changes) => {
     const item = get().entries.find(value => value.scope === scope && value.value.id === id); if (!item || !canEdit(scope)) return false;

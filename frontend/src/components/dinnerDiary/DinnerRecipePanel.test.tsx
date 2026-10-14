@@ -5,10 +5,15 @@ import type { DiaryRecipeDraft, DinnerEntry, SavedRecipe } from '@ikuck/shared/d
 import { useAuthStore } from '../../auth/authStore';
 import { useHouseStore } from '../../house/houseStore';
 import { ApiClientError } from '../../api/apiClient';
-import { setActiveDataScope, setPersonalDataScope } from '../../sync/scopeContext';
 import { deleteLocalDatabase } from '../../storage/indexedDb';
+import { readPantrySnapshot, writePantrySnapshot } from '../../storage/pantryStorage';
+import { readDinnerConsumptionOutbox } from '../../storage/dinnerConsumptionStorage';
+import { resumeScope } from '../../sync/scopeWriteFence';
+import { coordinateDinnerConsumption } from '../../store/dinnerConsumption';
+import { usePantryStore } from '../../store/localPantryStore';
+import { setActiveDataScope, setPersonalDataScope } from '../../sync/scopeContext';
 import { hydrateDinnerDiaryStore, useDinnerDiaryStore, waitForPendingDinnerDiaryWrites } from '../../store/dinnerDiaryStore';
-import { confirmDiaryRecipe, reconstructDinnerRecipes } from '../../diary/dinnerDiaryApi';
+import { confirmDiaryRecipe, linkDiaryRecipe, reconstructDinnerRecipes } from '../../diary/dinnerDiaryApi';
 import DinnerRecipePanel from './DinnerRecipePanel';
 
 vi.mock('../../diary/dinnerDiaryApi', () => ({
@@ -32,8 +37,8 @@ const makeRecipe = (draft: DiaryRecipeDraft, id: string): SavedRecipe => ({
   updatedAt: '2026-09-29T18:02:00.000Z',
 });
 
-const renderPanel = (entry = entryValue) => render(
-  <DinnerRecipePanel entry={{ scope, value: entry }} availableRecipes={[]} manageable verified consentEnabled csrfToken="csrf-test" />,
+const renderPanel = (entry = entryValue, availableRecipes: Array<{ scope: typeof scope; value: SavedRecipe }> = []) => render(
+  <DinnerRecipePanel entry={{ scope, value: entry }} availableRecipes={availableRecipes} manageable verified consentEnabled csrfToken="csrf-test" />,
 );
 
 beforeEach(async () => {
@@ -41,7 +46,7 @@ beforeEach(async () => {
   await deleteLocalDatabase();
   useAuthStore.setState({ user: { id: 'user-1' } as never });
   useHouseStore.setState({ state: null });
-  setPersonalDataScope(scope); setActiveDataScope(scope);
+  setPersonalDataScope(scope); setActiveDataScope(scope); resumeScope(scope);
   await hydrateDinnerDiaryStore();
   useDinnerDiaryStore.setState({
     hasHydrated: true, error: null, entries: [{ scope, value: entryValue }], recipes: [], drafts: [],
@@ -79,6 +84,63 @@ describe('DinnerRecipePanel', () => {
     expect(useDinnerDiaryStore.getState().drafts).toEqual([expect.objectContaining({
       value: expect.objectContaining({ entryUpdatedAt: confirmedEntry.updatedAt, drafts: [drafts[1]] }),
     })]);
+  });
+
+  it('does not consume pantry when previewing a recipe or linking one to an already-confirmed dinner', async () => {
+    const user = userEvent.setup();
+    const stockLot = {
+      id: 'panel-pasta-lot', ingredientId: 'pasta', label: 'Pasta', known: true,
+      quantity: 400, unit: 'g' as const, expiresAt: null,
+      createdAt: '2026-09-29T08:00:00.000Z', updatedAt: '2026-09-29T08:00:00.000Z',
+    };
+    const initialPantry = {
+      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: ['salt'], pantryLots: [stockLot],
+    };
+    await writePantrySnapshot(initialPantry, scope);
+    usePantryStore.setState(initialPantry);
+    const servings = 2;
+    const amountPerServing = 80;
+    const expectedRemaining = stockLot.quantity - amountPerServing * servings;
+    const committedEntry = {
+      ...entryValue, servings,
+    };
+    await coordinateDinnerConsumption({
+      command: {
+        operationId: 'panel-confirmed-operation', entryId: committedEntry.id, scope, servings,
+        ingredients: [{ ingredientId: 'pasta', name: 'Pasta', amount: `${amountPerServing} g`, optional: false, used: true }],
+      },
+      entry: committedEntry,
+      updatedAt: '2026-09-29T18:03:00.000Z',
+    });
+    const afterConfirmation = await readPantrySnapshot(scope);
+    expect(afterConfirmation).toMatchObject({ pantryLots: [expect.objectContaining({ id: stockLot.id, quantity: expectedRemaining })] });
+
+    const draft = makeDraft('preview-draft', 'Pasta in bozza');
+    const recipe = makeRecipe(draft, 'saved-recipe-late');
+    const linkedEntry: DinnerEntry = {
+      ...committedEntry,
+      recipes: [{ recipeId: recipe.id, title: recipe.title, source: 'diary' }],
+      updatedAt: '2026-09-29T18:04:00.000Z',
+    };
+    vi.mocked(reconstructDinnerRecipes).mockResolvedValue([draft]);
+    vi.mocked(linkDiaryRecipe).mockResolvedValue(linkedEntry);
+
+    renderPanel(committedEntry, [{ scope, value: recipe }]);
+    await user.click(screen.getByRole('button', { name: 'Prepara bozze ricetta' }));
+    expect(await screen.findByRole('heading', { name: 'Pasta in bozza' })).toBeVisible();
+    await expect(readPantrySnapshot(scope)).resolves.toMatchObject({
+      pantryLots: [expect.objectContaining({ id: stockLot.id, quantity: expectedRemaining })],
+      stapleIds: initialPantry.stapleIds,
+    });
+
+    await user.selectOptions(screen.getByRole('combobox'), recipe.id);
+    await user.click(screen.getByRole('button', { name: 'Collega ricetta' }));
+    await waitFor(() => expect(useDinnerDiaryStore.getState().entries[0]?.value.recipes).toEqual(linkedEntry.recipes));
+    await expect(readPantrySnapshot(scope)).resolves.toMatchObject({
+      pantryLots: [expect.objectContaining({ id: stockLot.id, quantity: expectedRemaining })],
+      stapleIds: initialPantry.stapleIds,
+    });
+    await expect(readDinnerConsumptionOutbox(scope)).resolves.toHaveLength(1);
   });
 
   it('uses provider-neutral copy when AI dinner reconstruction is unavailable', async () => {

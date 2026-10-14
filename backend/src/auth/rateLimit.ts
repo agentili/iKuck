@@ -8,6 +8,9 @@ export const AUTH_RATE_LIMITS = {
   resendVerification: { windowSeconds: 60 * 60, ipLimit: 10, emailLimit: 5 },
   requestPasswordReset: { windowSeconds: 60 * 60, ipLimit: 10, emailLimit: 5 },
   houseAddMember: { windowSeconds: 60 * 60, ipLimit: 20, emailLimit: 5, actorLimit: 10 },
+  bringConnect: { windowSeconds: 15 * 60, ipLimit: 30, emailLimit: 10, actorLimit: 10 },
+  bringRead: { windowSeconds: 60, ipLimit: 300, emailLimit: 120, actorLimit: 120 },
+  bringWrite: { windowSeconds: 60, ipLimit: 120, emailLimit: 60, actorLimit: 60 },
 } as const;
 
 export type AuthRateLimitAction = keyof typeof AUTH_RATE_LIMITS;
@@ -38,13 +41,14 @@ const normalizeEmailForKey = (email: string): string => email.trim().toLowerCase
 export const createRedisAuthRateLimiter = ({ incrementWithExpiry }: RedisAuthRateLimiterOptions): AuthRateLimiter => ({
   enforce: async (action, input) => {
     const limits = AUTH_RATE_LIMITS[action];
-    if (action === 'houseAddMember' && !input.actorId?.trim()) {
-      throw new AuthRateLimitError('rate_limit_unavailable', 503, 'House member lookup is temporarily unavailable');
+    const needsActor = 'actorLimit' in limits;
+    if (needsActor && !input.actorId?.trim()) {
+      throw new AuthRateLimitError('rate_limit_unavailable', 503, 'Request limiting is temporarily unavailable');
     }
     const dimensions = [
       { name: 'ip', value: input.ip.trim(), limit: limits.ipLimit },
       { name: 'email', value: normalizeEmailForKey(input.email), limit: limits.emailLimit },
-      ...(action === 'houseAddMember' ? [{ name: 'actor', value: input.actorId!.trim(), limit: AUTH_RATE_LIMITS.houseAddMember.actorLimit }] : []),
+      ...('actorLimit' in limits ? [{ name: 'actor', value: input.actorId!.trim(), limit: limits.actorLimit }] : []),
     ];
 
     try {

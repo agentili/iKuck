@@ -121,8 +121,10 @@ test('keeps the house pantry and guest source when an explicitly requested merge
   await expect(page.getByText('Riso', { exact: true })).toBeVisible();
   await expect.poll(() => syncScopes.includes('house:house-e2e')).toBe(true);
   const preservedGuestLotIdLength = await page.evaluate(async () => {
+    // Open the existing database without requesting a version: pinning an obsolete
+    // schema version would fail with a VersionError once the app upgrades it.
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('ikuck-local-v2', 2);
+      const request = indexedDB.open('ikuck-local-v2');
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
