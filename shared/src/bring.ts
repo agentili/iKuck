@@ -50,3 +50,9 @@ export interface BringCredentials {
   password: string;
   confirmExternalAccess: true;
 }
+
+export interface BringImportResult {
+  imported: number;
+  skipped: number;
+  recently: number;
+}

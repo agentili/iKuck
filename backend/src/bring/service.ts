@@ -4,11 +4,16 @@ import {
   BRING_SPEC_MAX_LENGTH,
   BRING_TIMEOUT_MS,
   type BringConnected,
+  type BringImportResult,
   type BringItem,
   type BringMutation,
   type BringSnapshot,
   type BringStatus,
 } from '@ikuck/shared/bring';
+import type { ShoppingListItem } from '@ikuck/shared/contracts';
+import { SHOPPING_LIST_LABEL_MAX_LENGTH, SHOPPING_LIST_NOTE_MAX_LENGTH, isShoppingListItem } from '../shopping/validation.js';
+import { createShoppingListMutation, readShoppingListItems } from '../shopping/writer.js';
+import type { SyncRepository } from '../sync/repository.js';
 import { BringError } from './errors.js';
 import type { BringRepository, ConnectionUnit } from './repository.js';
 import type { SessionCipher } from './sessionCipher.js';
@@ -29,8 +34,8 @@ const callGateway = async <T>(operation: () => Promise<T>): Promise<T> => {
   }
 };
 
-const assertTestList = (testListId: string, listId: string): void => {
-  if (listId !== testListId) throw new BringError('bring_list_not_allowed', 403);
+const assertListAllowed = (allowedListIds: readonly string[], listId: string): void => {
+  if (allowedListIds.length > 0 && !allowedListIds.includes(listId)) throw new BringError('bring_list_not_allowed', 403);
 };
 
 const readSession = async (
@@ -101,16 +106,37 @@ const publicSnapshot = (
   return { connectionId, listId, labelsAvailable, items };
 };
 
+const importItem = (item: BringItem, now: string): ShoppingListItem | null => {
+  const label = item.label.trim();
+  if (label.length === 0 || label.length > SHOPPING_LIST_LABEL_MAX_LENGTH) return null;
+  const note = item.specification.trim();
+  const mapped: ShoppingListItem = {
+    id: randomUUID(),
+    ingredientId: `custom:${label.toLowerCase().replace(/\s+/g, '-')}`,
+    label,
+    quantity: null,
+    unit: null,
+    note: note.length === 0 ? null : note.slice(0, SHOPPING_LIST_NOTE_MAX_LENGTH),
+    purchased: false,
+    sourceRecipeId: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  return isShoppingListItem(mapped) ? mapped : null;
+};
+
 export const createBringService = ({
   repository,
   cipher,
   gateway,
-  testListId,
+  allowedListIds,
+  shoppingRepository,
 }: {
   repository: BringRepository;
   cipher: SessionCipher;
   gateway: BringGateway;
-  testListId: string;
+  allowedListIds: readonly string[];
+  shoppingRepository: SyncRepository;
 }) => ({
   status: (userId: string): Promise<BringStatus> => repository.withUser(userId, async (unit) => {
     const row = await unit.get();
@@ -131,7 +157,7 @@ export const createBringService = ({
   read: (userId: string, connectionId: string, listId: string): Promise<BringSnapshot> => {
     const signal = AbortSignal.timeout(BRING_TIMEOUT_MS);
     return repository.withUser(userId, async (unit) => {
-      assertTestList(testListId, listId);
+      assertListAllowed(allowedListIds, listId);
       const session = await readSession(unit, cipher, userId, connectionId);
       await authorizeList(session, listId, signal, gateway);
       const loaded = await load(session, listId, signal, gateway);
@@ -142,7 +168,7 @@ export const createBringService = ({
   write: (userId: string, input: BringMutation): Promise<BringSnapshot> => {
     const signal = AbortSignal.timeout(BRING_TIMEOUT_MS);
     return repository.withUser(userId, async (unit) => {
-      assertTestList(testListId, input.listId);
+      assertListAllowed(allowedListIds, input.listId);
       const session = await readSession(unit, cipher, userId, input.connectionId);
       await authorizeList(session, input.listId, signal, gateway);
       const loaded = await load(session, input.listId, signal, gateway);
@@ -216,6 +242,42 @@ export const createBringService = ({
             && matchingPurchase[0]?.specification === input.specification;
       if (!confirmed) throw new BringError('bring_write_unconfirmed', 503);
       return publicSnapshot(input.connectionId, input.listId, after, loaded.catalog, loaded.labelsAvailable);
+    });
+  },
+
+  importList: (userId: string, connectionId: string, listId: string): Promise<BringImportResult> => {
+    const signal = AbortSignal.timeout(BRING_TIMEOUT_MS);
+    return repository.withUser(userId, async (unit) => {
+      assertListAllowed(allowedListIds, listId);
+      const session = await readSession(unit, cipher, userId, connectionId);
+      await authorizeList(session, listId, signal, gateway);
+      const loaded = await load(session, listId, signal, gateway);
+      const snapshot = publicSnapshot(connectionId, listId, loaded.raw, loaded.catalog, loaded.labelsAvailable);
+      const known = new Set((await readShoppingListItems(shoppingRepository, userId))
+        .filter((item) => !item.purchased)
+        .map((item) => normalized(item.label)));
+      const now = new Date().toISOString();
+      let imported = 0;
+      let skipped = 0;
+      let recently = 0;
+
+      for (const item of snapshot.items) {
+        if (item.state === 'recently') {
+          recently += 1;
+          continue;
+        }
+        const mapped = importItem(item, now);
+        const label = mapped === null ? null : normalized(mapped.label);
+        if (mapped === null || label === null || known.has(label)) {
+          skipped += 1;
+          continue;
+        }
+        await shoppingRepository.applyMutation(userId, createShoppingListMutation(mapped, 'upsert'));
+        known.add(label);
+        imported += 1;
+      }
+
+      return { imported, skipped, recently };
     });
   },
 

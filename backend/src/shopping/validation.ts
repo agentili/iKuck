@@ -3,6 +3,10 @@ import type { ShoppingListItem, ShoppingListItemPayload } from '@ikuck/shared/co
 
 const shoppingListUnits = ['g', 'kg', 'ml', 'l', 'piece', 'pack'] as const;
 
+export const SHOPPING_LIST_INGREDIENT_ID_MAX_LENGTH = 128;
+export const SHOPPING_LIST_LABEL_MAX_LENGTH = 120;
+export const SHOPPING_LIST_NOTE_MAX_LENGTH = 120;
+
 const addQuantityUnitIssues = (value: { quantity: number | null; unit: ShoppingListItemPayload['unit'] }, context: z.RefinementCtx): void => {
   if (value.quantity === null && value.unit !== null) {
     context.addIssue({ code: 'custom', path: ['quantity'], message: 'Quantity is required when a unit is supplied' });
@@ -13,11 +17,11 @@ const addQuantityUnitIssues = (value: { quantity: number | null; unit: ShoppingL
 };
 
 const detailsObject = z.object({
-  ingredientId: z.string().trim().min(1).max(128),
-  label: z.string().trim().min(1).max(120),
+  ingredientId: z.string().trim().min(1).max(SHOPPING_LIST_INGREDIENT_ID_MAX_LENGTH),
+  label: z.string().trim().min(1).max(SHOPPING_LIST_LABEL_MAX_LENGTH),
   quantity: z.number().finite().positive().nullable(),
   unit: z.enum(shoppingListUnits).nullable(),
-  note: z.string().trim().max(120).nullable(),
+  note: z.string().trim().max(SHOPPING_LIST_NOTE_MAX_LENGTH).nullable(),
   purchased: z.boolean(),
   sourceRecipeId: z.string().trim().max(160).nullable(),
 });

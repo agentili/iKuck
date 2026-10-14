@@ -53,12 +53,6 @@ export const start = async () => {
     appOrigin: config.appOrigin,
     autoVerifyEmail: config.nodeEnvironment === 'development',
   });
-  const bring = config.bringEnabled ? createBringService({
-    repository: createDrizzleBringRepository(database.db),
-    cipher: createSessionCipher(config.bringTokenEncryptionKey!),
-    gateway: createBringGateway(),
-    testListId: config.bringTestListId!,
-  }) : undefined;
   const houseRepository = createDrizzleHouseRepository(database.db);
   const sync = createDrizzleSyncRepository(database.db, {
     maxClientClockSkewMs: config.syncMaxClientClockSkewMs,
@@ -67,6 +61,13 @@ export const start = async () => {
       return membership === null ? null : { kind: 'house', id: membership.houseId };
     },
   });
+  const bring = config.bringEnabled ? createBringService({
+    repository: createDrizzleBringRepository(database.db),
+    cipher: createSessionCipher(config.bringTokenEncryptionKey!),
+    gateway: createBringGateway(),
+    allowedListIds: config.bringAllowedListIds,
+    shoppingRepository: sync,
+  }) : undefined;
   const houseService = createHouseService({ repository: houseRepository, syncRepository: sync });
   const profile = createDrizzleProfileRepository(database.db, sync);
   const s2sRepository = createDrizzleS2sRepository((s2sDatabase ?? database).db);

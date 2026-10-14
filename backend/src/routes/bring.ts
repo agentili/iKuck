@@ -107,4 +107,14 @@ export const registerBringRoutes = ({ service, authService, appOrigin, rateLimit
     await rateLimiter.enforce('bringWrite', { ip: request.ip, email: session.email, actorId: session.userId });
     return current.write(session.userId, input);
   });
+
+  app.post(`${prefix}/import`, async (request) => {
+    ensureSameOrigin(request, appOrigin);
+    const { session } = await requireVerifiedSession(request, authService);
+    ensureCsrf(request, session.csrfTokenHash);
+    const input = parse(readSchema, request.body);
+    const current = enabled();
+    await rateLimiter.enforce('bringWrite', { ip: request.ip, email: session.email, actorId: session.userId });
+    return current.importList(session.userId, input.connectionId, input.listId);
+  });
 };

@@ -30,6 +30,10 @@ const bringEndpoints: BringEndpoint[] = [
       connectionId: '550e8400-e29b-41d4-a716-446655440000', listId: '550e8400-e29b-41d4-a716-446655440001',
       action: 'add', name: 'Ceci', specification: '2 confezioni',
     } },
+  { name: 'items import', method: 'POST', url: '/v1/integrations/bring/import', mutating: true,
+    payload: {
+      connectionId: '550e8400-e29b-41d4-a716-446655440000', listId: '550e8400-e29b-41d4-a716-446655440001',
+    } },
 ];
 
 const injectBringEndpoint = (
@@ -78,7 +82,7 @@ describe('Bring routes', () => {
   it.each(bringEndpoints)('requires a verified session for the $name endpoint', async (endpoint) => {
     for (const mode of ['guest', 'unverified'] as const) {
       const service = {
-        status: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), lists: vi.fn(), read: vi.fn(), write: vi.fn(),
+        status: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), lists: vi.fn(), read: vi.fn(), write: vi.fn(), importList: vi.fn(),
       } as unknown as BringService;
       const { app, rateLimiter } = createBringApp({
         authenticated: mode !== 'guest', verified: mode !== 'unverified', service,
@@ -99,6 +103,7 @@ describe('Bring routes', () => {
         expect(service.lists).not.toHaveBeenCalled();
         expect(service.read).not.toHaveBeenCalled();
         expect(service.write).not.toHaveBeenCalled();
+        expect(service.importList).not.toHaveBeenCalled();
       } finally {
         await app.close();
       }
@@ -107,7 +112,7 @@ describe('Bring routes', () => {
 
   it.each(bringEndpoints.filter((endpoint) => endpoint.mutating))('requires same-origin and CSRF on $name mutations', async (endpoint) => {
     const service = {
-      connect: vi.fn(), disconnect: vi.fn(), write: vi.fn(),
+      connect: vi.fn(), disconnect: vi.fn(), write: vi.fn(), importList: vi.fn(),
     } as unknown as BringService;
     const { app, authService, rateLimiter } = createBringApp({ service });
     const unsafeHeaders: Record<string, string>[] = [
@@ -125,6 +130,7 @@ describe('Bring routes', () => {
       expect(service.connect).not.toHaveBeenCalled();
       expect(service.disconnect).not.toHaveBeenCalled();
       expect(service.write).not.toHaveBeenCalled();
+      expect(service.importList).not.toHaveBeenCalled();
       expect(authService.authenticate).toHaveBeenCalledTimes(1);
     } finally {
       await app.close();
@@ -297,6 +303,43 @@ describe('Bring routes', () => {
     }
   });
 
+  it('imports one shot through a strict write-limited request without echoing extra fields', async () => {
+    const connectionId = '550e8400-e29b-41d4-a716-446655440000';
+    const listId = '550e8400-e29b-41d4-a716-446655440001';
+    const result = { imported: 2, skipped: 1, recently: 3 };
+    const importList = vi.fn().mockResolvedValue(result);
+    const { app, rateLimiter } = createBringApp({ service: { importList } as unknown as BringService });
+    const headers = { cookie, origin: appOrigin, 'x-csrf-token': 'synthetic-csrf' };
+    try {
+      const response = await app.inject({
+        method: 'POST', url: '/v1/integrations/bring/import', headers, payload: { connectionId, listId },
+      });
+      const extra = await app.inject({
+        method: 'POST', url: '/v1/integrations/bring/import', headers, payload: { connectionId, listId, userId: 'attacker' },
+      });
+      const incomplete = await app.inject({
+        method: 'POST', url: '/v1/integrations/bring/import', headers, payload: { connectionId },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(result);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(extra.statusCode).toBe(400);
+      expect(extra.json()).toMatchObject({ code: 'bring_invalid_payload' });
+      expect(extra.headers['cache-control']).toBe('no-store');
+      expect(incomplete.statusCode).toBe(400);
+      expect(incomplete.json()).toMatchObject({ code: 'bring_invalid_payload' });
+      expect(importList).toHaveBeenCalledTimes(1);
+      expect(importList).toHaveBeenCalledWith('user-a', connectionId, listId);
+      expect(rateLimiter.enforce).toHaveBeenCalledTimes(1);
+      expect(rateLimiter.enforce).toHaveBeenCalledWith('bringWrite', {
+        ip: expect.any(String), email: 'a@example.com', actorId: 'user-a',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('protects connection creation and dispatches only a strict, confirmed payload', async () => {
     const connect = vi.fn().mockResolvedValue({ enabled: true, connected: true, connectionId: 'connection-1', lists: [] });
     const { app, rateLimiter } = createBringApp({ service: { connect } as unknown as BringService });
@@ -389,7 +432,7 @@ describe('Bring routes', () => {
 
   it.each(bringEndpoints.filter((endpoint) => endpoint.name !== 'status'))('does not dispatch $name when Redis rate limiting fails', async (endpoint) => {
     const service = {
-      status: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), lists: vi.fn(), read: vi.fn(), write: vi.fn(),
+      status: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), lists: vi.fn(), read: vi.fn(), write: vi.fn(), importList: vi.fn(),
     } as unknown as BringService;
     const { app, rateLimiter } = createBringApp({
       service,
