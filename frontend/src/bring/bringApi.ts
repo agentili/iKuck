@@ -1,5 +1,5 @@
 import { apiRequest, type ApiRequest } from '../api/apiClient';
-import type { BringConnected, BringCredentials, BringList, BringMutation, BringSnapshot, BringStatus } from '@ikuck/shared/bring';
+import type { BringConnected, BringCredentials, BringImportResult, BringList, BringMutation, BringSnapshot, BringStatus } from '@ikuck/shared/bring';
 
 const root = '/v1/integrations/bring';
 
@@ -10,4 +10,5 @@ export const createBringApi = (request: ApiRequest = apiRequest) => ({
   lists: (connectionId: string, signal?: AbortSignal) => request<{ connectionId: string; lists: BringList[] }>(`${root}/lists?${new URLSearchParams({ connectionId })}`, { signal }),
   items: (connectionId: string, listId: string, signal?: AbortSignal) => request<BringSnapshot>(`${root}/items?${new URLSearchParams({ connectionId, listId })}`, { signal }),
   write: (body: BringMutation, csrfToken: string, signal?: AbortSignal) => request<BringSnapshot>(`${root}/items`, { method: 'POST', body, csrfToken, signal }),
+  importList: (body: { connectionId: string; listId: string }, csrfToken: string, signal?: AbortSignal) => request<BringImportResult>(`${root}/import`, { method: 'POST', body, csrfToken, signal }),
 });

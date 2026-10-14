@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { BRING_NAME_MAX_LENGTH, BRING_SPEC_MAX_LENGTH, type BringConnected, type BringList, type BringMutation, type BringSnapshot, type BringStatus } from '@ikuck/shared/bring';
+import { BRING_NAME_MAX_LENGTH, BRING_SPEC_MAX_LENGTH, type BringConnected, type BringImportResult, type BringList, type BringMutation, type BringSnapshot, type BringStatus } from '@ikuck/shared/bring';
 import { ApiClientError } from '../../api/apiClient';
 import { useAuthStore } from '../../auth/authStore';
 import { createBringApi } from '../../bring/bringApi';
+import { syncVerifiedSession } from '../../sync/syncQueue';
 
 const api = createBringApi();
 
@@ -17,7 +18,7 @@ const messages: Record<string, string> = {
   bring_write_unconfirmed: 'Non posso confermare la modifica. Aggiorna la lista prima di riprovare.',
   bring_invalid_credentials: 'Non è stato possibile accedere a Bring!. Controlla email e password Bring!.',
   bring_list_not_found: 'Questa lista non è più accessibile. Aggiorna le liste.',
-  bring_list_not_allowed: 'Questa lista non è abilitata: Bring! è attivo solo sulla lista di prova configurata.',
+  bring_list_not_allowed: 'Questa lista non è abilitata su questa installazione.',
   rate_limited: 'Troppe richieste. Attendi prima di riprovare.',
 };
 
@@ -33,6 +34,15 @@ const normalizeItemName = (value: string) => value.trim().toLocaleLowerCase('it-
 const isMutableBringItem = (item: BringSnapshot['items'][number]) => item.mutable
   && item.name.length <= BRING_NAME_MAX_LENGTH
   && item.specification.length <= BRING_SPEC_MAX_LENGTH;
+
+const buildImportMessage = (result: BringImportResult): string => {
+  const parts: string[] = [];
+  if (result.imported > 0) parts.push(`Importati ${result.imported} articoli nella lista iKuck.`);
+  if (result.skipped > 0) parts.push(`${result.skipped} erano già presenti o non importabili.`);
+  if (result.recently > 0) parts.push(`${result.recently} articoli acquistati non sono stati importati.`);
+  if (parts.length === 0) return 'Nessun articolo da importare nella lista iKuck.';
+  return parts.join(' ');
+};
 
 const hasVerifiedBringMutation = (input: BringMutation, snapshot: BringSnapshot) => {
   if (snapshot.connectionId !== input.connectionId || snapshot.listId !== input.listId) return false;
@@ -75,10 +85,12 @@ export default function BringIntegration({ userId, csrfToken }: { userId: string
   const [reconnect, setReconnect] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [importConfirm, setImportConfirm] = useState(false);
   const mounted = useRef(true);
   const generation = useRef(0);
   const controller = useRef<AbortController | null>(null);
   const writePending = useRef<symbol | null>(null);
+  const importPending = useRef<symbol | null>(null);
 
   const current = useCallback(() => {
     const auth = useAuthStore.getState();
@@ -149,6 +161,7 @@ export default function BringIntegration({ userId, csrfToken }: { userId: string
       controller.current?.abort();
       generation.current += 1;
       writePending.current = null;
+      importPending.current = null;
       setStatus(null);
       setLists([]);
       setListsLoaded(false);
@@ -157,6 +170,7 @@ export default function BringIntegration({ userId, csrfToken }: { userId: string
       setEmail('');
       setPassword('');
       setConsent(false);
+      setImportConfirm(false);
       setBusy(false);
     }
 
@@ -177,6 +191,7 @@ export default function BringIntegration({ userId, csrfToken }: { userId: string
       generation.current += 1;
       controller.current?.abort();
       writePending.current = null;
+      importPending.current = null;
       window.removeEventListener('online', onNetwork);
       window.removeEventListener('offline', onNetwork);
     };
@@ -202,6 +217,7 @@ export default function BringIntegration({ userId, csrfToken }: { userId: string
   const select = (nextListId: string) => {
     setListId(nextListId);
     setSnapshot(null);
+    setImportConfirm(false);
     if (nextListId !== '' && status?.connectionId) {
       void run((signal) => api.items(status.connectionId!, nextListId, signal), setSnapshot);
     }
@@ -242,6 +258,38 @@ export default function BringIntegration({ userId, csrfToken }: { userId: string
     });
   };
 
+  const refreshShoppingList = () => {
+    const auth = useAuthStore.getState();
+    const user = auth.user;
+    const token = auth.csrfToken;
+    if (user === null || token === null || user.emailVerifiedAt === '') return;
+    const session = { userId: user.id, emailVerifiedAt: user.emailVerifiedAt, csrfToken: token };
+    void syncVerifiedSession(session, {
+      isSessionCurrent: () => {
+        const currentAuth = useAuthStore.getState();
+        return currentAuth.user?.id === session.userId && currentAuth.csrfToken === session.csrfToken;
+      },
+    });
+  };
+
+  const importList = () => {
+    const connectionId = status?.connectionId ?? null;
+    if (connectionId === null || listId === '' || snapshot === null) return;
+    if (importPending.current !== null || !current()) return;
+    const importId = Symbol('bring-import');
+    importPending.current = importId;
+    setImportConfirm(false);
+    void run(
+      (signal) => api.importList({ connectionId, listId }, csrfToken, signal),
+      (result) => {
+        setMessage(buildImportMessage(result));
+        refreshShoppingList();
+      },
+    ).finally(() => {
+      if (importPending.current === importId) importPending.current = null;
+    });
+  };
+
   const itemAction = (item: BringSnapshot['items'][number], action: BringMutation['action'], nextSpecification = item.specification) => {
     if (status?.connectionId === null || status?.connectionId === undefined || listId === '' || !isMutableBringItem(item)) return;
     write({
@@ -264,6 +312,8 @@ export default function BringIntegration({ userId, csrfToken }: { userId: string
     || duplicatePurchaseItem;
 
   const disconnected = status === null || !status.connected || status.connectionId === null || reconnect;
+  const purchaseCount = snapshot === null ? 0 : snapshot.items.filter((item) => item.state === 'purchase').length;
+  const recentlyCount = snapshot === null ? 0 : snapshot.items.filter((item) => item.state === 'recently').length;
 
   return (
     <section className="ik-surface rounded-3xl border-2 bg-white p-4 sm:p-6" aria-labelledby="bring-title">
@@ -322,6 +372,27 @@ export default function BringIntegration({ userId, csrfToken }: { userId: string
                 {listId === '' && lists.length > 0 && <p>Scegli una lista per leggerne gli articoli.</p>}
                 {snapshot !== null && <>
                   {!snapshot.labelsAvailable && <p>Traduzioni non disponibili: sono mostrati i nomi originali Bring!.</p>}
+                  <div className="mt-1">
+                    <button type="button" disabled={busy || !online} className="ik-button-secondary min-h-11 border px-3" onClick={() => setImportConfirm(true)}>
+                      Importa nella lista iKuck
+                    </button>
+                  </div>
+                  {importConfirm && (
+                    <div role="group" aria-labelledby="bring-import-title" className="mt-3 rounded-xl border border-[var(--ik-border)] p-3">
+                      <p id="bring-import-title" className="font-bold">Importa nella lista iKuck</p>
+                      <p className="mt-2">{purchaseCount} articoli da acquistare da importare</p>
+                      {recentlyCount > 0 && <p className="mt-1">{recentlyCount} già acquistati su Bring! non verranno importati</p>}
+                      <p className="mt-2">Copia una tantum: la lista su Bring! NON viene modificata e le due liste restano separate. Nessuna sincronizzazione continua.</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button type="button" disabled={busy || !online} className="ik-button-primary min-h-11 px-4" onClick={importList}>
+                          Conferma importazione
+                        </button>
+                        <button type="button" disabled={busy || !online} className="ik-button-secondary min-h-11 px-3" onClick={() => setImportConfirm(false)}>
+                          Annulla
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <form className="grid gap-3" onSubmit={(event) => {
                     event.preventDefault();
                     if (status?.connectionId && listId !== '' && !addDisabled) {

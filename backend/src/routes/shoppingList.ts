@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
-import type { ShoppingListItem, ShoppingListItemPayload, SyncChange, SyncMutation } from '@ikuck/shared/contracts';
+import type { ShoppingListItem, ShoppingListItemPayload } from '@ikuck/shared/contracts';
 import { AuthServiceError, type AuthService } from '../auth/service.js';
 import { isShoppingListItem, parseShoppingListItemDetails, parseShoppingListItemPatch } from '../shopping/validation.js';
+import { createShoppingListMutation, readShoppingListItems } from '../shopping/writer.js';
 import type { SyncRepository } from '../sync/repository.js';
 import { ensureCsrf, ensureSameOrigin, requireVerifiedSession } from './auth.js';
 
@@ -26,23 +27,6 @@ const parsePatch = (body: unknown): Partial<ShoppingListItemPayload> => {
   return details;
 };
 
-const readItems = async (repository: SyncRepository, userId: string): Promise<ShoppingListItem[]> => {
-  const changes = await repository.readAll(userId);
-  return changes
-    .filter((change): change is SyncChange & { payload: ShoppingListItem } => change.entityType === 'shopping_list_item' && change.operation === 'upsert' && isShoppingListItem(change.payload))
-    .map((change) => change.payload);
-};
-
-const createMutation = (item: ShoppingListItem, operation: SyncMutation['operation']): SyncMutation => ({
-  mutationId: randomUUID(),
-  deviceId: 'api-resource',
-  entityType: 'shopping_list_item',
-  entityId: item.id,
-  operation,
-  payload: operation === 'delete' ? null : item,
-  clientUpdatedAt: item.updatedAt,
-});
-
 const notFound = () => new AuthServiceError('invalid_payload', 404, 'Shopping list item not found');
 
 const readItem = async (repository: SyncRepository, userId: string, itemId: string): Promise<ShoppingListItem> => {
@@ -54,7 +38,7 @@ const readItem = async (repository: SyncRepository, userId: string, itemId: stri
 export const registerShoppingListRoutes = ({ repository, authService, appOrigin }: ShoppingListRouteDependencies): FastifyPluginAsync => async (app) => {
   app.get('/v1/shopping-list', async (request) => {
     const { session } = await requireVerifiedSession(request, authService);
-    return { items: await readItems(repository, session.userId) };
+    return { items: await readShoppingListItems(repository, session.userId) };
   });
 
   app.post('/v1/shopping-list', async (request, reply) => {
@@ -64,7 +48,7 @@ export const registerShoppingListRoutes = ({ repository, authService, appOrigin 
     const details = parseDetails(request.body);
     const now = new Date().toISOString();
     const item: ShoppingListItem = { ...details, id: randomUUID(), createdAt: now, updatedAt: now };
-    await repository.applyMutation(session.userId, createMutation(item, 'upsert'));
+    await repository.applyMutation(session.userId, createShoppingListMutation(item, 'upsert'));
     return reply.code(201).send({ item: await readItem(repository, session.userId, item.id) });
   });
 
@@ -84,7 +68,7 @@ export const registerShoppingListRoutes = ({ repository, authService, appOrigin 
       sourceRecipeId: details.sourceRecipeId,
     });
     const item: ShoppingListItem = { ...validated, id: existing.id, createdAt: existing.createdAt, updatedAt: details.updatedAt };
-    await repository.applyMutation(session.userId, createMutation(item, 'upsert'));
+    await repository.applyMutation(session.userId, createShoppingListMutation(item, 'upsert'));
     return { item: await readItem(repository, session.userId, item.id) };
   });
 
@@ -93,7 +77,7 @@ export const registerShoppingListRoutes = ({ repository, authService, appOrigin 
     const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
     const existing = await readItem(repository, session.userId, (request.params as { itemId: string }).itemId);
-    await repository.applyMutation(session.userId, createMutation(existing, 'delete'));
+    await repository.applyMutation(session.userId, createShoppingListMutation(existing, 'delete'));
     return reply.code(204).send();
   });
 };

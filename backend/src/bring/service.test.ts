@@ -6,12 +6,14 @@ import { createSessionCipher } from './sessionCipher.js';
 import type { BringMutation } from '@ikuck/shared/bring';
 import type { BringGateway, RawItems } from './gateway.js';
 import type { BringRepository } from './repository.js';
+import { createMemorySyncRepository } from '../sync/repository.js';
+import { createShoppingListMutation, readShoppingListItems } from '../shopping/writer.js';
 import { BringError } from './errors.js';
 
 const listId = '11111111-1111-4111-8111-111111111111';
 const session = { userId: 'bring-user', accessToken: 'synthetic-access' };
 
-const fixture = () => {
+const fixture = (allowedListIds: readonly string[] = []) => {
   let raw: RawItems = { uuid: listId, status: 'REGISTERED', purchase: [], recently: [] };
   const gateway: BringGateway = {
     authenticate: vi.fn(async () => session),
@@ -22,8 +24,9 @@ const fixture = () => {
   };
   const repository = createMemoryBringRepository();
   const cipher = createSessionCipher('11'.repeat(32));
-  const service = createBringService({ repository, gateway, cipher, testListId: listId });
-  return { service, gateway, repository, cipher, setRaw: (next: RawItems) => { raw = next; } };
+  const shoppingRepository = createMemorySyncRepository();
+  const service = createBringService({ repository, gateway, cipher, allowedListIds, shoppingRepository });
+  return { service, gateway, repository, cipher, shoppingRepository, setRaw: (next: RawItems) => { raw = next; } };
 };
 
 describe('Bring service', () => {
@@ -168,7 +171,8 @@ describe('Bring service', () => {
       repository,
       gateway,
       cipher: createSessionCipher('11'.repeat(32)),
-      testListId: listId,
+      allowedListIds: [listId],
+      shoppingRepository: createMemorySyncRepository(),
     });
     const connected = await service.connect('owner-a', {
       email: 'test@example.com',
@@ -769,58 +773,48 @@ describe('Bring service', () => {
   });
 });
 
-describe('Bring test-list feature gate', () => {
+describe('Bring optional list restriction', () => {
   const otherListId = '22222222-2222-4222-8222-222222222222';
+  const credentials = { email: 'test@example.com', password: 'synthetic-password' };
 
-  it('keeps every account list selectable while refusing operations outside the designated test list', async () => {
-    const { service, gateway } = fixture();
+  it('allows every list of the connected account when no restriction is configured', async () => {
+    const { service, gateway, setRaw } = fixture();
     vi.mocked(gateway.lists).mockResolvedValue([
       { id: otherListId, name: 'Spesa di famiglia' },
       { id: listId, name: 'Lista Prova' },
     ]);
-
-    const connected = await service.connect('owner-a', {
-      email: 'test@example.com',
-      password: 'synthetic-password',
+    setRaw({
+      uuid: otherListId,
+      status: 'REGISTERED',
+      purchase: [{ name: 'Pane', specification: '1 kg' }],
+      recently: [],
     });
+    const connected = await service.connect('owner-a', credentials);
 
-    const accountLists = [
-      { id: otherListId, name: 'Spesa di famiglia' },
-      { id: listId, name: 'Lista Prova' },
-    ];
-    expect(connected).toMatchObject({ enabled: true, connected: true, lists: accountLists });
-    await expect(service.lists('owner-a', connected.connectionId!)).resolves.toEqual({
+    expect(connected).toMatchObject({
+      enabled: true,
+      connected: true,
+      lists: [
+        { id: otherListId, name: 'Spesa di famiglia' },
+        { id: listId, name: 'Lista Prova' },
+      ],
+    });
+    await expect(service.read('owner-a', connected.connectionId!, otherListId)).resolves.toEqual({
       connectionId: connected.connectionId!,
-      lists: accountLists,
+      listId: otherListId,
+      labelsAvailable: true,
+      items: [{ name: 'Pane', label: 'Pane', specification: '1 kg', state: 'purchase', mutable: true }],
     });
-    await expect(service.read('owner-a', connected.connectionId!, otherListId))
-      .rejects.toMatchObject({ code: 'bring_list_not_allowed', status: 403 });
   });
 
-  it('refuses to read any list other than the designated test list', async () => {
-    const { service, gateway } = fixture();
-    const connected = await service.connect('owner-a', {
-      email: 'test@example.com',
-      password: 'synthetic-password',
-    });
+  it('refuses to read, write or import every list outside the configured restriction', async () => {
+    const { service, gateway } = fixture([listId]);
+    const connected = await service.connect('owner-a', credentials);
     vi.mocked(gateway.items).mockClear();
     vi.mocked(gateway.lists).mockClear();
 
     await expect(service.read('owner-a', connected.connectionId!, otherListId))
       .rejects.toMatchObject({ code: 'bring_list_not_allowed', status: 403 });
-    expect(gateway.items).not.toHaveBeenCalled();
-    expect(gateway.lists).not.toHaveBeenCalled();
-  });
-
-  it('refuses to write any list other than the designated test list', async () => {
-    const { service, gateway } = fixture();
-    const connected = await service.connect('owner-a', {
-      email: 'test@example.com',
-      password: 'synthetic-password',
-    });
-    vi.mocked(gateway.items).mockClear();
-    vi.mocked(gateway.change).mockClear();
-
     await expect(service.write('owner-a', {
       connectionId: connected.connectionId!,
       listId: otherListId,
@@ -828,16 +822,17 @@ describe('Bring test-list feature gate', () => {
       name: 'Latte',
       specification: '2 l',
     })).rejects.toMatchObject({ code: 'bring_list_not_allowed', status: 403 });
-    expect(gateway.change).not.toHaveBeenCalled();
+    await expect(service.importList('owner-a', connected.connectionId!, otherListId))
+      .rejects.toMatchObject({ code: 'bring_list_not_allowed', status: 403 });
+    expect(gateway.lists).not.toHaveBeenCalled();
     expect(gateway.items).not.toHaveBeenCalled();
+    expect(gateway.catalog).not.toHaveBeenCalled();
+    expect(gateway.change).not.toHaveBeenCalled();
   });
 
-  it('keeps the designated test list fully operable', async () => {
-    const { service, gateway, setRaw } = fixture();
-    const connected = await service.connect('owner-a', {
-      email: 'test@example.com',
-      password: 'synthetic-password',
-    });
+  it('keeps a restricted list fully operable and importable', async () => {
+    const { service, gateway, setRaw, shoppingRepository } = fixture([listId]);
+    const connected = await service.connect('owner-a', credentials);
     setRaw({
       uuid: listId,
       status: 'REGISTERED',
@@ -851,6 +846,207 @@ describe('Bring test-list feature gate', () => {
       listId,
       items: [{ name: 'Milch', state: 'purchase' }],
     });
+    await expect(service.importList('owner-a', connected.connectionId!, listId))
+      .resolves.toEqual({ imported: 1, skipped: 0, recently: 0 });
+    await expect(readShoppingListItems(shoppingRepository, 'owner-a')).resolves.toMatchObject([{ label: 'Latte' }]);
     expect(gateway.items).toHaveBeenCalledWith(session, listId, expect.any(AbortSignal));
+  });
+});
+
+describe('Bring one-shot import', () => {
+  const credentials = { email: 'test@example.com', password: 'synthetic-password' };
+
+  const connectedFixture = async (allowedListIds: readonly string[] = []) => {
+    const state = fixture(allowedListIds);
+    const connected = await state.service.connect('owner-a', credentials);
+    const connectionId = connected.connectionId;
+    if (connectionId === null) throw new Error('Bring connection was not created');
+    return { ...state, connectionId };
+  };
+
+  it('copies purchase items into the iKuck shopping list with the exact mapping', async () => {
+    const { service, gateway, shoppingRepository, setRaw, connectionId } = await connectedFixture();
+    setRaw({
+      uuid: listId,
+      status: 'REGISTERED',
+      purchase: [
+        { name: 'Milch', specification: '2 l bio' },
+        { name: 'custom-item', specification: '  nota con spazi  ' },
+        { name: 'no-note', specification: '' },
+      ],
+      recently: [],
+    });
+    vi.mocked(gateway.items).mockClear();
+    vi.mocked(gateway.catalog).mockClear();
+
+    await expect(service.importList('owner-a', connectionId, listId))
+      .resolves.toEqual({ imported: 3, skipped: 0, recently: 0 });
+
+    const items = await readShoppingListItems(shoppingRepository, 'owner-a');
+    expect(items.map((item) => item.label)).toEqual(['Latte', 'custom-item', 'no-note']);
+    expect(items[0]).toMatchObject({
+      ingredientId: 'custom:latte',
+      quantity: null,
+      unit: null,
+      note: '2 l bio',
+      purchased: false,
+      sourceRecipeId: null,
+    });
+    expect(items[1]).toMatchObject({
+      ingredientId: 'custom:custom-item',
+      label: 'custom-item',
+      quantity: null,
+      unit: null,
+      note: 'nota con spazi',
+      purchased: false,
+      sourceRecipeId: null,
+    });
+    expect(items[2]).toMatchObject({ ingredientId: 'custom:no-note', quantity: null, unit: null, note: null });
+    for (const item of items) {
+      expect(item.id).toMatch(/^[0-9a-f-]{36}$/i);
+      expect(Number.isNaN(Date.parse(item.createdAt))).toBe(false);
+      expect(item.createdAt).toBe(item.updatedAt);
+    }
+    expect(new Set(items.map((item) => item.id)).size).toBe(3);
+    expect(gateway.lists).toHaveBeenCalledWith(session, expect.any(AbortSignal));
+    expect(gateway.items).toHaveBeenCalledTimes(1);
+    expect(gateway.catalog).toHaveBeenCalledTimes(1);
+    expect(gateway.change).not.toHaveBeenCalled();
+  });
+
+  it('truncates long specifications and skips labels the iKuck list cannot store', async () => {
+    const { service, shoppingRepository, setRaw, connectionId } = await connectedFixture();
+    setRaw({
+      uuid: listId,
+      status: 'REGISTERED',
+      purchase: [
+        { name: 'Milch', specification: `${'x'.repeat(200)}` },
+        { name: '   ', specification: 'senza etichetta' },
+        { name: 'z'.repeat(121), specification: '' },
+        { name: 'Caffè', specification: ' 1 kg ' },
+      ],
+      recently: [],
+    });
+
+    await expect(service.importList('owner-a', connectionId, listId))
+      .resolves.toEqual({ imported: 2, skipped: 2, recently: 0 });
+
+    const items = await readShoppingListItems(shoppingRepository, 'owner-a');
+    expect(items.map((item) => item.label)).toEqual(['Latte', 'Caffè']);
+    expect(items[0]?.note).toBe('x'.repeat(120));
+    expect(items[1]?.note).toBe('1 kg');
+  });
+
+  it('counts recently purchased items without importing them', async () => {
+    const { service, shoppingRepository, setRaw, connectionId } = await connectedFixture();
+    setRaw({
+      uuid: listId,
+      status: 'REGISTERED',
+      purchase: [{ name: 'Milch', specification: '1 l' }],
+      recently: [{ name: 'Yogurt', specification: '2' }],
+    });
+
+    await expect(service.importList('owner-a', connectionId, listId))
+      .resolves.toEqual({ imported: 1, skipped: 0, recently: 1 });
+    await expect(readShoppingListItems(shoppingRepository, 'owner-a')).resolves.toHaveLength(1);
+  });
+
+  it('skips labels already pending in iKuck and duplicates inside the same import', async () => {
+    const { service, shoppingRepository, setRaw, connectionId } = await connectedFixture();
+    const now = new Date().toISOString();
+    const pending = {
+      id: 'existing-latte',
+      ingredientId: 'custom:latte',
+      label: 'Latte',
+      quantity: null,
+      unit: null,
+      note: null,
+      purchased: false,
+      sourceRecipeId: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await shoppingRepository.applyMutation('owner-a', createShoppingListMutation(pending, 'upsert'));
+    await shoppingRepository.applyMutation('owner-a', createShoppingListMutation({
+      ...pending,
+      id: 'purchased-pane',
+      ingredientId: 'custom:pane',
+      label: 'Pane',
+      purchased: true,
+    }, 'upsert'));
+    setRaw({
+      uuid: listId,
+      status: 'REGISTERED',
+      purchase: [
+        { name: 'Milch', specification: '1 l' },
+        { name: 'pane', specification: '1 kg' },
+        { name: 'Pane', specification: '1 kg' },
+      ],
+      recently: [],
+    });
+
+    await expect(service.importList('owner-a', connectionId, listId))
+      .resolves.toEqual({ imported: 1, skipped: 2, recently: 0 });
+
+    const items = await readShoppingListItems(shoppingRepository, 'owner-a');
+    expect(items.map((item) => item.label)).toEqual(['Latte', 'Pane', 'pane']);
+  });
+
+  it('imports raw remote names when the Italian catalog is unavailable', async () => {
+    const { service, gateway, shoppingRepository, setRaw, connectionId } = await connectedFixture();
+    setRaw({
+      uuid: listId,
+      status: 'REGISTERED',
+      purchase: [{ name: 'Milch', specification: '1 l' }],
+      recently: [],
+    });
+    vi.mocked(gateway.catalog).mockRejectedValueOnce(new Error('synthetic catalog failure'));
+
+    await expect(service.importList('owner-a', connectionId, listId))
+      .resolves.toEqual({ imported: 1, skipped: 0, recently: 0 });
+    await expect(readShoppingListItems(shoppingRepository, 'owner-a'))
+      .resolves.toMatchObject([{ label: 'Milch', ingredientId: 'custom:milch' }]);
+  });
+
+  it('does not duplicate items on a second import', async () => {
+    const { service, shoppingRepository, setRaw, connectionId } = await connectedFixture();
+    setRaw({
+      uuid: listId,
+      status: 'REGISTERED',
+      purchase: [{ name: 'Milch', specification: '1 l' }],
+      recently: [{ name: 'Yogurt', specification: '2' }],
+    });
+
+    await expect(service.importList('owner-a', connectionId, listId))
+      .resolves.toEqual({ imported: 1, skipped: 0, recently: 1 });
+    await expect(service.importList('owner-a', connectionId, listId))
+      .resolves.toEqual({ imported: 0, skipped: 1, recently: 1 });
+    await expect(readShoppingListItems(shoppingRepository, 'owner-a')).resolves.toHaveLength(1);
+  });
+
+  it('reports a disconnected account without touching the iKuck shopping list', async () => {
+    const { service, gateway, shoppingRepository } = fixture();
+    const connectionId = '550e8400-e29b-41d4-a716-446655440000';
+
+    await expect(service.importList('owner-a', connectionId, listId))
+      .rejects.toMatchObject({ code: 'bring_not_connected', status: 409 });
+    await expect(readShoppingListItems(shoppingRepository, 'owner-a')).resolves.toEqual([]);
+    expect(gateway.items).not.toHaveBeenCalled();
+  });
+
+  it('reports a connection revision replaced by reconnect without importing anything', async () => {
+    const { service, shoppingRepository, setRaw } = fixture();
+    const first = await service.connect('owner-a', credentials);
+    await service.connect('owner-a', credentials);
+    setRaw({
+      uuid: listId,
+      status: 'REGISTERED',
+      purchase: [{ name: 'Milch', specification: '1 l' }],
+      recently: [],
+    });
+
+    await expect(service.importList('owner-a', first.connectionId!, listId))
+      .rejects.toMatchObject({ code: 'bring_stale_connection', status: 409 });
+    await expect(readShoppingListItems(shoppingRepository, 'owner-a')).resolves.toEqual([]);
   });
 });
