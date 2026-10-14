@@ -19,6 +19,25 @@ interface RemoteItem {
   mutable: boolean;
 }
 
+interface ShoppingItemPayload {
+  id: string;
+  ingredientId: string;
+  label: string;
+  quantity: number | null;
+  unit: string | null;
+  note: string | null;
+  purchased: boolean;
+  sourceRecipeId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ImportRecord {
+  principal: AccountKey;
+  connectionId: string;
+  listId: string;
+}
+
 interface RequestRecord {
   method: string;
   path: string;
@@ -41,6 +60,8 @@ interface BringBackendOptions {
   items?: Partial<Record<AccountKey, Record<string, RemoteItem[]>>>;
   expiredRead?: boolean;
   uncertainNextWrite?: boolean;
+  importResult?: { imported: number; skipped: number; recently: number };
+  importedShoppingItems?: ShoppingItemPayload[];
 }
 
 const LIST_ONE = '11111111-1111-4111-8111-111111111111';
@@ -75,7 +96,9 @@ class StatefulBringBackend {
   readonly writes: Array<{ principal: AccountKey; action: string; name: string }> = [];
   readonly logoutPrincipals: AccountKey[] = [];
   readonly itemReads: Array<{ principal: AccountKey; listId: string }> = [];
+  readonly imports: ImportRecord[] = [];
   private readonly connections = new Map<AccountKey, string>();
+  private pendingShoppingChanges: ShoppingItemPayload[] = [];
   private readonly remoteItems = new Map<AccountKey, Map<string, RemoteItem[]>>();
   private readonly options: BringBackendOptions;
   private expirationObserved = false;
@@ -152,6 +175,11 @@ class StatefulBringBackend {
       record.name = typeof body.name === 'string' ? body.name : undefined;
       record.connectionId = typeof body.connectionId === 'string' ? body.connectionId : undefined;
     }
+    if (path === '/v1/integrations/bring/import' && method === 'POST') {
+      const body = asRecord(request.postDataJSON());
+      record.listId = typeof body.listId === 'string' ? body.listId : undefined;
+      record.connectionId = typeof body.connectionId === 'string' ? body.connectionId : undefined;
+    }
     this.requests.push(record);
 
     if (path === '/v1/auth/session' && method === 'GET') {
@@ -191,7 +219,25 @@ class StatefulBringBackend {
       const mutations = Array.isArray(body.mutations) ? body.mutations.map(asRecord) : [];
       this.syncMutations.push(mutations.map((mutation) => ({ entityType: typeof mutation.entityType === 'string' ? mutation.entityType : undefined })));
       const cursor = typeof body.cursor === 'number' ? body.cursor : 0;
-      return responseJson(route, { accepted: mutations.map((mutation) => mutation.mutationId), changes: [], nextCursor: cursor });
+      const pendingChanges = this.pendingShoppingChanges;
+      if (pendingChanges.length === 0) {
+        return responseJson(route, { accepted: mutations.map((mutation) => mutation.mutationId), changes: [], nextCursor: cursor });
+      }
+      this.pendingShoppingChanges = [];
+      return responseJson(route, {
+        accepted: mutations.map((mutation) => mutation.mutationId),
+        changes: pendingChanges.map((payload, index) => ({
+          mutationId: `imported-shopping-${payload.id}`,
+          deviceId: 'bring-import-stub',
+          entityType: 'shopping_list_item',
+          entityId: payload.id,
+          operation: 'upsert',
+          payload,
+          clientUpdatedAt: payload.createdAt,
+          serverSequence: cursor + index + 1,
+        })),
+        nextCursor: cursor + pendingChanges.length,
+      });
     }
     if (path === '/v1/profile' && method === 'GET') {
       if (key === null) return responseJson(route, { code: 'session_required' }, 401);
@@ -289,6 +335,18 @@ class StatefulBringBackend {
         return responseJson(route, { code: 'bring_write_unconfirmed', message: 'bring_write_unconfirmed' }, 503);
       }
       return responseJson(route, { connectionId, listId, labelsAvailable: true, items: structuredClone(changed) });
+    }
+    if (method === 'POST' && path === '/v1/integrations/bring/import') {
+      if (!await this.authorize(route, key, headers['x-csrf-token'], true, path)) return true;
+      const body = asRecord(request.postDataJSON());
+      const connectionId = typeof body.connectionId === 'string' ? body.connectionId : '';
+      const listId = typeof body.listId === 'string' ? body.listId : '';
+      if (connectionId !== this.connections.get(key!) || !LISTS.some((list) => list.id === listId)) {
+        return responseJson(route, { code: 'bring_list_not_found', message: 'bring_list_not_found' }, 404);
+      }
+      this.imports.push({ principal: key!, connectionId, listId });
+      this.pendingShoppingChanges = structuredClone(this.options.importedShoppingItems ?? []);
+      return responseJson(route, this.options.importResult ?? { imported: 0, skipped: 0, recently: 0 });
     }
     return false;
   }
@@ -701,4 +759,61 @@ test('keeps duplicate raw names read-only when their remote identity is ambiguou
   expect(backend.writes).toEqual([]);
   expect(backend.bringRequests.filter((request) => request.method === 'POST' && request.path.endsWith('/items'))).toEqual([]);
   expect(backend.syncWriteTypes).toEqual([]);
+});
+
+test('imports the loaded Bring list into the iKuck shopping list exactly once', async ({ page }) => {
+  const backend = await installBackend(page, {
+    connected: ['a'],
+    items: {
+      a: {
+        [LIST_TWO]: [
+          { name: 'Milch', label: 'Latte', specification: '1 l', state: 'purchase', mutable: true },
+          { name: 'Eier', label: 'Uova', specification: '', state: 'recently', mutable: true },
+        ],
+      },
+    },
+    importResult: { imported: 1, skipped: 1, recently: 1 },
+    importedShoppingItems: [{
+      id: 'shopping:bring-import-latte',
+      ingredientId: 'milk',
+      label: 'Latte',
+      quantity: null,
+      unit: null,
+      note: null,
+      purchased: false,
+      sourceRecipeId: null,
+      createdAt: '2026-10-14T09:00:00.000Z',
+      updatedAt: '2026-10-14T09:00:00.000Z',
+    }],
+  });
+
+  await loginAs(page, 'a');
+  await page.goto('/shopping-list');
+  await page.getByRole('button', { name: 'Bring!', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Lista Bring!' }).selectOption(LIST_TWO);
+  await expect(page.locator('[data-bring-name="Milch"]').getByText('Latte', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Importa nella lista iKuck' }).click();
+  await expect(page.getByText('1 articoli da acquistare da importare')).toBeVisible();
+  await expect(page.getByText('1 già acquistati su Bring! non verranno importati')).toBeVisible();
+  await expect(page.getByText(/Copia una tantum/)).toBeVisible();
+  await expect(page.getByText(/NON viene modificata/)).toBeVisible();
+  await expect(page.getByText(/Nessuna sincronizzazione continua/)).toBeVisible();
+  expect(backend.imports).toEqual([]);
+
+  const syncCallsBeforeImport = backend.syncMutations.length;
+  await page.getByRole('button', { name: 'Conferma importazione' }).click();
+  await expect(page.getByText(
+    'Importati 1 articoli nella lista iKuck. 1 erano già presenti o non importabili. 1 articoli acquistati non sono stati importati.',
+  )).toBeVisible();
+  expect(backend.imports).toEqual([{ principal: 'a', connectionId: CONNECTION_A, listId: LIST_TWO }]);
+  expect(backend.bringRequests.filter((request) => request.method === 'POST' && request.path.endsWith('/import'))).toHaveLength(1);
+
+  await page.getByRole('button', { name: 'iKuck', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Lista della spesa' })).toBeVisible();
+  await expect(page.getByText('La lista è vuota')).toHaveCount(0);
+  await expect(page.getByText('Latte', { exact: true })).toBeVisible();
+  expect(backend.syncMutations.length).toBe(syncCallsBeforeImport + 1);
+  expect(backend.syncWriteTypes).toEqual([]);
+  expect(backend.bringRequests.filter((request) => request.method === 'POST' && request.path.endsWith('/import'))).toHaveLength(1);
 });
