@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
+import { assertOfflineBackendClean, installOfflineBackend, type OfflineApiResponse } from './helpers/backendMode';
 
 const verifiedSession = {
   authenticated: true,
@@ -18,7 +18,7 @@ const auditPage = async (page: Page, pageName: string): Promise<void> => {
   expect(blockingViolations, `${pageName} has blocking accessibility violations`).toEqual([]);
 };
 
-const installVerifiedBackend = async (page: Page): Promise<void> => {
+const installVerifiedBackend = async (page: Page, extraResponses: Record<string, OfflineApiResponse> = {}): Promise<void> => {
   await installOfflineBackend(page, {
     responses: {
       'GET /v1/auth/session': { json: verifiedSession },
@@ -28,6 +28,7 @@ const installVerifiedBackend = async (page: Page): Promise<void> => {
       'POST /v1/sync': { json: { accepted: [], changes: [], nextCursor: 0 } },
       'GET /v1/ai-recipes/consent': { json: { consent: { enabled: false, updatedAt: '2026-09-18T10:00:00.000Z' }, selectedProvider: 'openai' } },
       'GET /v1/ai-recipes': { json: { recipes: [] } },
+      ...extraResponses,
     },
   });
 };
@@ -78,6 +79,79 @@ test('shopping list passes the critical and serious axe gate', async ({ page }) 
   await page.goto('/shopping-list');
   await expect(page.getByRole('heading', { name: 'Lista della spesa' })).toBeVisible();
   await auditPage(page, 'shopping list');
+});
+
+test('Bring connection form is labeled and accessible before credential entry', async ({ page }) => {
+  await installVerifiedBackend(page, {
+    'GET /v1/integrations/bring': { json: { enabled: true, connected: false, connectionId: null } },
+  });
+  await page.goto('/shopping-list');
+  await page.getByRole('button', { name: 'Bring!', exact: true }).click();
+  await expect(page.getByLabel('Email Bring!')).toBeVisible();
+  await expect(page.getByLabel('Password Bring!')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Collega Bring!', exact: true })).toBeDisabled();
+  await auditPage(page, 'Bring connection form');
+
+  const touchTargets = [
+    page.getByLabel('Email Bring!'),
+    page.getByLabel('Password Bring!'),
+    page.getByRole('checkbox', { name: /Autorizzo iKuck ad accedere/ }).locator('xpath=..'),
+    page.getByRole('button', { name: 'Collega Bring!', exact: true }),
+  ];
+  for (const target of touchTargets) {
+    const box = await target.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+});
+
+test('Bring list actions pass axe and remain touch-friendly at 320px with 200% text', async ({ page }) => {
+  const connectionId = '33333333-3333-4333-8333-333333333333';
+  const listId = '22222222-2222-4222-8222-222222222222';
+  await page.setViewportSize({ width: 320, height: 700 });
+  await installVerifiedBackend(page, {
+    'GET /v1/integrations/bring': { json: { enabled: true, connected: true, connectionId } },
+    'GET /v1/integrations/bring/lists': { json: { connectionId, lists: [{ id: listId, name: 'Casa' }] } },
+    'GET /v1/integrations/bring/items': {
+      json: {
+        connectionId,
+        listId,
+        labelsAvailable: true,
+        items: [
+          { name: 'Milch', label: 'Latte', specification: '1 l', state: 'purchase', mutable: true },
+          { name: 'Brot', label: 'Pane', specification: '200 g', state: 'recently', mutable: true },
+        ],
+      },
+    },
+  });
+  await page.goto('/shopping-list');
+  await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+  await expect(page.getByRole('heading', { name: 'Lista Bring!' })).toBeVisible();
+  await page.getByRole('combobox', { name: 'Lista Bring!' }).selectOption(listId);
+  await expect(page.locator('[data-bring-name="Milch"]').getByText('Latte', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-bring-name="Brot"]').getByText('Pane', { exact: true })).toBeVisible();
+  await auditPage(page, 'Bring remote list and actions at 320px/200% text');
+
+  const touchTargets = [
+    page.getByRole('button', { name: 'iKuck', exact: true }),
+    page.getByRole('button', { name: 'Bring!', exact: true }),
+    page.getByRole('button', { name: 'Scollega Bring!' }),
+    page.getByRole('combobox', { name: 'Lista Bring!' }),
+    page.getByLabel('Cosa aggiungere a Bring!'),
+    page.getByLabel('Specifica Bring!'),
+    page.getByRole('button', { name: 'Aggiungi a Bring!' }),
+    page.getByRole('button', { name: 'Segna Latte acquistato su Bring!' }),
+    page.getByRole('button', { name: 'Rimuovi Latte da Bring!' }),
+    page.getByRole('button', { name: 'Ripristina Pane su Bring!' }),
+    page.getByRole('button', { name: 'Rimuovi Pane da Bring!' }),
+    page.locator('summary'),
+  ];
+  for (const target of touchTargets) {
+    const box = await target.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
 });
 
 test('activity passes the critical and serious axe gate', async ({ page }) => {

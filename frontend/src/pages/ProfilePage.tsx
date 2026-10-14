@@ -250,6 +250,14 @@ export default function ProfilePage() {
           {isLinkingGoogle && <p className="text-sm font-semibold text-gray-600">Collegamento in corso…</p>}
         </div>
 
+        <section className="mt-7 border-t border-gray-200 pt-6" aria-labelledby="privacy-heading">
+          <h2 id="privacy-heading" className="text-xl font-black text-gray-950">Privacy e servizi esterni</h2>
+          <h3 className="mt-3 font-bold text-gray-900">Bring!</h3>
+          <p className="mt-2 text-gray-600">Il collegamento richiede una conferma esplicita. Dopo la conferma, email e password vengono inviate a Bring! tramite il backend iKuck. La password non viene conservata; la sessione è cifrata sul server e resta personale, anche quando usi una Casa condivisa.</p>
+          <p className="mt-2 text-gray-600">Le azioni che richiedi inviano a Bring! i nomi degli articoli e le specifiche della lista collegata. La lista Bring! non è copiata nella lista iKuck e non è disponibile offline; gli ingredienti delle ricette non vengono trasferiti automaticamente.</p>
+          <p className="mt-2 text-gray-600">Scollegare rimuove la sessione salvata da iKuck, ma non garantisce la revoca di sessioni o dati conservati da Bring!.</p>
+        </section>
+
         <details className="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-4">
           <summary className="min-h-11 cursor-pointer py-3 font-bold text-gray-900 focus-visible:rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">Diagnostica applicazione</summary>
           <dl className="grid gap-2 border-t border-gray-200 py-3 text-sm text-gray-700 sm:grid-cols-2">

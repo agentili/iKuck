@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CookEvent, DietProfile, PantryLot, RecipePreference, ShoppingListItem, SyncChangeSet, SyncMutation } from '@ikuck/shared/contracts';
 import type { DinnerEntry, SavedRecipe } from '@ikuck/shared/dinnerDiary';
+import type { DinnerConsumptionCommand } from '@ikuck/shared/pantryConsumption';
 import validMutations from '@ikuck/shared/sync-fixtures/valid.json';
 import invalidMutations from '@ikuck/shared/sync-fixtures/invalid.json';
 import type { ApiRequest } from '../api/apiClient';
@@ -22,6 +23,7 @@ import { readCookEvents, readRecipePreferences, writeCookEvents, writeRecipePref
 import { clearDinnerDiary, readDiaryDraftSets, readDinnerEntries, readSavedRecipes, writeDiaryDraftSets, writeDinnerEntries, writeSavedRecipes } from '../storage/dinnerDiaryStorage';
 import { PANTRY_STORAGE_KEY, readPantrySnapshot, writePantrySnapshot } from '../storage/pantryStorage';
 import * as pantryStorage from '../storage/pantryStorage';
+import { commitDinnerConsumption, readDinnerConsumptionOutbox, readDinnerConsumptionReceipt } from '../storage/dinnerConsumptionStorage';
 import * as shoppingStorage from '../storage/shoppingListStorage';
 import { readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
 import { readDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
@@ -43,6 +45,9 @@ import {
   syncVerifiedSession,
   listenForReconnect,
 } from './syncQueue';
+import { getActiveDataScope, getPersonalDataScope, setActiveDataScope, setPersonalDataScope } from './scopeContext';
+import { isScopeWritable, trackScopedWrite } from './scopeWriteFence';
+import { parseSyncMutation } from './validation';
 
 const session = {
   userId: 'user-1',
@@ -61,9 +66,25 @@ const sampleMutation = (mutationId = 'mutation-1', clientUpdatedAt = '2026-09-12
 });
 
 const responseFor = (body: SyncChangeSet) => new Response(JSON.stringify(body), { status: 200 });
-import { getActiveDataScope, getPersonalDataScope, setActiveDataScope, setPersonalDataScope } from './scopeContext';
-import { isScopeWritable, trackScopedWrite } from './scopeWriteFence';
-import { parseSyncMutation } from './validation';
+
+const createConsumptionOutboxFixture = async (scope: SyncScope, operationId: string) => {
+  const timestamp = '2026-10-07T12:00:00.000Z';
+  const entry: DinnerEntry = {
+    id: `${operationId}-entry`, date: '2026-10-07', text: 'Pasta', servings: 2,
+    note: null, recipes: [], authorId: session.userId, createdAt: timestamp, updatedAt: timestamp,
+  };
+  const command: DinnerConsumptionCommand = {
+    operationId, entryId: entry.id, scope, servings: 2,
+    ingredients: [{ ingredientId: 'pasta', name: 'Pasta', amount: '100 g', optional: false, used: true }],
+  };
+  const initialLot: PantryLot = {
+    id: `${operationId}-lot`, ingredientId: 'pasta', label: 'Pasta', known: true,
+    quantity: 500, unit: 'g', expiresAt: null, createdAt: timestamp, updatedAt: timestamp,
+  };
+  await writePantrySnapshot({ pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: [], pantryLots: [initialLot] }, scope);
+  const committed = await commitDinnerConsumption({ command, entry, updatedAt: timestamp });
+  return { command, entry, initialLot, committed };
+};
 
 const accountScope = getAccountSyncScope(session.userId);
 describe('sync queue', () => {
@@ -2067,5 +2088,236 @@ describe('sync queue', () => {
 
     expect(fetch).toHaveBeenCalledWith('/v1/sync', expect.objectContaining({ body: expect.stringContaining('diet_profile') }));
     vi.unstubAllGlobals();
+  });
+
+  it('sends a pending dinner command once and reconciles the server snapshot without applying the local decrement again', async () => {
+    const scope = accountScope;
+    setActiveDataScope(scope);
+    setPersonalDataScope(scope);
+    const timestamp = '2026-10-07T12:00:00.000Z';
+    const entry: DinnerEntry = {
+      id: 'outbox-entry', date: '2026-10-07', text: 'Pasta', servings: 2,
+      note: null, recipes: [], authorId: session.userId, createdAt: timestamp, updatedAt: timestamp,
+    };
+    const command: DinnerConsumptionCommand = {
+      operationId: 'outbox-operation', entryId: entry.id, scope, servings: 2,
+      ingredients: [{ ingredientId: 'pasta', name: 'Pasta', amount: '100 g', optional: false, used: true }],
+    };
+    const initialLot: PantryLot = {
+      id: 'outbox-pasta-lot', ingredientId: 'pasta', label: 'Pasta', known: true,
+      quantity: 500, unit: 'g', expiresAt: null, createdAt: timestamp, updatedAt: timestamp,
+    };
+    await writePantrySnapshot({ pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: [], pantryLots: [initialLot] }, scope);
+    const committed = await commitDinnerConsumption({ command, entry, updatedAt: timestamp });
+    const locallyReducedLot = committed.pantrySnapshot.pantryLots?.[0];
+    if (locallyReducedLot === undefined) throw new Error('The local consumption fixture did not retain its partial lot');
+    await enqueueMutation(scope, {
+      ...sampleMutation('consumed-lot-upsert'),
+      entityType: 'pantry_lot', entityId: initialLot.id, payload: initialLot,
+    });
+    const canonicalQuantity = (locallyReducedLot.quantity ?? 0) - 20;
+    const canonicalLot = { ...locallyReducedLot, quantity: canonicalQuantity, updatedAt: '2026-10-07T12:01:00.000Z' };
+    const canonicalEntry = { ...entry, authorId: session.userId };
+    const canonicalReceipt = { ...committed.receipt, scope, committedAt: '2026-10-07T12:01:00.000Z' };
+    const response = {
+      duplicate: false,
+      entry: canonicalEntry,
+      pantrySnapshot: {
+        pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: [], pantryLots: [canonicalLot],
+      },
+      receipt: canonicalReceipt,
+      plan: canonicalReceipt.plan,
+    };
+    const requestMock = vi.fn(async (path: string, options?: { method?: string; body?: unknown }) => {
+      void options;
+      if (path === '/v1/dinner-consumption') return response;
+      if (path === '/v1/sync') return { changes: [], nextCursor: 1 };
+      throw new Error(`Unexpected request ${path}`);
+    });
+    const request = requestMock as unknown as ApiRequest;
+
+    await syncNow({ session, request });
+
+    expect(requestMock.mock.calls.map(([path]) => path)).toEqual(['/v1/dinner-consumption', '/v1/sync']);
+    expect(requestMock).toHaveBeenNthCalledWith(1, '/v1/dinner-consumption', expect.objectContaining({
+      method: 'POST', csrfToken: session.csrfToken,
+      body: { command, entry },
+    }));
+    const syncOptions = requestMock.mock.calls[1]?.[1] as { body: { mutations: SyncMutation[] } };
+    expect(syncOptions.body.mutations).toEqual([]);
+    await expect(readPantrySnapshot(scope)).resolves.toMatchObject({ pantryLots: [canonicalLot] });
+    await expect(readDinnerEntries(scope)).resolves.toEqual([canonicalEntry]);
+    await expect(readDinnerConsumptionReceipt(command.operationId, scope)).resolves.toEqual(canonicalReceipt);
+    await expect(readDinnerConsumptionOutbox(scope)).resolves.toEqual([]);
+    await expect(readQueuedMutations(scope)).resolves.toEqual([]);
+  });
+
+  it('retains a failed consumption for retry with the same operation ID', async () => {
+    const scope = accountScope;
+    setActiveDataScope(scope);
+    setPersonalDataScope(scope);
+    const { command, entry, committed } = await createConsumptionOutboxFixture(scope, 'retry-operation');
+    const reducedLot = committed.pantrySnapshot.pantryLots?.[0];
+    if (reducedLot === undefined) throw new Error('The local consumption fixture did not retain its partial lot');
+    await enqueueMutation(scope, {
+      ...sampleMutation('retry-consumed-lot'), entityType: 'pantry_lot', entityId: reducedLot.id, payload: reducedLot,
+    });
+    const response = {
+      duplicate: true,
+      entry,
+      pantrySnapshot: committed.pantrySnapshot,
+      receipt: { ...committed.receipt, committedAt: '2026-10-07T12:01:00.000Z' },
+    };
+    const requestMock = vi.fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(response)
+      .mockResolvedValueOnce({ changes: [], nextCursor: 1 });
+    const request = requestMock as unknown as ApiRequest;
+
+    await expect(syncNow({ session, request })).rejects.toThrow('offline');
+    await expect(readDinnerConsumptionOutbox(scope)).resolves.toEqual([expect.objectContaining({ operationId: command.operationId, status: 'pending' })]);
+    await expect(readQueuedMutations(scope)).resolves.toEqual([expect.objectContaining({ mutationId: 'retry-consumed-lot' })]);
+    await syncNow({ session, request });
+
+    expect(requestMock.mock.calls.map(([path]) => path)).toEqual(['/v1/dinner-consumption', '/v1/dinner-consumption', '/v1/sync']);
+    expect(requestMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ body: { command, entry } }));
+    expect(requestMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({ body: { command, entry } }));
+    await expect(readDinnerConsumptionOutbox(scope)).resolves.toEqual([]);
+    await expect(readQueuedMutations(scope)).resolves.toEqual([]);
+    await expect(readPantrySnapshot(scope)).resolves.toEqual(committed.pantrySnapshot);
+  });
+
+  it('rejects a dinner response after the active scope changes and keeps the outbox pending', async () => {
+    const scope = accountScope;
+    setActiveDataScope(scope);
+    setPersonalDataScope(scope);
+    const { command, entry, committed } = await createConsumptionOutboxFixture(scope, 'stale-consumption-operation');
+    const response = {
+      duplicate: false,
+      entry,
+      pantrySnapshot: { ...committed.pantrySnapshot, pantryLots: [] },
+      receipt: { ...committed.receipt, committedAt: '2026-10-07T12:01:00.000Z' },
+    };
+    let resolveResponse: ((result: typeof response) => void) | undefined;
+    const responsePromise = new Promise<typeof response>((resolve) => { resolveResponse = resolve; });
+    const requestMock = vi.fn().mockReturnValue(responsePromise);
+    const operation = syncNow({ session, request: requestMock as unknown as ApiRequest });
+    await vi.waitFor(() => expect(requestMock).toHaveBeenCalledOnce());
+
+    setActiveDataScope('house:stale-consumption');
+    resolveResponse?.(response);
+    await expect(operation).rejects.toMatchObject({ code: 'scope_changed' });
+
+    expect(requestMock).toHaveBeenCalledOnce();
+    await expect(readDinnerConsumptionOutbox(scope, () => undefined)).resolves.toEqual([
+      expect.objectContaining({ operationId: command.operationId, status: 'pending' }),
+    ]);
+    await expect(readPantrySnapshot(scope)).resolves.toEqual(committed.pantrySnapshot);
+    await expect(readDinnerEntries(scope)).resolves.toEqual([entry]);
+  });
+
+  it('keeps dinner-related account queue mutations until the pending command can migrate into the House', async () => {
+    const houseScope = 'house:pending-consumption-import' as const;
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
+    const { command, entry, initialLot } = await createConsumptionOutboxFixture(accountScope, 'pending-house-import-operation');
+    await enqueueMutation(accountScope, {
+      ...sampleMutation('pending-consumption-lot'),
+      entityType: 'pantry_lot', entityId: initialLot.id, payload: initialLot,
+    });
+    await enqueueMutation(accountScope, {
+      ...sampleMutation('pending-consumption-entry'),
+      entityType: 'dinner_entry', entityId: entry.id, payload: entry,
+    });
+    const state = {
+      house: { id: 'pending-consumption-import', name: 'Casa', createdAt: '2026-10-07T12:00:00.000Z' },
+      membership: { role: 'member' as const, joinedAt: '2026-10-07T12:00:00.000Z' },
+      members: [],
+    };
+    const requestMock = vi.fn(async (path: string) => {
+      if (path === '/v1/house') return state;
+      throw new Error(`Unexpected request ${path}`);
+    });
+
+    await initializeSessionScope(session, requestMock as unknown as ApiRequest);
+
+    expect(requestMock.mock.calls.map(([path]) => path)).toEqual(['/v1/house']);
+    expect(getActiveDataScope()).toBe(houseScope);
+    await expect(readDinnerConsumptionOutbox(accountScope, () => undefined)).resolves.toEqual([
+      expect.objectContaining({ operationId: command.operationId, status: 'pending' }),
+    ]);
+    await expect(readQueuedMutations(accountScope)).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ mutationId: 'pending-consumption-lot' }),
+      expect.objectContaining({ mutationId: 'pending-consumption-entry' }),
+    ]));
+  });
+
+  it('retries an account outbox in the currently authorized House without changing its operation ID', async () => {
+    const houseScope = 'house:consumption-current' as const;
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
+    const { command, entry, committed } = await createConsumptionOutboxFixture(accountScope, 'house-retry-operation');
+    const updatedEntry = { ...entry, note: 'Nota aggiornata dopo la conferma', updatedAt: '2026-10-07T12:02:00.000Z' };
+    await enqueueMutation(accountScope, {
+      ...sampleMutation('post-consumption-entry-edit', updatedEntry.updatedAt),
+      entityType: 'dinner_entry', entityId: entry.id, payload: updatedEntry,
+    });
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    const canonicalReceipt = { ...committed.receipt, scope: houseScope, committedAt: '2026-10-07T12:01:00.000Z' };
+    const response = {
+      duplicate: true,
+      entry,
+      pantrySnapshot: committed.pantrySnapshot,
+      receipt: canonicalReceipt,
+    };
+    const serverChange = {
+      ...sampleMutation('server-entry-note', updatedEntry.updatedAt),
+      entityType: 'dinner_entry' as const,
+      entityId: entry.id,
+      payload: updatedEntry,
+      syncScope: houseScope,
+      serverSequence: 1,
+    };
+    const requestMock = vi.fn(async (path: string, options?: { body?: unknown }) => {
+      void options;
+      if (path === '/v1/dinner-consumption') return response;
+      if (path === '/v1/house/account-queue/import') return undefined;
+      if (path === '/v1/sync') return { changes: [serverChange], nextCursor: 1 };
+      throw new Error(`Unexpected request ${path}`);
+    });
+
+    await syncNow({ session, request: requestMock as unknown as ApiRequest });
+
+    expect(requestMock.mock.calls.map(([path]) => path)).toEqual([
+      '/v1/dinner-consumption', '/v1/house/account-queue/import', '/v1/sync',
+    ]);
+    expect(requestMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+      body: { command: { ...command, scope: houseScope }, entry },
+    }));
+    expect(requestMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({
+      body: { mutations: [expect.objectContaining({ entityType: 'dinner_entry', entityId: entry.id, payload: updatedEntry })] },
+    }));
+    await expect(readDinnerEntries(accountScope)).resolves.toEqual([]);
+    await expect(readDinnerEntries(houseScope)).resolves.toEqual([updatedEntry]);
+    await expect(readDinnerConsumptionReceipt(command.operationId, houseScope)).resolves.toEqual(canonicalReceipt);
+    await expect(readDinnerConsumptionOutbox(accountScope, () => undefined)).resolves.toEqual([]);
+    await expect(readDinnerConsumptionOutbox(houseScope)).resolves.toEqual([]);
+    await expect(readPantrySnapshot(houseScope)).resolves.toEqual(committed.pantrySnapshot);
+  });
+
+  it('keeps guest consumption local instead of sending it during account sync', async () => {
+    const { command, entry } = await createConsumptionOutboxFixture(GUEST_SYNC_SCOPE, 'guest-local-operation');
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
+    const requestMock = vi.fn().mockResolvedValue({ changes: [], nextCursor: 0 });
+
+    await syncNow({ session, request: requestMock as unknown as ApiRequest });
+
+    expect(requestMock.mock.calls.map(([path]) => path)).toEqual(['/v1/sync']);
+    await expect(readDinnerConsumptionOutbox(GUEST_SYNC_SCOPE, () => undefined)).resolves.toEqual([
+      expect.objectContaining({ operationId: command.operationId, entryId: entry.id, status: 'pending' }),
+    ]);
+    await expect(readDinnerEntries(GUEST_SYNC_SCOPE)).resolves.toEqual([entry]);
   });
 });

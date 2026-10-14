@@ -8,7 +8,12 @@ import { usePantryStore } from '../store/localPantryStore';
 import { useActivityStore } from '../store/activityStore';
 import { useAuthStore } from '../auth/authStore';
 import { useDinnerDiaryStore } from '../store/dinnerDiaryStore';
-import { getActiveDataScope } from '../sync/scopeContext';
+import { getActiveDataScope, setActiveDataScope, setPersonalDataScope } from '../sync/scopeContext';
+import { deleteLocalDatabase } from '../storage/indexedDb';
+import { readCookEvents } from '../storage/activityStorage';
+import { readDinnerEntries } from '../storage/dinnerDiaryStorage';
+import { readDinnerConsumptionOutbox } from '../storage/dinnerConsumptionStorage';
+import { readPantrySnapshot, writePantrySnapshot } from '../storage/pantryStorage';
 import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
 
 const renderRoute = (path: string) => render(
@@ -47,7 +52,7 @@ describe('RecipeDetailPage integration', () => {
 
     expect(screen.getByRole('heading', { name: 'Pollo al limone' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Ingredienti' })).toBeInTheDocument();
-    expect(screen.getByText('Petto di pollo')).toBeInTheDocument();
+    expect(screen.getAllByText('Petto di pollo').some((element) => element.tagName === 'SPAN')).toBe(true);
     expect(screen.getByText('300 g')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Preparazione' })).toBeInTheDocument();
     expect(screen.getAllByRole('listitem').length).toBeGreaterThan(6);
@@ -118,7 +123,7 @@ describe('RecipeDetailPage integration', () => {
 
     const ingredients = screen.getByRole('heading', { name: 'Ingredienti' });
     const preparation = screen.getByRole('heading', { name: 'Preparazione' });
-    const experience = screen.getByRole('heading', { name: 'La tua esperienza' });
+    const experience = screen.getByRole('heading', { name: 'Conferma la cena' });
     const nutrition = screen.getByRole('heading', { name: 'Nutrizione stimata per porzione' });
 
     expect(ingredients.compareDocumentPosition(preparation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -178,24 +183,55 @@ describe('RecipeDetailPage integration', () => {
     expect(screen.getByRole('link', { name: 'Apri la lista della spesa' })).toHaveAttribute('href', '/shopping-list');
   });
 
-  it('records a cooking event without changing the pantry', async () => {
+  it('consumes only the selected known-recipe ingredients when confirming a cook event', async () => {
     const user = userEvent.setup();
-    usePantryStore.setState({
-      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
-      pantryLots: [],
+    const scope = 'guest';
+    const createdAt = '2026-10-07T09:00:00.000Z';
+    const pastaLot = { id: 'recipe-pasta-lot', ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 500, unit: 'g' as const, expiresAt: null, createdAt, updatedAt: createdAt };
+    const tunaLot = { id: 'recipe-tuna-lot', ingredientId: 'tuna', label: 'Tonno', known: true, quantity: 240, unit: 'g' as const, expiresAt: null, createdAt, updatedAt: createdAt };
+    const initialPantry = {
+      pantryItems: [
+        { id: 'pasta', label: 'Pasta', known: true },
+        { id: 'tuna', label: 'Tonno', known: true },
+      ],
+      pantryLots: [pastaLot, tunaLot],
       stapleIds: ['salt'],
-    });
-    const before = JSON.stringify(usePantryStore.getState());
+    };
+    await deleteLocalDatabase();
+    setPersonalDataScope(scope);
+    setActiveDataScope(scope);
+    await writePantrySnapshot(initialPantry, scope);
+    usePantryStore.setState(initialPantry);
     renderRoute('/recipes/pasta-tonno-pomodoro');
 
-    await user.click(screen.getByRole('button', { name: 'Segna come cucinata' }));
+    expect(screen.getByRole('textbox', { name: 'Quantità per porzione di Pasta' })).toHaveValue('90 g');
+    expect(screen.getByRole('checkbox', { name: 'Usato: Pasta' })).toBeChecked();
+    expect(usePantryStore.getState().pantryLots).toEqual(initialPantry.pantryLots);
+    await user.click(screen.getByRole('checkbox', { name: 'Usato: Tonno' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Usato: Passata di pomodoro' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Usato: Olio extravergine di oliva' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Usato: Sale' }));
 
+    await user.click(screen.getByRole('button', { name: 'Conferma cena' }));
+
+    expect(await screen.findByRole('status', { name: 'Riepilogo dispensa aggiornata' })).toHaveTextContent('Scalati 180 g di Pasta.');
     expect(useActivityStore.getState().events).toEqual([expect.objectContaining({
       recipeId: 'pasta-tonno-pomodoro',
       recipeTitle: 'Pasta tonno e pomodoro',
+      servings: 2,
     })]);
-    expect(JSON.stringify(usePantryStore.getState())).toBe(before);
-    expect(screen.getByRole('status')).toHaveTextContent('Ricetta aggiunta alla cronologia.');
+    await expect(readPantrySnapshot(scope)).resolves.toMatchObject({
+      pantryLots: [
+        expect.objectContaining({ id: pastaLot.id, quantity: 320 }),
+        expect.objectContaining({ id: tunaLot.id, quantity: 240 }),
+      ],
+      stapleIds: ['salt'],
+    });
+    await expect(readCookEvents(scope)).resolves.toHaveLength(1);
+    await expect(readDinnerEntries(scope)).resolves.toMatchObject([
+      expect.objectContaining({ id: useActivityStore.getState().events[0]?.id, recipes: [{ recipeId: 'pasta-tonno-pomodoro', title: 'Pasta tonno e pomodoro', source: 'catalog' }] }),
+    ]);
+    await expect(readDinnerConsumptionOutbox(scope)).resolves.toHaveLength(1);
   });
 
   it('saves a favorite, rating and private note', async () => {
