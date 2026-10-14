@@ -211,4 +211,33 @@ describe('loadConfig', () => {
     }
   });
 
+  it('keeps Bring disabled by default', () => {
+    expect(loadConfig({ NODE_ENV: 'development' })).toMatchObject({ bringEnabled: false, bringTestListId: undefined });
+  });
+
+  it('requires a valid key before enabling Bring', () => {
+    expect(() => loadConfig({ NODE_ENV: 'development', BRING_ENABLED: 'true' })).toThrow();
+    expect(() => loadConfig({ NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: 'invalid' })).toThrow();
+  });
+
+  it('requires the designated test list before enabling Bring', () => {
+    const enabled = { NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32) };
+    expect(() => loadConfig(enabled)).toThrow();
+    expect(() => loadConfig({ ...enabled, BRING_TEST_LIST_ID: '' })).toThrow();
+    expect(() => loadConfig({ ...enabled, BRING_TEST_LIST_ID: 'a'.repeat(129) })).toThrow();
+    expect(loadConfig({ ...enabled, BRING_TEST_LIST_ID: 'lista-prova-dedicata' }))
+      .toMatchObject({ bringEnabled: true, bringTestListId: 'lista-prova-dedicata' });
+  });
+
+  it('accepts explicit encrypted Bring configuration', () => {
+    expect(loadConfig({
+      NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32), BRING_TEST_LIST_ID: 'lista-prova-dedicata',
+    })).toMatchObject({ bringEnabled: true, bringTestListId: 'lista-prova-dedicata' });
+  });
+
+  it('keeps a designated test list inert while Bring stays disabled', () => {
+    expect(loadConfig({ NODE_ENV: 'development', BRING_TEST_LIST_ID: 'lista-prova-dedicata' }))
+      .toMatchObject({ bringEnabled: false, bringTestListId: 'lista-prova-dedicata' });
+  });
+
 });

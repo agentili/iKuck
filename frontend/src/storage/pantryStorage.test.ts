@@ -5,6 +5,7 @@ import {
   PANTRY_CONFLICT_BACKUP_KEY,
   migrateLegacyPantry,
   pantryStorage,
+  parsePantrySnapshot,
   readPantrySnapshot,
   clearPantrySnapshot,
   recoverPantrySnapshot,
@@ -2651,6 +2652,33 @@ describe('pantry storage', () => {
     await expect(readPantrySnapshot()).rejects.toMatchObject({ code: 'pantry_snapshot_conflict' });
   });
 
+  it('prefers the pending local mirror over an obsolete IndexedDB copy when neither side is revisioned', async () => {
+    const indexedDbRaw = JSON.stringify({
+      state: { pantryItems: [{ id: 'indexed-obsolete', label: 'Pasta', known: true }], stapleIds: ['salt'] },
+      version: 1,
+      mirrorObsolete: true,
+    });
+    const localRaw = JSON.stringify({
+      state: { pantryItems: [{ id: 'local-pending', label: 'Riso', known: true }], stapleIds: [] },
+      version: 1,
+    });
+    await indexedDb.writeKeyValue('pantry', indexedDbRaw);
+    window.localStorage.setItem(PANTRY_STORAGE_KEY, localRaw);
+
+    // Control: without a pending marker the obsolete IndexedDB copy still wins.
+    await expect(readPantrySnapshot()).resolves.toMatchObject({
+      pantryItems: [{ id: 'indexed-obsolete' }],
+    });
+
+    // A pending marker means another tab holds newer local data that has not reached
+    // IndexedDB yet: the local mirror must win even though the copy is flagged obsolete
+    // (the flag can be left over from a previous failed mirror update).
+    window.localStorage.setItem(`${PANTRY_STORAGE_KEY}-idb-pending`, '1');
+    await expect(readPantrySnapshot()).resolves.toMatchObject({
+      pantryItems: [{ id: 'local-pending' }],
+    });
+  });
+
   it.each(['indexed-db', 'local-storage'] as const)(
     'keeps recovery retryable after marker cleanup fails in %s mode and the tab reloads',
     async (mode) => {
@@ -4099,7 +4127,7 @@ describe('pantry storage', () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new DOMException('Storage disabled', 'SecurityError');
     });
-    vi.spyOn(indexedDb, 'isIndexedDbAvailable').mockReturnValue(false);
+    const availability = vi.spyOn(indexedDb, 'isIndexedDbAvailable').mockReturnValue(false);
     Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new DOMException('Storage denied', 'SecurityError'); } });
 
     try {
@@ -4108,6 +4136,250 @@ describe('pantry storage', () => {
     } finally {
       if (descriptor) Object.defineProperty(window, 'localStorage', descriptor);
       setItem.mockRestore();
+      // Restore the module spy so later tests do not inherit a disabled IndexedDB.
+      availability.mockRestore();
     }
+  });
+
+  // P2 findings: one comparable persisted write-revision rule for both readers, and a
+  // scoped purge that never leaves cleared records readable through the browser mirror.
+  const pantryLotSnapshot = (quantity: number) => ({
+    pantryItems: [],
+    stapleIds: [],
+    pantryLots: [{
+      id: 'pasta-lot',
+      ingredientId: 'pasta',
+      label: 'Pasta',
+      known: true,
+      quantity,
+      unit: 'g' as const,
+      expiresAt: null,
+      createdAt: '2026-10-10T12:00:00.000Z',
+      updatedAt: '2026-10-10T12:00:00.000Z',
+    }],
+  });
+
+  const lotQuantity = (snapshot: { pantryLots?: { quantity: number | null }[] } | null): number | null => snapshot?.pantryLots?.[0]?.quantity ?? null;
+  const rawLotQuantity = (raw: string | null): number | null => (raw === null ? null : lotQuantity(parsePantrySnapshot(raw)));
+
+  it('keeps the newer IndexedDB revision selected while an older mirror copy stays readable (both readers)', async () => {
+    await writePantrySnapshot(pantryLotSnapshot(500));
+    expect(rawLotQuantity(window.localStorage.getItem(PANTRY_STORAGE_KEY))).toBe(500);
+
+    const originalSetItem = Storage.prototype.setItem;
+    const originalRemoveItem = Storage.prototype.removeItem;
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (key === PANTRY_STORAGE_KEY) throw new DOMException('Storage disabled', 'SecurityError');
+      return originalSetItem.call(this, key, value);
+    });
+    const removeItem = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (this: Storage, key) {
+      if (key === PANTRY_STORAGE_KEY) throw new DOMException('Storage disabled', 'SecurityError');
+      return originalRemoveItem.call(this, key);
+    });
+
+    try {
+      await writePantrySnapshot(pantryLotSnapshot(300));
+    } finally {
+      setItem.mockRestore();
+      removeItem.mockRestore();
+    }
+
+    // The older mirror survived both its rewrite and the cleanup attempt.
+    expect(rawLotQuantity(window.localStorage.getItem(PANTRY_STORAGE_KEY))).toBe(500);
+    expect(lotQuantity(await readPantrySnapshot())).toBe(300);
+    expect(rawLotQuantity(await pantryStorage.getItem(PANTRY_STORAGE_KEY))).toBe(300);
+  });
+
+  it('keeps the newer local mirror write selected through both readers when the IndexedDB write fails', async () => {
+    await writePantrySnapshot(pantryLotSnapshot(500));
+    const actualWrite = indexedDb.writeKeyValue;
+    const deniedWrite = vi.spyOn(indexedDb, 'writeKeyValue').mockImplementation(async (key, value) => {
+      if (key === 'pantry') throw new Error('IndexedDB temporarily unavailable');
+      return actualWrite(key, value);
+    });
+
+    try {
+      await expect(writePantrySnapshot(pantryLotSnapshot(300))).rejects.toThrow(/IndexedDB temporarily unavailable/);
+    } finally {
+      deniedWrite.mockRestore();
+    }
+
+    expect(rawLotQuantity(window.localStorage.getItem(PANTRY_STORAGE_KEY))).toBe(300);
+    expect(await indexedDb.readKeyValue<string>('pantry').then(rawLotQuantity)).toBe(500);
+    expect(lotQuantity(await readPantrySnapshot())).toBe(300);
+    expect(rawLotQuantity(await pantryStorage.getItem(PANTRY_STORAGE_KEY))).toBe(300);
+  });
+
+  it('keeps the newer IndexedDB revision selectable while the whole localStorage property is denied (both readers)', async () => {
+    await writePantrySnapshot(pantryLotSnapshot(500));
+    const originalSetItem = Storage.prototype.setItem;
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (key === PANTRY_STORAGE_KEY) throw new DOMException('Storage disabled', 'SecurityError');
+      return originalSetItem.call(this, key, value);
+    });
+
+    try {
+      await writePantrySnapshot(pantryLotSnapshot(300));
+    } finally {
+      setItem.mockRestore();
+    }
+
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'localStorage');
+    Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new DOMException('Storage denied', 'SecurityError'); } });
+    try {
+      expect(lotQuantity(await readPantrySnapshot())).toBe(300);
+      expect(rawLotQuantity(await pantryStorage.getItem(PANTRY_STORAGE_KEY))).toBe(300);
+    } finally {
+      if (descriptor !== undefined) Object.defineProperty(window, 'localStorage', descriptor);
+    }
+  });
+
+  it('rejects both pantry writers when neither store can persist and never fabricates a snapshot', async () => {
+    const availability = vi.spyOn(indexedDb, 'isIndexedDbAvailable').mockReturnValue(false);
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage disabled', 'SecurityError');
+    });
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'localStorage');
+    Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new DOMException('Storage denied', 'SecurityError'); } });
+
+    try {
+      await expect(writePantrySnapshot(pantryLotSnapshot(300))).rejects.toThrow(/persist/i);
+      await expect(pantryStorage.setItem(PANTRY_STORAGE_KEY, JSON.stringify({ state: pantryLotSnapshot(300), version: 1 })))
+        .rejects.toThrow(/persist/i);
+      await expect(readPantrySnapshot()).resolves.toBeNull();
+      await expect(pantryStorage.getItem(PANTRY_STORAGE_KEY)).resolves.toBeNull();
+    } finally {
+      if (descriptor !== undefined) Object.defineProperty(window, 'localStorage', descriptor);
+      setItem.mockRestore();
+      availability.mockRestore();
+    }
+  });
+
+  it('keeps every pantry copy intact when a scoped purge cannot remove the readable mirror', async () => {
+    await writePantrySnapshot(pantryLotSnapshot(500));
+    const originalRemoveItem = Storage.prototype.removeItem;
+    const removeItem = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (this: Storage, key) {
+      if (key === PANTRY_STORAGE_KEY) throw new DOMException('Storage disabled', 'SecurityError');
+      return originalRemoveItem.call(this, key);
+    });
+
+    try {
+      await expect(clearPantrySnapshot('guest')).rejects.toThrow(/mirror could not be cleared/i);
+    } finally {
+      removeItem.mockRestore();
+    }
+
+    // The canonical row must survive an unconfirmed purge: deleting it while a readable
+    // mirror copy remains would resurrect those records on the next read.
+    expect(await indexedDb.readKeyValue<string>('pantry')).not.toBeNull();
+    expect(rawLotQuantity(window.localStorage.getItem(PANTRY_STORAGE_KEY))).toBe(500);
+
+    await clearPantrySnapshot('guest');
+    await expect(readPantrySnapshot()).resolves.toBeNull();
+    await expect(pantryStorage.getItem(PANTRY_STORAGE_KEY)).resolves.toBeNull();
+  });
+
+  it('keeps the canonical row when a scoped purge cannot remove the legacy mirror copy', async () => {
+    window.localStorage.setItem(LEGACY_PANTRY_STORAGE_KEY, persistedPantry('legacy-tomato'));
+    await writePantrySnapshot(pantryLotSnapshot(500));
+    const originalRemoveItem = Storage.prototype.removeItem;
+    const removeItem = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (this: Storage, key) {
+      if (key === LEGACY_PANTRY_STORAGE_KEY) throw new DOMException('Storage disabled', 'SecurityError');
+      return originalRemoveItem.call(this, key);
+    });
+
+    try {
+      await expect(clearPantrySnapshot('guest')).rejects.toThrow(/mirror could not be cleared/i);
+    } finally {
+      removeItem.mockRestore();
+    }
+
+    expect(await indexedDb.readKeyValue<string>('pantry')).not.toBeNull();
+    expect(lotQuantity(await readPantrySnapshot())).toBe(500);
+  });
+
+  it('fails closed when a scoped purge cannot confirm the canonical removal', async () => {
+    await writePantrySnapshot(pantryLotSnapshot(500));
+    const deleteIfValue = vi.spyOn(indexedDb, 'deleteKeyValueIfValue').mockResolvedValue(false);
+
+    try {
+      await expect(clearPantrySnapshot('guest')).rejects.toThrow(/purge could not be confirmed/i);
+    } finally {
+      deleteIfValue.mockRestore();
+    }
+
+    expect(await indexedDb.readKeyValue<string>('pantry')).not.toBeNull();
+    expect(lotQuantity(await readPantrySnapshot())).toBe(500);
+  });
+
+  it('fails closed instead of clearing a house pantry whose purge marker cannot be read', async () => {
+    const scope = 'house:review-purge-marker';
+    setActiveDataScope(scope);
+    await writePantrySnapshot(pantryLotSnapshot(500), scope);
+
+    const markerKey = `ikuck:pending-house-purge:${scope}`;
+    const originalGetItem = Storage.prototype.getItem;
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key) {
+      if (key === markerKey) throw new DOMException('Storage disabled', 'SecurityError');
+      return originalGetItem.call(this, key);
+    });
+
+    try {
+      await expect(clearPantrySnapshot(scope)).rejects.toThrow(/purge marker/i);
+      expect(await indexedDb.readKeyValue<string>(scopeStorageKey(scope, 'pantry'))).not.toBeNull();
+      expect(window.localStorage.getItem(scopeStorageKey(scope, PANTRY_STORAGE_KEY))).not.toBeNull();
+    } finally {
+      getItem.mockRestore();
+    }
+  });
+
+  it('fails closed without deleting the canonical row when a pantry removal cannot clear the mirror', async () => {
+    await writePantrySnapshot(pantryLotSnapshot(500));
+    const originalRemoveItem = Storage.prototype.removeItem;
+    const removeItem = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (this: Storage, key) {
+      if (key === PANTRY_STORAGE_KEY) throw new DOMException('Storage disabled', 'SecurityError');
+      return originalRemoveItem.call(this, key);
+    });
+
+    try {
+      await expect(pantryStorage.removeItem(PANTRY_STORAGE_KEY)).rejects.toThrow(/mirror could not be cleared/i);
+    } finally {
+      removeItem.mockRestore();
+    }
+
+    expect(await indexedDb.readKeyValue<string>('pantry')).not.toBeNull();
+
+    await expect(pantryStorage.removeItem(PANTRY_STORAGE_KEY)).resolves.toBeUndefined();
+    await expect(readPantrySnapshot()).resolves.toBeNull();
+  });
+
+  it('fails closed without deleting the canonical row when the mirror cannot be read during a pantry removal', async () => {
+    await writePantrySnapshot(pantryLotSnapshot(500));
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'localStorage');
+    Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new DOMException('Storage denied', 'SecurityError'); } });
+
+    try {
+      await expect(pantryStorage.removeItem(PANTRY_STORAGE_KEY)).rejects.toThrow(/mirror could not be cleared/i);
+    } finally {
+      if (descriptor !== undefined) Object.defineProperty(window, 'localStorage', descriptor);
+    }
+
+    expect(await indexedDb.readKeyValue<string>('pantry')).not.toBeNull();
+    expect(lotQuantity(await readPantrySnapshot())).toBe(500);
+  });
+
+  it('fails closed instead of clearing a scoped pantry when the mirror cannot be read at all', async () => {
+    await writePantrySnapshot(pantryLotSnapshot(500));
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'localStorage');
+    Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new DOMException('Storage denied', 'SecurityError'); } });
+
+    try {
+      await expect(clearPantrySnapshot('guest')).rejects.toThrow(/mirror could not be cleared/i);
+    } finally {
+      if (descriptor !== undefined) Object.defineProperty(window, 'localStorage', descriptor);
+    }
+
+    expect(await indexedDb.readKeyValue<string>('pantry')).not.toBeNull();
+    expect(lotQuantity(await readPantrySnapshot())).toBe(500);
   });
 });

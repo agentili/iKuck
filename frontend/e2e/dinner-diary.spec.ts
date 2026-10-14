@@ -8,6 +8,38 @@ const verifiedSession = {
   expiresAt: '2026-10-15T08:00:00.000Z',
 };
 
+const readConsumptionState = async (page: Page, scope: string): Promise<{
+  pantrySnapshot: unknown;
+  outbox: Array<{ operationId: string; receipt: unknown }>;
+}> => page.evaluate(async (activeScope) => {
+  const database = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open('ikuck-local-v2');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  const pantryRequest = database.transaction('keyValue', 'readonly').objectStore('keyValue')
+    .get(`ikuck:${activeScope}:pantry`);
+  const pantryRaw = await new Promise<unknown>((resolve, reject) => {
+    pantryRequest.onsuccess = () => resolve(pantryRequest.result);
+    pantryRequest.onerror = () => reject(pantryRequest.error);
+  });
+  const consumptionRequest = database.transaction('dinnerConsumption', 'readonly')
+    .objectStore('dinnerConsumption').getAll();
+  const consumptionValues = await new Promise<unknown[]>((resolve, reject) => {
+    consumptionRequest.onsuccess = () => resolve(consumptionRequest.result as unknown[]);
+    consumptionRequest.onerror = () => reject(consumptionRequest.error);
+  });
+  database.close();
+  const persistedPantry = typeof pantryRaw === 'string' ? JSON.parse(pantryRaw) as { state?: unknown } : null;
+  return {
+    pantrySnapshot: persistedPantry?.state ?? null,
+    outbox: consumptionValues.filter((value): value is { operationId: string; receipt: unknown } => (
+      typeof value === 'object' && value !== null
+      && 'operationId' in value && typeof value.operationId === 'string' && 'receipt' in value
+    )),
+  };
+}, scope);
+
 const clearLocalDatabase = async (page: Page): Promise<void> => {
   await page.evaluate(() => new Promise<void>((resolve, reject) => {
     const request = indexedDB.deleteDatabase('ikuck-local-v2');
@@ -46,7 +78,7 @@ test('keeps the diary usable at 320px with 200% text zoom', async ({ page }) => 
   const navigation = page.getByRole('navigation', { name: 'Navigazione principale' });
   const consentDisclosure = page.getByRole('region', { name: 'Consenso per ricostruire ricette' }).locator('details');
   await expect(consentDisclosure).not.toHaveAttribute('open', '');
-  await expect(page.getByRole('button', { name: 'Salva cena' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Registra la cena' })).toBeVisible();
   await expect(navigation).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
   await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
@@ -56,7 +88,7 @@ test('keeps the diary usable at 320px with 200% text zoom', async ({ page }) => 
   expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
   await consentDisclosure.locator('summary').press('Enter');
   await expect(consentDisclosure).not.toHaveAttribute('open', '');
-  await expect(page.getByRole('button', { name: 'Salva cena' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Registra la cena' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
   expect(await navigation.evaluate((element) => window.getComputedStyle(element).position)).toBe('fixed');
 });
@@ -66,6 +98,7 @@ test('records a dinner, edits and confirms an AI draft, then finds it in recipe 
   const homeConsentProvider = 'openai' as const;
   let dinnerConsentProvider: 'openai' | 'gemini' | null = null;
   let confirmationBody: unknown;
+  let consumptionRequests = 0;
   const draft = {
     draftId: 'draft-from-openai-fixture',
     title: 'Pasta con zucchine',
@@ -82,6 +115,27 @@ test('records a dinner, edits and confirms an AI draft, then finds it in recipe 
     suggestedFields: ['title', 'description', 'ingredients', 'amounts', 'steps', 'servings', 'durationMinutes', 'diets', 'allergens'],
   };
 
+  await page.route('**/v1/dinner-consumption', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback();
+      return;
+    }
+    const body = route.request().postDataJSON() as {
+      command: { operationId: string; scope: string };
+      entry: unknown;
+    };
+    const state = await readConsumptionState(page, body.command.scope);
+    const record = state.outbox.find(({ operationId }) => operationId === body.command.operationId);
+    expect(record).toBeDefined();
+    expect(state.pantrySnapshot).not.toBeNull();
+    consumptionRequests += 1;
+    await route.fulfill({ status: 200, json: {
+      duplicate: false,
+      entry: body.entry,
+      pantrySnapshot: state.pantrySnapshot,
+      receipt: record?.receipt,
+    } });
+  });
   await page.route('**/v1/ai-recipes/consent', async (route) => {
     const request = route.request();
     if (request.method() === 'GET') {
@@ -127,7 +181,7 @@ test('records a dinner, edits and confirms an AI draft, then finds it in recipe 
     }
     const body = route.request().postDataJSON() as { draft: typeof draft };
     confirmationBody = body;
-    const entryId = new URL(route.request().url()).pathname.split('/').at(-2) ?? '';
+    const entryId = decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-2) ?? '');
     const savedRecipe = {
       id: 'saved-pasta-zucchine',
       title: body.draft.title,
@@ -181,14 +235,21 @@ test('records a dinner, edits and confirms an AI draft, then finds it in recipe 
   await page.getByRole('button', { name: 'Salva consenso Dinner' }).click();
   await consentDisclosure.locator('summary').click();
   await expect(dinnerConsent).not.toBeVisible();
-  await expect(page.getByRole('button', { name: 'Salva cena' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Registra la cena' })).toBeVisible();
 
   await page.getByLabel('Data della cena').fill('2026-09-29');
-  await page.getByLabel('Porzioni (facoltative)').fill('2');
+  await page.getByLabel(/Porzioni/).fill('2');
   await page.getByLabel('Com’è andata la cena?').fill('Pasta con zucchine saltate in padella.');
-  await page.getByRole('button', { name: 'Salva cena' }).click();
+  await page.getByRole('checkbox', { name: 'Nessun ingrediente della dispensa utilizzato' }).check();
+  await page.getByRole('button', { name: 'Registra la cena' }).click();
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect.poll(() => consumptionRequests).toBe(1);
+  const pantryBeforeRecipePreview = (await readConsumptionState(page, 'account:dinner-user')).pantrySnapshot;
+  expect((await readConsumptionState(page, 'account:dinner-user')).outbox).toHaveLength(1);
   await page.getByRole('button', { name: 'Prepara bozze ricetta' }).click();
   await expect(page.getByText('Bozza 1 — non ancora salvata come ricetta')).toBeVisible();
+  expect(consumptionRequests).toBe(1);
+  expect((await readConsumptionState(page, 'account:dinner-user')).pantrySnapshot).toEqual(pantryBeforeRecipePreview);
   await page.getByRole('textbox', { name: 'Titolo ricetta' }).fill('Pasta e zucchine della cena');
   await expect(page.getByRole('button', { name: 'Conferma questa ricetta' })).toBeVisible();
   await page.getByRole('button', { name: 'Conferma questa ricetta' }).click();

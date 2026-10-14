@@ -67,6 +67,23 @@ describe('ProfilePage', () => {
     expect(screen.getByText('Accesso con Google non disponibile in questo ambiente.')).toBeVisible();
   });
 
+  it('explains Bring data transfer, personal encrypted sessions, and disconnect limits', async () => {
+    useAuthStore.setState({
+      user: verifiedUser,
+      csrfToken: 'csrf-1',
+      expiresAt: '2026-10-12T10:00:00.000Z',
+    });
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    await screen.findByRole('heading', { name: 'Il tuo profilo' });
+    expect(screen.getByRole('heading', { name: 'Privacy e servizi esterni' })).toBeVisible();
+    expect(screen.getByText(/il collegamento richiede una conferma esplicita.*dopo la conferma, email e password vengono inviate a Bring!/i)).toBeVisible();
+    expect(screen.getByText(/la password non viene conservata.*sessione è cifrata sul server.*resta personale/i)).toBeVisible();
+    expect(screen.getByText(/nomi degli articoli e le specifiche.*non è copiata nella lista iKuck.*non è disponibile offline/i)).toBeVisible();
+    expect(screen.getByText(/ingredienti delle ricette non vengono trasferiti automaticamente/i)).toBeVisible();
+    expect(screen.getByText(/non garantisce la revoca.*Bring!/i)).toBeVisible();
+  });
+
   it('labels guest import as a house operation and preserves shared history on account deletion', async () => {
     setActiveDataScope('house:copy-home');
     setPersonalDataScope('account:user-1');
