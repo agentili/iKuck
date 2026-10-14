@@ -137,7 +137,7 @@ test('user adds pantry items, requests recipes and opens one', async ({ page }) 
   await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
   await expect(page.getByText('Hai tutto').first()).toBeVisible();
   await page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' }).click();
-  await expect(page.getByRole('heading', { name: 'Ingredienti', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ingredienti', level: 2, exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Pasta tonno e pomodoro' })).toBeVisible();
 });
@@ -397,9 +397,23 @@ test('shopping list accepts manual and recipe-derived items offline', async ({ p
   await page.getByRole('button', { name: 'Aggiungi mancanti alla spesa' }).click();
   await expect(page.getByRole('link', { name: 'Apri la lista della spesa' })).toBeVisible();
   await page.getByRole('link', { name: 'Apri la lista della spesa' }).click();
-  await expect(page.getByRole('listitem').filter({ hasText: 'Pasta' }).first()).toBeVisible();
+
+  // Wait for the route transition, then scope to the intended shopping row: every
+  // recipe-derived row carries the recipe title, so a bare text filter also matches
+  // the recipe detail page and its sibling rows.
+  const shoppingListHeading = page.getByRole('heading', { name: 'Lista della spesa' });
+  await expect(shoppingListHeading).toBeVisible();
+  const pastaRow = page
+    .getByRole('region', { name: /Da acquistare/ })
+    .getByRole('listitem')
+    .filter({ has: page.getByRole('button', { name: 'Segna Pasta come acquistato', exact: true }) });
+  await expect(pastaRow).toHaveCount(1);
+  await expect(pastaRow.getByText('Pasta', { exact: true })).toBeVisible();
+
   await page.reload();
-  await expect(page.getByRole('listitem').filter({ hasText: 'Pasta' }).first()).toBeVisible();
+  await expect(shoppingListHeading).toBeVisible();
+  await expect(pastaRow).toHaveCount(1);
+  await expect(pastaRow.getByText('Pasta', { exact: true })).toBeVisible();
 });
 
 test('activity records cooking, preferences and private notes offline', async ({ page }) => {
@@ -408,24 +422,19 @@ test('activity records cooking, preferences and private notes offline', async ({
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
   await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cosa cuciniamo oggi?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
   await page.getByRole('button', { name: 'Trova ricette' }).click();
   await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
   await page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' }).click();
-  await expect(page.getByRole('heading', { name: 'Ingredienti', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ingredienti', level: 2, exact: true })).toBeVisible();
 
   await page.getByLabel('Porzioni cucinate').fill('1');
   await page.getByLabel('Nessun ingrediente della dispensa utilizzato').check();
   const confirmBtn = page.getByRole('button', { name: 'Conferma cena' });
   await expect(confirmBtn).toBeEnabled();
   await confirmBtn.click();
-  // Wait for confirmation to complete - the "Registra un'altra cena" button appears in DOM
-  await expect.poll(async () => {
-    const buttons = await page.getByRole('button').all();
-    const texts = await Promise.all(buttons.map(b => b.textContent()));
-    console.log('Button texts:', texts);
-    return texts.some(t => t && t.includes('Registra un'));
-  }, { timeout: 20000, intervals: [1000] }).toBe(true);
+  await expect(page.getByRole('status').filter({ hasText: 'Cena registrata. Nessun ingrediente della dispensa è stato scalato.' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Ricetta aggiunta alla cronologia.' })).toBeVisible();
   await page.getByRole('button', { name: 'Aggiungi ai preferiti' }).click();
   await page.getByRole('button', { name: 'Valuta Pasta tonno e pomodoro: 5 stelle' }).click();
   await page.getByLabel('Nota privata sulla ricetta').fill('Da rifare presto');
@@ -436,10 +445,18 @@ test('activity records cooking, preferences and private notes offline', async ({
 
   await page.goto('/activity');
   await expect(page.getByRole('heading', { name: 'La tua attività' })).toBeVisible();
-  await expect(page.getByText('Pasta tonno e pomodoro', { exact: true })).toHaveCount(2);
-  await expect(page.getByText(/Da rifare presto/)).toBeVisible();
+  const cookHistory = page.getByRole('region', { name: 'Ricette cucinate' });
+  const recipePreferences = page.getByRole('region', { name: 'Preferiti e valutazioni' });
+  await expect(cookHistory.getByText('Pasta tonno e pomodoro', { exact: true })).toHaveCount(1);
+  await expect(recipePreferences.getByText('Pasta tonno e pomodoro', { exact: true })).toHaveCount(1);
+  await expect(recipePreferences.getByText('Preferita')).toBeVisible();
+  await expect(recipePreferences.getByText('5/5')).toBeVisible();
+  await expect(recipePreferences.getByText('Nota privata: Da rifare presto')).toBeVisible();
   await page.reload();
-  await expect(page.getByText(/Da rifare presto/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'La tua attività' })).toBeVisible();
+  await expect(cookHistory.getByText('Pasta tonno e pomodoro', { exact: true })).toHaveCount(1);
+  await expect(recipePreferences.getByText('5/5')).toBeVisible();
+  await expect(recipePreferences.getByText('Nota privata: Da rifare presto')).toBeVisible();
 });
 
 test('manifest is available and the application works offline after first load', async ({ page, context }) => {
