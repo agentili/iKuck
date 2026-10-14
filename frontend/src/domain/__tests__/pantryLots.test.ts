@@ -36,6 +36,15 @@ describe('pantry lot domain', () => {
     expect(validatePantryLotDetails(Number.NaN, 'g', null)).toContain('quantity_finite');
   });
 
+  it('does not combine package counts with piece counts', () => {
+    const aggregate = aggregatePantryLots([
+      lot({ id: 'lot-pack', quantity: 1, unit: 'pack' }),
+      lot({ id: 'lot-piece', quantity: 2, unit: 'piece' }),
+    ])[0];
+
+    expect(aggregate).toMatchObject({ totalQuantity: null, totalUnit: null });
+  });
+
   it('converts compatible mass units and keeps incompatible units separate', () => {
     const aggregate = aggregatePantryLots([
       lot({ id: 'lot-kg', quantity: 1, unit: 'kg', expiresAt: '2026-09-20' }),
@@ -91,6 +100,7 @@ describe('pantry lot domain', () => {
     const aggregate = aggregatePantryLots([lot({ quantity: 100, unit: 'g' })])[0];
     expect(getQuantityWarning({ ingredientId: 'pasta', amount: '80 g' }, aggregate)).toBe(false);
     expect(getQuantityWarning({ ingredientId: 'pasta', amount: '200 g' }, aggregate)).toBe(true);
+    expect(getQuantityWarning({ ingredientId: 'pasta', amount: '200 g chopped tomatoes' }, aggregate)).toBe(true);
     expect(getQuantityWarning({ ingredientId: 'pasta', amount: 'q.b.' }, aggregate)).toBe(false);
   });
 });

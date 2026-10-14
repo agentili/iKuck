@@ -1,7 +1,10 @@
 import { ArrowLeft, ChefHat, Clock, Heart, ShoppingCart, Star, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import type { RecipeNutrition } from '@ikuck/shared/contracts';
+import type { CookEvent, RecipeNutrition } from '@ikuck/shared/contracts';
+import type { DinnerEntry } from '@ikuck/shared/dinnerDiary';
+import type { DinnerConsumptionCommand, DinnerConsumptionIngredient, PantryConsumptionPlan } from '@ikuck/shared/pantryConsumption';
+import { planPantryConsumption } from '@ikuck/shared/pantryConsumption';
 import { ApiClientError, apiRequest } from '../api/apiClient';
 import { getIngredient } from '../domain/ingredients';
 import { ALLERGEN_LABELS } from '../domain/dietary';
@@ -9,8 +12,9 @@ import { getRecipeMetadata } from '../domain/recipeMetadata';
 import { getRecipeById } from '../domain/recipes';
 import { toDiaryPantryRecipe } from '../domain/diaryRecipes';
 import { getQuantityWarning } from '../domain/pantryLots';
-import type { RecipeCategory } from '../domain/types';
+import type { PantryRecipe, RecipeCategory } from '../domain/types';
 import { usePantryStore } from '../store/localPantryStore';
+import DinnerConsumptionSelection from '../components/dinnerDiary/DinnerConsumptionSelection';
 import { useShoppingListStore } from '../store/shoppingListStore';
 import { useActivityStore } from '../store/activityStore';
 import { useAuthStore } from '../auth/authStore';
@@ -42,6 +46,37 @@ const isRecipeNutrition = (value: unknown): value is RecipeNutrition => {
       .every((key) => candidate[key as keyof RecipeNutrition] === null || typeof candidate[key as keyof RecipeNutrition] === 'number');
 };
 
+const createLocalId = (prefix: string): string => {
+  const random = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}:${random}`;
+};
+
+const localDateString = (date = new Date()): string => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+// The selection stores per-portion amounts, so a whole-recipe amount is divided once.
+const perServingAmount = (amount: string, servings: number | null): string => {
+  const trimmed = amount.trim();
+  if (servings === null || !Number.isInteger(servings) || servings <= 1) return trimmed;
+  const parsed = trimmed.match(/^(\d+(?:[.,]\d+)?)\s*(kg|g|ml|l)$/i);
+  if (parsed === null) return trimmed;
+  const total = Number(parsed[1].replace(',', '.'));
+  const perServing = total / servings;
+  const formatted = Number.isInteger(perServing) ? String(perServing) : String(Number(perServing.toPrecision(6)));
+  return `${formatted} ${parsed[2].toLowerCase()}`;
+};
+
+const buildConsumptionIngredients = (recipe: PantryRecipe | undefined): DinnerConsumptionIngredient[] => (
+  recipe === undefined ? [] : recipe.ingredients.map((item) => ({
+    ingredientId: item.ingredientId,
+    name: item.name ?? getIngredient(item.ingredientId)?.label ?? item.ingredientId,
+    amount: perServingAmount(item.amount, recipe.servings),
+    optional: item.optional === true,
+    used: item.optional !== true,
+  }))
+);
+
 const gramsPerServingFromAmount = (amount: string, servings: number | null): number | null => {
   const match = amount.trim().match(/^(\d+(?:[.,]\d+)?)\s*(kg|g)\b/i);
   if (match === null || servings === null || servings <= 0) return null;
@@ -71,8 +106,16 @@ export default function RecipeDetailPage() {
   const [favorite, setFavorite] = useState(false);
   const [rating, setRating] = useState<number | null>(null);
   const [privateNote, setPrivateNote] = useState('');
-  const [cookedServings, setCookedServings] = useState('');
+  const [cookedServings, setCookedServings] = useState(() => recipe === undefined || recipe.servings === null ? '' : String(recipe.servings));
+  const [selectionRecipeId, setSelectionRecipeId] = useState<string | null>(recipe?.id ?? null);
+  const [consumptionIngredients, setConsumptionIngredients] = useState<DinnerConsumptionIngredient[]>(() => buildConsumptionIngredients(recipe));
+  const [consumptionNoneUsed, setConsumptionNoneUsed] = useState(false);
+  const [confirmingDinner, setConfirmingDinner] = useState(false);
+  const [confirmedPlan, setConfirmedPlan] = useState<PantryConsumptionPlan | null>(null);
+  const [confirmedNoIngredientsUsed, setConfirmedNoIngredientsUsed] = useState(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
   const availableIds = usePantryStore((state) => state.getAvailableIngredientIds());
+  const pantryLots = usePantryStore((state) => state.pantryLots);
   const quantitySummaries = usePantryStore((state) => state.getPantryQuantitySummary());
   const addMissingRecipeIngredients = useShoppingListStore((state) => state.addMissingRecipeIngredients);
   const preferences = useActivityStore((state) => state.preferences);
@@ -103,7 +146,23 @@ export default function RecipeDetailPage() {
     setNutritionMessage(null);
   }, [metadata, recipeId]);
 
+  // Reset the dinner confirmation whenever the shown recipe changes.
+  const nextSelectionRecipeId = recipe?.id ?? null;
+  if (nextSelectionRecipeId !== selectionRecipeId) {
+    setSelectionRecipeId(nextSelectionRecipeId);
+    setCookedServings(recipe === undefined || recipe.servings === null ? '' : String(recipe.servings));
+    setConsumptionIngredients(buildConsumptionIngredients(recipe));
+    setConsumptionNoneUsed(false);
+    setConfirmedPlan(null);
+    setConfirmedNoIngredientsUsed(false);
+    setActivityError(null);
+    setActivityMessage(null);
+  }
+
   if (!recipe) return <NotFoundPage />;
+
+  const servingsValue = recipe.servings ?? Number(cookedServings);
+  const validServings = Number.isInteger(servingsValue) && servingsValue >= 1 ? servingsValue : null;
 
   const addMissingToShoppingList = () => {
     const added = addMissingRecipeIngredients(recipe, availableIds);
@@ -112,15 +171,68 @@ export default function RecipeDetailPage() {
       : 'Non ci sono nuovi ingredienti mancanti da aggiungere.');
   };
 
-  const markAsCooked = () => {
-    if (recipe === undefined) return;
-    const servings = recipe.servings ?? Number(cookedServings);
-    if (!Number.isInteger(servings) || servings < 1) {
-      setActivityMessage('Indica un numero di porzioni intero maggiore di zero.');
+  const confirmDinner = async () => {
+    if (recipe === undefined || confirmingDinner) return;
+    if (validServings === null) {
+      setActivityError('Indica un numero di porzioni intero maggiore di zero.');
       return;
     }
-    const eventId = recordCookEvent(recipe, servings);
-    setActivityMessage(eventId === null ? 'Non è stato possibile aggiornare la cronologia.' : 'Ricetta aggiunta alla cronologia.');
+    const ingredients = consumptionNoneUsed ? [] : consumptionIngredients;
+    if (!consumptionNoneUsed && !ingredients.some((ingredient) => ingredient.used && ingredient.ingredientId !== null)) {
+      setActivityError('Seleziona gli ingredienti utilizzati oppure spunta «Nessun ingrediente della dispensa utilizzato».');
+      return;
+    }
+    const scope = getActiveDataScope();
+    const cookedAt = new Date().toISOString();
+    const event: CookEvent = {
+      id: createLocalId('event'),
+      recipeId: recipe.id,
+      recipeTitle: recipe.title,
+      servings: validServings,
+      cookedAt,
+      note: null,
+      createdAt: cookedAt,
+      updatedAt: cookedAt,
+    };
+    const entry: DinnerEntry = {
+      id: event.id,
+      date: localDateString(),
+      text: recipe.title,
+      servings: validServings,
+      note: null,
+      recipes: [{ recipeId: recipe.id, title: recipe.title, source: recipe.source === 'diary' ? 'diary' : 'catalog' }],
+      authorId: scope === 'guest' ? null : user?.id ?? null,
+      createdAt: cookedAt,
+      updatedAt: cookedAt,
+    };
+    const command: DinnerConsumptionCommand = {
+      operationId: createLocalId('consume'),
+      entryId: entry.id,
+      scope,
+      servings: validServings,
+      ingredients,
+    };
+    const plan = consumptionNoneUsed ? null : planPantryConsumption({ lots: pantryLots, command, updatedAt: cookedAt });
+    if (plan !== null && plan.unresolvedIngredients.length > 0) {
+      setActivityError('Chiarisci ogni ingrediente o quantità ambigua prima di confermare la cena.');
+      return;
+    }
+    setActivityError(null);
+    setActivityMessage(null);
+    setConfirmingDinner(true);
+    try {
+      const eventId = await recordCookEvent(recipe, validServings, null, { command, event, entry });
+      if (getActiveDataScope() !== scope) return;
+      if (eventId === null) {
+        setActivityError('Non è stato possibile registrare la cena: la dispensa non è stata aggiornata. Riprova.');
+        return;
+      }
+      setConfirmedPlan(plan);
+      setConfirmedNoIngredientsUsed(consumptionNoneUsed);
+      setActivityMessage('Ricetta aggiunta alla cronologia.');
+    } finally {
+      setConfirmingDinner(false);
+    }
   };
 
   const savePreference = () => {
@@ -234,24 +346,44 @@ export default function RecipeDetailPage() {
         </section>
       </div>
 
-      <section aria-labelledby="recipe-actions-title" className="rounded-3xl border-2 border-amber-200 bg-amber-50 p-4 sm:p-5">
-        <h2 id="recipe-actions-title" className="text-2xl font-black text-gray-950">La tua esperienza</h2>
-        {recipe.servings === null && (
-          <label htmlFor="cooked-servings" className="mt-3 grid max-w-xs gap-2 text-sm font-semibold text-gray-800">
-            Numero di porzioni per la cronologia
-            <input id="cooked-servings" type="number" min="1" step="1" value={cookedServings} onChange={(event) => setCookedServings(event.target.value)} className="min-h-11 rounded-xl border-2 border-gray-300 bg-white px-3 py-2" />
-          </label>
-        )}
+      <section aria-labelledby="dinner-confirm-title" className="rounded-3xl border-2 border-emerald-200 bg-emerald-50 p-4 sm:p-5">
+        <h2 id="dinner-confirm-title" className="text-2xl font-black text-gray-950">Conferma la cena</h2>
+        <p className="mt-1 text-sm leading-relaxed text-gray-700">
+          Dichiarate cosa avete usato dalla dispensa: solo gli ingredienti selezionati vengono scalati quando confermate.
+        </p>
+        <label htmlFor="cooked-servings" className="mt-3 grid max-w-xs gap-2 text-sm font-semibold text-gray-800">
+          Porzioni cucinate
+          <input id="cooked-servings" type="number" min="1" step="1" value={cookedServings} onChange={(event) => setCookedServings(event.target.value)} className="min-h-11 rounded-xl border-2 border-gray-300 bg-white px-3 py-2" />
+        </label>
+        <DinnerConsumptionSelection
+          mode="recipe"
+          ingredients={consumptionIngredients}
+          lots={pantryLots}
+          servings={validServings}
+          noneUsed={consumptionNoneUsed}
+          onIngredientsChange={setConsumptionIngredients}
+          onNoneUsedChange={setConsumptionNoneUsed}
+          disabled={confirmingDinner}
+          confirmedPlan={confirmedPlan}
+          confirmedNoIngredientsUsed={confirmedNoIngredientsUsed}
+        />
         <div className="mt-3 flex flex-wrap gap-3">
-          <button type="button" onClick={markAsCooked} className="min-h-11 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800">
-            Segna come cucinata
+          <button type="button" onClick={() => { void confirmDinner(); }} disabled={confirmingDinner} className="min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800 disabled:opacity-60">
+            {confirmingDinner ? 'Confermo…' : 'Conferma cena'}
           </button>
+        </div>
+        {activityMessage !== null && <p role="status" className="mt-3 text-sm font-semibold text-emerald-800">{activityMessage}</p>}
+        {activityError !== null && <p role="alert" className="mt-3 text-sm font-semibold text-rose-900">{activityError}</p>}
+      </section>
+
+      <section aria-labelledby="recipe-actions-title" className="mt-6 rounded-3xl border-2 border-amber-200 bg-amber-50 p-4 sm:p-5">
+        <h2 id="recipe-actions-title" className="text-2xl font-black text-gray-950">La tua esperienza</h2>
+        <div className="mt-3 flex flex-wrap gap-3">
           <button type="button" aria-pressed={favorite} onClick={() => setFavorite((value) => !value)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border-2 border-amber-300 bg-white px-4 py-2 font-bold text-gray-900 hover:border-amber-500">
             <Heart size={18} fill={favorite ? 'currentColor' : 'none'} aria-hidden="true" />
             {favorite ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti'}
           </button>
         </div>
-        {activityMessage !== null && <p role="status" className="mt-3 text-sm font-semibold text-emerald-800">{activityMessage}</p>}
         <div className="mt-5 grid gap-3 border-t border-amber-200 pt-4">
           <span className="text-sm font-bold text-gray-800">Valuta questa ricetta</span>
           <div role="group" aria-label="Valutazione" className="flex flex-wrap gap-1">

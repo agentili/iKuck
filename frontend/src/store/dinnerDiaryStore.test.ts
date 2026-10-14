@@ -6,13 +6,18 @@ vi.mock('../sync/syncQueue', async (importOriginal) => {
 });
 import * as storage from '../storage/dinnerDiaryStorage';
 import * as indexedDb from '../storage/indexedDb';
-import { deleteLocalDatabase } from '../storage/indexedDb';
+import { closeLocalDatabase, deleteLocalDatabase } from '../storage/indexedDb';
 import { useAuthStore } from '../auth/authStore';
 import { useHouseStore } from '../house/houseStore';
 import { useDinnerDiaryStore, hydrateDinnerDiaryStore, waitForPendingDinnerDiaryWrites } from './dinnerDiaryStore';
 import { setActiveDataScope, setPersonalDataScope } from '../sync/scopeContext';
 import { readQueuedMutations } from '../sync/syncQueue';
 import type { DinnerEntry, DiaryRecipeDraft, SavedRecipe } from '@ikuck/shared/dinnerDiary';
+import type { DinnerConsumptionCommand } from '@ikuck/shared/pantryConsumption';
+import { readPantrySnapshot, writePantrySnapshot } from '../storage/pantryStorage';
+import * as dinnerConsumptionStorage from '../storage/dinnerConsumptionStorage';
+import { readDinnerConsumptionOutbox } from '../storage/dinnerConsumptionStorage';
+import { usePantryStore } from './localPantryStore';
 import { clearDataScope, enqueueEntityMutation } from '../sync/syncQueue';
 
 describe('dinner diary store', () => {
@@ -29,6 +34,95 @@ describe('dinner diary store', () => {
     expect(useDinnerDiaryStore.getState().entries[0]).toMatchObject({ scope: 'guest', value: { id, text: '  Pasta  ', date: '2026-09-30' } });
     await hydrateDinnerDiaryStore();
   });
+  it('confirms a dinner by consuming pantry and persisting history before publishing store state', async () => {
+    const scope = 'guest' as const;
+    const now = '2026-10-07T09:00:00.000Z';
+    const lot = { id: 'pasta-lot', ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 500, unit: 'g' as const, expiresAt: null, createdAt: now, updatedAt: now };
+    const initialPantry = { pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: ['salt'], pantryLots: [lot] };
+    const entry: DinnerEntry = { id: 'diary-consumption-1', date: '2026-10-07', text: 'Pasta', servings: 2, note: null, recipes: [], authorId: null, createdAt: now, updatedAt: now };
+    const command: DinnerConsumptionCommand = {
+      operationId: 'diary-consumption-op-1', entryId: entry.id, scope, servings: 2,
+      ingredients: [{ ingredientId: 'pasta', name: 'Pasta', amount: '100 g', optional: false, used: true }],
+    };
+    await writePantrySnapshot(initialPantry, scope);
+    usePantryStore.setState(initialPantry);
+
+    const confirmation = useDinnerDiaryStore.getState().confirmEntry(command, entry);
+    const duplicateClick = useDinnerDiaryStore.getState().confirmEntry(command, entry);
+    expect(useDinnerDiaryStore.getState().entries).toEqual([]);
+    await expect(Promise.all([confirmation, duplicateClick])).resolves.toEqual([true, true]);
+
+    const expectedRemaining = lot.quantity - 100 * command.servings;
+    await expect(readPantrySnapshot(scope)).resolves.toMatchObject({
+      pantryLots: [expect.objectContaining({ id: lot.id, quantity: expectedRemaining })],
+      stapleIds: initialPantry.stapleIds,
+    });
+    await expect(storage.readDinnerEntries(scope)).resolves.toEqual([entry]);
+    await expect(readDinnerConsumptionOutbox(scope)).resolves.toHaveLength(1);
+    expect(useDinnerDiaryStore.getState().entries).toEqual([{ scope, value: entry }]);
+    expect(usePantryStore.getState().pantryLots).toEqual([expect.objectContaining({ id: lot.id, quantity: expectedRemaining })]);
+
+    const savedOperation = (await readDinnerConsumptionOutbox(scope))[0];
+    if (savedOperation === undefined) throw new Error('Committed dinner consumption outbox record was missing');
+    await closeLocalDatabase();
+    useDinnerDiaryStore.setState({ hasHydrated: false, entries: [], error: null });
+    await hydrateDinnerDiaryStore();
+    await expect(useDinnerDiaryStore.getState().confirmEntry(savedOperation.command, savedOperation.entry)).resolves.toBe(true);
+    await expect(readPantrySnapshot(scope)).resolves.toMatchObject({ pantryLots: [expect.objectContaining({ id: lot.id, quantity: expectedRemaining })] });
+    await expect(readDinnerConsumptionOutbox(scope)).resolves.toHaveLength(1);
+  });
+
+  it('leaves diary and pantry unchanged when the atomic dinner commit fails', async () => {
+    const now = '2026-10-07T09:00:00.000Z';
+    const lot = { id: 'failed-diary-lot', ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 500, unit: 'g' as const, expiresAt: null, createdAt: now, updatedAt: now };
+    const initialPantry = { pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: ['salt'], pantryLots: [lot] };
+    const entry: DinnerEntry = { id: 'failed-diary-entry', date: '2026-10-07', text: 'Pasta', servings: 2, note: null, recipes: [], authorId: null, createdAt: now, updatedAt: now };
+    const command: DinnerConsumptionCommand = {
+      operationId: 'failed-diary-operation', entryId: entry.id, scope: 'guest', servings: 2,
+      ingredients: [{ ingredientId: 'pasta', name: 'Pasta', amount: '100 g', optional: false, used: true }],
+    };
+    await writePantrySnapshot(initialPantry, 'guest');
+    usePantryStore.setState(initialPantry);
+    const failure = new Error('IndexedDB unavailable');
+    const commit = vi.spyOn(dinnerConsumptionStorage, 'commitDinnerConsumption').mockRejectedValueOnce(failure);
+
+    await expect(useDinnerDiaryStore.getState().confirmEntry(command, entry)).resolves.toBe(false);
+
+    expect(useDinnerDiaryStore.getState().entries).toEqual([]);
+    expect(useDinnerDiaryStore.getState().error).toBe(failure);
+    expect(usePantryStore.getState().pantryLots).toEqual([lot]);
+    await expect(storage.readDinnerEntries('guest')).resolves.toEqual([]);
+    await expect(readDinnerConsumptionOutbox('guest')).resolves.toEqual([]);
+    await expect(readPantrySnapshot('guest')).resolves.toMatchObject({ pantryLots: [lot] });
+    commit.mockRestore();
+  });
+
+  it('does not consume pantry while hydrating history, editing a note, or linking a recipe', async () => {
+    const now = '2026-10-07T09:00:00.000Z';
+    const lot = { id: 'historical-pasta-lot', ingredientId: 'pasta', label: 'Pasta', known: true, quantity: 500, unit: 'g' as const, expiresAt: null, createdAt: now, updatedAt: now };
+    const pantry = { pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: ['salt'], pantryLots: [lot] };
+    const entry: DinnerEntry = { id: 'historical-dinner', date: '2026-10-06', text: 'Pasta', servings: 2, note: null, recipes: [], authorId: null, createdAt: now, updatedAt: now };
+    await writePantrySnapshot(pantry, 'guest');
+    await storage.writeDinnerEntries([entry], 'guest');
+    usePantryStore.setState(pantry);
+
+    await hydrateDinnerDiaryStore();
+    expect(useDinnerDiaryStore.getState().updateEntry('guest', entry.id, { note: 'Con basilico' })).toBe(true);
+    await waitForPendingDinnerDiaryWrites();
+    const notedEntry = useDinnerDiaryStore.getState().entries.find(item => item.value.id === entry.id)!.value;
+    const linkedEntry: DinnerEntry = {
+      ...notedEntry,
+      recipes: [{ recipeId: 'catalog-pasta', title: 'Pasta al pomodoro', source: 'catalog' }],
+      updatedAt: '2026-10-07T09:01:00.000Z',
+    };
+    expect(useDinnerDiaryStore.getState().acceptLinkedEntry('guest', linkedEntry, 'catalog-pasta', 'catalog')).toBe(true);
+    await waitForPendingDinnerDiaryWrites();
+
+    await expect(readPantrySnapshot('guest')).resolves.toMatchObject({ pantryLots: [lot], stapleIds: pantry.stapleIds });
+    await expect(readDinnerConsumptionOutbox('guest')).resolves.toEqual([]);
+    await expect(storage.readDinnerEntries('guest')).resolves.toEqual([linkedEntry]);
+  });
+
   it('explicitly clears nullable fields while preserving omitted fields', async () => {
     const id = useDinnerDiaryStore.getState().createEntry({ date: '2026-09-30', text: 'Pasta', servings: 2, note: 'Dinner' });
     expect(id).toBeTruthy();

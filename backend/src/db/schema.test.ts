@@ -36,4 +36,19 @@ describe('house drizzle schema', () => {
     expect(processedSyncMutations.scopeType).toBeDefined();
     expect(processedSyncMutations.scopeId).toBeDefined();
   });
+
+  it('defines a personal Bring connection without password columns', async () => {
+    const schema = await import('./schema.js');
+    expect(Object.hasOwn(schema, 'bringConnections')).toBe(true);
+    if (!('bringConnections' in schema)) return;
+    const table = schema.bringConnections;
+    expect(table.encryptedSession).toBeDefined();
+    expect(table.userId).toBeDefined();
+    expect(getTableConfig(table).columns.map((column) => column.name).sort()).toEqual([
+      'connected_at',
+      'connection_id',
+      'encrypted_session',
+      'user_id',
+    ]);
+  });
 });

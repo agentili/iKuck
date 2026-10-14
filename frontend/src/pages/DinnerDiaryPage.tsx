@@ -2,14 +2,18 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { CalendarDays, Check, Pencil, Save, Trash2, X } from 'lucide-react';
 import type { AiConsent, AiRecipeProvider } from '@ikuck/shared/contracts';
 import type { DinnerEntry } from '@ikuck/shared/dinnerDiary';
+import type { DinnerConsumptionCommand, DinnerConsumptionIngredient, PantryConsumptionPlan } from '@ikuck/shared/pantryConsumption';
+import { planPantryConsumption } from '@ikuck/shared/pantryConsumption';
 import { DIARY_NOTE_MAX_LENGTH, DIARY_SERVINGS_MAX, DIARY_SERVINGS_MIN, DIARY_TEXT_MAX_LENGTH } from '@ikuck/shared/limits';
 import { ApiClientError } from '../api/apiClient';
 import { useAuthStore } from '../auth/authStore';
 import { fetchAiConsentStatus, updateAiConsent, updateDinnerAiConsent } from '../ai/aiRecipeApi';
 import { clearAiRecipeProposalHistory } from '../ai/aiRecipeHistory';
+import DinnerConsumptionSelection from '../components/dinnerDiary/DinnerConsumptionSelection';
 import DinnerRecipePanel from '../components/dinnerDiary/DinnerRecipePanel';
 import DiaryNavigation from '../components/layout/DiaryNavigation';
 import { useHouseStore } from '../house/houseStore';
+import { usePantryStore } from '../store/localPantryStore';
 import { getActiveDataScope } from '../sync/scopeContext';
 import { hydrateDinnerDiaryStore, useDinnerDiaryStore, type Scoped } from '../store/dinnerDiaryStore';
 
@@ -23,11 +27,17 @@ const canManageEntry = (entry: Scoped<DinnerEntry>, userId: string | null, house
 
 const formatDinnerDate = (date: string): string => new Intl.DateTimeFormat('it-IT', { dateStyle: 'long' }).format(new Date(`${date}T12:00:00`));
 
+const createLocalId = (prefix: string): string => {
+  const random = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}:${random}`;
+};
+
 export default function DinnerDiaryPage() {
   const hasHydrated = useDinnerDiaryStore((state) => state.hasHydrated);
   const entries = useDinnerDiaryStore((state) => state.entries);
   const storeError = useDinnerDiaryStore((state) => state.error);
-  const createEntry = useDinnerDiaryStore((state) => state.createEntry);
   const updateEntry = useDinnerDiaryStore((state) => state.updateEntry);
   const deleteEntry = useDinnerDiaryStore((state) => state.deleteEntry);
   const localDate = useDinnerDiaryStore((state) => state.localDate);
@@ -52,6 +62,13 @@ export default function DinnerDiaryPage() {
   const [note, setNote] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [editingEntry, setEditingEntry] = useState<Scoped<DinnerEntry> | null>(null);
+  const [consumptionIngredients, setConsumptionIngredients] = useState<DinnerConsumptionIngredient[]>([]);
+  const [consumptionNoneUsed, setConsumptionNoneUsed] = useState(false);
+  const [confirmingDinner, setConfirmingDinner] = useState(false);
+  const [confirmedPlan, setConfirmedPlan] = useState<PantryConsumptionPlan | null>(null);
+  const [confirmedNoIngredientsUsed, setConfirmedNoIngredientsUsed] = useState(false);
+  const confirmEntry = useDinnerDiaryStore((state) => state.confirmEntry);
+  const pantryLots = usePantryStore((state) => state.pantryLots);
 
   useEffect(() => {
     void hydrateDinnerDiaryStore();
@@ -87,6 +104,11 @@ export default function DinnerDiaryPage() {
     right.value.date.localeCompare(left.value.date)
     || right.value.createdAt.localeCompare(left.value.createdAt)
   )), [entries]);
+
+  const enteredServings = servings === '' ? null : Number(servings);
+  const previewServings = enteredServings !== null && Number.isInteger(enteredServings) && enteredServings > 0
+    ? enteredServings
+    : null;
 
   const dinnerProviderName = selectedProvider === 'openai'
     ? 'OpenAI'
@@ -187,8 +209,9 @@ export default function DinnerDiaryPage() {
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (confirmingDinner) return;
     if (text.trim().length === 0) {
-      setFormError('Scrivi cosa avete mangiato prima di salvare.');
+      setFormError('Scrivi cosa avete mangiato prima di registrare la cena.');
       return;
     }
     const numericServings = servings === '' ? null : Number(servings);
@@ -205,11 +228,66 @@ export default function DinnerDiaryPage() {
         setFormError('Non è stato possibile aggiornare la cena. Potresti non avere i permessi necessari.');
         return;
       }
-    } else if (createEntry({ date, text, servings: numericServings, note: note.trim() === '' ? null : note }) === null) {
-      setFormError('Non è stato possibile salvare la cena. Controlla i dati inseriti.');
+      resetForm();
       return;
     }
-    resetForm();
+    void confirmNewDinner(numericServings);
+  };
+
+  // A new dinner is always confirmed through the atomic consumption commit: the
+  // entry only becomes durable together with the pantry it consumes.
+  const confirmNewDinner = async (numericServings: number | null) => {
+    const scope = getActiveDataScope();
+    if (numericServings === null) {
+      setFormError('Indica le porzioni della cena per poterla registrare.');
+      return;
+    }
+    const ingredients = consumptionNoneUsed ? [] : consumptionIngredients;
+    if (!consumptionNoneUsed && !ingredients.some((ingredient) => ingredient.used && ingredient.ingredientId !== null)) {
+      setFormError('Indica gli ingredienti utilizzati oppure seleziona «Nessun ingrediente della dispensa utilizzato».');
+      return;
+    }
+    const committedAt = new Date().toISOString();
+    const entry: DinnerEntry = {
+      id: createLocalId('dinner'),
+      date,
+      text,
+      servings: numericServings,
+      note: note.trim() === '' ? null : note,
+      recipes: [],
+      authorId: scope === 'guest' ? null : userId,
+      createdAt: committedAt,
+      updatedAt: committedAt,
+    };
+    const command: DinnerConsumptionCommand = {
+      operationId: createLocalId('consume'),
+      entryId: entry.id,
+      scope,
+      servings: numericServings,
+      ingredients,
+    };
+    const plan = consumptionNoneUsed ? null : planPantryConsumption({ lots: pantryLots, command, updatedAt: committedAt });
+    if (plan !== null && plan.unresolvedIngredients.length > 0) {
+      setFormError('Chiarisci ogni ingrediente o quantità ambigua prima di registrare la cena.');
+      return;
+    }
+    setFormError(null);
+    setConfirmingDinner(true);
+    try {
+      const confirmed = await confirmEntry(command, entry);
+      if (getActiveDataScope() !== scope) return;
+      if (!confirmed) {
+        setFormError('La dispensa non è stata aggiornata; il modulo resta disponibile per riprovare.');
+        return;
+      }
+      setConfirmedPlan(plan);
+      setConfirmedNoIngredientsUsed(consumptionNoneUsed);
+      setConsumptionIngredients([]);
+      setConsumptionNoneUsed(false);
+      resetForm();
+    } finally {
+      setConfirmingDinner(false);
+    }
   };
 
   const edit = (entry: Scoped<DinnerEntry>) => {
@@ -335,12 +413,26 @@ export default function DinnerDiaryPage() {
             Nota <span className="font-normal text-gray-500">(facoltativa)</span>
             <textarea id="dinner-note" maxLength={DIARY_NOTE_MAX_LENGTH} rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Un dettaglio da ricordare" className="mt-1 min-h-20 w-full resize-y rounded-xl border-2 border-gray-300 px-3 py-2 text-base font-normal leading-relaxed text-gray-950 focus:border-emerald-700 focus:outline-none" />
           </label>
+          {editingEntry === null && (
+            <DinnerConsumptionSelection
+              mode="free-text"
+              ingredients={consumptionIngredients}
+              lots={pantryLots}
+              servings={previewServings}
+              noneUsed={consumptionNoneUsed}
+              onIngredientsChange={setConsumptionIngredients}
+              onNoneUsedChange={setConsumptionNoneUsed}
+              disabled={confirmingDinner}
+              confirmedPlan={confirmedPlan}
+              confirmedNoIngredientsUsed={confirmedNoIngredientsUsed}
+            />
+          )}
           {formError !== null && <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-900">{formError}</p>}
           {storeError !== null && <p role="status" className="text-sm text-amber-900">Alcune modifiche potrebbero non essersi sincronizzate. Riprova quando sei online.</p>}
           <div className="flex flex-wrap gap-3">
-            <button type="submit" className="ik-button-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 py-2 font-bold">
-              {editingEntry === null ? <Check size={18} aria-hidden="true" /> : <Save size={18} aria-hidden="true" />}
-              {editingEntry === null ? 'Salva cena' : 'Salva modifiche'}
+            <button type="submit" disabled={confirmingDinner} className="ik-button-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 py-2 font-bold disabled:opacity-60">
+              {!confirmingDinner && (editingEntry === null ? <Check size={18} aria-hidden="true" /> : <Save size={18} aria-hidden="true" />)}
+              {confirmingDinner ? 'Registro…' : editingEntry === null ? 'Registra la cena' : 'Salva modifiche'}
             </button>
             {editingEntry !== null && (
               <button type="button" onClick={resetForm} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border-2 border-gray-300 px-4 py-2 font-semibold text-gray-800 hover:bg-gray-50">

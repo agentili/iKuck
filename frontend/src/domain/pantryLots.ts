@@ -1,12 +1,16 @@
 import type { PantryLot, PantryUnit } from '@ikuck/shared/contracts';
+import {
+  basePantryUnit,
+  getPantryQuantityFamily,
+  parsePantryQuantity,
+  toBasePantryQuantity,
+  type PantryQuantity,
+} from '@ikuck/shared/pantryConsumption';
 import type { RecipeIngredient } from './types';
 
-export type ExpiryStatus = 'unknown' | 'expired' | 'expiring_soon' | 'okay';
+export type { PantryQuantity } from '@ikuck/shared/pantryConsumption';
 
-export interface PantryQuantity {
-  quantity: number;
-  unit: PantryUnit;
-}
+export type ExpiryStatus = 'unknown' | 'expired' | 'expiring_soon' | 'okay';
 
 export interface PantryQuantityAggregate {
   ingredientId: string;
@@ -17,9 +21,6 @@ export interface PantryQuantityAggregate {
   totalUnit: PantryUnit | null;
   earliestExpiresAt: string | null;
 }
-
-const MASS_UNITS: Record<'g' | 'kg', number> = { g: 1, kg: 1000 };
-const VOLUME_UNITS: Record<'ml' | 'l', number> = { ml: 1, l: 1000 };
 
 const isValidCalendarDate = (value: string): boolean => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -43,33 +44,15 @@ export const validatePantryLotDetails = (
   return errors;
 };
 
-const quantityFamily = (unit: PantryUnit): 'mass' | 'volume' | 'count' => {
-  if (unit in MASS_UNITS) return 'mass';
-  if (unit in VOLUME_UNITS) return 'volume';
-  return 'count';
-};
-
-const toBaseQuantity = ({ quantity, unit }: PantryQuantity): number => {
-  if (unit in MASS_UNITS) return quantity * MASS_UNITS[unit as 'g' | 'kg'];
-  if (unit in VOLUME_UNITS) return quantity * VOLUME_UNITS[unit as 'ml' | 'l'];
-  return quantity;
-};
-
-const baseUnit = (unit: PantryUnit): PantryUnit => {
-  if (quantityFamily(unit) === 'mass') return 'g';
-  if (quantityFamily(unit) === 'volume') return 'ml';
-  return unit;
-};
-
 const aggregateQuantities = (quantities: PantryQuantity[]): { totalQuantity: number | null; totalUnit: PantryUnit | null } => {
   if (quantities.length === 0) return { totalQuantity: null, totalUnit: null };
-  const families = new Set(quantities.map(({ unit }) => quantityFamily(unit)));
+  const families = new Set(quantities.map(({ unit }) => getPantryQuantityFamily(unit)));
   if (families.size !== 1) return { totalQuantity: null, totalUnit: null };
 
   const [first] = quantities;
   return {
-    totalQuantity: quantities.reduce((total, quantity) => total + toBaseQuantity(quantity), 0),
-    totalUnit: baseUnit(first.unit),
+    totalQuantity: quantities.reduce((total, quantity) => total + toBasePantryQuantity(quantity.quantity, quantity.unit), 0),
+    totalUnit: basePantryUnit(first.unit),
   };
 };
 
@@ -121,30 +104,13 @@ export const getExpiryStatus = (expiresAt: string | null, now = new Date()): Exp
   return 'okay';
 };
 
-const parseRecipeAmount = (amount: string): PantryQuantity | null => {
-  const match = amount.trim().toLowerCase().match(/^(\d+(?:[.,]\d+)?)\s*(g|kg|ml|l|piece|pieces|pezzo|pezzi|pack|confezione|confezioni)?\b/);
-  if (match === null) return null;
-
-  const quantity = Number(match[1].replace(',', '.'));
-  if (!Number.isFinite(quantity) || quantity <= 0) return null;
-  const rawUnit = match[2];
-  if (rawUnit === undefined) return null;
-  const unit: PantryUnit | null = rawUnit === 'g' || rawUnit === 'kg' || rawUnit === 'ml' || rawUnit === 'l'
-    ? rawUnit
-    : rawUnit === 'piece' || rawUnit === 'pieces' || rawUnit === 'pezzo' || rawUnit === 'pezzi' ? 'piece'
-      : rawUnit === 'pack' || rawUnit === 'confezione' || rawUnit === 'confezioni' ? 'pack'
-        : null;
-  if (unit === null) return null;
-  return { quantity, unit };
-};
-
 export const getQuantityWarning = (
   recipeIngredient: Pick<RecipeIngredient, 'ingredientId' | 'amount'>,
   aggregate: PantryQuantityAggregate | undefined,
 ): boolean => {
   if (aggregate === undefined || aggregate.totalQuantity === null || aggregate.totalUnit === null) return false;
-  const required = parseRecipeAmount(recipeIngredient.amount);
-  if (required === null || quantityFamily(required.unit) !== quantityFamily(aggregate.totalUnit)) return false;
+  const required = parsePantryQuantity(recipeIngredient.amount, 'prefix');
+  if (required === null || getPantryQuantityFamily(required.unit) !== getPantryQuantityFamily(aggregate.totalUnit)) return false;
 
-  return toBaseQuantity(required) > toBaseQuantity({ quantity: aggregate.totalQuantity, unit: aggregate.totalUnit });
+  return toBasePantryQuantity(required.quantity, required.unit) > toBasePantryQuantity(aggregate.totalQuantity, aggregate.totalUnit);
 };
