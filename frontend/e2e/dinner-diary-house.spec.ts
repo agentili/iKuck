@@ -220,7 +220,7 @@ test('shares confirmed dinner recipes with House members while isolating outside
       await route.fulfill({ status: 403, json: { code: 'sync_permission_denied', message: 'Not permitted' } });
       return;
     }
-    const entryId = new URL(route.request().url()).pathname.split('/').at(-2) ?? '';
+    const entryId = decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-2) ?? '');
     const current = [...houseChanges].reverse().find((change) => change.entityType === 'dinner_entry' && change.entityId === entryId);
     if (!current || typeof current.payload !== 'object' || current.payload === null) {
       await route.fulfill({ status: 404, json: { code: 'dinner_entry_not_found', message: 'Dinner entry was not found' } });
@@ -261,7 +261,7 @@ test('shares confirmed dinner recipes with House members while isolating outside
   });
   await page.route('**/v1/dinner-entries/*/link-recipe', async (route) => {
     const userId = currentUser?.id;
-    const entryId = new URL(route.request().url()).pathname.split('/').at(-2) ?? '';
+    const entryId = decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-2) ?? '');
     const current = [...houseChanges].reverse().find((change) => change.entityType === 'dinner_entry'
       && change.entityId === entryId && change.operation === 'upsert');
     const body = route.request().postDataJSON() as { recipeId: string; source: 'diary' };
@@ -640,7 +640,7 @@ test('shares confirmed dinner recipes with House members while isolating outside
   delayedConsumptionControl.release?.();
   await delayedConsumptionCompleted;
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
-  await page.getByRole('link', { name: 'Diario delle cene', exact: true }).first().click();
+  await page.getByRole('link', { name: 'Diario', exact: true }).click();
   await expect(page.getByText('Non hai ancora registrato una cena.')).toBeVisible();
   await expect(page.getByText(dinnerText)).toHaveCount(0);
   await expect(page.getByText(privateText)).toHaveCount(0);

@@ -142,7 +142,7 @@ test('consumes only mapped dinner ingredients once, rolls back failed persistenc
   const expiredPastaLotId = beforePantry.pantryLots.find((lot) => lot.ingredientId === 'pasta' && lot.expiresAt === '2026-10-01')?.id;
   expect(expiredPastaLotId).toBeDefined();
 
-  await page.getByRole('link', { name: 'Diario delle cene', exact: true }).first().click();
+  await page.getByRole('link', { name: 'Diario', exact: true }).click();
   await page.getByLabel('Data della cena').fill('2026-10-05');
   await page.getByLabel(/Porzioni/).fill('2');
   await page.getByLabel('Com’è andata la cena?').fill('Pasta e sale usati per cena.');

@@ -181,7 +181,7 @@ test('records a dinner, edits and confirms an AI draft, then finds it in recipe 
     }
     const body = route.request().postDataJSON() as { draft: typeof draft };
     confirmationBody = body;
-    const entryId = new URL(route.request().url()).pathname.split('/').at(-2) ?? '';
+    const entryId = decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-2) ?? '');
     const savedRecipe = {
       id: 'saved-pasta-zucchine',
       title: body.draft.title,

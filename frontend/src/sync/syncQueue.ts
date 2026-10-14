@@ -14,6 +14,7 @@ import { HOUSE_SYNC_ENTITY_TYPES } from '@ikuck/shared/contracts';
 import type { PantryMergeSummary } from '@ikuck/shared/pantryMerge';
 import type { DinnerEntry, SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { isDinnerEntry, isSavedRecipe } from '@ikuck/shared/dinnerDiary';
+import type { DinnerConsumptionCommand, PantryConsumptionPlan } from '@ikuck/shared/pantryConsumption';
 import { ApiClientError, apiRequest, type ApiRequest } from '../api/apiClient';
 import {
   deleteMeta,
@@ -52,9 +53,10 @@ import {
 import { clearShoppingList, readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
 import { clearDietProfile, readDietProfile, readPersistedDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
 import { clearDinnerDiary, clearDinnerDiaryRecords, readDinnerEntries, readSavedRecipes, writeDinnerEntries, writeSavedRecipes } from '../storage/dinnerDiaryStorage';
+import { isDinnerConsumptionRelatedMutation, readDinnerConsumptionOutbox, reconcileDinnerConsumption, type DinnerConsumptionOutboxRecord, type DinnerConsumptionServerResult } from '../storage/dinnerConsumptionStorage';
 import { assertSyncMutation, isPantryItemPayload, isStaplePreferencePayload } from './validation';
 import { getActiveDataScope, getPersonalDataScope, setActiveDataScope, setPersonalDataScope } from './scopeContext';
-import { completeScopePurge, hasPendingScopePurge, isScopeUncertain, markScopeUncertain, revokeScope, resumeScope, trackScopedWrite, waitForScopedWrites, ScopeUncertainError } from './scopeWriteFence';
+import { completeScopePurge, hasPendingScopePurge, isScopeUncertain, isScopeWritable, markScopeUncertain, revokeScope, resumeScope, trackScopedWrite, waitForScopedWrites, ScopeUncertainError } from './scopeWriteFence';
 
 const DEVICE_ID_META_KEY = 'deviceId';
 const IMPORT_MUTATION_IDS_META_PREFIX = 'importMutationIds:';
@@ -673,8 +675,11 @@ async function importPendingAccountQueue(
   await waitForPendingQueueWrites();
   await waitForScopedWrites(accountScope);
   assertCurrent();
+  const pendingDinnerConsumptions = await readDinnerConsumptionOutbox(accountScope, assertCurrent);
+  assertCurrent();
   const queued = (await readQueueValues<QueuedMutation>(accountScope))
-    .filter((mutation) => SHARED_ENTITY_TYPES.has(mutation.entityType))
+    .filter((mutation) => SHARED_ENTITY_TYPES.has(mutation.entityType)
+      && !pendingDinnerConsumptions.some((record) => isDinnerConsumptionRelatedMutation(mutation, record)))
     .sort(compareMutations);
   assertCurrent();
   for (let offset = 0; offset < queued.length; offset += MAX_MUTATIONS_PER_REQUEST) {
@@ -944,6 +949,158 @@ export function registerDinnerDiarySnapshotListener(listener: (snapshot: DinnerD
   return () => dinnerDiarySnapshotListeners.delete(listener);
 }
 
+const isObjectRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+);
+
+const isPantryConsumptionPlan = (value: unknown): value is PantryConsumptionPlan => (
+  isObjectRecord(value)
+  && Array.isArray(value.upsertLots) && value.upsertLots.every(isPantryLot)
+  && Array.isArray(value.deleteLotIds) && value.deleteLotIds.every((id) => typeof id === 'string')
+);
+
+const parseDinnerConsumptionResponse = (
+  value: unknown,
+  record: DinnerConsumptionOutboxRecord,
+  expectedScope: SyncScope,
+): DinnerConsumptionServerResult => {
+  if (!isObjectRecord(value) || typeof value.duplicate !== 'boolean'
+    || !isDinnerEntry(value.entry) || value.entry.id !== record.entryId
+    || !isObjectRecord(value.receipt) || value.receipt.operationId !== record.operationId
+    || value.receipt.entryId !== record.entryId || value.receipt.scope !== expectedScope
+    || typeof value.receipt.committedAt !== 'string' || !Number.isFinite(Date.parse(value.receipt.committedAt))
+    || !isPantryConsumptionPlan(value.receipt.plan)
+    || !isObjectRecord(value.pantrySnapshot)
+    || !Array.isArray(value.pantrySnapshot.pantryItems)
+    || !value.pantrySnapshot.pantryItems.every((item) => isObjectRecord(item)
+      && typeof item.id === 'string' && typeof item.label === 'string' && typeof item.known === 'boolean')
+    || !Array.isArray(value.pantrySnapshot.stapleIds)
+    || !value.pantrySnapshot.stapleIds.every((id) => typeof id === 'string')
+    || !Array.isArray(value.pantrySnapshot.pantryLots)
+    || !value.pantrySnapshot.pantryLots.every(isPantryLot)) {
+    throw new SyncResponseScopeError();
+  }
+  const cookEvent = value.cookEvent;
+  if ((record.cookEvent === undefined) !== (cookEvent === undefined)
+    || cookEvent !== undefined && (!isCookEvent(cookEvent) || cookEvent.id !== record.entryId)) {
+    throw new SyncResponseScopeError();
+  }
+  return {
+    entry: value.entry,
+    ...(cookEvent === undefined ? {} : { cookEvent }),
+    pantrySnapshot: normalizePantrySnapshot(value.pantrySnapshot as unknown as PantrySnapshot),
+    receipt: value.receipt as unknown as DinnerConsumptionServerResult['receipt'],
+  };
+};
+
+const flushDinnerConsumptionOutbox = async ({
+  request,
+  fetch,
+  session,
+  accountScope,
+  activeScope,
+  personalScope,
+  assertCurrent,
+  current,
+}: {
+  request: ApiRequest;
+  fetch?: typeof globalThis.fetch;
+  session: SyncSession;
+  accountScope: SyncScope;
+  activeScope: SyncScope;
+  personalScope: SyncScope;
+  assertCurrent: () => void;
+  current: <T>(operation: () => Promise<T>) => Promise<T>;
+}): Promise<number> => {
+  if (activeScope === GUEST_SYNC_SCOPE || personalScope === GUEST_SYNC_SCOPE) return 0;
+  if (personalScope !== accountScope || !activeScope.startsWith('house:') && activeScope !== accountScope) {
+    throw new SyncScopeChangedError();
+  }
+  if (!isScopeWritable(activeScope) || !isScopeWritable(personalScope)) throw new SyncScopeChangedError();
+  const outboxScopes = activeScope.startsWith('house:')
+    ? [...new Set([personalScope, activeScope])]
+    : [activeScope];
+  const pendingRecords: DinnerConsumptionOutboxRecord[] = [];
+  for (const scope of outboxScopes) {
+    pendingRecords.push(...await current(() => readDinnerConsumptionOutbox(scope, assertCurrent)));
+  }
+
+  let uploaded = 0;
+  for (const record of pendingRecords) {
+    assertCurrent();
+    if (record.scope !== personalScope && record.scope !== activeScope
+      || record.command.operationId !== record.operationId || record.command.entryId !== record.entryId
+      || record.entry.id !== record.entryId || record.command.scope !== record.scope) {
+      throw new SyncResponseScopeError();
+    }
+    const command: DinnerConsumptionCommand = record.scope === activeScope
+      ? record.command
+      : { ...record.command, scope: activeScope as Exclude<DinnerConsumptionCommand['scope'], 'guest'> };
+    const body = {
+      command,
+      entry: record.entry,
+      ...(record.cookEvent === undefined ? {} : { cookEvent: record.cookEvent }),
+    };
+    const rawResult = await current(() => request<unknown>('/v1/dinner-consumption', {
+      method: 'POST', csrfToken: session.csrfToken, fetch, body,
+    }));
+    const result = parseDinnerConsumptionResponse(rawResult, record, activeScope);
+    assertCurrent();
+    await current(() => reconcileDinnerConsumption({
+      operationId: record.operationId,
+      originalScope: record.scope,
+      canonicalScope: activeScope,
+      result,
+      assertContext: assertCurrent,
+    }));
+    assertCurrent();
+
+    if (activeScope === getActiveDataScope()) {
+      const pantrySnapshot = result.pantrySnapshot;
+      for (const listener of pantrySnapshotListeners) {
+        assertCurrent();
+        listener(pantrySnapshot);
+      }
+      const entries = await current(() => readDinnerEntries(activeScope));
+      const recipes = await current(() => readSavedRecipes(activeScope));
+      const diarySnapshot = { scope: activeScope, entries, recipes };
+      for (const listener of dinnerDiarySnapshotListeners) {
+        assertCurrent();
+        listener(diarySnapshot);
+      }
+      if (record.cookEvent !== undefined) {
+        const events = await current(() => readCookEvents(activeScope));
+        const preferences = await current(() => readRecipePreferences(activeScope));
+        const activitySnapshot = { events, preferences };
+        for (const listener of activitySnapshotListeners) {
+          assertCurrent();
+          listener(activitySnapshot);
+        }
+      }
+    }
+    if (record.scope !== activeScope) {
+      const sourceEntries = await current(() => readDinnerEntries(record.scope));
+      const sourceRecipes = await current(() => readSavedRecipes(record.scope));
+      const sourceDiarySnapshot = { scope: record.scope, entries: sourceEntries, recipes: sourceRecipes };
+      for (const listener of dinnerDiarySnapshotListeners) {
+        assertCurrent();
+        listener(sourceDiarySnapshot);
+      }
+      if (record.cookEvent !== undefined) {
+        const sourceEvents = await current(() => readCookEvents(record.scope));
+        const sourcePreferences = await current(() => readRecipePreferences(record.scope));
+        const sourceActivitySnapshot = { events: sourceEvents, preferences: sourcePreferences };
+        for (const listener of activitySnapshotListeners) {
+          assertCurrent();
+          listener(sourceActivitySnapshot);
+        }
+      }
+    }
+    uploaded += 1;
+  }
+  return uploaded;
+};
+
 export async function syncNow({ fetch, request = apiRequest, session, isSessionCurrent }: SyncRequestOptions): Promise<SyncResult> {
   ensureVerifiedSession(session);
   const accountScope = getAccountSyncScope(session.userId);
@@ -989,13 +1146,19 @@ export async function syncNow({ fetch, request = apiRequest, session, isSessionC
     await assertPantrySyncAvailable([activeScope, personalScope]);
     await waitForPendingQueueWrites();
     assertCurrentContext();
+    const dinnerConsumptionsUploaded = await flushDinnerConsumptionOutbox({
+      request, fetch, session, accountScope, activeScope, personalScope,
+      assertCurrent: assertCurrentContext,
+      current,
+    });
+    assertCurrentContext();
     if (activeScope.startsWith('house:')) {
       await importPendingAccountQueue(session, request, accountScope, assertCurrentContext, fetch);
       assertCurrentContext();
     }
     const deviceId = await current(getDeviceId);
     let cursor = await current(() => readSyncCursor(cursorScope));
-    let uploaded = 0;
+    let uploaded = dinnerConsumptionsUploaded;
     let downloaded = 0;
 
     for (let page = 0; page < MAX_SYNC_PAGES; page += 1) {

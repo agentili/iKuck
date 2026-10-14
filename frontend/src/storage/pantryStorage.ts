@@ -282,6 +282,14 @@ const rememberPantryRevision = (scope: SyncScope, raw: string | null): void => {
   if (revision !== null) latestPantryRevisions.set(scope, Math.max(latestPantryRevisions.get(scope) ?? 0, revision));
 };
 
+// Canonical rows persisted directly by another storage module (atomic multi-key transactions such as
+// the dinner consumption commit/reconcile) must refresh this observation: the next ordered write
+// compares against it, and a stale expectation would fail closed as a concurrent-write conflict.
+export const observePantryCanonicalSnapshot = (scope: SyncScope, raw: string | null): void => {
+  rememberPantryRevision(scope, raw);
+  observedPantryCanonicalSnapshots.set(scope, raw);
+};
+
 const mirrorObsoleteFromIndexedDbSnapshot = (raw: string): boolean | null => {
   try {
     const persisted = JSON.parse(raw) as Partial<PersistedPantryState>;

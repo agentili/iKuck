@@ -29,6 +29,7 @@ import {
 import {
   derivePantryItems,
   normalizePantrySnapshot,
+  observePantryCanonicalSnapshot,
   pantryDatabaseKeyForScope,
   pantryStorageKeyForScope,
   parsePantrySnapshot,
@@ -380,6 +381,7 @@ export async function commitDinnerConsumption({
       await completion;
       transactionCommitted = true;
       assertCurrentScope(scope);
+      observePantryCanonicalSnapshot(scope, serializePantrySnapshot(nextPantrySnapshot));
       return resultFor(false, entry, nextPantrySnapshot, outbox);
     } catch (error) {
       try {
@@ -439,6 +441,7 @@ function commitLocalConsumption(
     changes[activityKey] = serializeCookEventsSnapshot([...existingCookEvents, cookEvent]);
   }
   commitLocalStorageJournal(changes);
+  observePantryCanonicalSnapshot(command.scope, serializePantrySnapshot(nextPantrySnapshot));
   return resultFor(false, entry, nextPantrySnapshot, outbox);
 }
 
@@ -644,6 +647,7 @@ export async function reconcileDinnerConsumption({
       }
       assertCurrent();
       commitLocalStorageJournal(changes);
+      observePantryCanonicalSnapshot(canonicalScope, serializePantrySnapshot(pantrySnapshot));
       assertCurrent();
       return {
         entry: result.entry,
@@ -733,6 +737,7 @@ export async function reconcileDinnerConsumption({
       await completion;
       transactionCommitted = true;
       assertCurrent();
+      observePantryCanonicalSnapshot(canonicalScope, serializePantrySnapshot(pantrySnapshot));
       return {
         entry: result.entry,
         ...(result.cookEvent === undefined ? {} : { cookEvent: result.cookEvent }),
