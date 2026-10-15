@@ -214,11 +214,15 @@ describe('loadConfig', () => {
   it('keeps Bring disabled by default', () => {
     expect(loadConfig({ NODE_ENV: 'development' })).toMatchObject({ bringEnabled: false, bringTestListId: undefined });
   });
+  it('keeps Bring disabled and unrestricted by default', () => {
+    expect(loadConfig({ NODE_ENV: 'development' })).toMatchObject({ bringEnabled: false, bringAllowedListIds: [] });
+  });
 
   it('requires a valid key before enabling Bring', () => {
     expect(() => loadConfig({ NODE_ENV: 'development', BRING_ENABLED: 'true' })).toThrow();
     expect(() => loadConfig({ NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: 'invalid' })).toThrow();
   });
+
 
   it('requires the designated test list before enabling Bring', () => {
     const enabled = { NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32) };
@@ -238,6 +242,33 @@ describe('loadConfig', () => {
   it('keeps a designated test list inert while Bring stays disabled', () => {
     expect(loadConfig({ NODE_ENV: 'development', BRING_TEST_LIST_ID: 'lista-prova-dedicata' }))
       .toMatchObject({ bringEnabled: false, bringTestListId: 'lista-prova-dedicata' });
+
+  it('enables Bring with an empty optional list restriction', () => {
+    const enabled = { NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32) };
+    expect(loadConfig(enabled)).toMatchObject({ bringEnabled: true, bringAllowedListIds: [] });
+    expect(loadConfig({ ...enabled, BRING_ALLOWED_LIST_IDS: '' })).toMatchObject({ bringEnabled: true, bringAllowedListIds: [] });
+  });
+
+  it('parses a comma-separated Bring list restriction without duplicates', () => {
+    const enabled = { NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32) };
+    expect(loadConfig({ ...enabled, BRING_ALLOWED_LIST_IDS: ' lista-uno , lista-due,lista-uno, ,' }))
+      .toMatchObject({ bringEnabled: true, bringAllowedListIds: ['lista-uno', 'lista-due'] });
+  });
+
+  it('accepts the Bring list restriction boundary and rejects oversized entries or too many ids', () => {
+    const enabled = { NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32) };
+    const ids = (count: number) => Array.from({ length: count }, (_, index) => `lista-${index}`);
+
+    expect(loadConfig({ ...enabled, BRING_ALLOWED_LIST_IDS: ids(50).join(',') }).bringAllowedListIds).toEqual(ids(50));
+    expect(loadConfig({ ...enabled, BRING_ALLOWED_LIST_IDS: 'a'.repeat(128) }).bringAllowedListIds).toEqual(['a'.repeat(128)]);
+    expect(() => loadConfig({ ...enabled, BRING_ALLOWED_LIST_IDS: ids(51).join(',') })).toThrow();
+    expect(() => loadConfig({ ...enabled, BRING_ALLOWED_LIST_IDS: 'a'.repeat(129) })).toThrow();
+  });
+
+  it('keeps a Bring list restriction inert while Bring stays disabled', () => {
+    expect(loadConfig({ NODE_ENV: 'development', BRING_ALLOWED_LIST_IDS: 'lista-uno' }))
+      .toMatchObject({ bringEnabled: false, bringAllowedListIds: ['lista-uno'] });
+
   });
 
 });

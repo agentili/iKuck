@@ -390,21 +390,41 @@ integration('S2S PostgreSQL repository integration', () => {
 
   it('cancels a lock-blocked snapshot at its global deadline and returns the sole pooled connection', async () => {
     const fixture = await requestableGrant();
-    const queryPool = postgres(databaseUrl!, { max: 1, idle_timeout: 20 });
+    // Production wraps the S2S pool in createRecoveringDatabase (server.ts), so a terminatePool()
+    // hard end rotates the pool instead of killing it permanently. Model that here: the probe below
+    // must survive either outcome (sole connection returned, or pool rotated after termination).
+    let poolCount = 0;
+    const queryDatabase = createRecoveringDatabaseWithFactory(() => {
+      poolCount += 1;
+      const client = postgres(databaseUrl!, { max: 1, idle_timeout: 20 });
+      return { client, db: drizzle(client, { schema }) };
+    });
+    type PooledConnection = { unsafe: (query: string, params?: unknown[]) => Promise<Array<{ ok: number }>>; release: () => void };
+    const probe = async () => {
+      const { reserve } = queryDatabase.db.$client as { reserve: () => Promise<PooledConnection> };
+      const connection = await reserve();
+      try {
+        const available = await connection.unsafe('SELECT 1 AS ok', []);
+        return available[0]?.ok;
+      } finally {
+        connection.release();
+      }
+    };
     const blockerPool = postgres(databaseUrl!, { max: 1, idle_timeout: 20 });
     const blocker = await blockerPool.reserve();
     try {
-      await queryPool.unsafe('SELECT 1');
+      expect(await probe()).toBe(1);
       await blocker.unsafe('BEGIN', []);
       await blocker.unsafe('SELECT id FROM houses WHERE id=$1 FOR UPDATE', [fixture.houseId]);
-      const repository = createDrizzleS2sRepository(drizzle(queryPool, { schema }));
+      const repository = createDrizzleS2sRepository(queryDatabase.db);
       await expect(repository.readAuthorizedSnapshot({ keyId: fixture.keyId, secret: fixture.secret }, { timeoutMs: 500 })).rejects.toThrow('s2s_deadline_exceeded');
-      const available = await queryPool.unsafe('SELECT 1 AS ok');
-      expect(available[0]?.ok).toBe(1);
+      expect(await probe()).toBe(1);
+      expect(poolCount).toBeGreaterThanOrEqual(1);
+      expect(poolCount).toBeLessThanOrEqual(2);
     } finally {
       try { await blocker.unsafe('ROLLBACK', []); } catch { /* connection may already be closed */ }
       blocker.release();
-      await Promise.all([queryPool.end({ timeout: 5 }), blockerPool.end({ timeout: 5 })]);
+      await Promise.all([queryDatabase.close(), blockerPool.end({ timeout: 5 })]);
     }
   }, 15000);
 
