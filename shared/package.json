@@ -20,6 +20,10 @@
       "types": "./src/dinnerDiary.ts",
       "default": "./src/dinnerDiary.ts"
     },
+    "./ingredients": {
+      "types": "./src/ingredients.ts",
+      "default": "./src/ingredients.ts"
+    },
     "./bring": {
       "types": "./src/bring.ts",
       "default": "./src/bring.ts"

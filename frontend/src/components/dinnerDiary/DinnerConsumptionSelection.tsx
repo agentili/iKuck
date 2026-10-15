@@ -2,7 +2,7 @@ import type { PantryLot } from '@ikuck/shared/contracts';
 import type { DinnerConsumptionIngredient, PantryConsumptionPlan } from '@ikuck/shared/pantryConsumption';
 import { planPantryConsumption } from '@ikuck/shared/pantryConsumption';
 import { DIARY_INGREDIENT_AMOUNT_MAX_LENGTH } from '@ikuck/shared/limits';
-import { getIngredient, INGREDIENTS } from '../../domain/ingredients';
+import { getIngredient, INGREDIENTS } from '@ikuck/shared/ingredients';
 
 interface DinnerConsumptionSelectionProps {
   mode: 'free-text' | 'recipe';

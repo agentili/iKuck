@@ -242,21 +242,22 @@ describe('loadConfig', () => {
   it('keeps a designated test list inert while Bring stays disabled', () => {
     expect(loadConfig({ NODE_ENV: 'development', BRING_TEST_LIST_ID: 'lista-prova-dedicata' }))
       .toMatchObject({ bringEnabled: false, bringTestListId: 'lista-prova-dedicata' });
-
-  it('enables Bring with an empty optional list restriction', () => {
-    const enabled = { NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32) };
+      });
+ 
+      it('enables Bring with an empty optional list restriction', () => {
+    const enabled = { NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32), BRING_TEST_LIST_ID: 'lista-prova-dedicata' };
     expect(loadConfig(enabled)).toMatchObject({ bringEnabled: true, bringAllowedListIds: [] });
     expect(loadConfig({ ...enabled, BRING_ALLOWED_LIST_IDS: '' })).toMatchObject({ bringEnabled: true, bringAllowedListIds: [] });
   });
 
   it('parses a comma-separated Bring list restriction without duplicates', () => {
-    const enabled = { NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32) };
+    const enabled = { NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32), BRING_TEST_LIST_ID: 'lista-prova-dedicata' };
     expect(loadConfig({ ...enabled, BRING_ALLOWED_LIST_IDS: ' lista-uno , lista-due,lista-uno, ,' }))
       .toMatchObject({ bringEnabled: true, bringAllowedListIds: ['lista-uno', 'lista-due'] });
   });
 
   it('accepts the Bring list restriction boundary and rejects oversized entries or too many ids', () => {
-    const enabled = { NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32) };
+    const enabled = { NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32), BRING_TEST_LIST_ID: 'lista-prova-dedicata' };
     const ids = (count: number) => Array.from({ length: count }, (_, index) => `lista-${index}`);
 
     expect(loadConfig({ ...enabled, BRING_ALLOWED_LIST_IDS: ids(50).join(',') }).bringAllowedListIds).toEqual(ids(50));

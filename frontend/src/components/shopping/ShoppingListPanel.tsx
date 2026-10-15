@@ -1,7 +1,7 @@
 import { Check, Circle, Plus, ShoppingCart, Trash2 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import type { PantryUnit, ShoppingListItem, ShoppingListItemPayload } from '@ikuck/shared/contracts';
-import { parseIngredientInput } from '../../domain/ingredients';
+import { parseIngredientInput } from '@ikuck/shared/ingredients';
 import { getRecipeById } from '../../domain/recipes';
 import { validateShoppingListItemDetails } from '../../domain/shoppingList';
 import type { ShoppingListItemPatch } from '../../store/shoppingListStore';

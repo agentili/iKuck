@@ -2,7 +2,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { act, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_STAPLE_IDS, parseIngredientInput } from '../domain/ingredients';
+import { DEFAULT_STAPLE_IDS, parseIngredientInput } from '@ikuck/shared/ingredients';
 import { DEFAULT_DIET_PROFILE } from '../domain/dietary';
 import PantryPage from './PantryPage';
 import { usePantryStore } from '../store/localPantryStore';

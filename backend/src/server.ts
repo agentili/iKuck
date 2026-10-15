@@ -157,7 +157,7 @@ export const start = async () => {
   try {
     await app.listen({ host: config.host, port: config.port });
   } catch (error) {
-    app.log.error({ error }, 'Unable to start API server');
+    app.log.error({ error: error instanceof Error ? error.name : 'unknown' }, 'Unable to start API server');
     await shutdown();
     throw error;
   }

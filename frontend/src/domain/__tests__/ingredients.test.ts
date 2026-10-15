@@ -3,7 +3,7 @@ import {
   getIngredient,
   normalizeIngredientName,
   parseIngredientInput,
-} from '../ingredients';
+} from '@ikuck/shared/ingredients';
 
 describe('ingredient domain', () => {
   it('normalizes case, accents, apostrophes and extra spaces', () => {

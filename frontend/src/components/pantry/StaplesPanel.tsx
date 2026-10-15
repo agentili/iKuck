@@ -1,4 +1,4 @@
-import { INGREDIENTS } from '../../domain/ingredients';
+import { INGREDIENTS } from '@ikuck/shared/ingredients';
 
 interface StaplesPanelProps {
   stapleIds: string[];

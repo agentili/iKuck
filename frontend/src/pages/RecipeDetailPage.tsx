@@ -6,7 +6,7 @@ import type { DinnerEntry } from '@ikuck/shared/dinnerDiary';
 import type { DinnerConsumptionCommand, DinnerConsumptionIngredient, PantryConsumptionPlan } from '@ikuck/shared/pantryConsumption';
 import { planPantryConsumption } from '@ikuck/shared/pantryConsumption';
 import { ApiClientError, apiRequest } from '../api/apiClient';
-import { getIngredient } from '../domain/ingredients';
+import { getIngredient } from '@ikuck/shared/ingredients';
 import { ALLERGEN_LABELS } from '../domain/dietary';
 import { getRecipeMetadata } from '../domain/recipeMetadata';
 import { getRecipeById } from '../domain/recipes';
