@@ -22,6 +22,7 @@ test.beforeEach(async ({ context, page }) => {
     responses: {
       'GET /v1/ai-recipes/consent': { json: { consent: { enabled: false, updatedAt: '2026-09-14T00:00:00.000Z' }, selectedProvider: 'openai' } },
       'GET /v1/ai-recipes': { json: { recipes: [] } },
+      'GET /v1/pantry/candidates': { status: 200, json: { candidates: [] } },
     },
   });
 });
@@ -227,7 +228,11 @@ test('two verified accounts share the house pantry while member authorization st
   });
 
   const configureApi = async (target: Page, user: typeof admin, isVerified: () => boolean): Promise<void> => {
-    await installOfflineBackend(target);
+    await installOfflineBackend(target, {
+      responses: {
+        'GET /v1/pantry/candidates': { status: 200, json: { candidates: [] } },
+      },
+    });
     await target.route('**/v1/auth/session', async (route) => {
       if (!isVerified()) {
         await route.fulfill({ status: 200, json: { authenticated: false } });

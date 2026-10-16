@@ -48,6 +48,8 @@ describe('house drizzle schema', () => {
       'connected_at',
       'connection_id',
       'encrypted_session',
+      'recently_snapshot',
+      'recently_watermark_at',
       'user_id',
     ]);
   });

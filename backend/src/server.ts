@@ -4,6 +4,8 @@ import { createBringGateway } from './bring/gateway.js';
 import { createDrizzleBringRepository } from './bring/repository.js';
 import { createBringService } from './bring/service.js';
 import { createSessionCipher } from './bring/sessionCipher.js';
+import { createDrizzlePantryCandidateRepository } from './pantry/candidatesRepository.js';
+import { createPantryCandidateService } from './pantry/candidatesService.js';
 import { createAuthService } from './auth/service.js';
 import { createCache } from './cache/client.js';
 import { loadConfig } from './config.js';
@@ -53,12 +55,6 @@ export const start = async () => {
     appOrigin: config.appOrigin,
     autoVerifyEmail: config.nodeEnvironment === 'development',
   });
-  const bring = config.bringEnabled ? createBringService({
-    repository: createDrizzleBringRepository(database.db),
-    cipher: createSessionCipher(config.bringTokenEncryptionKey!),
-    gateway: createBringGateway(),
-    testListId: config.bringTestListId!,
-  }) : undefined;
   const houseRepository = createDrizzleHouseRepository(database.db);
   const sync = createDrizzleSyncRepository(database.db, {
     maxClientClockSkewMs: config.syncMaxClientClockSkewMs,
@@ -67,13 +63,21 @@ export const start = async () => {
       return membership === null ? null : { kind: 'house', id: membership.houseId };
     },
   });
+  const bringCandidateRepository = createDrizzlePantryCandidateRepository(database.db);
   const bring = config.bringEnabled ? createBringService({
     repository: createDrizzleBringRepository(database.db),
     cipher: createSessionCipher(config.bringTokenEncryptionKey!),
     gateway: createBringGateway(),
     allowedListIds: config.bringAllowedListIds,
     shoppingRepository: sync,
+    candidateRepository: bringCandidateRepository,
+    candidateTtlDays: config.bringCandidateTtlDays,
   }) : undefined;
+  const pantryCandidates = createPantryCandidateService({
+    repository: bringCandidateRepository,
+    houseRepository,
+    ...(bring === undefined ? {} : { bringService: bring }),
+  });
   const houseService = createHouseService({ repository: houseRepository, syncRepository: sync });
   const profile = createDrizzleProfileRepository(database.db, sync);
   const s2sRepository = createDrizzleS2sRepository((s2sDatabase ?? database).db);
@@ -111,6 +115,7 @@ export const start = async () => {
       dinnerDiary: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       dinnerConsumption: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       bring: { service: bring, authService: auth, appOrigin: config.appOrigin, rateLimiter: authRateLimiter },
+      pantryCandidates: { service: pantryCandidates, authService: auth, rateLimiter: authRateLimiter, appOrigin: config.appOrigin },
       s2sDinnerContext,
       pantryLots: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       shoppingList: { repository: sync, authService: auth, appOrigin: config.appOrigin },
@@ -157,7 +162,7 @@ export const start = async () => {
   try {
     await app.listen({ host: config.host, port: config.port });
   } catch (error) {
-    app.log.error({ error: error instanceof Error ? error.name : 'unknown' }, 'Unable to start API server');
+    app.log.error({ error }, 'Unable to start API server');
     await shutdown();
     throw error;
   }

@@ -62,6 +62,19 @@ describe('Bring SDK gateway', () => {
     expect(fakeFetch.mock.calls[0]?.[1]?.signal).toBe(signal);
   });
 
+  it('preserves the upstream check-off timestamp on recently items when available', async () => {
+    const checkedOffAt = '2026-10-15T09:00:00.000Z';
+    const raw = {
+      uuid: 'list-a',
+      status: 'REGISTERED',
+      purchase: [],
+      recently: [{ name: 'Milch', specification: '1 l', updatedAt: checkedOffAt }],
+    };
+    const gateway = createBringGateway(vi.fn<typeof fetch>().mockResolvedValue(Response.json(raw)));
+
+    await expect(gateway.items(session, 'list-a', AbortSignal.timeout(1000))).resolves.toEqual(raw);
+  });
+
   it('maps all five actions to the real SDK operations', async () => {
     const fakeFetch = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
     const gateway = createBringGateway(fakeFetch);

@@ -4,12 +4,19 @@ import {
   BRING_SPEC_MAX_LENGTH,
   BRING_TIMEOUT_MS,
   type BringConnected,
+  type BringImportResult,
   type BringItem,
   type BringMutation,
   type BringSnapshot,
   type BringStatus,
 } from '@ikuck/shared/bring';
+import type { ShoppingListItem } from '@ikuck/shared/contracts';
+import { SHOPPING_LIST_LABEL_MAX_LENGTH, SHOPPING_LIST_NOTE_MAX_LENGTH, isShoppingListItem } from '../shopping/validation.js';
+import { createShoppingListMutation, readShoppingListItems } from '../shopping/writer.js';
+import type { SyncRepository } from '../sync/repository.js';
 import { BringError } from './errors.js';
+import type { PantryCandidateRepository } from '../pantry/candidatesRepository.js';
+import type { RecentlySnapshotItem } from './recently.js';
 import type { BringRepository, ConnectionUnit } from './repository.js';
 import type { SessionCipher } from './sessionCipher.js';
 import { sessionSchema, type BringGateway, type CatalogEntry, type RawItems, type StoredSession } from './gateway.js';
@@ -29,8 +36,8 @@ const callGateway = async <T>(operation: () => Promise<T>): Promise<T> => {
   }
 };
 
-const assertTestList = (testListId: string, listId: string): void => {
-  if (listId !== testListId) throw new BringError('bring_list_not_allowed', 403);
+const assertListAllowed = (allowedListIds: readonly string[], listId: string): void => {
+  if (allowedListIds.length > 0 && !allowedListIds.includes(listId)) throw new BringError('bring_list_not_allowed', 403);
 };
 
 const readSession = async (
@@ -91,7 +98,8 @@ const publicSnapshot = (
   for (const item of [...raw.purchase, ...raw.recently]) counts.set(item.name, (counts.get(item.name) ?? 0) + 1);
   const labels = new Map(catalog.map((entry) => [entry.itemId, entry.name]));
   const items: BringItem[] = (['purchase', 'recently'] as const).flatMap((state) => raw[state].map((item) => ({
-    ...item,
+    name: item.name,
+    specification: item.specification,
     state,
     label: labels.get(item.name) ?? item.name,
     mutable: counts.get(item.name) === 1
@@ -101,16 +109,41 @@ const publicSnapshot = (
   return { connectionId, listId, labelsAvailable, items };
 };
 
+const importItem = (item: BringItem, now: string): ShoppingListItem | null => {
+  const label = item.label.trim();
+  if (label.length === 0 || label.length > SHOPPING_LIST_LABEL_MAX_LENGTH) return null;
+  const note = item.specification.trim();
+  const mapped: ShoppingListItem = {
+    id: randomUUID(),
+    ingredientId: `custom:${label.toLowerCase().replace(/\s+/g, '-')}`,
+    label,
+    quantity: null,
+    unit: null,
+    note: note.length === 0 ? null : note.slice(0, SHOPPING_LIST_NOTE_MAX_LENGTH),
+    purchased: false,
+    sourceRecipeId: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  return isShoppingListItem(mapped) ? mapped : null;
+};
+
 export const createBringService = ({
   repository,
   cipher,
   gateway,
-  testListId,
+  allowedListIds,
+  shoppingRepository,
+  candidateRepository,
+  candidateTtlDays = 30,
 }: {
   repository: BringRepository;
   cipher: SessionCipher;
   gateway: BringGateway;
-  testListId: string;
+  allowedListIds: readonly string[];
+  shoppingRepository: SyncRepository;
+  candidateRepository?: PantryCandidateRepository;
+  candidateTtlDays?: number;
 }) => ({
   status: (userId: string): Promise<BringStatus> => repository.withUser(userId, async (unit) => {
     const row = await unit.get();
@@ -131,7 +164,7 @@ export const createBringService = ({
   read: (userId: string, connectionId: string, listId: string): Promise<BringSnapshot> => {
     const signal = AbortSignal.timeout(BRING_TIMEOUT_MS);
     return repository.withUser(userId, async (unit) => {
-      assertTestList(testListId, listId);
+      assertListAllowed(allowedListIds, listId);
       const session = await readSession(unit, cipher, userId, connectionId);
       await authorizeList(session, listId, signal, gateway);
       const loaded = await load(session, listId, signal, gateway);
@@ -142,7 +175,7 @@ export const createBringService = ({
   write: (userId: string, input: BringMutation): Promise<BringSnapshot> => {
     const signal = AbortSignal.timeout(BRING_TIMEOUT_MS);
     return repository.withUser(userId, async (unit) => {
-      assertTestList(testListId, input.listId);
+      assertListAllowed(allowedListIds, input.listId);
       const session = await readSession(unit, cipher, userId, input.connectionId);
       await authorizeList(session, input.listId, signal, gateway);
       const loaded = await load(session, input.listId, signal, gateway);
@@ -216,6 +249,93 @@ export const createBringService = ({
             && matchingPurchase[0]?.specification === input.specification;
       if (!confirmed) throw new BringError('bring_write_unconfirmed', 503);
       return publicSnapshot(input.connectionId, input.listId, after, loaded.catalog, loaded.labelsAvailable);
+    });
+  },
+
+  importList: (userId: string, connectionId: string, listId: string): Promise<BringImportResult> => {
+    const signal = AbortSignal.timeout(BRING_TIMEOUT_MS);
+    return repository.withUser(userId, async (unit) => {
+      assertListAllowed(allowedListIds, listId);
+      const session = await readSession(unit, cipher, userId, connectionId);
+      await authorizeList(session, listId, signal, gateway);
+      const loaded = await load(session, listId, signal, gateway);
+      const snapshot = publicSnapshot(connectionId, listId, loaded.raw, loaded.catalog, loaded.labelsAvailable);
+      const known = new Set((await readShoppingListItems(shoppingRepository, userId))
+        .filter((item) => !item.purchased)
+        .map((item) => normalized(item.label)));
+      const now = new Date().toISOString();
+      let imported = 0;
+      let skipped = 0;
+      let recently = 0;
+
+      for (const item of snapshot.items) {
+        if (item.state === 'recently') {
+          recently += 1;
+          continue;
+        }
+        const mapped = importItem(item, now);
+        const label = mapped === null ? null : normalized(mapped.label);
+        if (mapped === null || label === null || known.has(label)) {
+          skipped += 1;
+          continue;
+        }
+        await shoppingRepository.applyMutation(userId, createShoppingListMutation(mapped, 'upsert'));
+        known.add(label);
+        imported += 1;
+      }
+
+      return { imported, skipped, recently };
+    });
+  },
+
+  syncCandidates: (userId: string, houseId: string): Promise<{ connected: boolean; baseline: boolean; created: number }> => {
+    if (candidateRepository === undefined) return Promise.resolve({ connected: false, baseline: false, created: 0 });
+    const signal = AbortSignal.timeout(BRING_TIMEOUT_MS);
+    return repository.withUser(userId, async (unit) => {
+      const record = await unit.get();
+      if (record === null) return { connected: false, baseline: false, created: 0 };
+      const session = await readSession(unit, cipher, userId, record.connectionId);
+      assertActive(signal);
+      const availableLists = await callGateway(() => gateway.lists(session, signal));
+      assertActive(signal);
+      const lists = availableLists.filter((list) => allowedListIds.length === 0 || allowedListIds.includes(list.id));
+      let catalog: CatalogEntry[] = [];
+      try {
+        catalog = await callGateway(() => gateway.catalog(signal));
+      } catch {
+        assertActive(signal);
+      }
+      const labels = new Map(catalog.map((entry) => [entry.itemId, entry.name]));
+      const snapshot: RecentlySnapshotItem[] = [];
+      for (const list of lists) {
+        assertActive(signal);
+        const raw = await callGateway(() => gateway.items(session, list.id, signal));
+        assertActive(signal);
+        if (raw.uuid !== list.id) throw new BringError('bring_unavailable', 503);
+        for (const item of raw.recently) {
+          snapshot.push({
+            listId: list.id,
+            listName: list.name,
+            name: item.name,
+            label: labels.get(item.name) ?? item.name,
+            specification: item.specification,
+            checkedOffAt: item.updatedAt ?? null,
+          });
+        }
+      }
+      snapshot.sort((left, right) => left.listId.localeCompare(right.listId)
+        || left.name.localeCompare(right.name)
+        || left.specification.localeCompare(right.specification)
+        || (left.checkedOffAt ?? '').localeCompare(right.checkedOffAt ?? ''));
+      const result = await candidateRepository.syncRecently({
+        userId,
+        houseId,
+        connectionId: record.connectionId,
+        snapshot,
+        detectedAt: new Date().toISOString(),
+        ttlDays: candidateTtlDays,
+      });
+      return { connected: true, ...result };
     });
   },
 

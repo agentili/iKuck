@@ -71,6 +71,13 @@
       "when": 1791362992840,
       "tag": "0009_dinner_consumption_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792084668667,
+      "tag": "0010_pantry_candidates",
+      "breakpoints": true
     }
   ]
 }

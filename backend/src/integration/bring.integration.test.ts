@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { describe, expect, it, beforeAll, afterAll, vi } from 'vitest';
 import { createDrizzleAuthRepository } from '../auth/repository.js';
@@ -12,12 +12,17 @@ import { createRedisAuthRateLimiter } from '../auth/rateLimit.js';
 import { createCache } from '../cache/client.js';
 import { createApp } from '../app.js';
 import { createDatabase } from '../db/client.js';
-import { bringConnections } from '../db/schema.js';
+import { bringConnections, syncItems } from '../db/schema.js';
+import { createDrizzlePantryCandidateRepository } from '../pantry/candidatesRepository.js';
+import { createPantryCandidateService } from '../pantry/candidatesService.js';
 import { createBringService } from '../bring/service.js';
 import { createDrizzleBringRepository } from '../bring/repository.js';
 import { createSessionCipher } from '../bring/sessionCipher.js';
+import { createDrizzleHouseRepository } from '../house/repository.js';
+import { createHouseService } from '../house/service.js';
 import { createDrizzleProfileRepository } from '../profile/repository.js';
 import { createDrizzleSyncRepository } from '../sync/repository.js';
+import type { PantryCandidateRepository } from '../pantry/candidatesRepository.js';
 import type { BringGateway, RawItems } from '../bring/gateway.js';
 
 const databaseUrl = process.env.INTEGRATION_DATABASE_URL;
@@ -90,6 +95,8 @@ runIntegration('PostgreSQL and Redis Bring integration', () => {
       'connection_id',
       'encrypted_session',
       'connected_at',
+      'recently_watermark_at',
+      'recently_snapshot',
     ]);
   });
 
@@ -128,11 +135,18 @@ runIntegration('PostgreSQL and Redis Bring integration', () => {
     };
   };
 
-  const createService = (databaseForService: ReturnType<typeof createDatabase>, gateway: BringGateway) => createBringService({
+  const createService = (
+    databaseForService: ReturnType<typeof createDatabase>,
+    gateway: BringGateway,
+    shoppingRepository: ReturnType<typeof createDrizzleSyncRepository> = createDrizzleSyncRepository(databaseForService.db),
+    candidateRepository?: PantryCandidateRepository,
+  ) => createBringService({
     repository: createDrizzleBringRepository(databaseForService.db),
     cipher: createSessionCipher('11'.repeat(32)),
     gateway,
-    testListId: bringListId,
+    allowedListIds: [],
+    shoppingRepository,
+    ...(candidateRepository === undefined ? {} : { candidateRepository }),
   });
 
   const createAuthSession = async (databaseForAuth: ReturnType<typeof createDatabase>, label: string) => {
@@ -178,6 +192,24 @@ runIntegration('PostgreSQL and Redis Bring integration', () => {
   ) => createApp({
     database: databaseForApp,
     cache: cacheForApp,
+    bring: {
+      service,
+      authService,
+      appOrigin,
+      rateLimiter: createRedisAuthRateLimiter(cacheForApp),
+    },
+  });
+
+  const createImportApp = (
+    databaseForApp: ReturnType<typeof createDatabase>,
+    cacheForApp: NonNullable<typeof cache>,
+    authService: ReturnType<typeof createAuthService>,
+    service: ReturnType<typeof createBringService>,
+    syncRepository: ReturnType<typeof createDrizzleSyncRepository>,
+  ) => createApp({
+    database: databaseForApp,
+    cache: cacheForApp,
+    shoppingList: { repository: syncRepository, authService, appOrigin },
     bring: {
       service,
       authService,
@@ -496,4 +528,205 @@ runIntegration('PostgreSQL and Redis Bring integration', () => {
       await unavailableCache.close();
     }
   }, 10_000);
+
+  it('imports the purchase articles of a connected list into the iKuck shopping list exactly once', async () => {
+    if (database === null || cache === null) throw new Error('Integration services are not configured');
+    const { user, authService, headers } = await createAuthSession(database, 'import-once');
+    const remote = makeGateway({
+      catalog: vi.fn(async () => [{ itemId: 'Milch', name: 'Latte' }]),
+    });
+    remote.setRaw({
+      uuid: bringListId,
+      status: 'REGISTERED',
+      purchase: [
+        { name: 'Milch', specification: '2 l bio' },
+        { name: 'custom-item', specification: 'nota' },
+      ],
+      recently: [{ name: 'Yogurt', specification: '2' }],
+    });
+    const syncRepository = createDrizzleSyncRepository(database.db);
+    const app = createImportApp(database, cache, authService, createService(database, remote.gateway, syncRepository), syncRepository);
+
+    try {
+      const connected = await app.inject({
+        method: 'POST',
+        url: '/v1/integrations/bring/connection',
+        headers,
+        payload: { email: user.email, password: 'synthetic-bring-password', confirmExternalAccess: true },
+      });
+      expect(connected.statusCode).toBe(200);
+      const connectionId = connected.json<{ connectionId: string }>().connectionId;
+
+      const imported = await app.inject({
+        method: 'POST',
+        url: '/v1/integrations/bring/import',
+        headers,
+        payload: { connectionId, listId: bringListId },
+      });
+      expect(imported.statusCode).toBe(200);
+      expect(imported.json()).toEqual({ imported: 2, skipped: 0, recently: 1 });
+
+      const listed = await app.inject({ method: 'GET', url: '/v1/shopping-list', headers });
+      expect(listed.statusCode).toBe(200);
+      const items = listed.json<{ items: { label: string; note: string | null; ingredientId: string; quantity: number | null; unit: string | null; purchased: boolean; sourceRecipeId: string | null }[] }>().items;
+      expect(items).toHaveLength(2);
+      expect(items.map((item) => item.label)).toEqual(['Latte', 'custom-item']);
+      expect(items[0]).toMatchObject({
+        ingredientId: 'custom:latte',
+        note: '2 l bio',
+        quantity: null,
+        unit: null,
+        purchased: false,
+        sourceRecipeId: null,
+      });
+
+      const repeated = await app.inject({
+        method: 'POST',
+        url: '/v1/integrations/bring/import',
+        headers,
+        payload: { connectionId, listId: bringListId },
+      });
+      expect(repeated.statusCode).toBe(200);
+      expect(repeated.json()).toEqual({ imported: 0, skipped: 2, recently: 1 });
+      const afterRepeat = await app.inject({ method: 'GET', url: '/v1/shopping-list', headers });
+      expect(afterRepeat.json<{ items: unknown[] }>().items).toHaveLength(2);
+      expect(remote.gateway.change).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('imports into the shared house scope so every member reads the copied articles', async () => {
+    if (database === null || cache === null) throw new Error('Integration services are not configured');
+    const admin = await createAuthSession(database, 'import-house-admin');
+    const member = await createAuthSession(database, 'import-house-member');
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const syncRepository = createDrizzleSyncRepository(database.db, {
+      scopeResolver: async (userId) => {
+        const membership = await houseRepository.getMembershipForUser(userId);
+        return membership === null ? null : { kind: 'house', id: membership.houseId };
+      },
+    });
+    const houseService = createHouseService({ repository: houseRepository, syncRepository });
+    await houseService.createHouse(admin.user.id, 'Casa import');
+    await houseRepository.addExistingMember({ adminUserId: admin.user.id, email: member.user.email, now: new Date() });
+    const remote = makeGateway();
+    remote.setRaw({
+      uuid: bringListId,
+      status: 'REGISTERED',
+      purchase: [{ name: 'Pane', specification: '1 kg' }],
+      recently: [],
+    });
+    const app = createImportApp(database, cache, admin.authService, createService(database, remote.gateway, syncRepository), syncRepository);
+
+    try {
+      const connected = await app.inject({
+        method: 'POST',
+        url: '/v1/integrations/bring/connection',
+        headers: admin.headers,
+        payload: { email: admin.user.email, password: 'synthetic-bring-password', confirmExternalAccess: true },
+      });
+      expect(connected.statusCode).toBe(200);
+      const connectionId = connected.json<{ connectionId: string }>().connectionId;
+
+      const imported = await app.inject({
+        method: 'POST',
+        url: '/v1/integrations/bring/import',
+        headers: admin.headers,
+        payload: { connectionId, listId: bringListId },
+      });
+      expect(imported.statusCode).toBe(200);
+      expect(imported.json()).toEqual({ imported: 1, skipped: 0, recently: 0 });
+
+      const memberList = await app.inject({ method: 'GET', url: '/v1/shopping-list', headers: member.headers });
+      expect(memberList.statusCode).toBe(200);
+      expect(memberList.json<{ items: { label: string; note: string | null }[] }>().items)
+        .toMatchObject([{ label: 'Pane', note: '1 kg' }]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('baselines historical recently items, then creates and accepts a house-scoped food candidate', async () => {
+    if (database === null || cache === null) throw new Error('Integration services are not configured');
+    const { user, authService, headers } = await createAuthSession(database, 'pantry-candidate');
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const houseService = createHouseService({ repository: houseRepository, syncRepository: createDrizzleSyncRepository(database.db) });
+    await houseService.createHouse(user.id, 'Candidate integration house');
+    const membership = await houseRepository.getMembershipForUser(user.id);
+    if (membership === null) throw new Error('House membership was not created');
+
+    const syncRepository = createDrizzleSyncRepository(database.db);
+    const candidateRepository = createDrizzlePantryCandidateRepository(database.db);
+    const remote = makeGateway();
+    remote.setRaw({
+      uuid: bringListId,
+      status: 'REGISTERED',
+      purchase: [],
+      recently: [{ name: 'Pane', specification: '1 kg', updatedAt: '2026-10-15T09:00:00.000Z' }],
+    } as RawItems);
+    const service = createService(database, remote.gateway, syncRepository, candidateRepository);
+    await service.connect(user.id, {
+      email: `synthetic-bring-${randomUUID()}@example.test`,
+      password: `synthetic-password-${randomUUID()}`,
+    });
+    const candidateService = createPantryCandidateService({
+      repository: candidateRepository,
+      houseRepository,
+      bringService: service,
+    });
+    const app = createApp({
+      database,
+      cache,
+      bring: { service, authService, appOrigin, rateLimiter: createRedisAuthRateLimiter(cache) },
+      pantryCandidates: {
+        service: candidateService,
+        authService,
+        appOrigin,
+        rateLimiter: createRedisAuthRateLimiter(cache),
+      },
+    });
+
+    try {
+      const baseline = await app.inject({ method: 'GET', url: '/v1/pantry/candidates', headers });
+      expect(baseline.statusCode).toBe(200);
+      expect(baseline.json()).toEqual({ candidates: [] });
+
+      remote.setRaw({
+        uuid: bringListId,
+        status: 'REGISTERED',
+        purchase: [],
+        recently: [
+          { name: 'Pane', specification: '1 kg', updatedAt: '2026-10-15T09:00:00.000Z' },
+          { name: 'Latte', specification: '1 l', updatedAt: '2026-10-15T10:00:00.000Z' },
+          { name: 'Dentifricio', specification: '75 ml', updatedAt: '2026-10-15T10:01:00.000Z' },
+        ],
+      } as RawItems);
+      const inbox = await app.inject({ method: 'GET', url: '/v1/pantry/candidates', headers });
+      expect(inbox.statusCode).toBe(200);
+      const candidates = inbox.json<{ candidates: { id: string; label: string; rawLabel: string; checkedOffAt: string | null }[] }>().candidates;
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0]).toMatchObject({ label: 'Latte', rawLabel: 'Latte', checkedOffAt: '2026-10-15T10:00:00.000Z' });
+
+      const repeated = await app.inject({ method: 'GET', url: '/v1/pantry/candidates', headers });
+      expect(repeated.json<{ candidates: unknown[] }>().candidates).toHaveLength(1);
+      const accepted = await app.inject({
+        method: 'POST',
+        url: '/v1/pantry/candidates/accept',
+        headers,
+        payload: { ids: [candidates[0]!.id] },
+      });
+      expect(accepted.statusCode).toBe(200);
+      expect(accepted.json()).toEqual({ results: [{ id: candidates[0]!.id, ok: true, code: 'accepted' }] });
+      const pantryLots = await database.db.select({ payload: syncItems.payload }).from(syncItems).where(and(
+        eq(syncItems.scopeType, 'house'),
+        eq(syncItems.scopeId, membership.houseId),
+        eq(syncItems.entityType, 'pantry_lot'),
+        eq(syncItems.deleted, false),
+      ));
+      expect(pantryLots.map((row) => row.payload)).toMatchObject([{ label: 'Latte' }]);
+    } finally {
+      await app.close();
+    }
+  });
 });

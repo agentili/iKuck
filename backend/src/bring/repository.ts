@@ -106,6 +106,8 @@ export const createDrizzleBringRepository = (database: ApplicationDatabase['db']
                 connectionId: record.connectionId,
                 encryptedSession: record.encryptedSession,
                 connectedAt: new Date(record.connectedAt),
+                recentlyWatermarkAt: null,
+                recentlySnapshot: null,
               };
               await transaction
                 .insert(bringConnections)

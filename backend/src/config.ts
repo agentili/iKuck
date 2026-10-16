@@ -33,8 +33,8 @@ export interface AppConfig {
   s2sDinnerContextEnabled: boolean;
   bringEnabled: boolean;
   bringTokenEncryptionKey?: string;
-  bringTestListId?: string;
   bringAllowedListIds: readonly string[];
+  bringCandidateTtlDays: number;
 }
 
 const developmentDefaults = {
@@ -114,20 +114,14 @@ const environmentSchema = z.object({
     (value) => value === '' ? undefined : value,
     z.string().regex(/^[0-9a-fA-F]{64}$/, 'Bring encryption key must be 32 bytes in hex').optional(),
   ),
-  BRING_TEST_LIST_ID: z.preprocess(
-    (value) => value === '' ? undefined : value,
-    z.string().trim().min(1).max(BRING_LIST_ID_MAX_LENGTH).optional(),
-  ),
   BRING_ALLOWED_LIST_IDS: z.preprocess(
     (value) => value === '' ? undefined : value,
     z.string().min(1).optional(),
   ),
+  BRING_CANDIDATE_TTL_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
 }).superRefine((value, context) => {
   if (value.BRING_ENABLED === 'true' && value.BRING_TOKEN_ENCRYPTION_KEY === undefined) {
     context.addIssue({ code: 'custom', path: ['BRING_TOKEN_ENCRYPTION_KEY'], message: 'Bring encryption key is required when Bring is enabled' });
-  }
-  if (value.BRING_ENABLED === 'true' && value.BRING_TEST_LIST_ID === undefined) {
-    context.addIssue({ code: 'custom', path: ['BRING_TEST_LIST_ID'], message: 'Bring test list is required when Bring is enabled' });
   }
   if (value.BRING_ALLOWED_LIST_IDS !== undefined && parseBringAllowedListIds(value.BRING_ALLOWED_LIST_IDS) === null) {
     context.addIssue({
@@ -181,7 +175,7 @@ export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
     s2sDinnerContextEnabled: parsed.S2S_DINNER_CONTEXT_ENABLED === 'true',
     bringEnabled: parsed.BRING_ENABLED === 'true',
     bringTokenEncryptionKey: parsed.BRING_TOKEN_ENCRYPTION_KEY,
-    bringTestListId: parsed.BRING_TEST_LIST_ID,
     bringAllowedListIds: parseBringAllowedListIds(parsed.BRING_ALLOWED_LIST_IDS) ?? [],
+    bringCandidateTtlDays: parsed.BRING_CANDIDATE_TTL_DAYS,
   };
 };

@@ -1,5 +1,5 @@
 import type { CookEvent, DietProfilePayload, RecipePreference } from '@ikuck/shared/contracts';
-import { getIngredient } from '../ingredients';
+import { getIngredient } from '@ikuck/shared/ingredients';
 import { getRecipeById, RECIPES } from '../recipes';
 import { createSeededRandom, findHelpfulIngredients, findRecipeSuggestions, rankRecipeSuggestions } from '../suggestions';
 import type { PantryRecipe, RecipeSuggestion } from '../types';

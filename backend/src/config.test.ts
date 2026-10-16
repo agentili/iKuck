@@ -211,9 +211,6 @@ describe('loadConfig', () => {
     }
   });
 
-  it('keeps Bring disabled by default', () => {
-    expect(loadConfig({ NODE_ENV: 'development' })).toMatchObject({ bringEnabled: false, bringTestListId: undefined });
-  });
   it('keeps Bring disabled and unrestricted by default', () => {
     expect(loadConfig({ NODE_ENV: 'development' })).toMatchObject({ bringEnabled: false, bringAllowedListIds: [] });
   });
@@ -223,41 +220,20 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: 'invalid' })).toThrow();
   });
 
-
-  it('requires the designated test list before enabling Bring', () => {
+  it('enables Bring with an empty optional list restriction', () => {
     const enabled = { NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32) };
-    expect(() => loadConfig(enabled)).toThrow();
-    expect(() => loadConfig({ ...enabled, BRING_TEST_LIST_ID: '' })).toThrow();
-    expect(() => loadConfig({ ...enabled, BRING_TEST_LIST_ID: 'a'.repeat(129) })).toThrow();
-    expect(loadConfig({ ...enabled, BRING_TEST_LIST_ID: 'lista-prova-dedicata' }))
-      .toMatchObject({ bringEnabled: true, bringTestListId: 'lista-prova-dedicata' });
-  });
-
-  it('accepts explicit encrypted Bring configuration', () => {
-    expect(loadConfig({
-      NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32), BRING_TEST_LIST_ID: 'lista-prova-dedicata',
-    })).toMatchObject({ bringEnabled: true, bringTestListId: 'lista-prova-dedicata' });
-  });
-
-  it('keeps a designated test list inert while Bring stays disabled', () => {
-    expect(loadConfig({ NODE_ENV: 'development', BRING_TEST_LIST_ID: 'lista-prova-dedicata' }))
-      .toMatchObject({ bringEnabled: false, bringTestListId: 'lista-prova-dedicata' });
-      });
- 
-      it('enables Bring with an empty optional list restriction', () => {
-    const enabled = { NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32), BRING_TEST_LIST_ID: 'lista-prova-dedicata' };
     expect(loadConfig(enabled)).toMatchObject({ bringEnabled: true, bringAllowedListIds: [] });
     expect(loadConfig({ ...enabled, BRING_ALLOWED_LIST_IDS: '' })).toMatchObject({ bringEnabled: true, bringAllowedListIds: [] });
   });
 
   it('parses a comma-separated Bring list restriction without duplicates', () => {
-    const enabled = { NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32), BRING_TEST_LIST_ID: 'lista-prova-dedicata' };
+    const enabled = { NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32) };
     expect(loadConfig({ ...enabled, BRING_ALLOWED_LIST_IDS: ' lista-uno , lista-due,lista-uno, ,' }))
       .toMatchObject({ bringEnabled: true, bringAllowedListIds: ['lista-uno', 'lista-due'] });
   });
 
   it('accepts the Bring list restriction boundary and rejects oversized entries or too many ids', () => {
-    const enabled = { NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32), BRING_TEST_LIST_ID: 'lista-prova-dedicata' };
+    const enabled = { NODE_ENV: 'development', BRING_ENABLED: 'true', BRING_TOKEN_ENCRYPTION_KEY: '11'.repeat(32) };
     const ids = (count: number) => Array.from({ length: count }, (_, index) => `lista-${index}`);
 
     expect(loadConfig({ ...enabled, BRING_ALLOWED_LIST_IDS: ids(50).join(',') }).bringAllowedListIds).toEqual(ids(50));
@@ -269,7 +245,12 @@ describe('loadConfig', () => {
   it('keeps a Bring list restriction inert while Bring stays disabled', () => {
     expect(loadConfig({ NODE_ENV: 'development', BRING_ALLOWED_LIST_IDS: 'lista-uno' }))
       .toMatchObject({ bringEnabled: false, bringAllowedListIds: ['lista-uno'] });
-
   });
 
+  it('defaults candidate retention to thirty days and validates configured TTL', () => {
+    expect(loadConfig({ NODE_ENV: 'development' }).bringCandidateTtlDays).toBe(30);
+    expect(loadConfig({ NODE_ENV: 'development', BRING_CANDIDATE_TTL_DAYS: '45' }).bringCandidateTtlDays).toBe(45);
+    expect(() => loadConfig({ NODE_ENV: 'development', BRING_CANDIDATE_TTL_DAYS: '0' })).toThrow();
+    expect(() => loadConfig({ NODE_ENV: 'development', BRING_CANDIDATE_TTL_DAYS: '1.5' })).toThrow();
+  });
 });
