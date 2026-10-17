@@ -46,7 +46,7 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
           <Link to="/house" aria-label="Casa" className="grid min-h-11 min-w-11 place-items-center rounded-xl text-gray-800 hover:bg-gray-100"><Home size={19} aria-hidden="true" /></Link>
         </div>
       </div>
-      <nav aria-label="Navigazione principale" className="app-navigation fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:static sm:ml-auto sm:border-0 sm:bg-transparent sm:shadow-none">
+      <nav aria-label="Navigazione principale" className="app-navigation fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white sm:static sm:ml-auto sm:border-0 sm:bg-transparent">
         <ul className="mx-auto grid max-w-lg grid-cols-4 gap-1 px-2 sm:flex sm:max-w-none sm:justify-end sm:px-0">
           {primaryLinks.map(({ path, label, compactLabel, narrowLabel, icon: Icon }) => {
             const isCurrent = path === '/'
