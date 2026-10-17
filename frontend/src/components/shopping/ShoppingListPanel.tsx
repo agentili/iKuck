@@ -160,7 +160,7 @@ function ShoppingListItemRow({
         ? 'border-[var(--ik-border-strong)] bg-[var(--ik-sage)]'
         : 'border-[var(--ik-border)] bg-[var(--ik-surface)]'
     }`} data-state={item.purchased ? 'purchased' : 'pending'}>
-    <div className="flex items-start gap-3">
+    <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3 flex-wrap">
       <button
         type="button"
         aria-pressed={item.purchased}
@@ -172,7 +172,7 @@ function ShoppingListItemRow({
       >
         {item.purchased ? <Check size={20} aria-hidden="true" /> : <Circle size={20} aria-hidden="true" />}
       </button>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-[1_1_auto] w-full sm:w-auto">
         <p className={`font-bold text-[var(--ik-ink)] ${item.purchased ? 'line-through decoration-2 text-[var(--ik-ink-muted)]' : ''}`}>
           {item.label}
         </p>
@@ -182,29 +182,29 @@ function ShoppingListItemRow({
           <p className="mt-1 text-sm font-semibold text-[var(--ik-basil-dark)]">Dalla ricetta: {recipe.title}</p>
         )}
       </div>
-      <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
+      <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto flex-shrink-0">
         <button
           type="button"
           aria-label={`Modifica ${item.label}`}
           onClick={() => onEdit(item.id)}
-          className="min-h-11 min-w-auto rounded-[var(--ik-radius-control)] border border-[var(--ik-border)] bg-[var(--ik-surface)] px-3 py-2 text-sm font-semibold text-[var(--ik-ink)] hover:bg-[var(--ik-mist)]"
+          className="min-h-11 min-w-auto shrink-0 rounded-[var(--ik-radius-control)] border-2 border-[var(--ik-border)] bg-[var(--ik-surface)] px-3 py-2 text-sm font-semibold text-[var(--ik-ink)] hover:bg-[var(--ik-mist)] flex items-center gap-2 whitespace-normal sm:whitespace-nowrap w-full sm:w-auto justify-center sm:justify-start"
           title="Modifica"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
           </svg>
-          <span className="ml-1.5">Modifica</span>
+          <span>Modifica</span>
         </button>
         <button
           type="button"
           aria-label={`Rimuovi ${item.label}`}
           onClick={() => onRemove(item.id)}
-          className="min-h-11 min-w-auto rounded-[var(--ik-radius-control)] border border-[var(--ik-border)] bg-[var(--ik-surface)] px-3 py-2 text-sm font-semibold text-[var(--ik-ink)] hover:bg-[var(--ik-tomato-soft)] hover:text-[var(--ik-tomato)]"
+          className="min-h-11 min-w-auto shrink-0 rounded-[var(--ik-radius-control)] border-2 border-[var(--ik-border)] bg-[var(--ik-surface)] px-3 py-2 text-sm font-semibold text-[var(--ik-ink)] hover:bg-[var(--ik-tomato-soft)] hover:text-[var(--ik-tomato)] flex items-center gap-2 whitespace-normal sm:whitespace-nowrap w-full sm:w-auto justify-center sm:justify-start"
           title="Rimuovi"
-        >
-          <Trash2 size={16} aria-hidden="true" />
-          <span className="ml-1.5">Rimuovi</span>
+          >
+          <Trash2 size={18} aria-hidden="true" />
+          <span>Rimuovi</span>
         </button>
       </div>
     </div>
