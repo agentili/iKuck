@@ -3,7 +3,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
-import { DEFAULT_STAPLE_IDS, parseIngredientInput } from '../domain/ingredients';
+import { DEFAULT_STAPLE_IDS, parseIngredientInput } from '@ikuck/shared/ingredients';
 import { DEFAULT_DIET_PROFILE } from '../domain/dietary';
 import HomePage from '../pages/HomePage';
 import PantryPage from '../pages/PantryPage';

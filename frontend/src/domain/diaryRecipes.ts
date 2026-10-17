@@ -1,5 +1,5 @@
 import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
-import { parseIngredientInput } from './ingredients';
+import { parseIngredientInput } from '@ikuck/shared/ingredients';
 import type { PantryRecipe } from './types';
 import type { SyncScope } from '../sync/scopeContext';
 

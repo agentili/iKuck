@@ -34,7 +34,11 @@ const recipeTitle = 'Pasta condivisa dalla Casa';
 
 test.beforeEach(async ({ context, page }) => {
   await context.clearCookies();
-  await installOfflineBackend(page);
+  await installOfflineBackend(page, {
+    responses: {
+      'GET /v1/pantry/candidates': { status: 200, json: { candidates: [] } },
+    },
+  });
 });
 
 test.afterEach(async ({ page }) => {

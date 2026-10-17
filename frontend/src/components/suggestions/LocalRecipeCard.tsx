@@ -1,6 +1,6 @@
 import { Clock, ShoppingBasket, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { getIngredient } from '../../domain/ingredients';
+import { getIngredient } from '@ikuck/shared/ingredients';
 import { getRecipeMetadata } from '../../domain/recipeMetadata';
 import type { RecipeCategory, RecipeSuggestion } from '../../domain/types';
 import RecipeNutritionSummary from '../diet/RecipeNutritionSummary';

@@ -15,6 +15,8 @@ import { SHOPPING_LIST_LABEL_MAX_LENGTH, SHOPPING_LIST_NOTE_MAX_LENGTH, isShoppi
 import { createShoppingListMutation, readShoppingListItems } from '../shopping/writer.js';
 import type { SyncRepository } from '../sync/repository.js';
 import { BringError } from './errors.js';
+import type { PantryCandidateRepository } from '../pantry/candidatesRepository.js';
+import type { RecentlySnapshotItem } from './recently.js';
 import type { BringRepository, ConnectionUnit } from './repository.js';
 import type { SessionCipher } from './sessionCipher.js';
 import { sessionSchema, type BringGateway, type CatalogEntry, type RawItems, type StoredSession } from './gateway.js';
@@ -96,7 +98,8 @@ const publicSnapshot = (
   for (const item of [...raw.purchase, ...raw.recently]) counts.set(item.name, (counts.get(item.name) ?? 0) + 1);
   const labels = new Map(catalog.map((entry) => [entry.itemId, entry.name]));
   const items: BringItem[] = (['purchase', 'recently'] as const).flatMap((state) => raw[state].map((item) => ({
-    ...item,
+    name: item.name,
+    specification: item.specification,
     state,
     label: labels.get(item.name) ?? item.name,
     mutable: counts.get(item.name) === 1
@@ -131,12 +134,16 @@ export const createBringService = ({
   gateway,
   allowedListIds,
   shoppingRepository,
+  candidateRepository,
+  candidateTtlDays = 30,
 }: {
   repository: BringRepository;
   cipher: SessionCipher;
   gateway: BringGateway;
   allowedListIds: readonly string[];
   shoppingRepository: SyncRepository;
+  candidateRepository?: PantryCandidateRepository;
+  candidateTtlDays?: number;
 }) => ({
   status: (userId: string): Promise<BringStatus> => repository.withUser(userId, async (unit) => {
     const row = await unit.get();
@@ -278,6 +285,57 @@ export const createBringService = ({
       }
 
       return { imported, skipped, recently };
+    });
+  },
+
+  syncCandidates: (userId: string, houseId: string): Promise<{ connected: boolean; baseline: boolean; created: number }> => {
+    if (candidateRepository === undefined) return Promise.resolve({ connected: false, baseline: false, created: 0 });
+    const signal = AbortSignal.timeout(BRING_TIMEOUT_MS);
+    return repository.withUser(userId, async (unit) => {
+      const record = await unit.get();
+      if (record === null) return { connected: false, baseline: false, created: 0 };
+      const session = await readSession(unit, cipher, userId, record.connectionId);
+      assertActive(signal);
+      const availableLists = await callGateway(() => gateway.lists(session, signal));
+      assertActive(signal);
+      const lists = availableLists.filter((list) => allowedListIds.length === 0 || allowedListIds.includes(list.id));
+      let catalog: CatalogEntry[] = [];
+      try {
+        catalog = await callGateway(() => gateway.catalog(signal));
+      } catch {
+        assertActive(signal);
+      }
+      const labels = new Map(catalog.map((entry) => [entry.itemId, entry.name]));
+      const snapshot: RecentlySnapshotItem[] = [];
+      for (const list of lists) {
+        assertActive(signal);
+        const raw = await callGateway(() => gateway.items(session, list.id, signal));
+        assertActive(signal);
+        if (raw.uuid !== list.id) throw new BringError('bring_unavailable', 503);
+        for (const item of raw.recently) {
+          snapshot.push({
+            listId: list.id,
+            listName: list.name,
+            name: item.name,
+            label: labels.get(item.name) ?? item.name,
+            specification: item.specification,
+            checkedOffAt: item.updatedAt ?? null,
+          });
+        }
+      }
+      snapshot.sort((left, right) => left.listId.localeCompare(right.listId)
+        || left.name.localeCompare(right.name)
+        || left.specification.localeCompare(right.specification)
+        || (left.checkedOffAt ?? '').localeCompare(right.checkedOffAt ?? ''));
+      const result = await candidateRepository.syncRecently({
+        userId,
+        houseId,
+        connectionId: record.connectionId,
+        snapshot,
+        detectedAt: new Date().toISOString(),
+        ttlDays: candidateTtlDays,
+      });
+      return { connected: true, ...result };
     });
   },
 

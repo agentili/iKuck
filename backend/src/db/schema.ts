@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { PantryConsumptionPlan } from '@ikuck/shared/pantryConsumption';
+import type { RecentlySnapshotItem } from '../bring/recently.js';
 import {
   bigint,
   boolean,
@@ -35,6 +36,8 @@ export const bringConnections = pgTable('bring_connections', {
   connectionId: uuid('connection_id').notNull(),
   encryptedSession: text('encrypted_session').notNull(),
   connectedAt: timestamp('connected_at', { withTimezone: true }).defaultNow().notNull(),
+  recentlyWatermarkAt: timestamp('recently_watermark_at', { withTimezone: true }),
+  recentlySnapshot: jsonb('recently_snapshot').$type<RecentlySnapshotItem[]>(),
 });
 
 export const userProfiles = pgTable('user_profiles', {
@@ -64,6 +67,25 @@ export const houseMemberships = pgTable('house_memberships', {
   houseUserUnique: uniqueIndex('house_memberships_house_user_unique').on(table.houseId, table.userId),
   houseIndex: index('house_memberships_house_index').on(table.houseId),
   roleCheck: check('house_memberships_role_check', sql`${table.role} in ('admin', 'member')`),
+}));
+
+export const pantryCandidates = pgTable('pantry_candidates', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  houseId: uuid('house_id').notNull().references(() => houses.id, { onDelete: 'cascade' }),
+  rawLabel: text('raw_label').notNull(),
+  label: text('label').notNull(),
+  normalizedLabel: text('normalized_label').notNull(),
+  specification: text('specification').notNull(),
+  listName: text('list_name').notNull(),
+  checkedOffAt: timestamp('checked_off_at', { withTimezone: true }),
+  detectedAt: timestamp('detected_at', { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  status: text('status').notNull().default('pending'),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+}, (table) => ({
+  houseLabelUnique: uniqueIndex('pantry_candidates_house_normalized_label_unique').on(table.houseId, table.normalizedLabel),
+  houseStatusExpiryIndex: index('pantry_candidates_house_status_expiry_idx').on(table.houseId, table.status, table.expiresAt),
+  statusCheck: check('pantry_candidates_status_check', sql`${table.status} in ('pending', 'accepted', 'ignored')`),
 }));
 
 export const s2sServiceGrants = pgTable('s2s_service_grants', {

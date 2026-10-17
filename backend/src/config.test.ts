@@ -247,4 +247,10 @@ describe('loadConfig', () => {
       .toMatchObject({ bringEnabled: false, bringAllowedListIds: ['lista-uno'] });
   });
 
+  it('defaults candidate retention to thirty days and validates configured TTL', () => {
+    expect(loadConfig({ NODE_ENV: 'development' }).bringCandidateTtlDays).toBe(30);
+    expect(loadConfig({ NODE_ENV: 'development', BRING_CANDIDATE_TTL_DAYS: '45' }).bringCandidateTtlDays).toBe(45);
+    expect(() => loadConfig({ NODE_ENV: 'development', BRING_CANDIDATE_TTL_DAYS: '0' })).toThrow();
+    expect(() => loadConfig({ NODE_ENV: 'development', BRING_CANDIDATE_TTL_DAYS: '1.5' })).toThrow();
+  });
 });

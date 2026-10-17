@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { DEFAULT_STAPLE_IDS } from '../domain/ingredients';
+import { DEFAULT_STAPLE_IDS } from '@ikuck/shared/ingredients';
 import { aggregatePantryLots, validatePantryLotDetails, type PantryQuantityAggregate } from '../domain/pantryLots';
 import type { ParsedIngredient } from '../domain/types';
 import type { PantryLot, PantryLotPayload } from '@ikuck/shared/contracts';

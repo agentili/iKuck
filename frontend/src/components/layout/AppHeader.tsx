@@ -2,6 +2,7 @@ import { BookOpen, Home, PackageOpen, ShoppingBasket, UserRound, WifiOff } from 
 import { Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../auth/authStore';
 import { useHouseStore } from '../../house/houseStore';
+import { usePantryCandidatesBadgeStore } from '../../store/pantryCandidatesBadgeStore';
 
 const primaryLinks = [
   { path: '/', label: 'Cucina', compactLabel: 'Cucina', narrowLabel: 'Cucina', icon: Home },
@@ -19,6 +20,7 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
   const user = useAuthStore((state) => state.user);
   const connection = useAuthStore((state) => state.connection);
   const house = useHouseStore((state) => state.state?.house ?? null);
+  const pendingCount = usePantryCandidatesBadgeStore((state) => state.pendingCount);
   const accountStatus = connection === 'offline'
     ? 'Offline'
     : user === null
@@ -52,11 +54,24 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
               : path === '/dinner-diary'
                 ? location.pathname === path || location.pathname === '/activity'
                 : location.pathname === path;
+            const linkAriaLabel =
+              path === '/pantry' && pendingCount > 0
+                ? `${label} (${pendingCount} da confermare)`
+                : label;
+            const pantryBadge =
+              path === '/pantry' && pendingCount > 0 ? (
+                <span
+                  className="ml-1 inline-block min-h-6 min-w-6 rounded-full bg-red-100 px-1.5 py-0.5 text-xs font-bold text-red-900"
+                  aria-label={`${pendingCount} articoli da confermare`}
+                >
+                  {pendingCount}
+                </span>
+              ) : null;
             return (
               <li key={path} className="min-w-0">
                 <Link
                   to={path}
-                  aria-label={label}
+                  aria-label={linkAriaLabel}
                   aria-current={isCurrent ? 'page' : undefined}
                   className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-center text-xs font-bold leading-tight sm:min-h-11 sm:flex-row sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${isCurrent ? 'bg-emerald-100 text-emerald-950' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-950'}`}
                 >
@@ -64,6 +79,7 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
                   <span className="app-navigation-label-full min-w-0">{label}</span>
                   <span className="app-navigation-label-compact min-w-0" aria-hidden="true">{compactLabel}</span>
                   <span className="app-navigation-label-narrow min-w-0" aria-hidden="true">{narrowLabel}</span>
+                  {pantryBadge}
                 </Link>
               </li>
             );

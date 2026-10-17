@@ -3,10 +3,12 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import AppHeader from './AppHeader';
 import { useAuthStore } from '../../auth/authStore';
+import { usePantryCandidatesBadgeStore } from '../../store/pantryCandidatesBadgeStore';
 
 describe('AppHeader', () => {
   beforeEach(() => {
     useAuthStore.setState({ user: null, connection: 'unknown' });
+    usePantryCandidatesBadgeStore.getState().reset();
   });
 
   it('exposes the compact primary navigation and marks the current route', () => {
@@ -51,5 +53,20 @@ describe('AppHeader', () => {
     expect(screen.getAllByRole('link', { name: 'Casa' })).toHaveLength(2);
     expect(screen.getAllByText('Account verificato')).toHaveLength(2);
     expect(screen.queryByText('ale@example.com')).not.toBeInTheDocument();
+  });
+
+  it('mostra il badge dei candidati pendenti sulla scheda Dispensa', () => {
+    usePantryCandidatesBadgeStore.getState().setHouse('house-a');
+    usePantryCandidatesBadgeStore.getState().setPendingCount(3);
+    render(<MemoryRouter initialEntries={['/pantry']}><AppHeader /></MemoryRouter>);
+
+    expect(screen.getByRole('link', { name: 'Dispensa (3 da confermare)' })).toBeInTheDocument();
+    expect(screen.getByLabelText('3 articoli da confermare')).toHaveTextContent('3');
+  });
+
+  it('non mostra il badge quando non ci sono candidati pendenti', () => {
+    render(<MemoryRouter initialEntries={['/pantry']}><AppHeader /></MemoryRouter>);
+
+    expect(screen.queryByLabelText(/da confermare/)).not.toBeInTheDocument();
   });
 });

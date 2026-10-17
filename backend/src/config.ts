@@ -34,6 +34,7 @@ export interface AppConfig {
   bringEnabled: boolean;
   bringTokenEncryptionKey?: string;
   bringAllowedListIds: readonly string[];
+  bringCandidateTtlDays: number;
 }
 
 const developmentDefaults = {
@@ -117,6 +118,7 @@ const environmentSchema = z.object({
     (value) => value === '' ? undefined : value,
     z.string().min(1).optional(),
   ),
+  BRING_CANDIDATE_TTL_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
 }).superRefine((value, context) => {
   if (value.BRING_ENABLED === 'true' && value.BRING_TOKEN_ENCRYPTION_KEY === undefined) {
     context.addIssue({ code: 'custom', path: ['BRING_TOKEN_ENCRYPTION_KEY'], message: 'Bring encryption key is required when Bring is enabled' });
@@ -174,5 +176,6 @@ export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
     bringEnabled: parsed.BRING_ENABLED === 'true',
     bringTokenEncryptionKey: parsed.BRING_TOKEN_ENCRYPTION_KEY,
     bringAllowedListIds: parseBringAllowedListIds(parsed.BRING_ALLOWED_LIST_IDS) ?? [],
+    bringCandidateTtlDays: parsed.BRING_CANDIDATE_TTL_DAYS,
   };
 };

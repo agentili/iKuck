@@ -1,4 +1,4 @@
-import { INGREDIENTS } from '../ingredients';
+import { INGREDIENTS } from '@ikuck/shared/ingredients';
 import { RECIPES, getRecipeById } from '../recipes';
 
 describe('recipe catalog', () => {

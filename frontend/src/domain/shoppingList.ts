@@ -1,5 +1,5 @@
 import type { PantryUnit, ShoppingListItem, ShoppingListItemPayload } from '@ikuck/shared/contracts';
-import { getIngredient } from './ingredients';
+import { getIngredient } from '@ikuck/shared/ingredients';
 import type { PantryRecipe, RecipeIngredient } from './types';
 
 export const SHOPPING_LIST_UNITS: readonly PantryUnit[] = ['g', 'kg', 'ml', 'l', 'piece', 'pack'];

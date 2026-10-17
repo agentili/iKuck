@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { describe, expect, it, beforeAll, afterAll, vi } from 'vitest';
 import { createDrizzleAuthRepository } from '../auth/repository.js';
@@ -12,7 +12,9 @@ import { createRedisAuthRateLimiter } from '../auth/rateLimit.js';
 import { createCache } from '../cache/client.js';
 import { createApp } from '../app.js';
 import { createDatabase } from '../db/client.js';
-import { bringConnections } from '../db/schema.js';
+import { bringConnections, syncItems } from '../db/schema.js';
+import { createDrizzlePantryCandidateRepository } from '../pantry/candidatesRepository.js';
+import { createPantryCandidateService } from '../pantry/candidatesService.js';
 import { createBringService } from '../bring/service.js';
 import { createDrizzleBringRepository } from '../bring/repository.js';
 import { createSessionCipher } from '../bring/sessionCipher.js';
@@ -20,6 +22,7 @@ import { createDrizzleHouseRepository } from '../house/repository.js';
 import { createHouseService } from '../house/service.js';
 import { createDrizzleProfileRepository } from '../profile/repository.js';
 import { createDrizzleSyncRepository } from '../sync/repository.js';
+import type { PantryCandidateRepository } from '../pantry/candidatesRepository.js';
 import type { BringGateway, RawItems } from '../bring/gateway.js';
 
 const databaseUrl = process.env.INTEGRATION_DATABASE_URL;
@@ -92,6 +95,8 @@ runIntegration('PostgreSQL and Redis Bring integration', () => {
       'connection_id',
       'encrypted_session',
       'connected_at',
+      'recently_watermark_at',
+      'recently_snapshot',
     ]);
   });
 
@@ -134,12 +139,14 @@ runIntegration('PostgreSQL and Redis Bring integration', () => {
     databaseForService: ReturnType<typeof createDatabase>,
     gateway: BringGateway,
     shoppingRepository: ReturnType<typeof createDrizzleSyncRepository> = createDrizzleSyncRepository(databaseForService.db),
+    candidateRepository?: PantryCandidateRepository,
   ) => createBringService({
     repository: createDrizzleBringRepository(databaseForService.db),
     cipher: createSessionCipher('11'.repeat(32)),
     gateway,
     allowedListIds: [],
     shoppingRepository,
+    ...(candidateRepository === undefined ? {} : { candidateRepository }),
   });
 
   const createAuthSession = async (databaseForAuth: ReturnType<typeof createDatabase>, label: string) => {
@@ -635,6 +642,89 @@ runIntegration('PostgreSQL and Redis Bring integration', () => {
       expect(memberList.statusCode).toBe(200);
       expect(memberList.json<{ items: { label: string; note: string | null }[] }>().items)
         .toMatchObject([{ label: 'Pane', note: '1 kg' }]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('baselines historical recently items, then creates and accepts a house-scoped food candidate', async () => {
+    if (database === null || cache === null) throw new Error('Integration services are not configured');
+    const { user, authService, headers } = await createAuthSession(database, 'pantry-candidate');
+    const houseRepository = createDrizzleHouseRepository(database.db);
+    const houseService = createHouseService({ repository: houseRepository, syncRepository: createDrizzleSyncRepository(database.db) });
+    await houseService.createHouse(user.id, 'Candidate integration house');
+    const membership = await houseRepository.getMembershipForUser(user.id);
+    if (membership === null) throw new Error('House membership was not created');
+
+    const syncRepository = createDrizzleSyncRepository(database.db);
+    const candidateRepository = createDrizzlePantryCandidateRepository(database.db);
+    const remote = makeGateway();
+    remote.setRaw({
+      uuid: bringListId,
+      status: 'REGISTERED',
+      purchase: [],
+      recently: [{ name: 'Pane', specification: '1 kg', updatedAt: '2026-10-15T09:00:00.000Z' }],
+    } as RawItems);
+    const service = createService(database, remote.gateway, syncRepository, candidateRepository);
+    await service.connect(user.id, {
+      email: `synthetic-bring-${randomUUID()}@example.test`,
+      password: `synthetic-password-${randomUUID()}`,
+    });
+    const candidateService = createPantryCandidateService({
+      repository: candidateRepository,
+      houseRepository,
+      bringService: service,
+    });
+    const app = createApp({
+      database,
+      cache,
+      bring: { service, authService, appOrigin, rateLimiter: createRedisAuthRateLimiter(cache) },
+      pantryCandidates: {
+        service: candidateService,
+        authService,
+        appOrigin,
+        rateLimiter: createRedisAuthRateLimiter(cache),
+      },
+    });
+
+    try {
+      const baseline = await app.inject({ method: 'GET', url: '/v1/pantry/candidates', headers });
+      expect(baseline.statusCode).toBe(200);
+      expect(baseline.json()).toEqual({ candidates: [] });
+
+      remote.setRaw({
+        uuid: bringListId,
+        status: 'REGISTERED',
+        purchase: [],
+        recently: [
+          { name: 'Pane', specification: '1 kg', updatedAt: '2026-10-15T09:00:00.000Z' },
+          { name: 'Latte', specification: '1 l', updatedAt: '2026-10-15T10:00:00.000Z' },
+          { name: 'Dentifricio', specification: '75 ml', updatedAt: '2026-10-15T10:01:00.000Z' },
+        ],
+      } as RawItems);
+      const inbox = await app.inject({ method: 'GET', url: '/v1/pantry/candidates', headers });
+      expect(inbox.statusCode).toBe(200);
+      const candidates = inbox.json<{ candidates: { id: string; label: string; rawLabel: string; checkedOffAt: string | null }[] }>().candidates;
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0]).toMatchObject({ label: 'Latte', rawLabel: 'Latte', checkedOffAt: '2026-10-15T10:00:00.000Z' });
+
+      const repeated = await app.inject({ method: 'GET', url: '/v1/pantry/candidates', headers });
+      expect(repeated.json<{ candidates: unknown[] }>().candidates).toHaveLength(1);
+      const accepted = await app.inject({
+        method: 'POST',
+        url: '/v1/pantry/candidates/accept',
+        headers,
+        payload: { ids: [candidates[0]!.id] },
+      });
+      expect(accepted.statusCode).toBe(200);
+      expect(accepted.json()).toEqual({ results: [{ id: candidates[0]!.id, ok: true, code: 'accepted' }] });
+      const pantryLots = await database.db.select({ payload: syncItems.payload }).from(syncItems).where(and(
+        eq(syncItems.scopeType, 'house'),
+        eq(syncItems.scopeId, membership.houseId),
+        eq(syncItems.entityType, 'pantry_lot'),
+        eq(syncItems.deleted, false),
+      ));
+      expect(pantryLots.map((row) => row.payload)).toMatchObject([{ label: 'Latte' }]);
     } finally {
       await app.close();
     }

@@ -4,6 +4,8 @@ import { createBringGateway } from './bring/gateway.js';
 import { createDrizzleBringRepository } from './bring/repository.js';
 import { createBringService } from './bring/service.js';
 import { createSessionCipher } from './bring/sessionCipher.js';
+import { createDrizzlePantryCandidateRepository } from './pantry/candidatesRepository.js';
+import { createPantryCandidateService } from './pantry/candidatesService.js';
 import { createAuthService } from './auth/service.js';
 import { createCache } from './cache/client.js';
 import { loadConfig } from './config.js';
@@ -61,13 +63,21 @@ export const start = async () => {
       return membership === null ? null : { kind: 'house', id: membership.houseId };
     },
   });
+  const bringCandidateRepository = createDrizzlePantryCandidateRepository(database.db);
   const bring = config.bringEnabled ? createBringService({
     repository: createDrizzleBringRepository(database.db),
     cipher: createSessionCipher(config.bringTokenEncryptionKey!),
     gateway: createBringGateway(),
     allowedListIds: config.bringAllowedListIds,
     shoppingRepository: sync,
+    candidateRepository: bringCandidateRepository,
+    candidateTtlDays: config.bringCandidateTtlDays,
   }) : undefined;
+  const pantryCandidates = createPantryCandidateService({
+    repository: bringCandidateRepository,
+    houseRepository,
+    ...(bring === undefined ? {} : { bringService: bring }),
+  });
   const houseService = createHouseService({ repository: houseRepository, syncRepository: sync });
   const profile = createDrizzleProfileRepository(database.db, sync);
   const s2sRepository = createDrizzleS2sRepository((s2sDatabase ?? database).db);
@@ -105,6 +115,7 @@ export const start = async () => {
       dinnerDiary: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       dinnerConsumption: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       bring: { service: bring, authService: auth, appOrigin: config.appOrigin, rateLimiter: authRateLimiter },
+      pantryCandidates: { service: pantryCandidates, authService: auth, rateLimiter: authRateLimiter, appOrigin: config.appOrigin },
       s2sDinnerContext,
       pantryLots: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       shoppingList: { repository: sync, authService: auth, appOrigin: config.appOrigin },

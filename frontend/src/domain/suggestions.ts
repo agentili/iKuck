@@ -1,4 +1,4 @@
-import { getIngredient } from './ingredients';
+import { getIngredient } from '@ikuck/shared/ingredients';
 import { isRecipeCompatible } from './dietary';
 import { getQuantityWarning, type PantryQuantityAggregate } from './pantryLots';
 import { RECIPES } from './recipes';

@@ -4,30 +4,11 @@ import type { SyncScope } from '../sync/scopeContext';
 
 export type RecipeCategory = 'meat' | 'fish' | 'eggs' | 'legumes' | 'vegetables' | 'diary';
 
-export type IngredientCategory =
-  | 'staple'
-  | 'grain'
-  | 'meat'
-  | 'fish'
-  | 'egg'
-  | 'legume'
-  | 'vegetable'
-  | 'dairy';
-
-export interface IngredientDefinition {
-  id: string;
-  label: string;
-  aliases: string[];
-  category: IngredientCategory;
-  easyToFind: boolean;
-  staple: boolean;
-}
-
-export interface ParsedIngredient {
-  id: string;
-  label: string;
-  known: boolean;
-}
+export type {
+  IngredientCategory,
+  IngredientDefinition,
+  ParsedIngredient,
+} from '@ikuck/shared/ingredients';
 
 export interface RecipeIngredient {
   ingredientId: string;

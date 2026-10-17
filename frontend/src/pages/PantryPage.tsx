@@ -31,6 +31,8 @@ import {
   type PersistenceState,
 } from '../store/persistenceStatusStore';
 import { findHelpfulIngredients, createSeededRandom } from '../domain/suggestions';
+import { useHouseStore } from '../house/houseStore';
+import CandidatesInbox from '../components/pantry/CandidatesInbox';
 
 const persistenceLabels: Record<PersistenceDomain, string> = {
   pantry: 'dispensa',
@@ -77,6 +79,7 @@ export default function PantryPage() {
   const dietProfile = useDietProfileStore((state) => state.profile);
   const setDietProfile = useDietProfileStore((state) => state.setDietProfile);
   const resetDietProfile = useDietProfileStore((state) => state.resetDietProfile);
+  const house = useHouseStore((state) => state.state?.house ?? null);
   const persistenceStatuses = usePersistenceStatusStore((state) => state.statuses);
   const [ingredientSuggestionSeed, setIngredientSuggestionSeed] = useState(0);
   const [dismissedIngredientSuggestionIds, setDismissedIngredientSuggestionIds] = useState<string[]>([]);
@@ -275,6 +278,8 @@ export default function PantryPage() {
           </div>
         </div>
       )}
+
+      {house !== null && <CandidatesInbox houseId={house.id} />}
 
       <section aria-label="La tua dispensa" className="ik-surface ik-pantry-workbench space-y-4 rounded-3xl border-2 border-emerald-200 bg-white p-4 shadow-sm sm:space-y-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">

@@ -10,6 +10,11 @@ const listsSchema = z.object({
     theme: z.string().max(128),
   })).max(1000),
 });
+const recentlyItemSchema = z.object({
+  name: z.string().min(1).max(1000),
+  specification: z.string().max(10000),
+  updatedAt: z.string().datetime({ offset: true }).optional(),
+});
 const itemsSchema = z.object({
   uuid: z.string().max(128),
   status: z.string().max(128),
@@ -17,10 +22,7 @@ const itemsSchema = z.object({
     name: z.string().min(1).max(1000),
     specification: z.string().max(10000),
   })).max(BRING_MAX_ITEMS),
-  recently: z.array(z.object({
-    name: z.string().min(1).max(1000),
-    specification: z.string().max(10000),
-  })).max(BRING_MAX_ITEMS),
+  recently: z.array(recentlyItemSchema).max(BRING_MAX_ITEMS),
 });
 const catalogSchema = z.object({
   language: z.string().max(128),

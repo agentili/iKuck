@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BRING_NAME_MAX_LENGTH, BRING_SPEC_MAX_LENGTH } from '@ikuck/shared/bring';
+import { createMemoryPantryCandidateRepository } from '../pantry/candidatesRepository.js';
 import { createBringService } from './service.js';
 import { createMemoryBringRepository } from './repository.js';
 import { createSessionCipher } from './sessionCipher.js';
@@ -25,8 +26,9 @@ const fixture = (allowedListIds: readonly string[] = []) => {
   const repository = createMemoryBringRepository();
   const cipher = createSessionCipher('11'.repeat(32));
   const shoppingRepository = createMemorySyncRepository();
-  const service = createBringService({ repository, gateway, cipher, allowedListIds, shoppingRepository });
-  return { service, gateway, repository, cipher, shoppingRepository, setRaw: (next: RawItems) => { raw = next; } };
+  const candidateRepository = createMemoryPantryCandidateRepository();
+  const service = createBringService({ repository, gateway, cipher, allowedListIds, shoppingRepository, candidateRepository });
+  return { service, gateway, repository, cipher, shoppingRepository, candidateRepository, setRaw: (next: RawItems) => { raw = next; } };
 };
 
 describe('Bring service', () => {
@@ -1031,6 +1033,55 @@ describe('Bring one-shot import', () => {
     await expect(service.importList('owner-a', connectionId, listId))
       .rejects.toMatchObject({ code: 'bring_not_connected', status: 409 });
     await expect(readShoppingListItems(shoppingRepository, 'owner-a')).resolves.toEqual([]);
+    expect(gateway.items).not.toHaveBeenCalled();
+  });
+
+  it('sets a baseline then catches offline recently check-offs older than its watermark', async () => {
+    const { service, candidateRepository, setRaw } = fixture();
+    const connected = await service.connect('owner-a', credentials);
+    setRaw({
+      uuid: listId,
+      status: 'REGISTERED',
+      purchase: [],
+      recently: [{ name: 'Yogurt', specification: '2', updatedAt: '2026-10-15T10:30:00.000Z' }],
+    });
+
+    await expect(service.syncCandidates('owner-a', 'house-1')).resolves.toMatchObject({
+      connected: true,
+      baseline: true,
+      created: 0,
+    });
+    await expect(candidateRepository.listPending('owner-a', 'house-1', new Date().toISOString())).resolves.toEqual([]);
+
+    setRaw({
+      uuid: listId,
+      status: 'REGISTERED',
+      purchase: [],
+      recently: [
+        { name: 'Yogurt', specification: '2', updatedAt: '2026-10-15T10:30:00.000Z' },
+        { name: 'Milch', specification: '1 l', updatedAt: '2026-10-15T09:00:00.000Z' },
+      ],
+    });
+    await expect(service.syncCandidates('owner-a', 'house-1')).resolves.toMatchObject({
+      connected: true,
+      baseline: false,
+      created: 1,
+    });
+    await expect(candidateRepository.listPending('owner-a', 'house-1', new Date().toISOString()))
+      .resolves.toMatchObject([{ rawLabel: 'Milch', label: 'Latte', checkedOffAt: '2026-10-15T09:00:00.000Z' }]);
+    await expect(service.syncCandidates('owner-a', 'house-1')).resolves.toMatchObject({ created: 0 });
+    expect(connected.connectionId).not.toBeNull();
+  });
+
+  it('does not sync candidate state for a disconnected Bring account', async () => {
+    const { service, gateway } = fixture();
+
+    await expect(service.syncCandidates('owner-a', 'house-1')).resolves.toEqual({
+      connected: false,
+      baseline: false,
+      created: 0,
+    });
+    expect(gateway.lists).not.toHaveBeenCalled();
     expect(gateway.items).not.toHaveBeenCalled();
   });
 

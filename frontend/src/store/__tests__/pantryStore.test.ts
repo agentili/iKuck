@@ -1,4 +1,4 @@
-import { DEFAULT_STAPLE_IDS } from '../../domain/ingredients';
+import { DEFAULT_STAPLE_IDS } from '@ikuck/shared/ingredients';
 import { afterEach, vi } from 'vitest';
 import * as pantryStorage from '../../storage/pantryStorage';
 import { deleteLocalDatabase, readKeyValue, writeKeyValue } from '../../storage/indexedDb';

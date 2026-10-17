@@ -20,6 +20,8 @@ import { type HouseRouteDependencies, registerHouseRoutes } from './routes/house
 import { type DinnerDiaryRecipeRouteDependencies, registerDinnerDiaryRecipeRoutes } from './routes/dinnerDiaryRecipes.js';
 import { type DinnerConsumptionRouteDependencies, registerDinnerConsumptionRoutes } from './routes/dinnerConsumption.js';
 import { registerBringRoutes, type BringRouteDependencies } from './routes/bring.js';
+import { registerPantryCandidateRoutes, type PantryCandidateRouteDependencies } from './routes/pantryCandidates.js';
+import { BringError } from './bring/errors.js';
 import { type S2sDinnerContextService } from './s2s/dinnerContext.js';
 import { registerS2sDinnerContextRoutes } from './routes/s2sDinnerContext.js';
 import { shouldDisableRequestLogging } from './serverLogging.js';
@@ -41,6 +43,7 @@ export interface ExtendedPlatformDependencies extends PlatformDependencies {
   dinnerDiary?: DinnerDiaryRecipeRouteDependencies;
   dinnerConsumption?: DinnerConsumptionRouteDependencies;
   bring?: BringRouteDependencies;
+  pantryCandidates?: PantryCandidateRouteDependencies;
   s2sDinnerContext?: S2sDinnerContextService;
 }
 
@@ -69,6 +72,9 @@ export const createApp = (
     if (error instanceof SyncPayloadError || error instanceof SyncScopeInvalidError || error instanceof SyncScopeRequiredError || error instanceof SyncMembershipRequiredError || error instanceof SyncDiaryRecipeLimitError || error instanceof DinnerConsumptionInputError || error instanceof DinnerConsumptionConflictError) {
       return reply.code(error.status).send({ code: error.code, message: error.message });
     }
+    if (error instanceof BringError) {
+      return reply.code(error.status).send({ code: error.code, message: error.message });
+    }
     if (error instanceof AuthServiceError) {
       if (error instanceof AuthRateLimitError && error.retryAfterSeconds !== undefined) {
         reply.header('retry-after', String(error.retryAfterSeconds));
@@ -93,6 +99,7 @@ export const createApp = (
   if (dependencies.dinnerDiary !== undefined) app.register(registerDinnerDiaryRecipeRoutes(dependencies.dinnerDiary));
   if (dependencies.dinnerConsumption !== undefined) app.register(registerDinnerConsumptionRoutes(dependencies.dinnerConsumption));
   if (dependencies.bring !== undefined) app.register(registerBringRoutes(dependencies.bring));
+  if (dependencies.pantryCandidates !== undefined) app.register(registerPantryCandidateRoutes(dependencies.pantryCandidates));
   app.register(async (s2sScope) => {
     s2sScope.setNotFoundHandler((_request, reply) => {
       reply.header('cache-control', 'no-store');

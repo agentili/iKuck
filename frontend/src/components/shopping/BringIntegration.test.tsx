@@ -13,17 +13,9 @@ const mocks = vi.hoisted(() => ({
   lists: vi.fn(),
   items: vi.fn(),
   write: vi.fn(),
-  importList: vi.fn(),
 }));
 
-const syncVerifiedSession = vi.hoisted(() => vi.fn().mockResolvedValue(null));
-
 vi.mock('../../bring/bringApi', () => ({ createBringApi: () => mocks }));
-
-vi.mock('../../sync/syncQueue', async () => {
-  const actual = await vi.importActual<typeof import('../../sync/syncQueue')>('../../sync/syncQueue');
-  return { ...actual, syncVerifiedSession };
-});
 
 const connectionId = '22222222-2222-4222-8222-222222222222';
 const listId = '11111111-1111-4111-8111-111111111111';
@@ -55,8 +47,6 @@ const renderSelectedList = async (items: Array<{
 describe('Bring integration panel', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
-    syncVerifiedSession.mockReset();
-    syncVerifiedSession.mockResolvedValue(null);
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
     useAuthStore.setState({
       user: { id: 'user-a', email: 'a@example.com', emailVerifiedAt: '2026-10-01T00:00:00.000Z' },
@@ -173,7 +163,7 @@ describe('Bring integration panel', () => {
     render(<BringIntegration userId="user-a" csrfToken="synthetic-csrf" />);
     await user.selectOptions(await screen.findByRole('combobox', { name: 'Lista Bring!' }), listId);
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Questa lista non è abilitata su questa installazione.');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Questa lista non è abilitata: Bring! è attivo solo sulla lista di prova configurata.');
     expect(screen.queryByRole('button', { name: 'Ricollega Bring!' })).not.toBeInTheDocument();
   });
 
@@ -494,9 +484,7 @@ describe('Bring integration panel', () => {
     expect(screen.getByText('Sei offline: i dati Bring! mostrati potrebbero non essere aggiornati. Le modifiche sono disabilitate.')).toBeVisible();
     expect(screen.getByLabelText('Cosa aggiungere a Bring!')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Aggiungi a Bring!' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Importa nella lista iKuck' })).toBeDisabled();
     expect(mocks.write).not.toHaveBeenCalled();
-    expect(mocks.importList).not.toHaveBeenCalled();
   });
 
   it('asks to reconnect after an expired Bring session without logging out of iKuck', async () => {
@@ -618,177 +606,5 @@ describe('Bring integration panel', () => {
 
     expect(dispatchCount).toBe(1);
     expect(mocks.write).toHaveBeenCalledTimes(1);
-  });
-
-  it('offers the one-shot import only after a readable Bring snapshot', async () => {
-    const user = userEvent.setup();
-    mocks.status.mockResolvedValue({ enabled: true, connected: true, connectionId });
-    mocks.lists.mockResolvedValue({ connectionId, lists: [{ id: listId, name: 'Casa' }] });
-    mocks.items.mockResolvedValue({ connectionId, listId, labelsAvailable: true, items: [] });
-
-    render(<BringIntegration userId="user-a" csrfToken="synthetic-csrf" />);
-    await screen.findByRole('combobox', { name: 'Lista Bring!' });
-    expect(screen.queryByRole('button', { name: 'Importa nella lista iKuck' })).not.toBeInTheDocument();
-
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Lista Bring!' }), listId);
-    await screen.findByText('La lista Bring! è vuota.');
-    expect(screen.getByRole('button', { name: 'Importa nella lista iKuck' })).toBeEnabled();
-    expect(mocks.importList).not.toHaveBeenCalled();
-    expect(syncVerifiedSession).not.toHaveBeenCalled();
-  });
-
-  it('previews purchase and recently purchased counts before the one-shot import', async () => {
-    const user = await renderSelectedList([
-      { name: 'Milch', label: 'Latte', specification: '1 l', state: 'purchase', mutable: true },
-      { name: 'Brot', label: 'Pane', specification: '400 g', state: 'purchase', mutable: true },
-      { name: 'Eier', label: 'Uova', specification: '', state: 'recently', mutable: true },
-    ]);
-
-    await user.click(screen.getByRole('button', { name: 'Importa nella lista iKuck' }));
-    const confirmation = screen.getByRole('group', { name: 'Importa nella lista iKuck' });
-    expect(within(confirmation).getByText('2 articoli da acquistare da importare')).toBeVisible();
-    expect(within(confirmation).getByText('1 già acquistati su Bring! non verranno importati')).toBeVisible();
-    expect(within(confirmation).getByText(/Copia una tantum/)).toBeVisible();
-    expect(within(confirmation).getByText(/NON viene modificata/)).toBeVisible();
-    expect(within(confirmation).getByText(/restano separate/)).toBeVisible();
-    expect(within(confirmation).getByText(/Nessuna sincronizzazione continua/)).toBeVisible();
-    expect(mocks.importList).not.toHaveBeenCalled();
-    expect(syncVerifiedSession).not.toHaveBeenCalled();
-  });
-
-  it('omits the purchased preview when the Bring list has none', async () => {
-    const user = await renderSelectedList([
-      { name: 'Milch', label: 'Latte', specification: '1 l', state: 'purchase', mutable: true },
-    ]);
-
-    await user.click(screen.getByRole('button', { name: 'Importa nella lista iKuck' }));
-    const confirmation = screen.getByRole('group', { name: 'Importa nella lista iKuck' });
-    expect(within(confirmation).getByText('1 articoli da acquistare da importare')).toBeVisible();
-    expect(within(confirmation).queryByText(/già acquistati su Bring!/)).not.toBeInTheDocument();
-  });
-
-  it('closes the confirmation without touching the import endpoint', async () => {
-    const user = await renderSelectedList([
-      { name: 'Milch', label: 'Latte', specification: '1 l', state: 'purchase', mutable: true },
-    ]);
-
-    await user.click(screen.getByRole('button', { name: 'Importa nella lista iKuck' }));
-    await user.click(screen.getByRole('button', { name: 'Annulla' }));
-
-    expect(screen.queryByRole('group', { name: 'Importa nella lista iKuck' })).not.toBeInTheDocument();
-    expect(mocks.importList).not.toHaveBeenCalled();
-    expect(syncVerifiedSession).not.toHaveBeenCalled();
-  });
-
-  it('imports with the pinned body and reports every real server count', async () => {
-    const pendingImport = deferred<{ imported: number; skipped: number; recently: number }>();
-    mocks.importList.mockReturnValue(pendingImport.promise);
-    const user = await renderSelectedList([
-      { name: 'Milch', label: 'Latte', specification: '1 l', state: 'purchase', mutable: true },
-      { name: 'Eier', label: 'Uova', specification: '', state: 'recently', mutable: true },
-    ]);
-
-    await user.click(screen.getByRole('button', { name: 'Importa nella lista iKuck' }));
-    await user.click(screen.getByRole('button', { name: 'Conferma importazione' }));
-
-    await waitFor(() => expect(mocks.importList).toHaveBeenCalledWith(
-      { connectionId, listId },
-      'synthetic-csrf',
-      expect.any(AbortSignal),
-    ));
-    expect(screen.queryByText(/^Importati/)).not.toBeInTheDocument();
-
-    await act(async () => {
-      pendingImport.resolve({ imported: 3, skipped: 1, recently: 2 });
-    });
-
-    expect(await screen.findByText(
-      'Importati 3 articoli nella lista iKuck. 1 erano già presenti o non importabili. 2 articoli acquistati non sono stati importati.',
-    )).toBeVisible();
-    expect(screen.queryByRole('group', { name: 'Importa nella lista iKuck' })).not.toBeInTheDocument();
-    expect(mocks.importList).toHaveBeenCalledTimes(1);
-  });
-
-  it('omits zero counts and refreshes the iKuck list through the existing sync path', async () => {
-    const pendingSync = deferred<null>();
-    syncVerifiedSession.mockReturnValue(pendingSync.promise);
-    mocks.importList.mockResolvedValue({ imported: 2, skipped: 0, recently: 0 });
-    const user = await renderSelectedList([
-      { name: 'Milch', label: 'Latte', specification: '1 l', state: 'purchase', mutable: true },
-      { name: 'Eier', label: 'Uova', specification: '', state: 'recently', mutable: true },
-    ]);
-
-    await user.click(screen.getByRole('button', { name: 'Importa nella lista iKuck' }));
-    await user.click(screen.getByRole('button', { name: 'Conferma importazione' }));
-
-    expect(await screen.findByText('Importati 2 articoli nella lista iKuck.')).toBeVisible();
-    expect(screen.queryByText(/0 erano già presenti/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/0 articoli acquistati/)).not.toBeInTheDocument();
-
-    await waitFor(() => expect(syncVerifiedSession).toHaveBeenCalledTimes(1));
-    expect(syncVerifiedSession).toHaveBeenCalledWith(
-      {
-        userId: 'user-a',
-        emailVerifiedAt: '2026-10-01T00:00:00.000Z',
-        csrfToken: 'synthetic-csrf',
-      },
-      expect.objectContaining({ isSessionCurrent: expect.any(Function) }),
-    );
-    const options = syncVerifiedSession.mock.calls[0]?.[1] as { isSessionCurrent: () => boolean };
-    expect(options.isSessionCurrent()).toBe(true);
-
-    await act(async () => {
-      pendingSync.resolve(null);
-    });
-
-    expect(screen.getByText('Importati 2 articoli nella lista iKuck.')).toBeVisible();
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(mocks.importList).toHaveBeenCalledTimes(1);
-    expect(mocks.write).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    { status: 403, code: 'bring_list_not_allowed', expected: 'Questa lista non è abilitata su questa installazione.' },
-    { status: 409, code: 'bring_busy', expected: 'Un’operazione Bring! è già in corso. Attendi e aggiorna la lista.' },
-  ])('maps a $code import failure to its Italian copy without refreshing', async ({ status, code, expected }) => {
-    mocks.importList.mockRejectedValue(new ApiClientError(status, code, 'synthetic import failure'));
-    const user = await renderSelectedList([
-      { name: 'Milch', label: 'Latte', specification: '1 l', state: 'purchase', mutable: true },
-    ]);
-
-    await user.click(screen.getByRole('button', { name: 'Importa nella lista iKuck' }));
-    await user.click(screen.getByRole('button', { name: 'Conferma importazione' }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(expected);
-    expect(screen.queryByRole('group', { name: 'Importa nella lista iKuck' })).not.toBeInTheDocument();
-    expect(screen.queryByText(/^Importati/)).not.toBeInTheDocument();
-    expect(syncVerifiedSession).not.toHaveBeenCalled();
-    expect(mocks.importList).toHaveBeenCalledTimes(1);
-  });
-
-  it('dispatches only one import when the confirmation fires twice before React rerenders', async () => {
-    const pendingImport = deferred<{ imported: number; skipped: number; recently: number }>();
-    mocks.importList.mockReturnValue(pendingImport.promise);
-    const user = await renderSelectedList([
-      { name: 'Milch', label: 'Latte', specification: '1 l', state: 'purchase', mutable: true },
-    ]);
-
-    await user.click(screen.getByRole('button', { name: 'Importa nella lista iKuck' }));
-    const confirmation = screen.getByRole('button', { name: 'Conferma importazione' });
-
-    act(() => {
-      fireEvent.click(confirmation);
-      fireEvent.click(confirmation);
-    });
-    const dispatchCount = mocks.importList.mock.calls.length;
-
-    await act(async () => {
-      pendingImport.resolve({ imported: 1, skipped: 0, recently: 0 });
-    });
-
-    expect(dispatchCount).toBe(1);
-    expect(mocks.importList).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText('Importati 1 articoli nella lista iKuck.')).toBeVisible();
-    expect(syncVerifiedSession).toHaveBeenCalledTimes(1);
   });
 });

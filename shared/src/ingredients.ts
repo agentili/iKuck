@@ -1,4 +1,27 @@
-import type { IngredientDefinition, ParsedIngredient } from './types';
+export type IngredientCategory =
+  | 'staple'
+  | 'grain'
+  | 'meat'
+  | 'fish'
+  | 'egg'
+  | 'legume'
+  | 'vegetable'
+  | 'dairy';
+
+export interface IngredientDefinition {
+  id: string;
+  label: string;
+  aliases: string[];
+  category: IngredientCategory;
+  easyToFind: boolean;
+  staple: boolean;
+}
+
+export interface ParsedIngredient {
+  id: string;
+  label: string;
+  known: boolean;
+}
 
 export const INGREDIENTS: readonly IngredientDefinition[] = [
   { id: 'water', label: 'Acqua', aliases: ['acqua'], category: 'staple', easyToFind: true, staple: true },

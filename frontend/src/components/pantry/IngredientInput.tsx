@@ -1,6 +1,6 @@
 import { type FormEvent, type KeyboardEvent, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
-import { INGREDIENTS, normalizeIngredientName, parseIngredientInput } from '../../domain/ingredients';
+import { INGREDIENTS, normalizeIngredientName, parseIngredientInput } from '@ikuck/shared/ingredients';
 import type { ParsedIngredient } from '../../domain/types';
 
 interface IngredientInputProps {

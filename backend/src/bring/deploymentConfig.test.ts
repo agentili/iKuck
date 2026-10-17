@@ -21,6 +21,7 @@ describe('Bring deployment configuration', () => {
       expect(environment).toMatch(/^ {6}BRING_ENABLED: \$\{BRING_ENABLED:-false\}$/m);
       expect(environment).toMatch(/^ {6}BRING_TOKEN_ENCRYPTION_KEY: \$\{BRING_TOKEN_ENCRYPTION_KEY:-\}$/m);
       expect(environment).toMatch(/^ {6}BRING_ALLOWED_LIST_IDS: \$\{BRING_ALLOWED_LIST_IDS:-\}$/m);
+      expect(environment).toMatch(/^ {6}BRING_CANDIDATE_TTL_DAYS: \$\{BRING_CANDIDATE_TTL_DAYS:-30\}$/m);
       expect(compose.match(/^ {6}BRING_ENABLED:/gm)).toHaveLength(1);
       expect(compose.match(/^ {6}BRING_TOKEN_ENCRYPTION_KEY:/gm)).toHaveLength(1);
       expect(compose.match(/^ {6}BRING_ALLOWED_LIST_IDS:/gm)).toHaveLength(1);
@@ -35,6 +36,7 @@ describe('Bring deployment configuration', () => {
       expect(example).toMatch(/^BRING_ENABLED=false$/m);
       expect(example).toMatch(/^BRING_TOKEN_ENCRYPTION_KEY=$/m);
       expect(example).toMatch(/^BRING_ALLOWED_LIST_IDS=$/m);
+      expect(example).toMatch(/^BRING_CANDIDATE_TTL_DAYS=30$/m);
       expect(example).toMatch(/^# Generate 32 random bytes and encode them as 64 hexadecimal characters\.$/m);
       expect(example).not.toMatch(/VITE_BRING_[A-Z0-9_]+/);
     }
