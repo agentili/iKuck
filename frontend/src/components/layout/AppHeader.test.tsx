@@ -1,14 +1,32 @@
 import { MemoryRouter } from 'react-router-dom';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import AppHeader from './AppHeader';
 import { useAuthStore } from '../../auth/authStore';
 import { usePantryCandidatesBadgeStore } from '../../store/pantryCandidatesBadgeStore';
+import { saveColorThemePreference } from '../../domain/colorTheme';
 
 describe('AppHeader', () => {
   beforeEach(() => {
+    window.localStorage.clear();
+    saveColorThemePreference('system');
+    document.documentElement.dataset.theme = 'light';
     useAuthStore.setState({ user: null, connection: 'unknown' });
     usePantryCandidatesBadgeStore.getState().reset();
+  });
+
+  it('toggles the resolved theme and exposes the opposite action on mobile and desktop', async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><AppHeader /></MemoryRouter>);
+
+    const toggleButtons = screen.getAllByRole('button', { name: 'Attiva tema scuro' });
+    expect(toggleButtons).toHaveLength(2);
+    await user.click(toggleButtons[0]);
+
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+    expect(window.localStorage.getItem('ikuck-color-theme')).toBe('dark');
+    expect(screen.getAllByRole('button', { name: 'Attiva tema chiaro' })).toHaveLength(2);
   });
 
   it('exposes the compact primary navigation and marks the current route', () => {

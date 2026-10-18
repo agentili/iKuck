@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="Ricette semplici con quello che hai in dispensa" />
     <meta name="theme-color" content="#247A4A" />
+    <script>
+      try {
+        var t = localStorage.getItem('ikuck-color-theme');
+        var d = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = d ? 'dark' : 'light';
+      } catch (e) {}
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="iKuck" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
