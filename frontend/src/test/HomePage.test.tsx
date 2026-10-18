@@ -108,7 +108,7 @@ describe('HomePage recipe search', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Aggiungi ingredienti' }));
     expect(usePantryStore.getState().pantryItems).toEqual([
       { id: 'tomato', label: 'Pomodoro', known: true },
-      { id: 'custom:spezia-speciale', label: 'spezia speciale', known: false },
+      { id: 'custom:spezia-speciale', label: 'spezia speciale', known: true },
     ]);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByText('Pomodoro')).toBeVisible();

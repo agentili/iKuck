@@ -231,6 +231,7 @@ describe('pantry store', () => {
 
     expect(usePantryStore.getState().getAvailableIngredientIds()).toEqual([
       'pasta',
+      'custom:tempeh',
       'water',
       'black_pepper',
       'olive_oil',

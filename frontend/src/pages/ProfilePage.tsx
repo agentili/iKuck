@@ -8,6 +8,38 @@ import { importLocalData } from '../sync/syncQueue';
 import GoogleSignInButton from '../components/account/GoogleSignInButton';
 import { appVersion, buildId } from '../version';
 import { hasUnpersistedMotionPreference, isReducedMotionPreference, saveReducedMotionPreference } from '../domain/motionPreference';
+import { type ColorThemePreference, getColorThemePreference, hasUnpersistedColorTheme, saveColorThemePreference, subscribeColorTheme } from '../domain/colorTheme';
+
+function ThemePreferenceControl() {
+  const preference = useSyncExternalStore(subscribeColorTheme, getColorThemePreference, () => 'system');
+  const storageUnavailable = useSyncExternalStore(subscribeColorTheme, hasUnpersistedColorTheme, () => false);
+  const options: { value: ColorThemePreference; label: string }[] = [
+    { value: 'light', label: 'Chiaro' },
+    { value: 'dark', label: 'Scuro' },
+    { value: 'system', label: 'Sistema' },
+  ];
+
+  const choosePreference = (nextPreference: ColorThemePreference) => {
+    saveColorThemePreference(nextPreference);
+  };
+
+  return (
+    <section aria-labelledby="color-theme-title" className="ik-surface ik-profile-surface mt-5 rounded-3xl border-2 p-5">
+      <h2 id="color-theme-title" className="text-xl font-black text-gray-950">Tema</h2>
+      <fieldset role="radiogroup" aria-labelledby="color-theme-title" className="mt-3 flex flex-wrap gap-3 border-0 p-0">
+        {options.map(({ value, label }) => (
+          <label key={value} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border-2 border-gray-200 px-3 font-semibold text-gray-800 has-[:checked]:border-emerald-700 has-[:checked]:bg-emerald-50">
+            <input type="radio" name="color-theme" value={value} checked={preference === value} onChange={() => choosePreference(value)} className="h-4 w-4 accent-emerald-700" />
+            <span>{label}</span>
+          </label>
+        ))}
+      </fieldset>
+      {storageUnavailable
+        ? <p role="status" className="mt-2 text-sm font-semibold text-amber-900">La scelta vale solo finché l’app resta aperta: questo browser non consente di salvarla.</p>
+        : <p className="mt-2 text-sm text-gray-600">La scelta è conservata solo in questo browser; con Sistema segue il tema del dispositivo.</p>}
+    </section>
+  );
+}
 
 function MotionPreferenceControl() {
   const [reduced, setReduced] = useState(isReducedMotionPreference);
@@ -84,6 +116,7 @@ export default function ProfilePage() {
           <p className="mt-3 text-gray-600">La dispensa ospite resta sul dispositivo. Il login non importa automaticamente i dati locali: l’importazione è un’azione separata.</p>
           <div className="mt-6"><AccountPanel /></div>
         </section>
+        <ThemePreferenceControl />
         <MotionPreferenceControl />
       </main>
     );
@@ -286,6 +319,7 @@ export default function ProfilePage() {
           )}
         </div>
       </section>
+      <ThemePreferenceControl />
       <MotionPreferenceControl />
     </main>
   );

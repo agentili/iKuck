@@ -5,6 +5,61 @@
 @tailwind utilities;
 
 :root {
+  --tk-white: 255 255 255;
+  --tk-gray-50: 249 250 251;
+  --tk-gray-100: 243 244 246;
+  --tk-gray-200: 229 231 235;
+  --tk-gray-300: 209 213 219;
+  --tk-gray-400: 156 163 175;
+  --tk-gray-500: 107 114 128;
+  --tk-gray-600: 75 85 99;
+  --tk-gray-700: 55 65 81;
+  --tk-gray-800: 31 41 55;
+  --tk-gray-900: 17 24 39;
+  --tk-gray-950: 3 7 18;
+  --tk-emerald-50: 236 253 245;
+  --tk-emerald-100: 209 250 229;
+  --tk-emerald-200: 167 243 208;
+  --tk-emerald-300: 110 231 183;
+  --tk-emerald-500: 16 185 129;
+  --tk-emerald-600: 5 150 105;
+  --tk-emerald-700: 4 120 87;
+  --tk-emerald-800: 6 95 70;
+  --tk-emerald-900: 6 78 59;
+  --tk-emerald-950: 2 44 34;
+  --tk-amber-50: 255 251 235;
+  --tk-amber-100: 254 243 199;
+  --tk-amber-200: 253 230 138;
+  --tk-amber-300: 252 211 77;
+  --tk-amber-400: 251 191 36;
+  --tk-amber-500: 245 158 11;
+  --tk-amber-700: 180 83 9;
+  --tk-amber-800: 146 64 14;
+  --tk-amber-900: 120 53 15;
+  --tk-amber-950: 69 26 3;
+  --tk-rose-50: 255 241 242;
+  --tk-rose-100: 255 228 230;
+  --tk-rose-200: 254 205 211;
+  --tk-rose-300: 253 164 175;
+  --tk-rose-600: 225 29 72;
+  --tk-rose-700: 190 18 60;
+  --tk-rose-800: 159 18 57;
+  --tk-rose-900: 136 19 55;
+  --tk-rose-950: 76 5 25;
+  --tk-red-50: 254 242 242;
+  --tk-red-100: 254 226 226;
+  --tk-red-200: 254 202 202;
+  --tk-red-300: 252 165 165;
+  --tk-red-700: 185 28 28;
+  --tk-red-800: 153 27 27;
+  --tk-red-900: 127 29 29;
+  --tk-red-950: 69 10 10;
+  --tk-porcelain: 250 251 247;
+  --tk-ink: 24 48 40;
+  --tk-basil: 36 122 74;
+  --tk-sage: 225 236 228;
+  --tk-tomato: 217 76 53;
+  --tk-yolk: 242 190 62;
   --ik-porcelain: #fafbf7;
   --ik-ink: #183028;
   --ik-ink-muted: #52665b;
@@ -31,11 +86,103 @@
   --ik-shadow-surface: 0 12px 30px rgb(24 48 40 / 0.08);
   --ik-shadow-lift: 0 16px 32px rgb(24 48 40 / 0.13);
   --ik-focus: #d99d12;
+  --ik-on-yolk: #183028;
+  --ik-yolk-hover: #f8cf69;
+  --ik-warn-ink: #8a5700;
+  --ik-accent-border: #e0b348;
+  --ik-accent-border-2: #dcae40;
+  --ik-shadow-card: 0 4px 12px rgb(24 48 40 / 0.05);
+  --ik-shadow-navigation: 0 -8px 24px rgb(15 23 42 / 0.08);
+  --ik-overlay: rgb(24 48 40 / 0.55);
   font-family: 'Bricolage Grotesque Variable', system-ui, sans-serif;
   color: var(--ik-ink);
   background: var(--ik-porcelain);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+  --tk-white: 19 26 22;
+  --tk-gray-50: 17 20 23;
+  --tk-gray-100: 22 24 27;
+  --tk-gray-200: 33 35 39;
+  --tk-gray-300: 48 51 57;
+  --tk-gray-400: 89 94 103;
+  --tk-gray-500: 132 137 146;
+  --tk-gray-600: 158 165 175;
+  --tk-gray-700: 174 181 193;
+  --tk-gray-800: 197 205 216;
+  --tk-gray-900: 210 216 229;
+  --tk-gray-950: 226 231 245;
+  --tk-emerald-50: 6 43 26;
+  --tk-emerald-100: 10 67 38;
+  --tk-emerald-200: 18 102 64;
+  --tk-emerald-300: 31 152 104;
+  --tk-emerald-500: 76 232 181;
+  --tk-emerald-600: 106 244 201;
+  --tk-emerald-700: 132 246 213;
+  --tk-emerald-800: 154 244 219;
+  --tk-emerald-900: 169 245 225;
+  --tk-emerald-950: 198 250 238;
+  --tk-amber-50: 47 38 2;
+  --tk-amber-100: 77 63 5;
+  --tk-amber-200: 130 106 8;
+  --tk-amber-300: 114 80 0; /* Tuned for contrast on inverted hero panels and pale-text hover actions. */
+  --tk-amber-400: 138 87 0; /* Tuned for contrast with gray-950 text in dark mode. */
+  --tk-amber-500: 236 157 23;
+  --tk-amber-700: 239 149 80;
+  --tk-amber-800: 235 158 110;
+  --tk-amber-900: 235 170 133;
+  --tk-amber-950: 248 202 176;
+  --tk-rose-50: 41 2 5;
+  --tk-rose-100: 53 2 6;
+  --tk-rose-200: 72 4 13;
+  --tk-rose-300: 107 7 19;
+  --tk-rose-600: 219 42 81;
+  --tk-rose-700: 230 72 111;
+  --tk-rose-800: 231 99 136;
+  --tk-rose-900: 231 120 154;
+  --tk-rose-950: 246 171 192;
+  --tk-red-50: 39 5 5;
+  --tk-red-100: 54 4 4;
+  --tk-red-200: 75 5 5;
+  --tk-red-300: 106 8 8;
+  --tk-red-700: 227 92 92; /* Tuned for AA contrast on dark surfaces. */
+  --tk-red-800: 223 105 105;
+  --tk-red-900: 221 128 128;
+  --tk-red-950: 241 178 178;
+  --tk-porcelain: 16 22 19;
+  --tk-ink: 232 239 233;
+  --tk-basil: 69 184 119;
+  --tk-sage: 28 40 35;
+  --tk-tomato: 255 138 122;
+  --tk-yolk: 242 190 62;
+  --ik-porcelain: #101613;
+  --ik-surface: #171e1a;
+  --ik-ink: #e8efe9;
+  --ik-ink-muted: #9fb0a7;
+  --ik-basil: #45b877;
+  --ik-basil-dark: #3aa16a;
+  --ik-sage: #1c2823;
+  --ik-mist: #1a211d;
+  --ik-yolk: #f2be3e;
+  --ik-yolk-soft: #3a2f0e;
+  --ik-tomato: #ff8a7a;
+  --ik-tomato-soft: #3a1512;
+  --ik-border: #2b3630;
+  --ik-border-strong: #3f4d45;
+  --ik-focus: #f5c451;
+  --ik-on-yolk: #183028;
+  --ik-yolk-hover: #f6d47e;
+  --ik-warn-ink: #f2ca7a;
+  --ik-accent-border: #8a6a1e;
+  --ik-accent-border-2: #8a6a1e;
+  --ik-shadow-surface: 0 12px 30px rgb(0 0 0 / 0.45);
+  --ik-shadow-lift: 0 16px 32px rgb(0 0 0 / 0.55);
+  --ik-shadow-card: 0 4px 12px rgb(0 0 0 / 0.35);
+  --ik-shadow-navigation: 0 -8px 24px rgb(0 0 0 / 0.45);
+  --ik-overlay: rgb(0 0 0 / 0.72);
 }
 
 * {
@@ -90,7 +237,7 @@ details:not([open]) > :not(summary) {
 }
 
 ::selection {
-  color: var(--ik-ink);
+  color: var(--ik-on-yolk);
   background: var(--ik-yolk);
 }
 
@@ -163,11 +310,11 @@ details:not([open]) > :not(summary) {
 .ik-action-panel button {
   border-radius: var(--ik-radius-control);
   background: var(--ik-yolk);
-  color: var(--ik-ink);
+  color: var(--ik-on-yolk);
 }
 
 .ik-action-panel button:hover:not(:disabled) {
-  background: #f8cf69;
+  background: var(--ik-yolk-hover);
 }
 
 .ik-disclosure {
@@ -217,13 +364,13 @@ details:not([open]) > :not(summary) {
 }
 
 .ik-results-group--one-purchase {
-  border-color: #e0b348;
+  border-color: var(--ik-accent-border);
   background: var(--ik-yolk-soft);
 }
 
 .ik-recipe-card {
   border-radius: var(--ik-radius-panel);
-  box-shadow: 0 4px 12px rgb(24 48 40 / 0.05);
+  box-shadow: var(--ik-shadow-card);
   transition: box-shadow 160ms ease, transform 160ms ease;
 }
 
@@ -232,7 +379,7 @@ details:not([open]) > :not(summary) {
 }
 
 .ik-recipe-card[data-availability='one-missing'] {
-  border-color: #dcae40;
+  border-color: var(--ik-accent-border-2);
 }
 
 .ik-recipe-card:hover {
@@ -245,7 +392,7 @@ details:not([open]) > :not(summary) {
 }
 
 .ik-recipe-card[data-availability='one-missing'] > p:first-child {
-  color: #8a5700;
+  color: var(--ik-warn-ink);
 }
 
 .ik-back-link {
@@ -298,6 +445,7 @@ details:not([open]) > :not(summary) {
 
 .app-navigation {
   padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: var(--ik-shadow-navigation);
 }
 
 .app-navigation-label-compact {
@@ -397,6 +545,7 @@ details:not([open]) > :not(summary) {
 @media (min-width: 640px) {
   .app-navigation {
     padding-bottom: 0;
+    box-shadow: none;
   }
 
   .app-overlay {
@@ -561,6 +710,10 @@ details:not([open]) > :not(summary) {
 .ik-recipe-image--detail .ik-recipe-image-fallback {
   height: auto;
   aspect-ratio: 16 / 9;
+}
+
+.ik-quick-add-overlay {
+  background: var(--ik-overlay);
 }
 
 .ik-quick-add-dialog {

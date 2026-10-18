@@ -6,7 +6,8 @@ export type IngredientCategory =
   | 'egg'
   | 'legume'
   | 'vegetable'
-  | 'dairy';
+  | 'dairy'
+  | 'other';
 
 export interface IngredientDefinition {
   id: string;
@@ -89,6 +90,48 @@ for (const ingredient of INGREDIENTS) {
 
 export const getIngredient = (id: string): IngredientDefinition | undefined =>
   ingredientsById.get(id);
+
+/**
+ * Catalogo estendibile a runtime: gli ingredienti inseriti dall'utente e non
+ * presenti nel catalogo base possono essere registrati qui, così da essere
+ * riconosciuti come noti (`known: true`) nelle sessioni successive.
+ */
+export const CUSTOM_INGREDIENTS: IngredientDefinition[] = [];
+
+export const registerIngredient = (definition: IngredientDefinition): void => {
+  if (CUSTOM_INGREDIENTS.some((ingredient) => ingredient.id === definition.id)) return;
+  CUSTOM_INGREDIENTS.push(definition);
+  ingredientsById.set(definition.id, definition);
+  for (const candidate of [definition.label, ...definition.aliases]) {
+    ingredientsByAlias.set(normalizeIngredientName(candidate), definition);
+  }
+};
+
+export const getAllIngredients = (): readonly IngredientDefinition[] =>
+  [...INGREDIENTS, ...CUSTOM_INGREDIENTS];
+
+export const serializeCustomIngredients = (): string =>
+  JSON.stringify(CUSTOM_INGREDIENTS);
+
+export const deserializeCustomIngredients = (json: string): IngredientDefinition[] => {
+  try {
+    const parsed = JSON.parse(json);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is IngredientDefinition =>
+        typeof item === 'object' && item !== null &&
+        typeof item.id === 'string' &&
+        typeof item.label === 'string' &&
+        Array.isArray(item.aliases) &&
+        item.aliases.every((alias: unknown) => typeof alias === 'string') &&
+        typeof item.category === 'string' &&
+        typeof item.easyToFind === 'boolean' &&
+        typeof item.staple === 'boolean'
+    );
+  } catch {
+    return [];
+  }
+};
 
 export const parseIngredientInput = (value: string): ParsedIngredient[] => {
   const parsed = value

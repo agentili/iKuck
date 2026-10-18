@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { DEFAULT_STAPLE_IDS } from '@ikuck/shared/ingredients';
+import { DEFAULT_STAPLE_IDS, registerIngredient } from '@ikuck/shared/ingredients';
+import type { IngredientDefinition } from '@ikuck/shared/ingredients';
 import { aggregatePantryLots, validatePantryLotDetails, type PantryQuantityAggregate } from '../domain/pantryLots';
 import type { ParsedIngredient } from '../domain/types';
 import type { PantryLot, PantryLotPayload } from '@ikuck/shared/contracts';
@@ -25,6 +26,7 @@ import {
   writePantrySnapshot,
 } from '../storage/pantryStorage';
 import type { PantrySnapshot } from '../storage/pantryStorage';
+import { appendCustomIngredient } from '../storage/customIngredientsStorage';
 import { ScopeRevokedError, ScopeUncertainError } from '../sync/scopeWriteFence';
 import { trackPersistence, trackSync, reportPersistenceMemoryOnly, reportPersistenceSaved } from './persistenceStatusStore';
 import { getActiveDataScope, getPersonalDataScope, subscribeActiveDataScope } from '../sync/scopeContext';
@@ -149,6 +151,21 @@ export const usePantryStore = create<PantryState>()(
           const current = normalizeStateSnapshot(get());
           const existingIds = new Set(current.pantryItems.map((item) => item.id));
           const additions = items.filter((item) => !existingIds.has(item.id));
+          for (const item of additions) {
+            if (!item.known) {
+              const definition: IngredientDefinition = {
+                id: item.id,
+                label: item.label,
+                aliases: [item.label],
+                category: 'other',
+                easyToFind: false,
+                staple: false,
+              };
+              registerIngredient(definition);
+              appendCustomIngredient(definition);
+              item.known = true;
+            }
+          }
           if (additions.length === 0) return;
 
           const newLots = additions.map((item) => ({

@@ -301,7 +301,7 @@ export default function ShoppingListPanel({
           <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-[var(--ik-basil-dark)]">
             <ShoppingCart size={14} aria-hidden="true" /> Spesa
           </p>
-          <h2 id="shopping-list-title" className="mt-1 text-3xl font-black text-[var(--ik-ink)]">Lista della spesa</h2>
+          <h1 id="shopping-list-title" className="mt-1 text-3xl font-black text-[var(--ik-ink)]">Lista della spesa</h1>
           <p className="mt-1 text-[var(--ik-ink-muted)]">Aggiungi quello che manca. La lista resta disponibile anche offline.</p>
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--ik-border)] bg-[var(--ik-surface)] px-3 py-1 text-[var(--ik-ink-muted)] text-xs font-bold">
