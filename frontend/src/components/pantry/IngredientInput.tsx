@@ -1,6 +1,6 @@
 import { type FormEvent, type KeyboardEvent, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
-import { INGREDIENTS, normalizeIngredientName, parseIngredientInput } from '@ikuck/shared/ingredients';
+import { getAllIngredients, normalizeIngredientName, parseIngredientInput } from '@ikuck/shared/ingredients';
 import type { ParsedIngredient } from '../../domain/types';
 
 interface IngredientInputProps {
@@ -17,7 +17,7 @@ export default function IngredientInput({ onAdd, idBase = 'pantry' }: Ingredient
     const normalizedToken = normalizeIngredientName(currentToken);
     if (normalizedToken.length < 2) return [];
 
-    return INGREDIENTS.filter((ingredient) =>
+    return getAllIngredients().filter((ingredient) =>
       !ingredient.staple &&
       [ingredient.label, ...ingredient.aliases].some((candidate) =>
         normalizeIngredientName(candidate).startsWith(normalizedToken),

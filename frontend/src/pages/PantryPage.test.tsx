@@ -162,7 +162,7 @@ describe('PantryPage', () => {
     expect(within(suggestions).queryByRole('button', { name: 'Aggiungi Cipolla' })).not.toBeInTheDocument();
   });
 
-  it('keeps unknown ingredients and explains that recipes do not match them yet', async () => {
+  it('promotes unknown ingredients to known catalog entries on add', async () => {
     const user = userEvent.setup();
     renderPantry();
 
@@ -170,7 +170,7 @@ describe('PantryPage', () => {
     await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
 
     expect(screen.getByText('Tempeh')).toBeVisible();
-    expect(screen.getByText('Non ancora usato nelle ricette')).toBeVisible();
+    expect(screen.queryByText('Ingrediente personalizzato')).not.toBeInTheDocument();
   });
 
   it('keeps staple and lot management inside pantry configuration', async () => {
@@ -550,5 +550,49 @@ describe('PantryPage', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('disponibili solo in memoria');
     await userEvent.setup().click(screen.getByRole('button', { name: 'Riprova' }));
     expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it('raggruppa gli ingredienti della dispensa per sottogruppi di categoria con etichette italiane', () => {
+    seedPantry('pasta, tonno, ceci, pomodoro, salmone, parmigiano, Aceto balsamico, riso');
+    renderPantry();
+
+    const pantry = screen.getByRole('list', { name: 'La tua dispensa' });
+    const group = (label: string): HTMLElement =>
+      within(pantry).getByRole('heading', { name: label }).closest('li')!;
+
+    expect(within(group('Verdura')).getByText('Pomodoro')).toBeVisible();
+    expect(within(pantry).queryByRole('heading', { name: 'Carne' })).toBeNull();
+    expect(within(group('Pesce')).getByText('Tonno')).toBeVisible();
+    expect(within(group('Pesce')).getByText('Salmone')).toBeVisible();
+    expect(within(group('Pasta e cereali')).getByText('Pasta')).toBeVisible();
+    expect(within(group('Pasta e cereali')).getByText('Riso')).toBeVisible();
+    expect(within(group('Latticini e formaggi')).getByText('Parmigiano')).toBeVisible();
+    expect(within(group('Altri ingredienti')).getByText('Aceto balsamico')).toBeVisible();
+  });
+
+  it('mette gli ingredienti sconosciuti nel sottogruppo Altri ingredienti', () => {
+    seedPantry('pasta, Ingrediente mai visto prima');
+    renderPantry();
+
+    const pantry = screen.getByRole('list', { name: 'La tua dispensa' });
+    expect(within(pantry).getByRole('heading', { name: 'Pasta e cereali' })).toBeVisible();
+    expect(within(pantry).getByText('Pasta')).toBeVisible();
+    const altro = within(pantry).getByRole('heading', { name: 'Altri ingredienti' }).closest('li')!;
+    expect(within(altro).getByText('Ingrediente mai visto prima')).toBeVisible();
+  });
+
+  it('rimuove un ingrediente da dentro il suo sottogruppo di categoria', async () => {
+    const user = userEvent.setup();
+    renderPantry();
+
+    await user.type(screen.getByLabelText('Ingredienti presenti'), 'pasta, tonno');
+    await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
+
+    const pantry = screen.getByRole('list', { name: 'La tua dispensa' });
+    await user.click(within(pantry).getByRole('button', { name: 'Rimuovi Tonno' }));
+
+    expect(within(pantry).queryByText('Tonno')).not.toBeInTheDocument();
+    expect(within(pantry).getByText('Pasta')).toBeVisible();
+    expect(screen.getByRole('list', { name: 'La tua dispensa' })).toBeVisible();
   });
 });

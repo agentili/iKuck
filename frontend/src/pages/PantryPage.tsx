@@ -7,6 +7,7 @@ import IngredientInput from '../components/pantry/IngredientInput';
 import IngredientSuggestions from '../components/pantry/IngredientSuggestions';
 import PantryLotsPanel from '../components/pantry/PantryLotsPanel';
 import StaplesPanel from '../components/pantry/StaplesPanel';
+import { getIngredient, registerIngredient, type IngredientCategory } from '@ikuck/shared/ingredients';
 import type { IngredientDefinition, ParsedIngredient } from '../domain/types';
 import {
   hydratePantryStore,
@@ -20,6 +21,7 @@ import {
   type PantrySnapshotConflictCopy,
 } from '../storage/pantryStorage';
 import { getActiveDataScope, subscribeActiveDataScope, type SyncScope } from '../sync/scopeContext';
+import { loadCustomIngredients } from '../storage/customIngredientsStorage';
 import { useDietProfileStore } from '../store/dietProfileStore';
 import {
   persistenceDomains,
@@ -42,6 +44,36 @@ const persistenceLabels: Record<PersistenceDomain, string> = {
 };
 
 const blockingPersistenceStates: readonly PersistenceState[] = ['memory-only', 'sync-error'];
+
+const PANTRY_CATEGORY_ORDER: readonly IngredientCategory[] = [
+  'vegetable',
+  'meat',
+  'fish',
+  'grain',
+  'egg',
+  'legume',
+  'dairy',
+  'staple',
+  'other',
+];
+
+const CATEGORY_LABELS: Record<IngredientCategory, string> = {
+  staple: 'Ingredienti di base',
+  grain: 'Pasta e cereali',
+  meat: 'Carne',
+  fish: 'Pesce',
+  egg: 'Uova',
+  legume: 'Legumi',
+  vegetable: 'Verdura',
+  dairy: 'Latticini e formaggi',
+  other: 'Altri ingredienti',
+};
+
+type PantryCategoryGroup = {
+  key: IngredientCategory | 'other';
+  label: string;
+  items: ParsedIngredient[];
+};
 
 const isPantryConflictForScope = (error: unknown, scope: SyncScope): boolean => (
   isPantrySnapshotConflictError(error)
@@ -114,6 +146,13 @@ export default function PantryPage() {
     return () => { active = false; };
   }, [activeScope]);
 
+  useEffect(() => {
+    const saved = loadCustomIngredients();
+    for (const def of saved) {
+      registerIngredient(def);
+    }
+  }, []);
+
   const persistenceIssue = persistenceDomains
     .map((domain) => ({ domain, status: persistenceStatuses[domain] }))
     .filter(({ domain, status }) => !(domain === 'pantry'
@@ -135,6 +174,32 @@ export default function PantryPage() {
     () => [...pantryItems.filter((item) => item.known).map((item) => item.id), ...stapleIds],
     [pantryItems, stapleIds],
   );
+
+  const groupedPantryItems = useMemo<PantryCategoryGroup[]>(() => {
+    const byCategory = new Map<IngredientCategory | 'other', ParsedIngredient[]>();
+    for (const item of pantryItems) {
+      const category = getIngredient(item.id)?.category ?? 'other';
+      const bucket = byCategory.get(category);
+      if (bucket === undefined) {
+        byCategory.set(category, [item]);
+      } else {
+        bucket.push(item);
+      }
+    }
+
+    const groups: PantryCategoryGroup[] = [];
+    for (const category of PANTRY_CATEGORY_ORDER) {
+      const items = byCategory.get(category);
+      if (items !== undefined) {
+        groups.push({
+          key: category,
+          label: CATEGORY_LABELS[category],
+          items: [...items].sort((a, b) => a.label.localeCompare(b.label, 'it')),
+        });
+      }
+    }
+    return groups;
+  }, [pantryItems]);
   const suggestedIngredients = useMemo(
     () => findHelpfulIngredients(availableIngredientIds, 5, {
       excludedIds: dismissedIngredientSuggestionIds,
@@ -281,7 +346,7 @@ export default function PantryPage() {
 
       {house !== null && <CandidatesInbox houseId={house.id} />}
 
-      <section aria-label="La tua dispensa" className="ik-surface ik-pantry-workbench space-y-4 rounded-3xl border-2 border-emerald-200 bg-white p-4 shadow-sm sm:space-y-5 sm:p-6">
+      <section aria-label="La tua dispensa" className="ik-surface space-y-4 rounded-3xl border-2 border-emerald-200 bg-white p-4 shadow-sm sm:space-y-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Ingredienti presenti</p>
@@ -294,8 +359,21 @@ export default function PantryPage() {
         </div>
         <IngredientInput onAdd={handleAdd} />
         {pantryItems.length > 0 && (
-          <ul aria-label="La tua dispensa" className="flex flex-wrap gap-2">
-            {pantryItems.map((item) => <IngredientChip key={item.id} item={item} onRemove={removeIngredient} />)}
+          <ul aria-label="La tua dispensa" className="space-y-4">
+            {groupedPantryItems.map((group) => (
+              <li key={group.key} className="space-y-2">
+                <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">
+                  {group.label}
+                </h3>
+                <ul className="list-disc list-inside space-y-2">
+                  {group.items.map((item) => (
+                    <li key={item.id}>
+                      <IngredientChip item={item} onRemove={removeIngredient} />
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
           </ul>
         )}
         {pantryItems.length === 0 && (
