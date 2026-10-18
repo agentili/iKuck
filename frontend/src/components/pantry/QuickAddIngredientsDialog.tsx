@@ -38,7 +38,7 @@ export default function QuickAddIngredientsDialog({ open, scope, onClose, onAdd 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-[rgb(24_48_40_/_0.55)] p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="ik-quick-add-overlay fixed inset-0 z-50 grid place-items-center p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <dialog
         ref={dialogRef}
         aria-labelledby="quick-add-title"

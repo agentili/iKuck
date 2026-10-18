@@ -12,6 +12,21 @@ colors:
   tomato: "#B9382A"
   yolk: "#F2BE3E"
   inkMuted: "#52665B"
+  darkPage: "#101613"
+  darkSurface: "#171E1A"
+  darkInk: "#E8EFE9"
+  darkInkMuted: "#9FB0A7"
+  darkBasil: "#45B877"
+  darkBasilDark: "#3AA16A"
+  darkSage: "#1C2823"
+  darkMist: "#1A211D"
+  darkYolkSoft: "#3A2F0E"
+  darkTomato: "#FF8A7A"
+  darkTomatoSoft: "#3A1512"
+  onYolk: "#183028"
+  recipeCategory: "#FCD34D"
+  darkRecipeCategory: "#725000"
+  darkWarnInk: "#F2CA7A"
 typography:
   h1:
     fontFamily: "Bricolage Grotesque Variable, system-ui, sans-serif"
@@ -58,6 +73,12 @@ components:
     textColor: "{colors.porcelain}"
     rounded: "{rounded.feature}"
     padding: "16px"
+  recipe-hero-category:
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.recipeCategory}"
+  recipe-hero-category-dark:
+    backgroundColor: "{colors.darkInk}"
+    textColor: "{colors.darkRecipeCategory}"
   ready-recipe:
     backgroundColor: "{colors.sage}"
     textColor: "{colors.primary}"
@@ -65,7 +86,7 @@ components:
     padding: "16px"
   one-purchase-recipe:
     backgroundColor: "{colors.yolk}"
-    textColor: "{colors.primary}"
+    textColor: "{colors.onYolk}"
     rounded: "{rounded.panel}"
     padding: "16px"
   error-action:
@@ -81,6 +102,53 @@ components:
   outlined-surface:
     backgroundColor: "{colors.porcelain}"
     textColor: "{colors.primary}"
+    rounded: "{rounded.panel}"
+    padding: "16px"
+  button-primary-dark:
+    backgroundColor: "{colors.darkBasil}"
+    textColor: "{colors.darkPage}"
+    rounded: "{rounded.control}"
+    padding: "12px 16px"
+    height: "48px"
+  button-primary-dark-hover:
+    backgroundColor: "{colors.darkBasilDark}"
+    textColor: "{colors.darkPage}"
+    rounded: "{rounded.control}"
+    padding: "12px 16px"
+    height: "48px"
+  action-panel-dark:
+    backgroundColor: "{colors.darkInk}"
+    textColor: "{colors.darkPage}"
+    rounded: "{rounded.feature}"
+    padding: "16px"
+  ready-recipe-dark:
+    backgroundColor: "{colors.darkSage}"
+    textColor: "{colors.darkInk}"
+    rounded: "{rounded.panel}"
+    padding: "16px"
+  one-purchase-recipe-dark:
+    backgroundColor: "{colors.darkYolkSoft}"
+    textColor: "{colors.darkWarnInk}"
+    rounded: "{rounded.panel}"
+    padding: "16px"
+  error-action-dark:
+    backgroundColor: "{colors.darkTomato}"
+    textColor: "{colors.darkPage}"
+    rounded: "{rounded.control}"
+    padding: "12px 16px"
+  error-surface-dark:
+    backgroundColor: "{colors.darkTomatoSoft}"
+    textColor: "{colors.darkTomato}"
+    rounded: "{rounded.panel}"
+    padding: "16px"
+  quiet-surface-dark:
+    backgroundColor: "{colors.darkMist}"
+    textColor: "{colors.darkInkMuted}"
+    rounded: "{rounded.panel}"
+    padding: "16px"
+  outlined-surface-dark:
+    backgroundColor: "{colors.darkSurface}"
+    textColor: "{colors.darkInk}"
     rounded: "{rounded.panel}"
     padding: "16px"
 ---
@@ -99,7 +167,12 @@ The visual language is practical and warm rather than restaurant-luxury or gener
 - **Sage:** availability and completed/ready state; never use it as a warning.
 - **Yolk:** attention without alarm, specifically the one-purchase recipe path and keyboard focus ring.
 - **Tomato:** destructive, failed, or irreversible action only.
+- **Dark theme:** `html[data-theme='dark']` maps page/ink/surface to `{colors.darkPage}`, `{colors.darkInk}`, and `{colors.darkSurface}`; basil remains the progress action, while sage, mist, yolk, and tomato retain their existing meanings with dark-mode values.
+- **Recipe hero category:** use `{colors.recipeCategory}` on the light ink hero and `{colors.darkRecipeCategory}` on the inverted light hero surface to preserve readable contrast.
+- **Yolk contrast:** foreground on yolk stays `{colors.onYolk}` in both themes; warning copy and accent borders use the dedicated dark tokens rather than inheriting the inverted ink color.
 - **Mist and border:** quiet separation; do not stack shadows, glass, or gradients to fake depth.
+
+The light palette is unchanged. Dark amber steps `#725000` / `#8A5700` and red-700 `#E35C5C` are tuned for contrast on inverted surfaces; use borders `#2B3630` / `#3F4D45`, the `#F5C451` keyboard ring, `#F2CA7A` warning text, and `#8A6A1E` accent borders with restrained black shadows.
 
 # Typography
 

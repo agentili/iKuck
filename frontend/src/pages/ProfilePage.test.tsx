@@ -1,11 +1,12 @@
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProfilePage from './ProfilePage';
 import { useAuthStore } from '../auth/authStore';
 import { ApiClientError } from '../api/apiClient';
 import { setActiveDataScope, setPersonalDataScope } from '../sync/scopeContext';
+import { saveColorThemePreference } from '../domain/colorTheme';
 
 const verifiedUser = {
   id: 'user-1',
@@ -15,6 +16,8 @@ const verifiedUser = {
 
 describe('ProfilePage', () => {
   beforeEach(() => {
+    window.localStorage.clear();
+    saveColorThemePreference('system');
     setActiveDataScope('guest');
     setPersonalDataScope('guest');
     useAuthStore.setState({
@@ -40,6 +43,27 @@ describe('ProfilePage', () => {
       }
       return Promise.resolve(new Response(JSON.stringify({ profile: { displayName: 'Ale' } }), { status: 200 }));
     }));
+  });
+
+  it('offers all theme options and persists a selected preference', async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    const themeGroup = screen.getByRole('radiogroup', { name: 'Tema' });
+    expect(themeGroup).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Sistema' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Scuro' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Chiaro' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: 'Scuro' }));
+
+    expect(screen.getByRole('radio', { name: 'Scuro' })).toBeChecked();
+    expect(window.localStorage.getItem('ikuck-color-theme')).toBe('dark');
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+
+    act(() => saveColorThemePreference('light'));
+    expect(screen.getByRole('radio', { name: 'Chiaro' })).toBeChecked();
+    expect(window.localStorage.getItem('ikuck-color-theme')).toBe('light');
   });
 
   it('keeps guest account access explicit without promising an automatic import', () => {
