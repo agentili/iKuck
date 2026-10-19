@@ -147,11 +147,13 @@ export default function PantryPage() {
   }, [activeScope]);
 
   useEffect(() => {
+    if (!hasHydrated) return;
     const saved = loadCustomIngredients();
     for (const def of saved) {
       registerIngredient(def);
     }
-  }, []);
+    usePantryStore.getState().reconcileKnownFlags();
+  }, [hasHydrated]);
 
   const persistenceIssue = persistenceDomains
     .map((domain) => ({ domain, status: persistenceStatuses[domain] }))
