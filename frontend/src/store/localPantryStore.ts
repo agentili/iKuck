@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { DEFAULT_STAPLE_IDS, registerIngredient } from '@ikuck/shared/ingredients';
+import { DEFAULT_STAPLE_IDS, getAllIngredients, registerIngredient } from '@ikuck/shared/ingredients';
 import type { IngredientDefinition } from '@ikuck/shared/ingredients';
 import { aggregatePantryLots, validatePantryLotDetails, type PantryQuantityAggregate } from '../domain/pantryLots';
 import type { ParsedIngredient } from '../domain/types';
@@ -49,6 +49,7 @@ export interface PantryState {
   toggleStaple: (id: string) => void;
   resetPantry: () => void;
   getAvailableIngredientIds: () => string[];
+  reconcileKnownFlags: () => void;
 }
 
 let markHydrated: (() => void) | null = null;
@@ -286,6 +287,22 @@ export const usePantryStore = create<PantryState>()(
           ...normalizeStateSnapshot(get()).pantryItems.filter((item) => item.known).map((item) => item.id),
           ...get().stapleIds,
         ],
+        reconcileKnownFlags: () => {
+          const current = normalizeStateSnapshot(get());
+          const knownIds = new Set(getAllIngredients().map((ingredient) => ingredient.id));
+          const nextItems = current.pantryItems.map((item) =>
+            knownIds.has(item.id) ? { ...item, known: true } : item
+          );
+          const nextLots = (current.pantryLots ?? []).map((lot) =>
+            knownIds.has(lot.ingredientId) ? { ...lot, known: true } : lot
+          );
+          const changed =
+            nextItems.some((item, i) => item.known !== current.pantryItems[i].known)
+            || nextLots.some((lot, i) => lot.known !== (current.pantryLots ?? [])[i]?.known);
+          if (changed) {
+            set({ pantryItems: nextItems, pantryLots: nextLots });
+          }
+        },
       };
     },
     {
