@@ -367,11 +367,9 @@ export default function PantryPage() {
                 <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">
                   {group.label}
                 </h3>
-                <ul className="list-disc list-inside space-y-1">
+                <ul className="space-y-2">
                   {group.items.map((item) => (
-                    <li key={item.id}>
-                      <IngredientChip item={item} onRemove={removeIngredient} />
-                    </li>
+                    <IngredientChip key={item.id} item={item} onRemove={removeIngredient} />
                   ))}
                 </ul>
               </li>
