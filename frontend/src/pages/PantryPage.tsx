@@ -361,13 +361,13 @@ export default function PantryPage() {
         </div>
         <IngredientInput onAdd={handleAdd} />
         {pantryItems.length > 0 && (
-          <ul aria-label="La tua dispensa" className="space-y-4">
+          <ul aria-label="La tua dispensa" className="space-y-3">
             {groupedPantryItems.map((group) => (
-              <li key={group.key} className="space-y-2">
+              <li key={group.key} className="space-y-1">
                 <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">
                   {group.label}
                 </h3>
-                <ul className="list-disc list-inside space-y-2">
+                <ul className="list-disc list-inside space-y-1">
                   {group.items.map((item) => (
                     <li key={item.id}>
                       <IngredientChip item={item} onRemove={removeIngredient} />
