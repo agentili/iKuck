@@ -76,6 +76,48 @@ describe('searchRecipes', () => {
     searchRecipes(recipes, 'pollo');
     expect(recipes).toHaveLength(2);
   });
+
+  it('filters the unified list of saved, AI and catalog recipes', () => {
+    const saved = adaptSavedRecipe({
+      id: 'saved-orata',
+      title: 'Orata al forno',
+      description: '',
+      ingredients: [
+        { name: 'Orata', amount: '1', ingredientId: null, optional: false, provenance: 'provided' },
+      ],
+      steps: [],
+      servings: 2,
+      durationMinutes: null,
+      diets: null,
+      allergens: null,
+      suggestedFields: [],
+      source: 'diary',
+      authorId: null,
+      createdAt: '2026-09-01T10:00:00.000Z',
+      updatedAt: '2026-09-02T11:00:00.000Z',
+    });
+    const ai = adaptGeneratedRecipe({
+      id: 'ai-torta',
+      title: 'Torta di mele',
+      description: '',
+      ingredients: [{ name: 'Mele', amount: '3' }],
+      steps: [],
+      diets: [],
+      allergens: [],
+      source: 'ai',
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    });
+    const catalog = adaptPantryRecipe(RECIPES.find((recipe) => recipe.id === 'insalata-ceci-tonno')!);
+    const unified = [saved, ai, catalog];
+
+    expect(searchRecipes(unified, '')).toEqual(unified);
+    expect(searchRecipes(unified, '   ')).toEqual(unified);
+    expect(searchRecipes(unified, 'orata')).toEqual([saved]);
+    expect(searchRecipes(unified, 'mele')).toEqual([ai]);
+    expect(searchRecipes(unified, 'ceci')).toEqual([catalog]);
+    expect(searchRecipes(unified, 'merluzzo')).toEqual([]);
+  });
 });
 
 describe('adaptPantryRecipe', () => {
