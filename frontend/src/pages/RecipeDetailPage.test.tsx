@@ -14,6 +14,8 @@ import { readCookEvents } from '../storage/activityStorage';
 import { readDinnerEntries } from '../storage/dinnerDiaryStorage';
 import { readDinnerConsumptionOutbox } from '../storage/dinnerConsumptionStorage';
 import { readPantrySnapshot, writePantrySnapshot } from '../storage/pantryStorage';
+import { clearDinnerDiary, writeSavedRecipes } from '../storage/dinnerDiaryStorage';
+import { hydrateDinnerDiaryStore } from '../store/dinnerDiaryStore';
 import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
 
 const renderRoute = (path: string) => render(
@@ -77,6 +79,32 @@ describe('RecipeDetailPage integration', () => {
     useDinnerDiaryStore.setState({ recipes: [{ scope: otherScope, value: diaryRecipe }] });
 
     renderRoute(`/recipes/${diaryRecipe.id}?scope=${encodeURIComponent(otherScope)}`);
+
+    expect(screen.getByRole('heading', { name: 'Ricetta non trovata' })).toBeInTheDocument();
+  });
+
+  it('opens a saved recipe persisted in storage after the diary store hydrates', async () => {
+    const scope = getActiveDataScope();
+    await clearDinnerDiary(scope);
+    await writeSavedRecipes([diaryRecipe], scope);
+    await hydrateDinnerDiaryStore();
+
+    renderRoute(`/recipes/${diaryRecipe.id}?scope=${encodeURIComponent(scope)}`);
+
+    expect(screen.getByRole('heading', { name: diaryRecipe.title })).toBeInTheDocument();
+    expect(screen.getByText('Con zucchine fresche.')).toBeInTheDocument();
+    expect(screen.getByText('zucchine')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Ingredienti' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Preparazione' })).toBeInTheDocument();
+  });
+
+  it('does not open a saved recipe when the scope parameter is missing', async () => {
+    const scope = getActiveDataScope();
+    await clearDinnerDiary(scope);
+    await writeSavedRecipes([diaryRecipe], scope);
+    await hydrateDinnerDiaryStore();
+
+    renderRoute(`/recipes/${diaryRecipe.id}`);
 
     expect(screen.getByRole('heading', { name: 'Ricetta non trovata' })).toBeInTheDocument();
   });

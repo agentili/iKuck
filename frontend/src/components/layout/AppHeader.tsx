@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { BookOpen, Home, Moon, PackageOpen, ShoppingBasket, Sun, UserRound, WifiOff } from 'lucide-react';
+import { BookOpen, ChefHat, Home, Moon, PackageOpen, ShoppingBasket, Sun, UserRound, WifiOff } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../auth/authStore';
 import { useHouseStore } from '../../house/houseStore';
@@ -8,6 +8,7 @@ import { resolveColorTheme, saveColorThemePreference, subscribeColorTheme } from
 
 const primaryLinks = [
   { path: '/', label: 'Cucina', compactLabel: 'Cucina', narrowLabel: 'Cucina', icon: Home },
+  { path: '/recipes', label: 'Ricette', compactLabel: 'Ricette', narrowLabel: 'Ric.', icon: ChefHat },
   { path: '/pantry', label: 'Dispensa', compactLabel: 'Dispensa', narrowLabel: 'Disp.', icon: PackageOpen },
   { path: '/shopping-list', label: 'Spesa', compactLabel: 'Spesa', narrowLabel: 'Spesa', icon: ShoppingBasket },
   { path: '/dinner-diary', label: 'Diario', compactLabel: 'Diario', narrowLabel: 'Diario', icon: BookOpen },
@@ -64,13 +65,15 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
         </div>
       </div>
       <nav aria-label="Navigazione principale" className="app-navigation fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white sm:static sm:ml-auto sm:border-0 sm:bg-transparent">
-        <ul className="mx-auto grid max-w-lg grid-cols-4 gap-1 px-2 sm:flex sm:max-w-none sm:justify-end sm:px-0">
+        <ul className="mx-auto grid max-w-lg grid-cols-5 gap-1 px-2 sm:flex sm:max-w-none sm:justify-end sm:px-0">
           {primaryLinks.map(({ path, label, compactLabel, narrowLabel, icon: Icon }) => {
             const isCurrent = path === '/'
-              ? location.pathname === '/' || location.pathname.startsWith('/recipes/')
-              : path === '/dinner-diary'
-                ? location.pathname === path || location.pathname === '/activity'
-                : location.pathname === path;
+              ? location.pathname === '/'
+              : path === '/recipes'
+                ? location.pathname === '/recipes' || location.pathname.startsWith('/recipes/')
+                : path === '/dinner-diary'
+                  ? location.pathname === path || location.pathname === '/activity'
+                  : location.pathname === path;
             const linkAriaLabel =
               path === '/pantry' && pendingCount > 0
                 ? `${label} (${pendingCount} da confermare)`
