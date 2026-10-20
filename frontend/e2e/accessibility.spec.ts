@@ -226,7 +226,7 @@ test('keeps primary navigation fixed and touch-friendly on mobile', async ({ pag
   const navigation = page.getByRole('navigation', { name: 'Navigazione principale' });
   expect(await navigation.evaluate((element) => window.getComputedStyle(element).position)).toBe('fixed');
 
-  for (const name of ['Cucina', 'Dispensa', 'Spesa', 'Diario']) {
+  for (const name of ['Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario']) {
     const box = await navigation.getByRole('link', { name }).boundingBox();
     expect(box, `${name} should have a measurable touch target`).not.toBeNull();
     expect(box!.width).toBeGreaterThanOrEqual(44);
@@ -242,8 +242,8 @@ test('keeps primary navigation fixed and touch-friendly on mobile', async ({ pag
 
 test('keeps mobile navigation labels concise and on one line', async ({ page }) => {
   const scenarios = [
-    { width: 390, height: 844, zoom: false, labels: ['Cucina', 'Dispensa', 'Spesa', 'Diario'] },
-    { width: 320, height: 700, zoom: true, labels: ['Cucina', 'Disp.', 'Spesa', 'Diario'] },
+    { width: 390, height: 844, zoom: false, labels: ['Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario'] },
+    { width: 320, height: 700, zoom: true, labels: ['Cucina', 'Ric.', 'Disp.', 'Spesa', 'Diario'] },
   ];
 
   for (const scenario of scenarios) {
@@ -277,7 +277,7 @@ test('keeps mobile navigation labels concise and on one line', async ({ page }) 
 
     expect(items.map((item) => item.label)).toEqual(scenario.labels);
     expect(items.every((item) => !item.wraps), JSON.stringify(items)).toBe(true);
-    expect(items.map((item) => item.accessibleName)).toEqual(['Cucina', 'Dispensa', 'Spesa', 'Diario']);
+    expect(items.map((item) => item.accessibleName)).toEqual(['Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario']);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
   }
 });

@@ -1,5 +1,5 @@
 import { MemoryRouter } from 'react-router-dom';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import AppHeader from './AppHeader';
@@ -86,5 +86,59 @@ describe('AppHeader', () => {
     render(<MemoryRouter initialEntries={['/pantry']}><AppHeader /></MemoryRouter>);
 
     expect(screen.queryByLabelText(/da confermare/)).not.toBeInTheDocument();
+  });
+
+  it('renders the Ricette destination between Cucina e Dispensa with the full name as accessible name', () => {
+    render(<MemoryRouter initialEntries={['/']}><AppHeader /></MemoryRouter>);
+
+    const navigation = screen.getByRole('navigation', { name: 'Navigazione principale' });
+    const primary = within(navigation).getAllByRole('link', { name: /^(Cucina|Ricette|Dispensa|Spesa|Diario)$/ });
+    expect(primary).toHaveLength(5);
+    expect(primary.map((link) => link.getAttribute('aria-label'))).toEqual([
+      'Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario',
+    ]);
+    const ricette = screen.getByRole('link', { name: 'Ricette' });
+    expect(ricette).toHaveAttribute('href', '/recipes');
+  });
+
+  it('marks Ricette as current on /recipes', () => {
+    render(<MemoryRouter initialEntries={['/recipes']}><AppHeader /></MemoryRouter>);
+
+    expect(screen.getByRole('link', { name: 'Ricette' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('marks Ricette as current on /recipes/:recipeId and no longer marks Cucina', () => {
+    render(<MemoryRouter initialEntries={['/recipes/orata-al-forno']}><AppHeader /></MemoryRouter>);
+
+    expect(screen.getByRole('link', { name: 'Ricette' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Cucina' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('keeps Cucina current only on the home route', () => {
+    render(<MemoryRouter initialEntries={['/']}><AppHeader /></MemoryRouter>);
+
+    expect(screen.getByRole('link', { name: 'Cucina' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Ricette' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('renders a different icon for Ricette than for Diario (no icon collision)', () => {
+    render(<MemoryRouter><AppHeader /></MemoryRouter>);
+
+    const ricetteSvg = screen.getByRole('link', { name: 'Ricette' }).querySelector('svg');
+    const diarioSvg = screen.getByRole('link', { name: 'Diario' }).querySelector('svg');
+    expect(ricetteSvg).not.toBeNull();
+    expect(diarioSvg).not.toBeNull();
+    expect(ricetteSvg!.innerHTML).not.toBe(diarioSvg!.innerHTML);
+  });
+
+  it('applies the five-column grid and overflow-safe sizing to the navigation list', () => {
+    render(<MemoryRouter><AppHeader /></MemoryRouter>);
+
+    const list = screen.getByRole('navigation', { name: 'Navigazione principale' }).querySelector('ul');
+    expect(list).not.toBeNull();
+    expect(list!.className.split(/\s+/)).toContain('grid-cols-5');
+    const items = list!.querySelectorAll('li');
+    expect(items).toHaveLength(5);
+    expect([...items].every((li) => li.className.split(/\s+/).includes('min-w-0'))).toBe(true);
   });
 });

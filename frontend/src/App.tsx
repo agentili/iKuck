@@ -13,6 +13,7 @@ import VerifyEmailPage from './pages/VerifyEmailPage';
 import ShoppingListPage from './pages/ShoppingListPage';
 import ActivityPage from './pages/ActivityPage';
 import DinnerDiaryPage from './pages/DinnerDiaryPage';
+import RecipesPage from './pages/RecipesPage';
 import PantryPage from './pages/PantryPage';
 import NotFoundPage from './pages/NotFoundPage';
 import PantryMergeNotice from './components/feedback/PantryMergeNotice';
@@ -200,6 +201,7 @@ export default function App() {
         )}
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/recipes" element={<RecipesPage />} />
           <Route path="/recipes/:recipeId" element={<RecipeDetailPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/house" element={<HousePage />} />
