@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import AppUpdatePrompt, { type AppUpdateStatus } from './components/feedback/AppUpdatePrompt';
+import AppInstallPrompt from './components/feedback/AppInstallPrompt';
 
 export default function AppRoot() {
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null);
@@ -55,6 +56,7 @@ export default function AppRoot() {
           onLater={() => setUpdateStatus(null)}
         />
       )}
+      <AppInstallPrompt />
     </>
   );
 }
