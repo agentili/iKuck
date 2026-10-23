@@ -1,0 +1,84 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      ref:
+        description: 'Git ref (branch, tag or SHA)'
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to ${{ github.event.inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Write environment file on disk
+        run: |
+          mkdir -p deploy
+          if [ "${{ github.event.inputs.environment }}" = "production" ]; then
+            printf '%s\n' "${{ secrets.PRODUCTION_ENV_FILE }}" > deploy/.env
+            COMPOSE_FILE_ARG="--env-file deploy/.env -f deploy/docker-compose.production.yml"
+          else
+            printf '%s\n' "${{ secrets.STAGING_ENV_FILE }}" > deploy/.env.standalone
+            COMPOSE_FILE_ARG="--env-file deploy/.env.standalone -f deploy/docker-compose.standalone.yml"
+          fi
+          printf '%s\n' "$COMPOSE_FILE_ARG" > /tmp/compose-args.txt
+
+      - name: Install SSH key
+        run: |
+          mkdir -p ~/.ssh
+          if [ "${{ github.event.inputs.environment }}" = "production" ]; then
+            printf '%s\n' "${{ secrets.SSH_PRODUCTION_KEY }}" > ~/.ssh/id_deploy
+            TARGET="${{ secrets.SSH_PRODUCTION_USER }}@${{ secrets.SSH_PRODUCTION_HOST }}"
+          else
+            printf '%s\n' "${{ secrets.SSH_STAGING_KEY }}" > ~/.ssh/id_deploy
+            TARGET="${{ secrets.SSH_STAGING_USER }}@${{ secrets.SSH_STAGING_HOST }}"
+          fi
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$TARGET" > /tmp/deploy-target.txt
+
+      - name: Deploy via SSH
+        run: |
+          TARGET=$(cat /tmp/deploy-target.txt)
+          COMPOSE_ARGS=$(cat /tmp/compose-args.txt)
+          ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/id_deploy "$TARGET" "
+            set -e
+            cd /opt/ikuck
+            git fetch origin
+            git checkout '${{ github.event.inputs.ref }}'
+            docker compose $COMPOSE_ARGS up -d --build
+            docker compose $COMPOSE_ARGS ps
+          "
+
+  smoke-test:
+    name: Smoke test ${{ github.event.inputs.environment }}
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine target URL
+        run: |
+          if [ "${{ github.event.inputs.environment }}" = "production" ]; then
+            echo "BASE_URL=${{ secrets.PRODUCTION_BASE_URL }}" >> $GITHUB_ENV
+          else
+            echo "BASE_URL=${{ secrets.STAGING_BASE_URL }}" >> $GITHUB_ENV
+          fi
+
+      - name: Run smoke test
+        run: ./scripts/smoke-test.sh "$BASE_URL" 30
