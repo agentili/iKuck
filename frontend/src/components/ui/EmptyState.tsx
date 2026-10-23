@@ -14,7 +14,7 @@ interface EmptyStateProps {
 
 export default function EmptyState({ title, text, action }: EmptyStateProps) {
   return (
-    <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-4">
+    <div className="rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-gray-50 p-4">
       {title && <h3 className="text-sm font-bold text-gray-700">{title}</h3>}
       <p className="mt-1 text-sm leading-relaxed text-gray-700">{text}</p>
       {action && (

@@ -208,7 +208,7 @@ export default function RecipesPage() {
 
       <div className="ik-kitchen-layout ik-kitchen-layout--two-columns mt-4">
         <div className="ik-kitchen-column min-w-0">
-        <section aria-label="Ricerca tra le ricette" className="rounded-3xl border-2 p-4 sm:p-5 mb-6">
+        <section aria-label="Ricerca tra le ricette" className="rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] p-4 sm:p-5 mb-6">
           <div className="min-w-0 flex-1">
             <label className="sr-only">Cerca ricette</label>
             <input
@@ -246,7 +246,7 @@ export default function RecipesPage() {
             <EmptyState text="Nessuna ricetta salvata ancora." />
           )}
           {!libraryLoading && libraryError === null && filteredLibrary.length > 0 && (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-4 grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
               {filteredLibrary.map((recipe) => (
                 <RecipeCard
                   key={recipe.id}
@@ -305,7 +305,7 @@ export default function RecipesPage() {
             <EmptyState text="Nessuna ricetta AI salvata ancora." />
           )}
           {verified && !savedLoading && savedError === null && filteredSaved.length > 0 && (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-4 grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
               {filteredSaved.map((recipe) => (
                 <RecipeCard
                   key={recipe.id}
@@ -339,7 +339,7 @@ export default function RecipesPage() {
             />
           )}
           {!isEmptySearch && (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-4 grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
               {filteredSuggested.map((recipe) => (
                 <RecipeCard
                   key={recipe.id}

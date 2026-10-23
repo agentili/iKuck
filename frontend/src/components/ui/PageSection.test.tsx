@@ -28,4 +28,12 @@ describe('PageSection', () => {
     expect(screen.queryByText('Dal diario')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Solo titolo' })).toBeInTheDocument();
   });
+
+  it('rende regione e figli anche senza titolo', () => {
+    render(<PageSection>Contenuto senza titolo</PageSection>);
+
+    expect(screen.getByRole('region')).toBeInTheDocument();
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument();
+    expect(screen.getByText('Contenuto senza titolo')).toBeInTheDocument();
+  });
 });

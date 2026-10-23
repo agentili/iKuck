@@ -2,11 +2,13 @@ import type { ReactNode } from 'react';
 
 interface PageSectionProps {
   eyebrow?: string;
-  title: string;
+  title?: string;
   titleId?: string;
+  titleLevel?: 'h1' | 'h2';
   description?: string;
   action?: ReactNode;
   className?: string;
+  ariaLabel?: string;
   children: ReactNode;
 }
 
@@ -14,15 +16,20 @@ export default function PageSection({
   eyebrow,
   title,
   titleId,
+  titleLevel = 'h2',
   description,
   action,
   className,
+  ariaLabel,
   children,
 }: PageSectionProps) {
+  const TitleElement = titleLevel === 'h1' ? 'h1' : 'h2';
   return (
     <section
-      aria-labelledby={titleId}
-      className={`space-y-4 rounded-3xl border-2 p-4 sm:p-5 mb-6${className ? ` ${className}` : ''}`}
+      role="region"
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabel ? undefined : titleId}
+      className={`space-y-4 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] p-4 sm:p-5 mb-6${className ? ` ${className}` : ''}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
@@ -31,9 +38,11 @@ export default function PageSection({
               {eyebrow}
             </p>
           )}
-          <h2 id={titleId} className="mt-1 text-2xl font-black text-gray-950">
-            {title}
-          </h2>
+          {title && (
+            <TitleElement id={titleId} className="mt-1 text-2xl font-black text-gray-950">
+              {title}
+            </TitleElement>
+          )}
           {description && (
             <p className="mt-1 text-sm leading-relaxed text-gray-700">{description}</p>
           )}

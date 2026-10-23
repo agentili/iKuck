@@ -7,6 +7,8 @@ import IngredientInput from '../components/pantry/IngredientInput';
 import IngredientSuggestions from '../components/pantry/IngredientSuggestions';
 import PantryLotsPanel from '../components/pantry/PantryLotsPanel';
 import StaplesPanel from '../components/pantry/StaplesPanel';
+import EmptyState from '../components/ui/EmptyState';
+import PageSection from '../components/ui/PageSection';
 import { getIngredient, registerIngredient, type IngredientCategory } from '@ikuck/shared/ingredients';
 import type { IngredientDefinition, ParsedIngredient } from '../domain/types';
 import {
@@ -348,57 +350,62 @@ export default function PantryPage() {
 
       {house !== null && <CandidatesInbox houseId={house.id} />}
 
-      <section aria-label="La tua dispensa" className="ik-surface space-y-4 rounded-3xl border-2 border-emerald-200 bg-white p-4 shadow-sm sm:space-y-5 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Ingredienti presenti</p>
-            <h2 className="mt-1 text-2xl font-black text-gray-950">Cosa hai in casa?</h2>
-            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-gray-700 sm:text-base">Puoi aggiungere più ingredienti insieme: useremo solo quelli per proporti le ricette.</p>
-          </div>
+      <PageSection
+        eyebrow="Ingredienti presenti"
+        title="Cosa hai in casa?"
+        titleId="pantry-items-title"
+        description="Puoi aggiungere più ingredienti insieme: useremo solo quelli per proporti le ricette."
+        action={
           <span className="rounded-full bg-sage px-3 py-1.5 text-sm font-bold text-ink">
             {pantryItems.length === 0 ? 'Dispensa vuota' : `${pantryItems.length} ${pantryItems.length === 1 ? 'ingrediente' : 'ingredienti'}`}
           </span>
-        </div>
-        <IngredientInput onAdd={handleAdd} />
-        {pantryItems.length > 0 && (
-          <ul aria-label="La tua dispensa" className="space-y-3">
-            {groupedPantryItems.map((group) => (
-              <li key={group.key} className="space-y-1">
-                <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">
-                  {group.label}
-                </h3>
-                <ul className="space-y-2">
-                  {group.items.map((item) => (
-                    <IngredientChip key={item.id} item={item} onRemove={removeIngredient} />
+        }
+        className="border-emerald-200 shadow-sm sm:space-y-5"
+      >
+        <div className="ik-kitchen-layout ik-kitchen-layout--two-columns min-w-0">
+          <div className="ik-kitchen-column min-w-0">
+            <IngredientInput onAdd={handleAdd} />
+          </div>
+          <div className="ik-kitchen-column min-w-0">
+            {pantryItems.length > 0 ? (
+              <>
+                <ul aria-label="La tua dispensa" className="space-y-3">
+                  {groupedPantryItems.map((group) => (
+                    <li key={group.key} className="space-y-1">
+                      <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">
+                        {group.label}
+                      </h3>
+                      <ul className="space-y-2">
+                        {group.items.map((item) => (
+                          <IngredientChip key={item.id} item={item} onRemove={removeIngredient} />
+                        ))}
+                      </ul>
+                    </li>
                   ))}
                 </ul>
-              </li>
-            ))}
-          </ul>
-        )}
-        {pantryItems.length === 0 && (
-          <p role="status" className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-950">
-            La tua dispensa è ancora vuota. Inserisci un ingrediente per iniziare.
-          </p>
-        )}
-        {pantryItems.length > 0 ? (
-          <Link
-            to="/"
-            className="ik-button-primary inline-flex min-h-12 w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-1 text-center text-base font-bold leading-tight sm:w-auto sm:flex-row sm:gap-2 sm:py-3"
-          >
-            <ChefHat size={19} aria-hidden="true" />
-            Vai alle ricette
-          </Link>
-        ) : (
-          <span
-            aria-disabled="true"
-            className="ik-button-primary pointer-events-none inline-flex min-h-12 w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-1 text-center text-base font-bold leading-tight opacity-45 sm:w-auto sm:flex-row sm:gap-2 sm:py-3"
-          >
-            <ChefHat size={19} aria-hidden="true" />
-            Vai alle ricette
-          </span>
-        )}
-      </section>
+                <Link
+                  to="/"
+                  className="ik-button-primary inline-flex min-h-12 w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-1 text-center text-base font-bold leading-tight sm:w-auto sm:flex-row sm:gap-2 sm:py-3"
+                >
+                  <ChefHat size={19} aria-hidden="true" />
+                  Vai alle ricette
+                </Link>
+              </>
+            ) : (
+              <>
+                <EmptyState text="La tua dispensa è ancora vuota. Inserisci un ingrediente per iniziare." />
+                <span
+                  aria-disabled="true"
+                  className="ik-button-primary pointer-events-none inline-flex min-h-12 w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-1 text-center text-base font-bold leading-tight opacity-45 sm:w-auto sm:flex-row sm:gap-2 sm:py-3"
+                >
+                  <ChefHat size={19} aria-hidden="true" />
+                  Vai alle ricette
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      </PageSection>
 
       {!pantryConflict && archivedConflicts.length > 0 && (
         <details className="ik-disclosure mt-4 rounded-3xl border-2 border-amber-200 bg-amber-50/60 p-4 sm:p-5">

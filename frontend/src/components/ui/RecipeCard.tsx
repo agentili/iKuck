@@ -46,7 +46,10 @@ export default function RecipeCard({
   const style = VARIANT_STYLE[variant];
 
   return (
-    <article className={`rounded-2xl border-2 ${style.border} bg-white p-4 shadow-sm`}>
+    <article
+      className={`rounded-[var(--ik-radius-panel)] border ${style.border} bg-white p-4`}
+      style={{ boxShadow: 'var(--ik-shadow-card)' }}
+    >
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-3 mb-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h3 className="text-xl font-black text-gray-950">{title}</h3>

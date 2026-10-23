@@ -1,6 +1,12 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { assertOfflineBackendClean, installOfflineBackend, type OfflineApiResponse } from './helpers/backendMode';
+import {
+  assertOfflineBackendClean,
+  installOfflineBackend,
+  type OfflineApiResponse,
+} from './helpers/backendMode';
+
+const themePreferenceKey = 'ikuck-color-theme';
 
 const verifiedSession = {
   authenticated: true,
@@ -9,39 +15,89 @@ const verifiedSession = {
   expiresAt: '2026-10-15T08:00:00.000Z',
 };
 
+const verifiedResponses: Record<string, OfflineApiResponse> = {
+  'GET /v1/auth/session': { json: verifiedSession },
+  'GET /v1/profile': { json: { profile: { displayName: 'A11y' } } },
+  'GET /v1/house': { json: null },
+  'GET /v1/sync': { json: { changes: [], nextCursor: 0 } },
+  'POST /v1/sync': { json: { accepted: [], changes: [], nextCursor: 0 } },
+  'GET /v1/ai-recipes/consent': {
+    json: { consent: { enabled: false, updatedAt: '2026-09-18T10:00:00.000Z' }, selectedProvider: 'openai' },
+  },
+  'GET /v1/ai-recipes': { json: { recipes: [] } },
+};
+
+const installVerifiedBackend = (page: Page, extraResponses: Record<string, OfflineApiResponse> = {}): void => {
+  void installOfflineBackend(page, { responses: { ...verifiedResponses, ...extraResponses } });
+};
+
 const auditPage = async (page: Page, pageName: string): Promise<void> => {
   const results = await new AxeBuilder({ page }).analyze();
   const blockingViolations = results.violations.filter((violation) => (
     violation.impact === 'critical' || violation.impact === 'serious'
   ));
-
-  expect(blockingViolations, `${pageName} has blocking accessibility violations`).toEqual([]);
+  expect(blockingViolations, `${pageName} ha violazioni di accessibilità bloccanti`).toEqual([]);
 };
 
-const installVerifiedBackend = async (page: Page, extraResponses: Record<string, OfflineApiResponse> = {}): Promise<void> => {
-  await installOfflineBackend(page, {
-    responses: {
-      'GET /v1/auth/session': { json: verifiedSession },
-      'GET /v1/profile': { json: { profile: { displayName: 'A11y' } } },
-      'GET /v1/house': { json: null },
-      'GET /v1/sync': { json: { changes: [], nextCursor: 0 } },
-      'POST /v1/sync': { json: { accepted: [], changes: [], nextCursor: 0 } },
-      'GET /v1/ai-recipes/consent': { json: { consent: { enabled: false, updatedAt: '2026-09-18T10:00:00.000Z' }, selectedProvider: 'openai' } },
-      'GET /v1/ai-recipes': { json: { recipes: [] } },
-      ...extraResponses,
-    },
-  });
+type AuditedPage = {
+  path: string;
+  heading?: string;
+  name: string;
+  /** True quando la pagina richiede una sessione verificata (profilo, casa, diario). */
+  auth: boolean;
 };
 
-test.beforeEach(async ({ context, page }) => {
+const auditedPages: AuditedPage[] = [
+  { path: '/', heading: 'Cucina viva', name: 'home', auth: false },
+  { path: '/recipes', heading: 'Ricette', name: 'recipes-library', auth: false },
+  { path: '/pantry', heading: 'La tua dispensa', name: 'pantry', auth: false },
+  { path: '/shopping-list', heading: 'Lista della spesa', name: 'shopping-list', auth: false },
+  { path: '/dinner-diary', heading: 'Diario delle cene', name: 'dinner-diary', auth: true },
+  { path: '/activity', heading: 'La tua attività', name: 'activity', auth: false },
+  { path: '/profile', heading: 'Il tuo profilo', name: 'profile', auth: true },
+  // HousePage senza casa non rende un h1: si verifica la presenza del main.
+  { path: '/house', name: 'house', auth: true },
+  { path: '/recipes/pasta-tonno-pomodoro', heading: 'Pasta tonno e pomodoro', name: 'recipe-detail', auth: false },
+] as const;
+
+test.beforeEach(async ({ context }) => {
   await context.clearCookies();
-  await installOfflineBackend(page);
 });
 
 test.afterEach(async ({ page }) => {
   assertOfflineBackendClean(page);
 });
 
+for (const theme of ['light', 'dark'] as const) {
+  test.describe(`axe gate - tema ${theme}`, () => {
+    test.beforeEach(async ({ page }) => {
+      await page.addInitScript((preference: string) => {
+        localStorage.setItem(themePreferenceKey, preference);
+      }, theme);
+    });
+
+    for (const pageDef of auditedPages) {
+      test(`${pageDef.name} supera il gate axe`, async ({ page }) => {
+        if (pageDef.auth) {
+          installVerifiedBackend(page);
+        } else {
+          installOfflineBackend(page);
+        }
+
+        await page.goto(pageDef.path);
+        if (pageDef.heading !== undefined) {
+          await expect(page.getByRole('heading', { name: pageDef.heading, exact: true })).toBeVisible();
+        } else {
+          await expect(page.locator('main')).toBeVisible();
+        }
+
+        await auditPage(page, `${pageDef.name} [tema ${theme}]`);
+      });
+    }
+  });
+}
+
+// Scenari di accessibilità esistenti (invarianze di interazione, temi e soglie di tocco).
 test('guest home passes the critical and serious axe gate', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
@@ -49,7 +105,7 @@ test('guest home passes the critical and serious axe gate', async ({ page }) => 
 });
 
 test('verified home passes the critical and serious axe gate', async ({ page }) => {
-  await installVerifiedBackend(page);
+  installVerifiedBackend(page);
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
   await auditPage(page, 'verified home');
@@ -62,14 +118,14 @@ test('pantry passes the critical and serious axe gate', async ({ page }) => {
 });
 
 test('profile passes the critical and serious axe gate', async ({ page }) => {
-  await installVerifiedBackend(page);
+  installVerifiedBackend(page);
   await page.goto('/profile');
   await expect(page.getByRole('heading', { name: 'Il tuo profilo' })).toBeVisible();
   await auditPage(page, 'profile');
 });
 
 test('dinner diary passes the critical and serious axe gate', async ({ page }) => {
-  await installVerifiedBackend(page);
+  installVerifiedBackend(page);
   await page.goto('/dinner-diary');
   await expect(page.getByRole('heading', { name: 'Diario delle cene' })).toBeVisible();
   await auditPage(page, 'dinner diary');
@@ -82,7 +138,7 @@ test('shopping list passes the critical and serious axe gate', async ({ page }) 
 });
 
 test('Bring connection form is labeled and accessible before credential entry', async ({ page }) => {
-  await installVerifiedBackend(page, {
+  installVerifiedBackend(page, {
     'GET /v1/integrations/bring': { json: { enabled: true, connected: false, connectionId: null } },
   });
   await page.goto('/shopping-list');

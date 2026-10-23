@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { ApiClientError } from '../api/apiClient';
 import { useAuthStore } from '../auth/authStore';
 import { useHouseStore } from '../house/houseStore';
+import ErrorBanner from '../components/ui/ErrorBanner';
+import PageSection from '../components/ui/PageSection';
 
 const errorMessage = (error: unknown): string => {
   if (error instanceof ApiClientError) {
@@ -77,11 +79,15 @@ export default function HousePage() {
   if (user === null) {
     return (
       <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-3xl px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
-        <section className="rounded-3xl border-2 border-gray-200 bg-white p-6 shadow-sm sm:p-8">
-          <h1 className="text-3xl font-black text-gray-950">La mia casa</h1>
-          <p className="mt-3 text-gray-600">Accedi per creare o gestire una casa condivisa.</p>
+        <PageSection
+          eyebrow="La tua casa"
+          title="La mia casa"
+          titleId="house-title"
+          description="Accedi per creare o gestire una casa condivisa."
+          className="border-emerald-200 shadow-sm sm:space-y-5"
+        >
           <Link to="/profile" className="mt-5 inline-flex min-h-11 items-center rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white">Vai al profilo</Link>
-        </section>
+        </PageSection>
       </main>
     );
   }
@@ -91,11 +97,14 @@ export default function HousePage() {
   return (
     <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-3xl px-4 py-5 pb-24 sm:px-6 sm:py-8 lg:px-8">
       <div className="mb-5"><Link to="/profile" className="inline-flex min-h-11 items-center rounded-xl px-2 font-semibold text-gray-700 underline underline-offset-2">← Torna al profilo</Link></div>
-      <section className="rounded-3xl border-2 border-gray-200 bg-white p-6 shadow-sm sm:p-8">
-        <p className="text-sm font-bold uppercase tracking-wide text-emerald-700">Condivisione familiare</p>
-        <h1 className="mt-1 text-3xl font-black text-gray-950">{houseState?.house?.name ?? 'La mia casa'}</h1>
+      <PageSection
+        eyebrow="Condivisione familiare"
+        title={houseState?.house?.name ?? 'La mia casa'}
+        titleId="house-title"
+        className="border-emerald-200 shadow-sm sm:space-y-5"
+      >
         {message !== null && <p role="status" className="mt-5 rounded-xl bg-emerald-50 p-3 font-semibold text-emerald-900">{message}</p>}
-        {error !== null && <p role="alert" className="mt-5 rounded-xl bg-rose-50 p-3 font-semibold text-rose-900">{error}</p>}
+        {error !== null && <ErrorBanner message={error} />}
 
         {houseState === null ? (
           <form className="mt-7 grid gap-3" onSubmit={handleCreate}>
@@ -158,7 +167,7 @@ export default function HousePage() {
             </div>
           </>
         )}
-      </section>
+      </PageSection>
     </main>
   );
 }

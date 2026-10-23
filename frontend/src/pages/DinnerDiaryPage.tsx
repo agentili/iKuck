@@ -12,6 +12,9 @@ import { clearAiRecipeProposalHistory } from '../ai/aiRecipeHistory';
 import DinnerConsumptionSelection from '../components/dinnerDiary/DinnerConsumptionSelection';
 import DinnerRecipePanel from '../components/dinnerDiary/DinnerRecipePanel';
 import DiaryNavigation from '../components/layout/DiaryNavigation';
+import ErrorBanner from '../components/ui/ErrorBanner';
+import EmptyState from '../components/ui/EmptyState';
+import PageSection from '../components/ui/PageSection';
 import { useHouseStore } from '../house/houseStore';
 import { usePantryStore } from '../store/localPantryStore';
 import { getActiveDataScope } from '../sync/scopeContext';
@@ -317,10 +320,16 @@ export default function DinnerDiaryPage() {
   return (
     <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-4xl px-4 pb-24 pt-5 sm:px-6 sm:pb-10 sm:pt-8 lg:px-8">
       <DiaryNavigation />
-      <header className="max-w-2xl">
-        <p className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">La memoria della tavola</p>
-        <h1 className="mt-1 text-4xl font-black leading-tight text-gray-950 sm:text-5xl">Diario delle cene</h1>
-        <p className="mt-3 text-base leading-relaxed text-gray-700">Segna cosa avete mangiato, senza modificare la dispensa. Potrai ricostruire una ricetta in un secondo momento.</p>
+      <header className="ik-page-intro mb-5 max-w-2xl sm:mb-7">
+        <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">
+          La memoria della tavola
+        </p>
+        <h1 className="mt-1 text-4xl font-black leading-[1.04] text-gray-950 sm:text-5xl">
+          Diario delle cene
+        </h1>
+        <p className="mt-3 max-w-xl text-base leading-relaxed text-gray-700 sm:text-lg">
+          Segna cosa avete mangiato, senza modificare la dispensa. Potrai ricostruire una ricetta in un secondo momento.
+        </p>
       </header>
 
       <section aria-label="Consenso per ricostruire ricette" className="mt-6 rounded-2xl border-2 border-emerald-100 bg-emerald-50/70 px-4 sm:px-5">
@@ -385,11 +394,15 @@ export default function DinnerDiaryPage() {
             <button type="button" onClick={() => void saveConsent(false)} disabled={consentSaving} className="min-h-11 rounded-xl border-2 border-rose-300 px-4 py-2 font-bold text-rose-900 disabled:opacity-60">{consentSaving ? 'Salvataggio…' : 'Revoca consenso AI globale'}</button>
           </div>
         )}
-        {consentError !== null && <p role="alert" className="mb-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-900">{consentError}</p>}
+        {consentError !== null && <ErrorBanner message={consentError} />}
       </section>
 
-      <section aria-labelledby="dinner-entry-form-title" className="mt-6 rounded-3xl border-2 border-emerald-100 bg-white p-4 shadow-sm sm:p-6">
-        <h2 id="dinner-entry-form-title" className="text-2xl font-black text-gray-950">{editingEntry === null ? 'Registra una cena' : 'Modifica la cena'}</h2>
+      <PageSection
+        eyebrow="Il tuo diario"
+        title={editingEntry === null ? 'Registra una cena' : 'Modifica la cena'}
+        titleId="dinner-entry-form-title"
+        className="border-emerald-200 shadow-sm sm:space-y-5"
+      >
         <form className="mt-4 space-y-4" onSubmit={submit}>
           <div className="grid gap-4 sm:grid-cols-[1fr_10rem]">
             <label className="block text-sm font-bold text-gray-800" htmlFor="dinner-date">
@@ -427,7 +440,7 @@ export default function DinnerDiaryPage() {
               confirmedNoIngredientsUsed={confirmedNoIngredientsUsed}
             />
           )}
-          {formError !== null && <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-900">{formError}</p>}
+          {formError !== null && <ErrorBanner message={formError} />}
           {storeError !== null && <p role="status" className="text-sm text-amber-900">Alcune modifiche potrebbero non essersi sincronizzate. Riprova quando sei online.</p>}
           <div className="flex flex-wrap gap-3">
             <button type="submit" disabled={confirmingDinner} className="ik-button-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 py-2 font-bold disabled:opacity-60">
@@ -441,18 +454,21 @@ export default function DinnerDiaryPage() {
             )}
           </div>
         </form>
-      </section>
+      </PageSection>
 
-      <section aria-labelledby="dinner-history-title" className="mt-8">
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Il tuo archivio</p>
-            <h2 id="dinner-history-title" className="mt-1 text-3xl font-black text-gray-950">Le tue cene</h2>
-          </div>
-          <p className="text-sm font-semibold text-gray-600">{orderedEntries.length} {orderedEntries.length === 1 ? 'cena' : 'cene'}</p>
-        </div>
+      <PageSection
+        eyebrow="Il tuo archivio"
+        title="Le tue cene"
+        titleId="dinner-history-title"
+        action={
+          <p className="text-sm font-semibold text-gray-600">
+            {orderedEntries.length} {orderedEntries.length === 1 ? 'cena' : 'cene'}
+          </p>
+        }
+        className="border-emerald-200 shadow-sm sm:space-y-5"
+      >
         {orderedEntries.length === 0 ? (
-          <p className="rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center text-gray-700">Non hai ancora registrato una cena.</p>
+          <EmptyState text="Non hai ancora registrato una cena." />
         ) : (
           <ol className="space-y-3">
             {orderedEntries.map((entry) => {
@@ -494,7 +510,7 @@ export default function DinnerDiaryPage() {
             })}
           </ol>
         )}
-      </section>
+      </PageSection>
     </main>
   );
 }

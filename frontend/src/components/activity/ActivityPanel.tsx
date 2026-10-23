@@ -1,8 +1,10 @@
-import { Clock3, Heart, Star, Trash2 } from 'lucide-react';
+import { Heart, Star, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { CookEvent, RecipePreference } from '@ikuck/shared/contracts';
 import { getRecipeById } from '../../domain/recipes';
 import UndoToast from '../feedback/UndoToast';
+import EmptyState from '../ui/EmptyState';
+import PageSection from '../ui/PageSection';
 
 interface ActivityPanelProps {
   events: CookEvent[];
@@ -38,25 +40,24 @@ export default function ActivityPanel({ events, preferences, onRemoveEvent, onRe
 
   return (
     <>
-    <section aria-labelledby="activity-title" className="rounded-3xl border-2 border-gray-200 bg-white p-4 shadow-sm sm:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-emerald-800"><Clock3 size={16} aria-hidden="true" /> Attività</p>
-          <h1 id="activity-title" className="mt-1 text-3xl font-black text-gray-950">La tua attività</h1>
-          <p className="mt-1 text-gray-600">Tieni traccia delle ricette provate e delle tue preferenze.</p>
-        </div>
-        {events.length > 0 && (
+    <PageSection
+      eyebrow="Attività"
+      title="La tua attività"
+      description="Tieni traccia delle ricette provate e delle tue preferenze."
+      action={
+        events.length > 0 ? (
           <button type="button" onClick={clearActivity} className="min-h-11 rounded-xl border-2 border-gray-300 px-3 py-2 text-sm font-bold text-gray-800 hover:border-gray-900">
             Svuota attività
           </button>
-        )}
-      </header>
-
+        ) : undefined
+      }
+      className="border-emerald-200 shadow-sm sm:space-y-5"
+    >
       <div className="mt-6 grid gap-6">
         <section aria-labelledby="cooking-history-title">
           <h2 id="cooking-history-title" className="text-xl font-black text-gray-950">Ricette cucinate</h2>
           {events.length === 0 ? (
-            <p className="mt-3 rounded-2xl border border-dashed border-gray-300 p-5 text-gray-600">Non hai ancora segnato ricette come cucinate.</p>
+            <EmptyState text="Non hai ancora segnato ricette come cucinate." />
           ) : (
             <ul className="mt-3 grid gap-3">
               {events.map((event) => (
@@ -96,7 +97,7 @@ export default function ActivityPanel({ events, preferences, onRemoveEvent, onRe
           </section>
         )}
       </div>
-    </section>
+    </PageSection>
     {removedEvents !== null && (
       <UndoToast
         message={removedEvents.length === 1 ? `Evento di ${removedEvents[0].recipeTitle} rimosso.` : `${removedEvents.length} eventi rimossi.`}
