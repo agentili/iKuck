@@ -93,11 +93,11 @@ export default function AppInstallPrompt({ onDismiss }: AppInstallPromptProps = 
 
   return (
     <aside
-      className={`app-overlay fixed inset-x-4 z-50 mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-4 rounded-2xl border-2 ${
+      className={`app-overlay fixed inset-x-4 z-50 flex flex-wrap items-center justify-between gap-4 rounded-2xl border-2 ${
         ios
           ? 'border-blue-200 bg-blue-50'
           : 'border-emerald-200 bg-white'
-      } p-4 shadow-xl`}
+      } p-4 shadow-xl sm:mx-auto sm:max-w-2xl`}
       aria-label={ios ? 'Usa iKuck come app' : 'Installa l’applicazione iKuck'}
     >
       <div className="min-w-0 flex-1">

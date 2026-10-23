@@ -3,8 +3,8 @@
     "width": 390,
     "height": 844,
     "searchBottom": 642.1875,
-    "navigationTop": 727,
-    "gap": 84.8125
+    "navigationTop": 787,
+    "gap": 144.8125
   },
   {
     "width": 320,
@@ -14,10 +14,10 @@
     "content": 320,
     "nav": {
       "x": 0,
-      "y": 467,
+      "y": 587,
       "width": 320,
-      "height": 233,
-      "top": 467,
+      "height": 113,
+      "top": 587,
       "right": 320,
       "bottom": 700,
       "left": 0
@@ -26,10 +26,10 @@
       "x": 0,
       "y": 112,
       "width": 320,
-      "height": 2680.75,
+      "height": 2840.75,
       "top": 112,
       "right": 320,
-      "bottom": 2792.75,
+      "bottom": 2952.75,
       "left": 0
     }
   },
@@ -77,14 +77,14 @@
       "left": 0
     },
     "main": {
-      "x": 272,
+      "x": 256,
       "y": 0,
-      "width": 1152,
+      "width": 1184,
       "height": 900,
       "top": 0,
-      "right": 1424,
+      "right": 1440,
       "bottom": 900,
-      "left": 272
+      "left": 256
     }
   }
 ]

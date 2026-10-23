@@ -72,4 +72,38 @@ describe('AppInstallPrompt', () => {
     expect(localStorage.getItem(DISMISSED_KEY)).not.toBe('1');
     expect(screen.getByRole('button', { name: /^Installa/ })).toBeInTheDocument();
   });
+
+  it('nasconde il banner dopo «Più tardi» e mantiene il rifiuto alla nuova renderizzazione', async () => {
+    const user = userEvent.setup();
+    const { event } = dispatchBeforeInstallPrompt('accepted');
+    const { unmount } = render(<AppInstallPrompt />);
+
+    window.dispatchEvent(event);
+    await screen.findByRole('button', { name: /^Installa/ });
+
+    await user.click(screen.getByRole('button', { name: 'Più tardi' }));
+
+    expect(localStorage.getItem(DISMISSED_KEY)).toBe('1');
+    // Il rifiuto è memorizzato; alla successiva caricamento (navigazione) il banner non riappare.
+    unmount();
+    render(<AppInstallPrompt />);
+    expect(screen.queryByText('Installa iKuck')).not.toBeInTheDocument();
+    expect(screen.queryByText('Usa iKuck come app')).not.toBeInTheDocument();
+  });
+
+  it('espone il posizionamento non invadente (sopra la nav inferiore su mobile, centrato su desktop)', async () => {
+    const { event } = dispatchBeforeInstallPrompt('accepted');
+    render(<AppInstallPrompt />);
+    window.dispatchEvent(event);
+    await screen.findByText('Installa iKuck');
+
+    const banner = screen.getByRole('complementary', {
+      name: 'Installa l’applicazione iKuck',
+    });
+
+    expect(banner).toHaveClass('app-overlay', 'fixed', 'inset-x-4', 'z-50');
+    // Su mobile occupa la larghezza piena con margini laterali; su desktop resta centrato e limitato.
+    expect(banner).toHaveClass('sm:mx-auto', 'sm:max-w-2xl');
+    expect(banner).not.toHaveClass('max-w-2xl');
+  });
 });

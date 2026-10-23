@@ -94,6 +94,11 @@
   --ik-shadow-card: 0 4px 12px rgb(24 48 40 / 0.05);
   --ik-shadow-navigation: 0 -8px 24px rgb(15 23 42 / 0.08);
   --ik-overlay: rgb(24 48 40 / 0.55);
+  --ik-nav-height: 5rem;
+  --ik-layout-content-max-width: 72rem;
+  --ik-layout-content-max-width-desktop: 80rem;
+  --ik-layout-grid-gap: 1rem;
+  --ik-layout-grid-gap-desktop: 1.5rem;
   font-family: 'Bricolage Grotesque Variable', system-ui, sans-serif;
   color: var(--ik-ink);
   background: var(--ik-porcelain);
@@ -243,6 +248,7 @@ details:not([open]) > :not(summary) {
 
 .ik-page {
   padding-bottom: max(2rem, env(safe-area-inset-bottom));
+  max-width: var(--ik-layout-content-max-width);
 }
 
 .ik-page-intro {
@@ -457,7 +463,7 @@ details:not([open]) > :not(summary) {
 }
 
 .app-overlay {
-  bottom: calc(max(5rem, 7em) + env(safe-area-inset-bottom));
+  bottom: calc(var(--ik-nav-height) + env(safe-area-inset-bottom));
 }
 
 @media (max-width: 639px) {
@@ -492,7 +498,7 @@ details:not([open]) > :not(summary) {
   }
 
   .ik-page {
-    padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--ik-nav-height) + env(safe-area-inset-bottom) + 2rem);
   }
 
   .ik-recipe-card:hover {
@@ -648,10 +654,6 @@ details:not([open]) > :not(summary) {
     bottom: 0;
   }
 
-  .app-overlay {
-    bottom: calc(max(5rem, 7em) + env(safe-area-inset-bottom));
-  }
-
   .app-mobile-scope {
     display: block;
     max-width: 25vw;
@@ -737,7 +739,7 @@ details:not([open]) > :not(summary) {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: 1rem;
+  gap: var(--ik-layout-grid-gap);
 }
 
 .ik-kitchen-results {
@@ -751,10 +753,14 @@ details:not([open]) > :not(summary) {
   scrollbar-color: var(--ik-border-strong) transparent;
 }
 
-@media (min-width: 1180px) {
-  .ik-kitchen-layout {
-    grid-template-columns: minmax(18rem, 0.86fr) minmax(0, 1.7fr);
-    gap: 1.5rem;
+@media (min-width: 1024px) {
+  :root {
+    --ik-layout-content-max-width: var(--ik-layout-content-max-width-desktop);
+  }
+
+  .ik-kitchen-layout--two-columns {
+    grid-template-columns: minmax(18rem, 0.45fr) minmax(0, 1fr);
+    gap: var(--ik-layout-grid-gap-desktop);
   }
 
   .ik-pantry-workbench {

@@ -23,6 +23,7 @@ import { getActiveDataScope } from '../sync/scopeContext';
 import NotFoundPage from './NotFoundPage';
 import RecipeNutritionSummary from '../components/diet/RecipeNutritionSummary';
 import RecipeImage from '../components/suggestions/RecipeImage';
+import PageSection from '../components/ui/PageSection';
 
 const ratingLabel = (value: number): string => `${value} ${value === 1 ? 'stella' : 'stelle'}`;
 
@@ -278,7 +279,7 @@ export default function RecipeDetailPage() {
         Torna alle ricette
       </Link>
 
-      <header className="ik-recipe-hero mt-6 rounded-3xl bg-gray-950 px-5 py-8 text-white sm:px-9 sm:py-10">
+      <header className="ik-recipe-hero mt-6 px-5 py-8 text-white sm:px-9 sm:py-10">
         <RecipeImage recipeId={recipe.id} recipeTitle={recipe.title} variant="detail" />
         <p className="mt-5 font-semibold text-amber-300">{CATEGORY_LABELS[recipe.category]}</p>
         <h1 className="mt-2 max-w-3xl text-4xl font-black leading-tight sm:text-6xl">{recipe.title}</h1>
@@ -310,20 +311,22 @@ export default function RecipeDetailPage() {
       </section>
 
       <div className="grid gap-8 py-10 lg:grid-cols-[0.9fr_1.1fr]">
-        <section aria-labelledby="ingredients-title">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <h2 id="ingredients-title" className="text-3xl font-black text-gray-950">Ingredienti</h2>
+        <PageSection
+          title="Ingredienti"
+          titleId="ingredients-title"
+          action={
             <button type="button" onClick={addMissingToShoppingList} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800">
               <ShoppingCart size={17} aria-hidden="true" /> Aggiungi mancanti alla spesa
             </button>
-          </div>
+          }
+        >
           {shoppingMessage !== null && (
-            <div className="mt-3 rounded-2xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-900">
+            <div className="mt-3 rounded-[var(--ik-radius-panel)] bg-emerald-50 p-4 text-sm font-semibold text-emerald-900">
               <p role="status">{shoppingMessage}</p>
               <Link to="/shopping-list" className="mt-2 inline-flex min-h-10 items-center rounded-lg font-bold underline underline-offset-2">Apri la lista della spesa</Link>
             </div>
           )}
-          <ul className="mt-5 divide-y divide-gray-200 rounded-3xl border-2 border-gray-200 bg-white px-5">
+          <ul className="divide-y divide-gray-200">
             {recipe.ingredients.map((item) => (
               <li key={item.ingredientId} className="flex items-start justify-between gap-4 py-4">
                 <span className="font-semibold text-gray-900">{item.name ?? getIngredient(item.ingredientId)?.label ?? item.ingredientId}</span>
@@ -331,11 +334,10 @@ export default function RecipeDetailPage() {
               </li>
             ))}
           </ul>
-        </section>
+        </PageSection>
 
-        <section aria-labelledby="steps-title">
-          <h2 id="steps-title" className="text-3xl font-black text-gray-950">Preparazione</h2>
-          <ol className="mt-5 space-y-4">
+        <PageSection title="Preparazione" titleId="steps-title">
+          <ol className="space-y-4">
             {recipe.steps.map((step, index) => (
               <li key={step} className="grid grid-cols-[2.75rem_1fr] gap-4 rounded-3xl bg-emerald-50 p-5">
                 <span className="grid h-11 w-11 place-items-center rounded-full bg-emerald-700 font-black text-white" aria-hidden="true">{index + 1}</span>
@@ -343,10 +345,10 @@ export default function RecipeDetailPage() {
               </li>
             ))}
           </ol>
-        </section>
+        </PageSection>
       </div>
 
-      <section aria-labelledby="dinner-confirm-title" className="rounded-3xl border-2 border-emerald-200 bg-emerald-50 p-4 sm:p-5">
+      <section aria-labelledby="dinner-confirm-title" className="rounded-[var(--ik-radius-panel)] border border-emerald-200 bg-emerald-50 p-4 sm:p-5">
         <h2 id="dinner-confirm-title" className="text-2xl font-black text-gray-950">Conferma la cena</h2>
         <p className="mt-1 text-sm leading-relaxed text-gray-700">
           Dichiarate cosa avete usato dalla dispensa: solo gli ingredienti selezionati vengono scalati quando confermate.
@@ -376,7 +378,7 @@ export default function RecipeDetailPage() {
         {activityError !== null && <p role="alert" className="mt-3 text-sm font-semibold text-rose-900">{activityError}</p>}
       </section>
 
-      <section aria-labelledby="recipe-actions-title" className="mt-6 rounded-3xl border-2 border-amber-200 bg-amber-50 p-4 sm:p-5">
+      <section aria-labelledby="recipe-actions-title" className="mt-6 rounded-[var(--ik-radius-panel)] border border-amber-200 bg-amber-50 p-4 sm:p-5">
         <h2 id="recipe-actions-title" className="text-2xl font-black text-gray-950">La tua esperienza</h2>
         <div className="mt-3 flex flex-wrap gap-3">
           <button type="button" aria-pressed={favorite} onClick={() => setFavorite((value) => !value)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border-2 border-amber-300 bg-white px-4 py-2 font-bold text-gray-900 hover:border-amber-500">
@@ -401,7 +403,7 @@ export default function RecipeDetailPage() {
       </section>
 
       {metadata !== undefined && nutrition !== null && (
-        <section aria-labelledby="nutrition-title" className="ik-surface mt-6 rounded-3xl border-2 border-gray-200 bg-white p-5 sm:p-6">
+        <section aria-labelledby="nutrition-title" className="ik-surface border mt-6 rounded-[var(--ik-radius-panel)] bg-white p-5 sm:p-6">
           <h2 id="nutrition-title" className="text-2xl font-black text-gray-950">Nutrizione stimata per porzione</h2>
           <RecipeNutritionSummary nutrition={nutrition} />
           <p className="mt-3 text-sm font-semibold text-gray-700">

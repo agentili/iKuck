@@ -197,6 +197,11 @@ test('nav: «Ricette» raggiungibile, nome accessibile completo, nessun overflow
   const ricette = page.getByRole('link', { name: 'Ricette' });
   await expect(ricette).toBeVisible();
 
+  // Attende che main#main-content sia montato prima di leggere le geometrie:
+  // senza questo, sotto carico parallelo getBoundingClientRect() restituisce
+  // null perché l'elemento non è ancora nel DOM (flaky su geometry.main).
+  await expect(page.locator('main#main-content')).toBeVisible();
+
   const geometry = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
     content: document.documentElement.scrollWidth,
