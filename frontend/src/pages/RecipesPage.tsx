@@ -12,6 +12,10 @@ import { RECIPES } from '../domain/recipes';
 import { readSavedRecipes } from '../storage/dinnerDiaryStorage';
 import { hydrateDinnerDiaryStore } from '../store/dinnerDiaryStore';
 import { getActiveDataScope, subscribeActiveDataScope } from '../sync/scopeContext';
+import ErrorBanner from '../components/ui/ErrorBanner';
+import EmptyState from '../components/ui/EmptyState';
+import PageSection from '../components/ui/PageSection';
+import RecipeCard from '../components/ui/RecipeCard';
 
 const LIBRARY_GROUP_LABEL = 'Le tue ricette salvate';
 const AI_GROUP_LABEL = 'Le tue ricette AI';
@@ -202,7 +206,8 @@ export default function RecipesPage() {
         </p>
       </header>
 
-      <div className="ik-kitchen-layout mt-4">
+      <div className="ik-kitchen-layout ik-kitchen-layout--two-columns mt-4">
+        <div className="ik-kitchen-column min-w-0">
         <section aria-label="Ricerca tra le ricette" className="rounded-3xl border-2 p-4 sm:p-5 mb-6">
           <div className="min-w-0 flex-1">
             <label className="sr-only">Cerca ricette</label>
@@ -220,112 +225,61 @@ export default function RecipesPage() {
             </p>
           </div>
         </section>
+        </div>
 
-        <section aria-labelledby="library-recipes-title" className="space-y-4 rounded-3xl border-2 p-4 sm:p-5 mb-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Dal diario</p>
-              <h2 id="library-recipes-title" className="mt-1 text-2xl font-black text-gray-950">{LIBRARY_GROUP_LABEL}</h2>
-              <p className="mt-1 text-sm leading-relaxed text-gray-700">
-                Le ricette che hai salvato dal Diario, disponibili anche offline.
-              </p>
-            </div>
-            {libraryLoading && (
+        <div className="ik-kitchen-column min-w-0">
+        <PageSection
+          eyebrow="Dal diario"
+          title={LIBRARY_GROUP_LABEL}
+          titleId="library-recipes-title"
+          description="Le ricette che hai salvato dal Diario, disponibili anche offline."
+          action={
+            libraryLoading && (
               <p role="status" className="text-sm font-semibold text-emerald-900">
                 Carico le tue ricette salvate…
               </p>
-            )}
-          </div>
-
-          {libraryError !== null && (
-            <p role="alert" className="rounded-xl border-2 border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-900">
-              {libraryError}
-            </p>
-          )}
-
+            )
+          }
+        >
+          {libraryError !== null && <ErrorBanner message={libraryError} />}
           {!libraryLoading && libraryError === null && libraryRecipes.length === 0 && (
-            <p className="rounded-xl border-2 border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-              Nessuna ricetta salvata ancora.
-            </p>
+            <EmptyState text="Nessuna ricetta salvata ancora." />
           )}
-
           {!libraryLoading && libraryError === null && filteredLibrary.length > 0 && (
             <div className="grid gap-4 lg:grid-cols-2">
               {filteredLibrary.map((recipe) => (
-                <article key={recipe.id} className="rounded-2xl border-2 border-emerald-200 bg-white p-4 shadow-sm">
-                  <div className="mb-3 flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <h3 className="text-xl font-black text-gray-950">{recipe.title}</h3>
-                      <span className="whitespace-nowrap rounded-full border-2 border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-900">
-                        Salvata
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => toggleLibraryExpanded(recipe.id)}
-                      aria-expanded={expandedLibraryIds.has(recipe.id)}
-                      aria-controls={`library-recipe-details-${recipe.id}`}
-                      className="shrink-0 rounded-xl p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-900"
-                    >
-                      {expandedLibraryIds.has(recipe.id) ? 'Nascondi dettagli' : 'Mostra dettagli'}
-                    </button>
-                  </div>
-                  {recipe.description.trim().length > 0 && (
-                    <p className="mb-3 text-sm leading-relaxed text-gray-600">{recipe.description}</p>
-                  )}
-                  {expandedLibraryIds.has(recipe.id) && (
-                    <div id={`library-recipe-details-${recipe.id}`} className="space-y-3">
-                      <h4 className="text-sm font-bold uppercase tracking-[0.14em] text-gray-600">Ingredienti</h4>
-                      <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700">
-                        {recipe.ingredients.map((ingredient, index) => (
-                          <li key={`${ingredient.name}-${index}`}>
-                            <span>{ingredient.name}</span>
-                            {ingredient.amount.trim().length > 0 && (
-                              <span className="ml-1 text-gray-500">{ingredient.amount}</span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                      <h4 className="text-sm font-bold uppercase tracking-[0.14em] text-gray-600">Procedimento</h4>
-                      <ol className="list-decimal space-y-1 pl-5 text-sm text-gray-700">
-                        {recipe.steps.map((step, index) => (
-                          <li key={index}>{step}</li>
-                        ))}
-                      </ol>
-                    </div>
-                  )}
-                  <Link
-                    to={`/recipes/${encodeURIComponent(recipe.id)}?scope=${encodeURIComponent(activeScope)}`}
-                    aria-label={`Apri ${recipe.title}`}
-                    className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl border-2 border-gray-900 px-4 py-2 font-bold text-gray-900 hover:bg-gray-900 hover:text-white"
-                  >
-                    Apri ricetta
-                  </Link>
-                </article>
+                <RecipeCard
+                  key={recipe.id}
+                  variant="salvata"
+                  title={recipe.title}
+                  description={recipe.description}
+                  ingredients={recipe.ingredients}
+                  showIngredientAmounts
+                  steps={recipe.steps}
+                  isExpanded={expandedLibraryIds.has(recipe.id)}
+                  onToggle={() => toggleLibraryExpanded(recipe.id)}
+                  detailsId={`library-recipe-details-${recipe.id}`}
+                  openHref={`/recipes/${encodeURIComponent(recipe.id)}?scope=${encodeURIComponent(activeScope)}`}
+                  openAriaLabel={`Apri ${recipe.title}`}
+                />
               ))}
             </div>
           )}
-        </section>
+        </PageSection>
 
-        <section aria-labelledby="ai-recipes-title" className="space-y-4 rounded-3xl border-2 p-4 sm:p-5 mb-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Generate con l’AI</p>
-              <h2 id="ai-recipes-title" className="mt-1 text-2xl font-black text-gray-950">{AI_GROUP_LABEL}</h2>
-            </div>
-            {savedLoading && (
+        <PageSection
+          eyebrow="Generate con l’AI"
+          title={AI_GROUP_LABEL}
+          titleId="ai-recipes-title"
+          action={
+            savedLoading && (
               <p role="status" className="text-sm font-semibold text-emerald-900">
                 Carico le tue ricette AI…
               </p>
-            )}
-          </div>
-
-          {savedError !== null && (
-            <p role="alert" className="rounded-xl border-2 border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-900">
-              {savedError}
-            </p>
-          )}
-
+            )
+          }
+        >
+          {savedError !== null && <ErrorBanner message={savedError} />}
           {!verified && (
             <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50/70 p-5 sm:p-6">
               <div className="flex items-start gap-3">
@@ -347,102 +301,59 @@ export default function RecipesPage() {
               </div>
             </div>
           )}
-
           {verified && !savedLoading && savedError === null && savedRecipes.length === 0 && (
-            <p className="rounded-xl border-2 border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-              Nessuna ricetta AI salvata ancora.
-            </p>
+            <EmptyState text="Nessuna ricetta AI salvata ancora." />
           )}
-
           {verified && !savedLoading && savedError === null && filteredSaved.length > 0 && (
             <div className="grid gap-4 lg:grid-cols-2">
               {filteredSaved.map((recipe) => (
-                <article key={recipe.id} className="rounded-2xl border-2 border-emerald-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-xl font-black text-gray-950">{recipe.title}</h3>
-                      <span className="rounded-full border-2 border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-900">
-                        AI
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => toggleExpanded(recipe.id)}
-                      aria-expanded={expandedIds.has(recipe.id)}
-                      aria-controls={`saved-recipe-details-${recipe.id}`}
-                      className="rounded-xl p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-900"
-                    >
-                      {expandedIds.has(recipe.id) ? 'Nascondi dettagli' : 'Mostra dettagli'}
-                    </button>
-                  </div>
-                  {expandedIds.has(recipe.id) && (
-                    <div id={`saved-recipe-details-${recipe.id}`} className="space-y-3">
-                      <h4 className="text-sm font-bold uppercase tracking-[0.14em] text-gray-600">Ingredienti</h4>
-                      <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700">
-                        {recipe.ingredients.map((ingredient) => (
-                          <li key={ingredient.name}>{ingredient.name}</li>
-                        ))}
-                      </ul>
-                      <h4 className="text-sm font-bold uppercase tracking-[0.14em] text-gray-600">Procedimento</h4>
-                      <ol className="list-decimal space-y-1 pl-5 text-sm text-gray-700">
-                        {recipe.steps.map((step, index) => (
-                          <li key={index}>{step}</li>
-                        ))}
-                      </ol>
-                    </div>
-                  )}
-                </article>
+                <RecipeCard
+                  key={recipe.id}
+                  variant="ai"
+                  title={recipe.title}
+                  ingredients={recipe.ingredients}
+                  steps={recipe.steps}
+                  isExpanded={expandedIds.has(recipe.id)}
+                  onToggle={() => toggleExpanded(recipe.id)}
+                  detailsId={`saved-recipe-details-${recipe.id}`}
+                />
               ))}
             </div>
           )}
-        </section>
+        </PageSection>
 
-        <section aria-labelledby="suggested-recipes-title" className="space-y-4 rounded-3xl border-2 p-4 sm:p-5 mb-6">
-          <div>
-            <p className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Catalogo della casa</p>
-            <h2 id="suggested-recipes-title" className="mt-1 text-2xl font-black text-gray-950">{SUGGESTED_GROUP_LABEL}</h2>
-            <p className="mt-1 text-sm leading-relaxed text-gray-700">
-              Ricette offline, sempre disponibili.
-            </p>
-          </div>
-
+        <PageSection
+          eyebrow="Catalogo della casa"
+          title={SUGGESTED_GROUP_LABEL}
+          titleId="suggested-recipes-title"
+          description="Ricette offline, sempre disponibili."
+        >
           {isEmptySearch && (
-            <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-4">
-              <p className="text-sm text-gray-700">
-                Nessuna ricetta trovata per «{query}». Prova un altro titolo o ingrediente.
-              </p>
-              <Link
-                to="/"
-                className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl border-2 border-gray-900 px-4 py-2 font-bold text-gray-900 hover:bg-gray-900 hover:text-white"
-              >
-                Trova ricette
-              </Link>
-            </div>
+            <EmptyState
+              text={`Nessuna ricetta trovata per «${query}». Prova un altro titolo o ingrediente.`}
+              action={{
+                label: 'Trova ricette',
+                href: '/',
+                ariaLabel: 'Trova ricette',
+              }}
+            />
           )}
-
           {!isEmptySearch && (
             <div className="grid gap-4 lg:grid-cols-2">
               {filteredSuggested.map((recipe) => (
-                <article key={recipe.id} className="rounded-2xl border-2 border-gray-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <h3 className="text-xl font-black text-gray-950">{recipe.title}</h3>
-                    <span className="rounded-full border-2 border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-bold text-gray-900">
-                      Catalogo
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm leading-relaxed text-gray-600">{recipe.description}</p>
-                  <Link
-                    to={`/recipes/${recipe.id}`}
-                    aria-label={`Apri ${recipe.title}`}
-                    className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl border-2 border-gray-900 px-4 py-2 font-bold text-gray-900 hover:bg-gray-900 hover:text-white"
-                  >
-                    Apri ricetta
-                  </Link>
-                </article>
+                <RecipeCard
+                  key={recipe.id}
+                  variant="catalogo"
+                  title={recipe.title}
+                  description={recipe.description}
+                  openHref={`/recipes/${recipe.id}`}
+                  openAriaLabel={`Apri ${recipe.title}`}
+                />
               ))}
             </div>
           )}
-        </section>
+        </PageSection>
+        </div>
       </div>
     </main>
   );
