@@ -9,7 +9,7 @@ import PantryLotsPanel from '../components/pantry/PantryLotsPanel';
 import StaplesPanel from '../components/pantry/StaplesPanel';
 import EmptyState from '../components/ui/EmptyState';
 import PageSection from '../components/ui/PageSection';
-import { getIngredient, registerIngredient, type IngredientCategory } from '@ikuck/shared/ingredients';
+import { getIngredient, inferIngredientCategory, registerIngredient, type IngredientCategory } from '@ikuck/shared/ingredients';
 import type { IngredientDefinition, ParsedIngredient } from '../domain/types';
 import {
   hydratePantryStore,
@@ -182,7 +182,7 @@ export default function PantryPage() {
   const groupedPantryItems = useMemo<PantryCategoryGroup[]>(() => {
     const byCategory = new Map<IngredientCategory | 'other', ParsedIngredient[]>();
     for (const item of pantryItems) {
-      const category = getIngredient(item.id)?.category ?? 'other';
+      const category = getIngredient(item.id)?.category ?? inferIngredientCategory(item.label) ?? 'other';
       const bucket = byCategory.get(category);
       if (bucket === undefined) {
         byCategory.set(category, [item]);
