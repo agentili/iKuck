@@ -15,7 +15,8 @@
 5. Merge del branch in `main`.
 6. Push di `main`.
 7. Deploy in produzione seguendo `docs/production-readiness.md` (backup PostgreSQL, build, health check).
-8. Il branch di release può essere rimosso dopo il merge: il release rimane riferito dal tag.
+8. Il branch di release/feature va **eliminato dopo il merge in `main`** (locale e remoto). Il release rimane riferito solo dal tag git.
+9. Ogni nuovo lavoro riparte sempre da `main`.
 
 ## Convenzioni
 

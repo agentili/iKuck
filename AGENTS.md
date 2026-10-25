@@ -89,7 +89,7 @@ npm run verify
 
 ## Release verso produzione
 
-Before releasing a change to production, follow the release procedure in `docs/production-readiness.md` (runbook: variable contract, pre-deploy validation, staging, backup/restore/rollback, release criteria). The Git branching and tagging rules are defined in `docs/git-release-policy.md`. Do not push or deploy automatically: create a commit and tag only when the release plan requests it.
+Before releasing a change to production, follow the release procedure in `docs/production-readiness.md` (runbook: variable contract, pre-deploy validation, staging, backup/restore/rollback, release criteria). The Git branching and tagging rules are defined in `docs/git-release-policy.md`. After a branch is merged into `main`, delete it (local and remote): the release is referenced only by the git tag, and all new work restarts from `main`. Do not push or deploy automatically: create a commit and tag only when the release plan requests it.
 
 ## Pitfalls
 
