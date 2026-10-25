@@ -56,6 +56,17 @@ Se un passo fallisce: fermarsi, correggere, ricommettere e rientrare dalla Fase 
 3. **Se la CI fallisce:** analizzare l'errore, creare il fix nel branch di release, ricommettere (rientro Fase 2), spingere l'aggiornamento della PR e rieseguire dalla Fase 5. Non procedere finché la CI non è verde.
 4. Se ci sono richieste di modifica dalla review: applicarle, rientrare dalla Fase 2.
 
+### Fase 5.5 — Merge su GitHub e pull di main aggiornato
+
+1. Effettuare il merge della PR su GitHub:
+   - via UI GitHub (pulsante "Merge pull request"), oppure
+   - via CLI: `gh pr merge <numero> --merge --admin` (se si hanno i permessi per bypassare i check protetti).
+2. Se il merge è bloccato da branch protection (status check richiesti inesistenti o falliti), chiedere all'utente di approvare il merge via UI o di disabilitare temporaneamente la protezione del branch `main`.
+3. Dopo il merge, portare `main` allineata localmente:
+   - `git checkout main`
+   - `git pull origin main`
+   - Verificare che il commit di merge sia presente in `git log --oneline -2`.
+
 ### Fase 6 — Deploy in stage e verifica stabilità
 
 Solo se la Fase 5 (CI verde) è andata a buon fine.
