@@ -87,6 +87,10 @@ npm run verify
 - Do not merge or push automatically. Create a commit and tag only when the current plan's workflow requests it.
 - Before claiming completion, run the verification command and inspect `git diff --check` and `git status --short`.
 
+## Release verso produzione
+
+Before releasing a change to production, follow the release procedure in `docs/production-readiness.md` (runbook: variable contract, pre-deploy validation, staging, backup/restore/rollback, release criteria). Do not push or deploy automatically: create a commit and tag only when the release plan requests it.
+
 ## Pitfalls
 
 - `npm run verify` is PowerShell (`scripts/verify-repository.ps1`); it needs `pwsh` on Linux and aborts with exit code 2 when `node_modules` is missing in either package.
