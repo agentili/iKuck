@@ -7,6 +7,12 @@ export type IngredientCategory =
   | 'legume'
   | 'vegetable'
   | 'dairy'
+  | 'fruit'
+  | 'nuts'
+  | 'spice'
+  | 'sweet'
+  | 'drink'
+  | 'baking'
   | 'other';
 
 export interface IngredientDefinition {
@@ -91,6 +97,13 @@ const CATEGORY_KEYWORDS: Record<Exclude<IngredientCategory, 'other'>, string[]> 
     'panna', 'yogurt', 'crema di latte', 'formaggino', 'caciotta', 'fontina',
     'provola', 'scamorza', 'asiago', 'taleggio', 'feta',
   ],
+  fruit: [
+    'limone', 'limoni', 'lime', 'arancia', 'arance', 'mandarino', 'pompelmo',
+    'cedro', 'mela', 'mele', 'pera', 'pere', 'pesca', 'albicocca', 'prugna',
+    'ciliegia', 'fragola', 'lampone', 'mirtillo', 'mora', 'uva', 'fico',
+    'fichi', 'kiwi', 'banana', 'ananas', 'mango', 'papaya', 'avocado', 'cocco',
+    'melone', 'anguria',
+  ],
   meat: [
     'pollo', 'tacchino', 'manzo', 'maiale', 'vitello', 'agnello', 'capra',
     'cinghiale', 'cervo', 'pancetta', 'guanciale', 'prosciutto', 'salame',
@@ -118,11 +131,7 @@ const CATEGORY_KEYWORDS: Record<Exclude<IngredientCategory, 'other'>, string[]> 
     'spaghetti', 'fusilli', 'tagliatelle',
   ],
   vegetable: [
-    'limone', 'limoni', 'lime', 'arancia', 'arance', 'mandarino', 'pompelmo',
-    'cedro', 'mela', 'mele', 'pera', 'pere', 'pesca', 'albicocca', 'prugna',
-    'ciliegia', 'fragola', 'lampone', 'mirtillo', 'mora', 'uva', 'fico',
-    'fichi', 'kiwi', 'banana', 'ananas', 'mango', 'papaya', 'avocado', 'cocco',
-    'melone', 'anguria', 'pomodoro', 'pomodori', 'pomodorino', 'pomodorini',
+    'pomodoro', 'pomodori', 'pomodorino', 'pomodorini',
     'melanzana', 'melanzane', 'zucchina', 'zucchine', 'zucca', 'carota',
     'carote', 'cipolla', 'cipolle', 'aglio', 'sedano', 'prezzemolo', 'basilico',
     'spinaci', 'rucola', 'lattuga', 'indivia', 'scarola', 'songino', 'valeriana',
@@ -135,6 +144,25 @@ const CATEGORY_KEYWORDS: Record<Exclude<IngredientCategory, 'other'>, string[]> 
     'sale', 'pepe', 'olio', 'aceto', 'zucchero', 'lievito', 'bicarbonato',
     'brodo', 'dado', 'senape', 'ketchup', 'maionese', 'salsa di soia',
     'miele', 'marmellata',
+  ],
+  nuts: [
+    'noci', 'mandorle', 'nocciole', 'pinoli', 'pistacchi', 'anacardi',
+    'arachidi', 'uvetta', 'datteri', 'prugne secche', 'albicocche secche',
+    'noci di macadamia', 'noci pecan', 'castagne',
+  ],
+  spice: [
+    'curcuma', 'curry', 'paprika', 'cumino', 'cannella', 'zenzero',
+    'noce moscata', 'chiodi di garofano', 'cardamomo', 'zafferano',
+  ],
+  sweet: [
+    'cacao', 'cioccolato', 'vaniglia', 'caramello', 'sciroppo d acero',
+    'zucchero di canna', 'zucchero a velo',
+  ],
+  drink: [
+    'vino', 'birra', 'caffè', 'tè', 'camomilla',
+  ],
+  baking: [
+    'cremor tartaro', 'lievito per dolci', 'lievito di birra',
   ],
 };
 
