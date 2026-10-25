@@ -1,6 +1,7 @@
 import {
   DEFAULT_STAPLE_IDS,
   getIngredient,
+  inferIngredientCategory,
   normalizeIngredientName,
   parseIngredientInput,
 } from '@ikuck/shared/ingredients';
@@ -42,5 +43,24 @@ describe('ingredient domain', () => {
 
   it('returns undefined for an ingredient outside the catalog', () => {
     expect(getIngredient('not-real')).toBeUndefined();
+  });
+
+  it('infers a category for unknown ingredients by name', () => {
+    expect(inferIngredientCategory('Ricotta')).toBe('dairy');
+    expect(inferIngredientCategory('Petto di pollo')).toBe('meat');
+    expect(inferIngredientCategory('Salmone')).toBe('fish');
+    expect(inferIngredientCategory('Uova')).toBe('egg');
+    expect(inferIngredientCategory('Ceci')).toBe('legume');
+    expect(inferIngredientCategory('Pasta integrale')).toBe('grain');
+    expect(inferIngredientCategory('Zucchine')).toBe('vegetable');
+    expect(inferIngredientCategory('Sale')).toBe('staple');
+    expect(inferIngredientCategory('Bresaola')).toBe('meat');
+    expect(inferIngredientCategory('Formaggio stagionato')).toBe('dairy');
+  });
+
+  it('returns undefined for a name that matches no category', () => {
+    expect(inferIngredientCategory('Tempeh')).toBeUndefined();
+    expect(inferIngredientCategory('')).toBeUndefined();
+    expect(inferIngredientCategory('   ')).toBeUndefined();
   });
 });

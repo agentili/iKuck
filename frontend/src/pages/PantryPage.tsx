@@ -9,7 +9,7 @@ import PantryLotsPanel from '../components/pantry/PantryLotsPanel';
 import StaplesPanel from '../components/pantry/StaplesPanel';
 import EmptyState from '../components/ui/EmptyState';
 import PageSection from '../components/ui/PageSection';
-import { getIngredient, registerIngredient, type IngredientCategory } from '@ikuck/shared/ingredients';
+import { getIngredient, inferIngredientCategory, registerIngredient, type IngredientCategory } from '@ikuck/shared/ingredients';
 import type { IngredientDefinition, ParsedIngredient } from '../domain/types';
 import {
   hydratePantryStore,
@@ -49,12 +49,18 @@ const blockingPersistenceStates: readonly PersistenceState[] = ['memory-only', '
 
 const PANTRY_CATEGORY_ORDER: readonly IngredientCategory[] = [
   'vegetable',
+  'fruit',
+  'nuts',
   'meat',
   'fish',
   'grain',
   'egg',
   'legume',
   'dairy',
+  'spice',
+  'sweet',
+  'drink',
+  'baking',
   'staple',
   'other',
 ];
@@ -67,7 +73,13 @@ const CATEGORY_LABELS: Record<IngredientCategory, string> = {
   egg: 'Uova',
   legume: 'Legumi',
   vegetable: 'Verdura',
+  fruit: 'Frutta',
+  nuts: 'Frutta secca',
   dairy: 'Latticini e formaggi',
+  spice: 'Spezie',
+  sweet: 'Dolci e dolcificanti',
+  drink: 'Bevande',
+  baking: 'Lievitanti',
   other: 'Altri ingredienti',
 };
 
@@ -182,7 +194,7 @@ export default function PantryPage() {
   const groupedPantryItems = useMemo<PantryCategoryGroup[]>(() => {
     const byCategory = new Map<IngredientCategory | 'other', ParsedIngredient[]>();
     for (const item of pantryItems) {
-      const category = getIngredient(item.id)?.category ?? 'other';
+      const category = getIngredient(item.id)?.category ?? inferIngredientCategory(item.label) ?? 'other';
       const bucket = byCategory.get(category);
       if (bucket === undefined) {
         byCategory.set(category, [item]);

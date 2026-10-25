@@ -57,6 +57,27 @@ npm --prefix backend run test:integration
 
 Run Docker integration and standalone environments with dedicated Compose project names. Never remove production volumes as a debugging step. Record skipped production/provider/recovery checks as not verified.
 
+## Dev environment
+
+- Frontend: `cd frontend && npm run dev` — Vite on `http://localhost:5173`, proxies `/v1/*` to `http://127.0.0.1:3000`; `npm run build` emits `dist/` and `/version.json` (`VITE_BUILD_ID` defaults to the short Git SHA).
+- Backend: `cd backend && npm run dev` — requires Node ≥24, loads `backend/.env` if present, serves `http://127.0.0.1:3000`; `GET /healthz` is the readiness endpoint. `npm run build` emits to `dist/`; apply migrations with `npm run db:migrate` after building.
+- Full local stack: `docker compose -f compose.dev.yml up --build` (API on :3000, PostgreSQL, Redis).
+
+## Exact commands (verified from package.json)
+
+```powershell
+npm --prefix frontend run dev
+npm --prefix frontend run build
+npm --prefix frontend run lint
+npm --prefix frontend run test
+npm --prefix backend run dev
+npm --prefix backend run build
+npm --prefix backend run lint
+npm --prefix backend run test
+npm --prefix backend run test:integration
+npm run verify
+```
+
 ## Change conventions
 
 - Work in the requested isolated branch/worktree; preserve unrelated edits and untracked user files.
@@ -65,3 +86,15 @@ Run Docker integration and standalone environments with dedicated Compose projec
 - Prefer same-origin relative API paths and keep secrets out of source, logs, tests and reports.
 - Do not merge or push automatically. Create a commit and tag only when the current plan's workflow requests it.
 - Before claiming completion, run the verification command and inspect `git diff --check` and `git status --short`.
+
+## Release verso produzione
+
+Before releasing a change to production, follow the release procedure in `docs/production-readiness.md` (runbook: variable contract, pre-deploy validation, staging, backup/restore/rollback, release criteria). The Git branching and tagging rules are defined in `docs/git-release-policy.md`. After a branch is merged into `main`, delete it (local and remote): the release is referenced only by the git tag, and all new work restarts from `main`. Do not push or deploy automatically: create a commit and tag only when the release plan requests it.
+
+## Pitfalls
+
+- `npm run verify` is PowerShell (`scripts/verify-repository.ps1`); it needs `pwsh` on Linux and aborts with exit code 2 when `node_modules` is missing in either package.
+- Offline E2E (`npm --prefix frontend run test:e2e`) builds the app and serves it via preview on `:4173`; override with `IKUCK_PLAYWRIGHT_PREVIEW_PORT` on port clash.
+- `npm --prefix frontend run test:e2e:live` requires `E2E_BASE_URL`; `E2E_PRODUCTION=true` additionally requires HTTPS `E2E_BASE_URL` and cannot be combined with `E2E_LIVE`.
+- Backend integration tests run against live PostgreSQL/Redis (`deploy/docker-compose.integration.yml` defaults to ports 55432/56379) and are skipped without both integration env vars.
+- Do not hand-edit generated files: `frontend/dist/`, `backend/dist/`, `/version.json`.

@@ -567,7 +567,8 @@ describe('PantryPage', () => {
     expect(within(group('Pasta e cereali')).getByText('Pasta')).toBeVisible();
     expect(within(group('Pasta e cereali')).getByText('Riso')).toBeVisible();
     expect(within(group('Latticini e formaggi')).getByText('Parmigiano')).toBeVisible();
-    expect(within(group('Altri ingredienti')).getByText('Aceto balsamico')).toBeVisible();
+    expect(within(group('Ingredienti di base')).getByText('Aceto balsamico')).toBeVisible();
+    expect(within(pantry).queryByRole('heading', { name: 'Altri ingredienti' })).toBeNull();
   });
 
   it('mette gli ingredienti sconosciuti nel sottogruppo Altri ingredienti', () => {
