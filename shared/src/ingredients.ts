@@ -79,6 +79,85 @@ export const normalizeIngredientName = (value: string): string =>
     .replace(/\s+/g, ' ')
     .toLowerCase();
 
+/**
+ * Parole chiave (italiano, già normalizzate) usate per dedurre la categoria di
+ * un ingrediente che non è nel catalogo base: evita di lasciare senza
+ * categoria ingredienti della dispensa comunque riconoscibili.
+ */
+const CATEGORY_KEYWORDS: Record<Exclude<IngredientCategory, 'other'>, string[]> = {
+  dairy: [
+    'latte', 'formaggio', 'ricotta', 'mozzarella', 'parmigiano', 'grana',
+    'pecorino', 'gorgonzola', 'stracchino', 'robiola', 'mascarpone', 'burro',
+    'panna', 'yogurt', 'crema di latte', 'formaggino', 'caciotta', 'fontina',
+    'provola', 'scamorza', 'asiago', 'taleggio', 'feta',
+  ],
+  meat: [
+    'pollo', 'tacchino', 'manzo', 'maiale', 'vitello', 'agnello', 'capra',
+    'cinghiale', 'cervo', 'pancetta', 'guanciale', 'prosciutto', 'salame',
+    'salsiccia', 'wurstel', 'speck', 'bresaola', 'carne', 'macinato',
+    'straccetti', 'petto', 'fettine', 'bistecca', 'costolette', 'cotoletta',
+    'arrosto', 'spezzatino', 'luganega', 'mortadella',
+  ],
+  fish: [
+    'tonno', 'salmone', 'merluzzo', 'orata', 'spigola', 'trota', 'gambero',
+    'calamaro', 'seppia', 'polpo', 'cozze', 'vongole', 'pesce', 'nasello',
+    'sgombro', 'acciuga', 'alici', 'sarde', 'aringa', 'coda di rospo',
+    'scampi', 'astice', 'aragosta', 'granchio', 'sogliola', 'rombo', 'dentice',
+    'pesce spada',
+  ],
+  egg: ['uovo', 'uova'],
+  legume: [
+    'ceci', 'lenticchia', 'lenticchie', 'fagiolo', 'fagioli', 'pisello',
+    'piselli', 'fava', 'fave', 'cicerchia', 'lupino', 'lupini', 'soia',
+    'edamame', 'legumi',
+  ],
+  grain: [
+    'pasta', 'riso', 'couscous', 'pangrattato', 'farina', 'semola', 'grano',
+    'mais', 'orzo', 'farro', 'quinoa', 'miglio', 'segale', 'avena', 'pane',
+    'cracker', 'grissini', 'polenta', 'gnocchi', 'lasagne', 'penne',
+    'spaghetti', 'fusilli', 'tagliatelle',
+  ],
+  vegetable: [
+    'limone', 'limoni', 'lime', 'arancia', 'arance', 'mandarino', 'pompelmo',
+    'cedro', 'mela', 'mele', 'pera', 'pere', 'pesca', 'albicocca', 'prugna',
+    'ciliegia', 'fragola', 'lampone', 'mirtillo', 'mora', 'uva', 'fico',
+    'fichi', 'kiwi', 'banana', 'ananas', 'mango', 'papaya', 'avocado', 'cocco',
+    'melone', 'anguria', 'pomodoro', 'pomodori', 'pomodorino', 'pomodorini',
+    'melanzana', 'melanzane', 'zucchina', 'zucchine', 'zucca', 'carota',
+    'carote', 'cipolla', 'cipolle', 'aglio', 'sedano', 'prezzemolo', 'basilico',
+    'spinaci', 'rucola', 'lattuga', 'indivia', 'scarola', 'songino', 'valeriana',
+    'ravanello', 'rapa', 'barbabietola', 'cetriolo', 'cetrioli', 'peperone',
+    'peperoni', 'peperoncino', 'funghi', 'asparagi', 'broccoli', 'cavolfiore',
+    'cavolo', 'verza', 'bietole', 'carciofo', 'carciofi', 'porro', 'scalogno',
+    'rosmarino', 'salvia', 'timo', 'origano', 'menta', 'alloro',
+  ],
+  staple: [
+    'sale', 'pepe', 'olio', 'aceto', 'zucchero', 'lievito', 'bicarbonato',
+    'brodo', 'dado', 'senape', 'ketchup', 'maionese', 'salsa di soia',
+    'miele', 'marmellata',
+  ],
+};
+
+/**
+ * Dedice la categoria di un ingrediente sconosciuto a partire dal nome, così
+ * la dispensa non lo lascia più in 'other' quando è riconoscibile.
+ */
+export const inferIngredientCategory = (value: string): IngredientCategory | undefined => {
+  const normalized = normalizeIngredientName(value);
+  if (!normalized) return undefined;
+
+  const words = new Set(normalized.split(/\s+/));
+  const contains = (phrase: string): boolean => normalized.includes(phrase);
+
+  for (const category of Object.keys(CATEGORY_KEYWORDS) as (Exclude<IngredientCategory, 'other'>)[]) {
+    const keywords = CATEGORY_KEYWORDS[category];
+    if (keywords.some((keyword) => keyword.includes(' ') ? contains(keyword) : words.has(keyword))) {
+      return category;
+    }
+  }
+  return undefined;
+};
+
 const ingredientsById = new Map(INGREDIENTS.map((ingredient) => [ingredient.id, ingredient]));
 const ingredientsByAlias = new Map<string, IngredientDefinition>();
 
