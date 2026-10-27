@@ -41,6 +41,7 @@ export default defineConfig({
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(versionMetadata.version),
     'import.meta.env.VITE_BUILD_ID': JSON.stringify(versionMetadata.buildId),
+    'import.meta.env.VITE_SOUS_CHEF': JSON.stringify(process.env.VITE_SOUS_CHEF ?? 'false'),
   },
   server: {
     proxy: {
