@@ -1,0 +1,1 @@
+export { RecipeDetailModal } from './RecipeDetailModal';

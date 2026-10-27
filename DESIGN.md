@@ -27,6 +27,35 @@ colors:
   recipeCategory: "#FCD34D"
   darkRecipeCategory: "#725000"
   darkWarnInk: "#F2CA7A"
+  # SOUS-CHEF extensions (warm/soft palette for chat UI)
+  cream: "#FEFEF8"
+  peach: "#FFE4D0"
+  peachSoft: "#FFF0E8"
+  apricot: "#F8C8A0"
+  apricotSoft: "#FDEFE0"
+  terracotta: "#E8A078"
+  terracottaStrong: "#D48C64"
+  coral: "#F0A080"
+  coralSoft: "#FDE8E0"
+  honey: "#F0D080"
+  honeySoft: "#FDF8E0"
+  chatInk: "#3D3530"
+  chatInkSoft: "#6B635B"
+  chatInkFaint: "#A8A098"
+  darkCream: "#2D2824"
+  darkPeach: "#5C4A3D"
+  darkPeachSoft: "#4A3D33"
+  darkApricot: "#C88A5C"
+  darkApricotSoft: "#5C4333"
+  darkTerracotta: "#E8A078"
+  darkTerracottaStrong: "#D48C64"
+  darkCoral: "#E89474"
+  darkSageSoft: "#2D4A33"
+  darkHoney: "#D4B85C"
+  darkHoneySoft: "#4A4333"
+  darkChatInk: "#F5F0E8"
+  darkChatInkSoft: "#C8C0B8"
+  darkChatInkFaint: "#8A827A"
 typography:
   h1:
     fontFamily: "Bricolage Grotesque Variable, system-ui, sans-serif"
@@ -45,10 +74,33 @@ typography:
     fontSize: "1rem"
     fontWeight: 450
     lineHeight: 1.55
+  # SOUS-CHEF chat typography
+  chat-title:
+    fontFamily: "Outfit, system-ui, sans-serif"
+    fontSize: "1.5rem"
+    fontWeight: 700
+    lineHeight: 1.2
+  chat-body:
+    fontFamily: "DM Sans, system-ui, sans-serif"
+    fontSize: "1rem"
+    fontWeight: 450
+    lineHeight: 1.55
+  chat-bubble:
+    fontFamily: "DM Sans, system-ui, sans-serif"
+    fontSize: "0.9375rem"
+    fontWeight: 400
+    lineHeight: 1.5
+  chat-quick-reply:
+    fontFamily: "DM Sans, system-ui, sans-serif"
+    fontSize: "0.8125rem"
+    fontWeight: 500
+    lineHeight: 1.4
 rounded:
   control: "12px"
   panel: "20px"
   feature: "28px"
+  bubble: "20px"
+  pill: "100px"
 spacing:
   xs: "4px"
   sm: "8px"
@@ -151,6 +203,65 @@ components:
     textColor: "{colors.darkInk}"
     rounded: "{rounded.panel}"
     padding: "16px"
+  # SOUS-CHEF chat components
+  chat-bubble-assistant:
+    backgroundColor: "{colors.cream}"
+    textColor: "{colors.chatInk}"
+    rounded: "{rounded.bubble}"
+    padding: "14px 18px"
+    border: "1px solid {colors.peachSoft}"
+    borderBottomLeftRadius: "6px"
+    boxShadow: "0 2px 16px rgba(61,53,48,0.05)"
+  chat-bubble-user:
+    backgroundColor: "{colors.terracotta}"
+    textColor: "{colors.cream}"
+    rounded: "{rounded.bubble}"
+    padding: "14px 18px"
+    borderBottomRightRadius: "6px"
+  chat-bubble-recipe:
+    backgroundColor: "{colors.cream}"
+    textColor: "{colors.chatInk}"
+    rounded: "{rounded.feature}"
+    padding: "0"
+    border: "1px solid {colors.peachSoft}"
+    boxShadow: "0 8px 32px rgba(61,53,48,0.07)"
+  chat-bubble-error:
+    backgroundColor: "{colors.coralSoft}"
+    textColor: "{colors.terracotta}"
+    rounded: "{rounded.panel}"
+    padding: "12px 16px"
+  chat-quick-reply:
+    backgroundColor: "{colors.peachSoft}"
+    textColor: "{colors.terracotta}"
+    border: "1px solid {colors.apricotSoft}"
+    rounded: "{rounded.pill}"
+    padding: "10px 16px"
+    fontSize: "13px"
+    fontWeight: 500
+  chat-input-bar:
+    backgroundColor: "{colors.cream}"
+    border: "1px solid {colors.peachSoft}"
+    rounded: "16px"
+    padding: "2px"
+  chat-day-indicator:
+    backgroundColor: "{colors.peachSoft}"
+    textColor: "{colors.terracotta}"
+    rounded: "{rounded.pill}"
+    padding: "10px 18px"
+  chat-badge:
+    backgroundColor: "{colors.terracotta}"
+    textColor: "{colors.cream}"
+    rounded: "{rounded.pill}"
+    padding: "6px 12px"
+    fontSize: "11px"
+    fontWeight: 700
+  chat-day-dot:
+    width: "10px"
+    height: "10px"
+    borderRadius: "50%"
+    backgroundColor: "{colors.terracotta}"
+  chat-day-dot-dim:
+    backgroundColor: "{colors.chatInkFaint}"
 ---
 
 # Overview

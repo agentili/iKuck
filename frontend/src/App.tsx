@@ -3,7 +3,13 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { useAuthStore } from './auth/authStore';
 import { useHouseStore } from './house/houseStore';
 import AppHeader from './components/layout/AppHeader';
+import { BottomNav } from './components/layout/BottomNav';
+import { SimplifiedHeader } from './components/layout/SimplifiedHeader';
+import { ProfileModal } from './components/layout/ProfileModal';
 import HomePage from './pages/HomePage';
+import ChatPage from './pages/ChatPage';
+import DiscoverPage from './pages/DiscoverPage';
+import SavedPage from './pages/SavedPage';
 import RecipeDetailPage from './pages/RecipeDetailPage';
 import ProfilePage from './pages/ProfilePage';
 import HousePage from './pages/HousePage';
@@ -26,6 +32,7 @@ import { hydrateActivityStore } from './store/activityStore';
 import { hydrateDietProfileStore } from './store/dietProfileStore';
 import { hydratePantryStore } from './store/localPantryStore';
 import { usePantryMergeNoticeStore } from './store/pantryMergeNoticeStore';
+import { isSousChef, isBottomNav, isSimplifiedHeader } from './config/features';
 
 const readVerifiedSession = (): SyncSession | null => {
   const { user, csrfToken } = useAuthStore.getState();
@@ -61,6 +68,7 @@ export default function App() {
   const [readySessionKey, setReadySessionKey] = useState<string | null>(null);
   const [scopeInitializationFailed, setScopeInitializationFailed] = useState(false);
   const [scopeRetryCount, setScopeRetryCount] = useState(0);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const verifiedSession = user !== null && csrfToken !== null && user.emailVerifiedAt !== '';
   const currentSessionKey = verifiedSession ? `${user.id}:${csrfToken}` : 'guest';
 
@@ -188,6 +196,70 @@ export default function App() {
     return <div className="app-shell min-h-screen" role="status">Caricamento dati…</div>;
   }
 
+  // Feature flag: SOUS-CHEF UI
+  if (isSousChef()) {
+    return (
+      <BrowserRouter>
+        <div className="sous-chef-shell min-h-screen bg-[var(--sc-cream)]">
+          {/* Simplified Header */}
+          {isSimplifiedHeader() && (
+            <SimplifiedHeader onMenuClick={() => setIsProfileModalOpen(true)} />
+          )}
+          
+          {/* Profile Modal */}
+          <ProfileModal 
+            isOpen={isProfileModalOpen} 
+            onClose={() => setIsProfileModalOpen(false)} 
+          />
+
+          {/* Main Content with padding for header and bottom nav */}
+          <main 
+            id="main-content" 
+            className={`sous-chef-main min-h-screen ${
+              isBottomNav() ? 'pb-20' : 'pb-8'
+            } ${
+              isSimplifiedHeader() ? 'pt-16' : 'pt-0'
+            }`}
+          >
+            <Routes>
+              {/* SOUS-CHEF Routes */}
+              <Route path="/" element={<ChatPage />} />
+              <Route path="/discover" element={<DiscoverPage />} />
+              <Route path="/saved" element={<SavedPage />} />
+              
+              {/* Existing Routes (preserved) */}
+              <Route path="/recipes" element={<RecipesPage />} />
+              <Route path="/recipes/:recipeId" element={<RecipeDetailPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/house" element={<HousePage />} />
+              <Route path="/pantry" element={<PantryPage />} />
+              <Route path="/shopping-list" element={<ShoppingListPage />} />
+              <Route path="/activity" element={<ActivityPage />} />
+              <Route path="/dinner-diary" element={<DinnerDiaryPage />} />
+              <Route path="/verify-email" element={<VerifyEmailPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="*" element={<NotFoundPage resource="page" />} />
+            </Routes>
+          </main>
+
+          {/* Bottom Navigation */}
+          {isBottomNav() && <BottomNav />}
+
+          {/* Pantry Merge Notice */}
+          {(pantryMergeSummary !== null || pantryMergeFailed) && (
+            <PantryMergeNotice
+              summary={pantryMergeSummary}
+              guestMergeFailed={pantryMergeFailed}
+              onDismiss={() => usePantryMergeNoticeStore.getState().clear()}
+            />
+          )}
+        </div>
+      </BrowserRouter>
+    );
+  }
+
+  // Legacy UI (original iKuck)
   return (
     <BrowserRouter>
       <div className="app-shell min-h-screen">
