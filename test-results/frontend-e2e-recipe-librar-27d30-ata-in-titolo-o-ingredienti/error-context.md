@@ -1,0 +1,217 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: frontend/e2e/recipe-library.spec.ts >> ricerca «orata»: restano solo le ricette con orata in titolo o ingredienti
+- Location: frontend/e2e/recipe-library.spec.ts:88:1
+
+# Error details
+
+```
+Error: page.goto: Protocol error (Page.navigate): Cannot navigate to invalid URL
+Call log:
+  - navigating to "/recipes", waiting until "load"
+
+```
+
+# Test source
+
+```ts
+  1   | import AxeBuilder from '@axe-core/playwright';
+  2   | import { expect, test, type Page } from '@playwright/test';
+  3   | import {
+  4   |   assertOfflineBackendClean,
+  5   |   installOfflineBackend,
+  6   |   type OfflineApiResponse,
+  7   | } from './helpers/backendMode';
+  8   | 
+  9   | const themePreferenceKey = 'ikuck-color-theme';
+  10  | 
+  11  | const verifiedSession = {
+  12  |   authenticated: true,
+  13  |   user: {
+  14  |     id: 'recipes-user-1',
+  15  |     email: 'ale@example.com',
+  16  |     emailVerifiedAt: '2026-09-12T10:00:00.000Z',
+  17  |   },
+  18  |   csrfToken: 'recipes-csrf-1',
+  19  |   expiresAt: '2026-10-12T12:00:00.000Z',
+  20  | } as const;
+  21  | 
+  22  | const savedRecipes = [
+  23  |   {
+  24  |     id: 'saved-orata-al-forno',
+  25  |     source: 'ai',
+  26  |     title: 'Orata al forno',
+  27  |     description: 'Orata al forno con patate e rosmarino.',
+  28  |     ingredients: [
+  29  |       { name: 'orata', amount: '1 intera' },
+  30  |       { name: 'patate', amount: '400 g' },
+  31  |       { name: 'rosmarino', amount: 'q.b.' },
+  32  |     ],
+  33  |     steps: [
+  34  |       'Pulisci l’orata, salala e disponila in una teglia.',
+  35  |       'Aggiungi patate a spicchi, olio e rosmarino.',
+  36  |       'Cuoci in forno statico a 200 °C per 25 minuti.',
+  37  |     ],
+  38  |     diets: [],
+  39  |     allergens: [],
+  40  |     createdAt: '2026-09-20T18:00:00.000Z',
+  41  |     updatedAt: '2026-09-20T18:00:00.000Z',
+  42  |   },
+  43  |   {
+  44  |     id: 'saved-pollo-al-forno',
+  45  |     source: 'ai',
+  46  |     title: 'Pollo al forno',
+  47  |     description: 'Bocconcini di pollo rosolati al forno.',
+  48  |     ingredients: [
+  49  |       { name: 'pollo', amount: '400 g' },
+  50  |       { name: 'limone', amount: '1' },
+  51  |     ],
+  52  |     steps: ['Rosola il pollo in padella.', 'Completa in forno con il succo di limone.'],
+  53  |     diets: [],
+  54  |     allergens: [],
+  55  |     createdAt: '2026-09-19T18:00:00.000Z',
+  56  |     updatedAt: '2026-09-19T18:00:00.000Z',
+  57  |   },
+  58  | ];
+  59  | 
+  60  | const installVerifiedBackend = async (
+  61  |   page: Page,
+  62  |   extraResponses: Record<string, OfflineApiResponse> = {},
+  63  | ): Promise<void> => {
+  64  |   await installOfflineBackend(page, {
+  65  |     responses: {
+  66  |       'GET /v1/auth/session': { status: 200, json: verifiedSession },
+  67  |       'GET /v1/house': { status: 200, json: { house: null } },
+  68  |       'GET /v1/sync': { status: 200, json: { changes: [], nextCursor: 0 } },
+  69  |       'POST /v1/sync': {
+  70  |         status: 200,
+  71  |         json: { uploaded: 0, downloaded: 0, pending: 0, complete: true },
+  72  |       },
+  73  |       'GET /v1/ai-recipes': { status: 200, json: { recipes: savedRecipes } },
+  74  |       ...extraResponses,
+  75  |     },
+  76  |   });
+  77  | };
+  78  | 
+  79  | test.beforeEach(async ({ context, page }) => {
+  80  |   await context.clearCookies();
+  81  |   await installOfflineBackend(page);
+  82  | });
+  83  | 
+  84  | test.afterEach(async ({ page }) => {
+  85  |   assertOfflineBackendClean(page);
+  86  | });
+  87  | 
+  88  | test('ricerca «orata»: restano solo le ricette con orata in titolo o ingredienti', async ({
+  89  |   page,
+  90  | }) => {
+  91  |   await installVerifiedBackend(page);
+> 92  |   await page.goto('/recipes');
+      |              ^ Error: page.goto: Protocol error (Page.navigate): Cannot navigate to invalid URL
+  93  |   await expect(page.getByRole('heading', { name: 'Ricette', exact: true })).toBeVisible();
+  94  | 
+  95  |   // Query vuota: elenco completo di salvate e catalogo.
+  96  |   await expect(page.getByRole('heading', { name: 'Orata al forno' })).toBeVisible();
+  97  |   await expect(page.getByRole('heading', { name: 'Pollo al forno' })).toBeVisible();
+  98  |   await expect(page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' })).toBeVisible();
+  99  | 
+  100 |   await page.getByRole('searchbox', { name: 'Cerca ricette' }).fill('orata');
+  101 | 
+  102 |   await expect(page.getByRole('heading', { name: 'Orata al forno' })).toBeVisible();
+  103 |   await expect(page.getByRole('heading', { name: 'Pollo al forno' })).toHaveCount(0);
+  104 |   await expect(page.getByRole('link', { name: /^Apri / })).toHaveCount(0);
+  105 | 
+  106 |   // Query vuota: torna l'elenco completo.
+  107 |   await page.getByRole('searchbox', { name: 'Cerca ricette' }).fill('');
+  108 |   await expect(page.getByRole('heading', { name: 'Pollo al forno' })).toBeVisible();
+  109 |   await expect(page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' })).toBeVisible();
+  110 | });
+  111 | 
+  112 | test('ricerca senza match: stato vuoto con CTA «Trova ricette»', async ({ page }) => {
+  113 |   await installVerifiedBackend(page);
+  114 |   await page.goto('/recipes');
+  115 |   await expect(page.getByRole('heading', { name: 'Ricette', exact: true })).toBeVisible();
+  116 |   await page.getByRole('searchbox', { name: 'Cerca ricette' }).fill('nessuna-corrispondenza');
+  117 |   await expect(
+  118 |     page.getByText(
+  119 |       'Nessuna ricetta trovata per «nessuna-corrispondenza». Prova un altro titolo o ingrediente.',
+  120 |     ),
+  121 |   ).toBeVisible();
+  122 |   const cta = page.getByRole('link', { name: 'Trova ricette' });
+  123 |   await expect(cta).toBeVisible();
+  124 |   await expect(cta).toHaveAttribute('href', '/');
+  125 | });
+  126 | 
+  127 | test('gruppo salvate: la card espandibile mostra ingredienti e procedimento', async ({
+  128 |   page,
+  129 | }) => {
+  130 |   await installVerifiedBackend(page);
+  131 |   await page.goto('/recipes');
+  132 |   const orataCard = page
+  133 |     .locator('article')
+  134 |     .filter({ has: page.getByRole('heading', { name: 'Orata al forno' }) });
+  135 |   await expect(orataCard).toBeVisible();
+  136 |   await expect(orataCard.getByRole('button', { name: 'Mostra dettagli' })).toBeVisible();
+  137 |   await orataCard.getByRole('button', { name: 'Mostra dettagli' }).click();
+  138 |   await expect(orataCard.getByRole('button', { name: 'Nascondi dettagli' })).toBeVisible();
+  139 |   await expect(orataCard.getByText('orata', { exact: true })).toBeVisible();
+  140 |   await expect(
+  141 |     orataCard.getByText('Cuoci in forno statico a 200 °C per 25 minuti.'),
+  142 |   ).toBeVisible();
+  143 | });
+  144 | 
+  145 | test('gruppo suggerite: la card apre /recipes/:recipeId', async ({ page }) => {
+  146 |   await installVerifiedBackend(page);
+  147 |   await page.goto('/recipes');
+  148 |   await page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' }).click();
+  149 |   await expect(page).toHaveURL('/recipes/pasta-tonno-pomodoro');
+  150 |   await expect(page.getByRole('heading', { name: 'Pasta tonno e pomodoro' })).toBeVisible();
+  151 | });
+  152 | 
+  153 | test('ospite: catalogo visibile, gruppo salvate con CTA accesso', async ({ page }) => {
+  154 |   // Nessuna sessione verificata: il backend offline di base risponde authenticated: false
+  155 |   // e la pagina non chiama fetchAiRecipes.
+  156 |   await page.goto('/recipes');
+  157 |   await expect(page.getByRole('heading', { name: 'Ricette', exact: true })).toBeVisible();
+  158 |   await expect(page.getByRole('heading', { name: 'Ricette suggerite' })).toBeVisible();
+  159 |   await expect(page.getByRole('heading', { name: 'Pasta tonno e pomodoro' })).toBeVisible();
+  160 |   await expect(page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' })).toBeVisible();
+  161 |   await expect(page.getByRole('heading', { name: 'Ricette AI riservate agli account verificati' })).toBeVisible();
+  162 |   const accessLink = page.getByRole('link', { name: 'Accedi al tuo account' });
+  163 |   await expect(accessLink).toBeVisible();
+  164 |   await expect(accessLink).toHaveAttribute('href', '/profile');
+  165 |   await expect(page.getByRole('button', { name: /Mostra dettagli/ })).toHaveCount(0);
+  166 | });
+  167 | 
+  168 | for (const theme of ['light', 'dark'] as const) {
+  169 |   test(`axe: zero violazioni su /recipes in modalità ${theme}`, async ({ page }) => {
+  170 |     await page.emulateMedia({ colorScheme: 'light' });
+  171 |     await page.addInitScript(
+  172 |       ({ key, preference }: { key: string; preference: 'light' | 'dark' }) => {
+  173 |         localStorage.setItem(key, preference);
+  174 |       },
+  175 |       { key: themePreferenceKey, preference: theme },
+  176 |     );
+  177 |     await installVerifiedBackend(page);
+  178 |     await page.goto('/recipes');
+  179 |     await expect(page.getByRole('heading', { name: 'Ricette', exact: true })).toBeVisible();
+  180 |     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+  181 | 
+  182 |     const results = await new AxeBuilder({ page }).analyze();
+  183 |     expect(results.violations, `${theme} axe violations on /recipes`).toEqual([]);
+  184 |   });
+  185 | }
+  186 | 
+  187 | test('nav: «Ricette» raggiungibile, nome accessibile completo, nessun overflow a 320px', async ({
+  188 |   page,
+  189 | }) => {
+  190 |   await page.setViewportSize({ width: 320, height: 700 });
+  191 |   await page.evaluate(() => {
+  192 |     document.documentElement.style.fontSize = '200%';
+```
