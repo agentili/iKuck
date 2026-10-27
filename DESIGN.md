@@ -1,45 +1,45 @@
 ---
 version: alpha
-name: iKuck cucina domestica
+name: A tavola
 description: "Un sistema locale-first per decidere cosa cucinare con ciò che è già in casa."
 colors:
-  primary: "#183028"
-  porcelain: "#FAFBF7"
-  basil: "#247A4A"
-  basilDark: "#165C35"
-  sage: "#E1ECE4"
-  mist: "#F1F3ED"
-  tomato: "#B9382A"
-  yolk: "#F2BE3E"
-  inkMuted: "#52665B"
-  darkPage: "#101613"
-  darkSurface: "#171E1A"
-  darkInk: "#E8EFE9"
-  darkInkMuted: "#9FB0A7"
-  darkBasil: "#45B877"
-  darkBasilDark: "#3AA16A"
-  darkSage: "#1C2823"
-  darkMist: "#1A211D"
-  darkYolkSoft: "#3A2F0E"
-  darkTomato: "#FF8A7A"
-  darkTomatoSoft: "#3A1512"
-  onYolk: "#183028"
-  recipeCategory: "#FCD34D"
-  darkRecipeCategory: "#725000"
-  darkWarnInk: "#F2CA7A"
+  porcelain: "#F7F7EC"
+  ink: "#364037"
+  basil: "#556C4D"
+  basilDark: "#556C4D"
+  berry: "#76643F"
+  berryDark: "#5C4E2E"
+  sage: "#E5ECDD"
+  mist: "#EEE7D5"
+  tomato: "#824D42"
+  tomatoDark: "#5D3D34"
+  ocean: "#496B73"
+  oceanSoft: "#E2EBEA"
+  purple: "#6C4A92"
+  purpleSoft: "#E5E8CD"
+  yolk: "#E6CC83"
+  inkMuted: "#5E685E"
+  darkPage: "#22241D"
+  darkSurface: "#2C2E25"
+  darkInk: "#F3F4E6"
+  darkInkMuted: "#C3C7B4"
+  darkBasil: "#DBC78D"
+  darkBasilDark: "#C4DDB1"
+  darkBerry: "#DBC78D"
+  darkBerryDark: "#ECDFB1"
+  darkBerrySoft: "#4A412B"
+  darkSage: "#333F2D"
+  darkMist: "#38362B"
+  darkTomato: "#DC967F"
+  darkTomatoDark: "#EFB6A2"
+  darkTomatoSoft: "#4A302B"
+  onYolk: "#22241D"
 typography:
-  h1:
-    fontFamily: "Bricolage Grotesque Variable, system-ui, sans-serif"
-    fontSize: "3.75rem"
-    fontWeight: 800
-    lineHeight: 1.04
-    letterSpacing: "-0.03em"
-  h2:
-    fontFamily: "Bricolage Grotesque Variable, system-ui, sans-serif"
-    fontSize: "2rem"
-    fontWeight: 800
-    lineHeight: 1.12
-    letterSpacing: "-0.02em"
+  display:
+    fontFamily: "Georgia, Times New Roman, serif"
+    fontSize: "clamp(2rem, 4vw, 2.75rem)"
+    fontWeight: 400
+    letterSpacing: "-0.04em"
   body-md:
     fontFamily: "Bricolage Grotesque Variable, system-ui, sans-serif"
     fontSize: "1rem"
@@ -55,160 +55,40 @@ spacing:
   md: "16px"
   lg: "24px"
   xl: "32px"
-components:
-  button-primary:
-    backgroundColor: "{colors.basil}"
-    textColor: "{colors.porcelain}"
-    rounded: "{rounded.control}"
-    padding: "12px 16px"
-    height: "48px"
-  button-primary-hover:
-    backgroundColor: "{colors.basilDark}"
-    textColor: "{colors.porcelain}"
-    rounded: "{rounded.control}"
-    padding: "12px 16px"
-    height: "48px"
-  action-panel:
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.porcelain}"
-    rounded: "{rounded.feature}"
-    padding: "16px"
-  recipe-hero-category:
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.recipeCategory}"
-  recipe-hero-category-dark:
-    backgroundColor: "{colors.darkInk}"
-    textColor: "{colors.darkRecipeCategory}"
-  ready-recipe:
-    backgroundColor: "{colors.sage}"
-    textColor: "{colors.primary}"
-    rounded: "{rounded.panel}"
-    padding: "16px"
-  one-purchase-recipe:
-    backgroundColor: "{colors.yolk}"
-    textColor: "{colors.onYolk}"
-    rounded: "{rounded.panel}"
-    padding: "16px"
-  error-action:
-    backgroundColor: "{colors.tomato}"
-    textColor: "{colors.porcelain}"
-    rounded: "{rounded.control}"
-    padding: "12px 16px"
-  quiet-surface:
-    backgroundColor: "{colors.mist}"
-    textColor: "{colors.inkMuted}"
-    rounded: "{rounded.panel}"
-    padding: "16px"
-  outlined-surface:
-    backgroundColor: "{colors.porcelain}"
-    textColor: "{colors.primary}"
-    rounded: "{rounded.panel}"
-    padding: "16px"
-  button-primary-dark:
-    backgroundColor: "{colors.darkBasil}"
-    textColor: "{colors.darkPage}"
-    rounded: "{rounded.control}"
-    padding: "12px 16px"
-    height: "48px"
-  button-primary-dark-hover:
-    backgroundColor: "{colors.darkBasilDark}"
-    textColor: "{colors.darkPage}"
-    rounded: "{rounded.control}"
-    padding: "12px 16px"
-    height: "48px"
-  action-panel-dark:
-    backgroundColor: "{colors.darkInk}"
-    textColor: "{colors.darkPage}"
-    rounded: "{rounded.feature}"
-    padding: "16px"
-  ready-recipe-dark:
-    backgroundColor: "{colors.darkSage}"
-    textColor: "{colors.darkInk}"
-    rounded: "{rounded.panel}"
-    padding: "16px"
-  one-purchase-recipe-dark:
-    backgroundColor: "{colors.darkYolkSoft}"
-    textColor: "{colors.darkWarnInk}"
-    rounded: "{rounded.panel}"
-    padding: "16px"
-  error-action-dark:
-    backgroundColor: "{colors.darkTomato}"
-    textColor: "{colors.darkPage}"
-    rounded: "{rounded.control}"
-    padding: "12px 16px"
-  error-surface-dark:
-    backgroundColor: "{colors.darkTomatoSoft}"
-    textColor: "{colors.darkTomato}"
-    rounded: "{rounded.panel}"
-    padding: "16px"
-  quiet-surface-dark:
-    backgroundColor: "{colors.darkMist}"
-    textColor: "{colors.darkInkMuted}"
-    rounded: "{rounded.panel}"
-    padding: "16px"
-  outlined-surface-dark:
-    backgroundColor: "{colors.darkSurface}"
-    textColor: "{colors.darkInk}"
-    rounded: "{rounded.panel}"
-    padding: "16px"
 ---
 
 # Overview
 
-iKuck is a local-first domestic kitchen tool. Its primary Home surface is **Operate**: someone should add ingredients and start a recipe search before exploring optional settings. Recipe results are **Compare** surfaces, while Profile and private AI recipes are **Configure** surfaces.
+A tavola is a local-first kitchen tool. Its default visual identity pairs soft pistachio cream with olive, lemon and muted tomato accents. The profile lets users choose among four palettes: Pistacchio e limone, Pesca e corallo, Lavanda e mirtillo, and Mare e terracotta.
 
-The visual language is practical and warm rather than restaurant-luxury or generic SaaS: deep green ink, paper-like porcelain, basil for actions, sage for ready-to-cook state, yolk for a single missing purchase, and tomato only for destructive or blocking states.
+# Colors and themes
 
-# Colors
+Pistacchio e limone is the default light palette: page #F7F7EC, ink #364037, olive #76643F, pistachio #E5ECDD, and lemon #E6CC83. The other palettes reuse the same semantic roles with peach/coral, lavender/blueberry, and sea/terracotta tones. Recipe categories retain their coordinated pastel surfaces.
 
-- **Ink / primary:** structural text, high-emphasis surfaces, and the recipe detail hero.
-- **Porcelain:** page background and readable surface text against dark ink.
-- **Basil:** the one high-emphasis action color; use for actions that create progress.
-- **Sage:** availability and completed/ready state; never use it as a warning.
-- **Yolk:** attention without alarm, specifically the one-purchase recipe path and keyboard focus ring.
-- **Tomato:** destructive, failed, or irreversible action only.
-- **Dark theme:** `html[data-theme='dark']` maps page/ink/surface to `{colors.darkPage}`, `{colors.darkInk}`, and `{colors.darkSurface}`; basil remains the progress action, while sage, mist, yolk, and tomato retain their existing meanings with dark-mode values.
-- **Recipe hero category:** use `{colors.recipeCategory}` on the light ink hero and `{colors.darkRecipeCategory}` on the inverted light hero surface to preserve readable contrast.
-- **Yolk contrast:** foreground on yolk stays `{colors.onYolk}` in both themes; warning copy and accent borders use the dedicated dark tokens rather than inheriting the inverted ink color.
-- **Mist and border:** quiet separation; do not stack shadows, glass, or gradients to fake depth.
+The dark theme has a coordinated set of low-glare page, surface, text and accent colors for each palette. Warning foregrounds and focus rings keep dedicated high-contrast tokens.
 
-The light palette is unchanged. Dark amber steps `#725000` / `#8A5700` and red-700 `#E35C5C` are tuned for contrast on inverted surfaces; use borders `#2B3630` / `#3F4D45`, the `#F5C451` keyboard ring, `#F2CA7A` warning text, and `#8A6A1E` accent borders with restrained black shadows.
+frontend/src/theme/palettes.css stores all four palette definitions. frontend/src/domain/colorPalette.ts owns their stable identifiers and the device-only preference API; profile settings save the choice and startup applies it before rendering. frontend/src/index.css maps the selected palette to --ik-* semantic tokens and Tailwind utility colors. frontend/src/theme-editorial.css owns layout and component presentation. Both themes retain color contrast when utility classes such as bg-white, text-gray-950, bg-emerald-700 and bg-amber-400 are used.
 
-# Typography
+# Typography and shapes
 
-Use Bricolage Grotesque Variable throughout. Headlines are compact, weighty, and left-aligned on product surfaces; body copy explains the next action in one or two sentences. Do not introduce a default system sans, a second display family, or decorative all-caps blocks beyond small scanning labels.
+Use Bricolage Grotesque Variable for interface copy. Use Georgia for the A tavola wordmark and editorial Home and page headings. Headlines are left-aligned and compact. Controls use 12px radii, panels use 20px, and major feature surfaces use 28px.
 
 # Layout
 
-Use a fluid single-column mobile flow with 16px side gutters and 44px minimum hit targets. The primary recipe action must remain above the fixed four-item mobile navigation at 390×844. At desktop widths use a fixed left sidebar with Cucina, Dispensa, Spesa and Diario; account/Profile/Casa stay in the sidebar footer. Optional pantry ideas, filters, lots, and staples use closed disclosures. Result groups separate ready recipes from recipes needing one purchase rather than mixing equal cards in an undifferentiated grid.
+Desktop uses a single horizontal header with the brand, Cucina, Ricette, Dispensa, Spesa and Diario. Account controls stay at the right of the header. Mobile uses a fixed five-item bottom navigation with safe-area clearance. The Home plate illustration and shortcuts are hidden on phones; the current recipe idea begins near the top of the page.
 
-# Elevation & Depth
+Account and recovery routes use centered, readable widths without forcing the viewport to full height. Shared sections, forms and dialogs use the same surface, border, control and focus tokens across routes.
 
-Use one restrained shadow for floating surfaces. Prefer border, spacing, and tonal background changes for hierarchy. No glassmorphism, gradient panels, or decorative icon tiles.
+# Component interface
 
-# Shapes
+- .ik-page is the shared page wrapper; .account-page narrows profile and house pages.
+- .auth-page centers authentication and recovery content without adding viewport-height space.
+- .editorial-panel gives a shared section or form panel its surface, border and radius.
+- .editorial-form lays out labels and controls consistently; .ik-input is the reusable single-control style.
+- .ik-button-primary is the filled progress action.
+- .ik-quick-add-dialog is the shared dialog surface.
+- .ik-surface--quiet is for secondary content, .ik-action-panel is for the recipe decision, and .ik-ai-panel retains the same palette for private account features.
 
-Controls use 12px radii, regular panels use 20px radii, and major action or feature surfaces use 28px radii. Pills are reserved for compact state counts and metadata, not whole sections.
+# Accessibility
 
-# Components
-
-- `button-primary` is the only standard filled action. It must have a visible focus ring and a 48px minimum height.
-- `action-panel` contains the recipe-search decision and uses ink with a yolk action.
-- `ready-recipe` identifies recipes that can be started now.
-- `one-purchase-recipe` identifies a recipe with one direct path to the shopping list.
-- `quiet-surface` holds secondary account or configuration content.
-- `outlined-surface` separates content without turning each block into a dashboard card.
-
-# Do's and Don'ts
-
-Do:
-- Put the action before optional controls.
-- State availability in plain language: “Hai tutto” or “Ti manca solo…”.
-- Use semantic status and route users directly to the next task.
-- Preserve keyboard focus, live-region feedback, safe-area clearance, and reduced-motion support.
-
-Don't:
-- Use violet/indigo to imply “AI”. Private AI is an account surface, not a new product brand.
-- Use a hero-plus-three-cards marketing composition on Home.
-- Center every section or add decorative statistics.
-- Make the primary action depend on scrolling past explanatory copy.
+Keep visible keyboard focus, 44px minimum touch targets, safe-area clearance, reduced-motion support, semantic status, and readable contrast in both themes. Avoid stacked shadows, glass effects and decorative gradients.

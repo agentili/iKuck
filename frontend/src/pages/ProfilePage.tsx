@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiClientError, apiRequest } from '../api/apiClient';
 import { getActiveDataScope, subscribeActiveDataScope } from '../sync/scopeContext';
@@ -9,6 +9,7 @@ import GoogleSignInButton from '../components/account/GoogleSignInButton';
 import { appVersion, buildId } from '../version';
 import { hasUnpersistedMotionPreference, isReducedMotionPreference, saveReducedMotionPreference } from '../domain/motionPreference';
 import { type ColorThemePreference, getColorThemePreference, hasUnpersistedColorTheme, saveColorThemePreference, subscribeColorTheme } from '../domain/colorTheme';
+import { COLOR_PALETTES, DEFAULT_COLOR_PALETTE, getColorPalettePreference, hasUnpersistedColorPalette, saveColorPalettePreference, subscribeColorPalette } from '../domain/colorPalette';
 import ErrorBanner from '../components/ui/ErrorBanner';
 import PageSection from '../components/ui/PageSection';
 
@@ -39,6 +40,43 @@ function ThemePreferenceControl() {
       {storageUnavailable
         ? <p role="status" className="mt-2 text-sm font-semibold text-amber-900">La scelta vale solo finché l’app resta aperta: questo browser non consente di salvarla.</p>
         : <p className="mt-2 text-sm text-gray-600">La scelta è conservata solo in questo browser; con Sistema segue il tema del dispositivo.</p>}
+    </section>
+  );
+}
+
+function ColorPalettePreferenceControl() {
+  const preference = useSyncExternalStore(subscribeColorPalette, getColorPalettePreference, () => DEFAULT_COLOR_PALETTE);
+  const storageUnavailable = useSyncExternalStore(subscribeColorPalette, hasUnpersistedColorPalette, () => false);
+
+  return (
+    <section aria-labelledby="color-palette-title" className="ik-surface ik-profile-surface mt-5 rounded-3xl border-2 p-5">
+      <h2 id="color-palette-title" className="text-xl font-black text-gray-950">Palette</h2>
+      <p className="mt-1 text-sm text-gray-600">Scegli i colori dell’app. La preferenza resta su questo dispositivo.</p>
+      <fieldset role="radiogroup" aria-labelledby="color-palette-title" className="color-palette-options mt-3 border-0 p-0">
+        {COLOR_PALETTES.map(({ id, label, description }) => (
+          <label key={id} className="color-palette-option" data-palette-option={id}>
+            <input
+              type="radio"
+              name="color-palette"
+              value={id}
+              checked={preference === id}
+              onChange={() => saveColorPalettePreference(id)}
+            />
+            <span className="color-palette-option-copy">
+              <span className="font-bold">{label}</span>
+              <span className="text-sm text-gray-600">{description}</span>
+            </span>
+            <span className="palette-swatch" aria-hidden="true">
+              <span className="palette-swatch-page" />
+              <span className="palette-swatch-accent" />
+              <span className="palette-swatch-highlight" />
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      {storageUnavailable
+        ? <p role="status" className="mt-2 text-sm font-semibold text-amber-900">La palette resta attiva finché l’app è aperta: questo browser non consente di salvarla.</p>
+        : <p className="mt-2 text-sm text-gray-600">Puoi cambiare palette in qualsiasi momento dalle impostazioni del profilo.</p>}
     </section>
   );
 }
@@ -74,6 +112,13 @@ const operationError = (error: unknown): string => {
 };
 
 export default function ProfilePage() {
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const csrfToken = useAuthStore((state) => state.csrfToken);
+  const scope = useSyncExternalStore(subscribeActiveDataScope, getActiveDataScope, getActiveDataScope);
+  return <ProfilePageContent key={JSON.stringify([userId, csrfToken, scope])} />;
+}
+
+function ProfilePageContent() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const csrfToken = useAuthStore((state) => state.csrfToken);
@@ -91,6 +136,16 @@ export default function ProfilePage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  const isCurrentSession = () => {
+    const current = useAuthStore.getState();
+    return mounted.current && user !== null && current.user?.id === user.id
+      && current.csrfToken === csrfToken && getActiveDataScope() === activeScope;
+  };
 
   useEffect(() => {
     if (user === null) return;
@@ -111,7 +166,7 @@ export default function ProfilePage() {
 
   if (user === null) {
     return (
-      <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-2xl px-4 py-5 sm:px-6 sm:py-8">
+      <main id="main-content" className="ik-page account-page mx-auto min-h-screen w-full max-w-2xl px-4 py-5 sm:px-6 sm:py-8">
         <div className="mb-5"><Link to="/" className="inline-flex min-h-11 items-center rounded-xl px-2 font-semibold text-gray-700 underline underline-offset-2">← Torna alle ricette</Link></div>
         <PageSection
           eyebrow="Account ospite"
@@ -124,6 +179,7 @@ export default function ProfilePage() {
           <div className="mt-6"><AccountPanel /></div>
         </PageSection>
         <ThemePreferenceControl />
+        <ColorPalettePreferenceControl />
         <MotionPreferenceControl />
       </main>
     );
@@ -140,12 +196,13 @@ export default function ProfilePage() {
         csrfToken,
         body: { displayName: displayName.trim() || null },
       });
+      if (!isCurrentSession()) return;
       setDisplayName(response.profile.displayName ?? '');
       setMessage('Profilo aggiornato.');
     } catch (saveError) {
-      setError(operationError(saveError));
+      if (isCurrentSession()) setError(operationError(saveError));
     } finally {
-      setIsLoading(false);
+      if (isCurrentSession()) setIsLoading(false);
     }
   };
 
@@ -163,12 +220,12 @@ export default function ProfilePage() {
         const current = useAuthStore.getState();
         return current.user?.id === user.id && current.csrfToken === csrfToken;
       });
+      if (!isCurrentSession()) return;
       setMessage(`Sincronizzazione ${result.complete ? 'completata' : 'parziale'}: ${result.uploaded} elementi inviati, ${result.downloaded} ricevuti. In attesa: ${result.pending}.`);
     } catch (importError) {
-      setError(operationError(importError));
+      if (isCurrentSession()) setError(operationError(importError));
     } finally {
-      setIsImporting(false);
-      setConfirmImport(false);
+      if (isCurrentSession()) { setIsImporting(false); setConfirmImport(false); }
     }
   };
 
@@ -177,6 +234,7 @@ export default function ProfilePage() {
     setError(null);
     try {
       const data = await apiRequest<unknown>('/v1/profile/export');
+      if (!isCurrentSession()) return;
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
@@ -186,7 +244,7 @@ export default function ProfilePage() {
       URL.revokeObjectURL(url);
       setMessage('Esportazione pronta.');
     } catch (exportError) {
-      setError(operationError(exportError));
+      if (isCurrentSession()) setError(operationError(exportError));
     }
   };
 
@@ -197,11 +255,11 @@ export default function ProfilePage() {
     setError(null);
     try {
       await apiRequest('/v1/profile', { method: 'DELETE', csrfToken });
+      if (!isCurrentSession()) return;
       clearSession();
       navigate('/');
     } catch (deleteError) {
-      setError(operationError(deleteError));
-      setIsDeleting(false);
+      if (isCurrentSession()) { setError(operationError(deleteError)); setIsDeleting(false); }
     }
   };
 
@@ -211,11 +269,12 @@ export default function ProfilePage() {
     setError(null);
     try {
       await linkGoogle(credential);
+      if (!isCurrentSession()) return;
       setMessage('Account Google collegato. D’ora in poi potrai accedere con Google.');
     } catch (linkError) {
-      setError(operationError(linkError));
+      if (isCurrentSession()) setError(operationError(linkError));
     } finally {
-      setIsLinkingGoogle(false);
+      if (isCurrentSession()) setIsLinkingGoogle(false);
     }
   };
 
@@ -225,15 +284,18 @@ export default function ProfilePage() {
     try {
       await logout();
     } catch (logoutError) {
-      setError(operationError(logoutError));
+      if (isCurrentSession()) setError(operationError(logoutError));
     } finally {
-      clearSession();
-      navigate('/');
+      const current = useAuthStore.getState();
+      if (current.user === null || (current.user.id === user.id && current.csrfToken === csrfToken)) {
+        clearSession();
+        navigate('/');
+      }
     }
   };
 
   return (
-    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-3xl px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
+    <main id="main-content" className="ik-page account-page mx-auto min-h-screen w-full max-w-3xl px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
       <div className="mb-5"><Link to="/" className="ik-back-link inline-flex min-h-11 items-center rounded-xl px-2 font-semibold text-gray-700 underline underline-offset-2">← Torna alle ricette</Link></div>
       <PageSection
         eyebrow="Account verificato"
@@ -295,9 +357,9 @@ export default function ProfilePage() {
         <section className="mt-7 border-t border-gray-200 pt-6" aria-labelledby="privacy-heading">
           <h2 id="privacy-heading" className="text-xl font-black text-gray-950">Privacy e servizi esterni</h2>
           <h3 className="mt-3 font-bold text-gray-900">Bring!</h3>
-          <p className="mt-2 text-gray-600">Il collegamento richiede una conferma esplicita. Dopo la conferma, email e password vengono inviate a Bring! tramite il backend iKuck. La password non viene conservata; la sessione è cifrata sul server e resta personale, anche quando usi una Casa condivisa.</p>
-          <p className="mt-2 text-gray-600">Le azioni che richiedi inviano a Bring! i nomi degli articoli e le specifiche della lista collegata. La lista Bring! non è copiata nella lista iKuck e non è disponibile offline; gli ingredienti delle ricette non vengono trasferiti automaticamente.</p>
-          <p className="mt-2 text-gray-600">Scollegare rimuove la sessione salvata da iKuck, ma non garantisce la revoca di sessioni o dati conservati da Bring!.</p>
+          <p className="mt-2 text-gray-600">Il collegamento richiede una conferma esplicita. Dopo la conferma, email e password vengono inviate a Bring! tramite il backend A tavola. La password non viene conservata; la sessione è cifrata sul server e resta personale, anche quando usi una Casa condivisa.</p>
+          <p className="mt-2 text-gray-600">Le azioni che richiedi inviano a Bring! i nomi degli articoli e le specifiche della lista collegata. La lista Bring! non è copiata nella lista A tavola e non è disponibile offline; gli ingredienti delle ricette non vengono trasferiti automaticamente.</p>
+          <p className="mt-2 text-gray-600">Scollegare rimuove la sessione salvata da A tavola, ma non garantisce la revoca di sessioni o dati conservati da Bring!.</p>
         </section>
 
         <details className="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-4">
@@ -329,6 +391,7 @@ export default function ProfilePage() {
         </div>
       </PageSection>
       <ThemePreferenceControl />
+      <ColorPalettePreferenceControl />
       <MotionPreferenceControl />
     </main>
   );

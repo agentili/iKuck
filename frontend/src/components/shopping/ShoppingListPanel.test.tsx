@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { ShoppingListItem, ShoppingListItemPayload } from '@ikuck/shared/contracts';
 import ShoppingListPanel from './ShoppingListPanel';
+import { setActiveDataScope } from '../../sync/scopeContext';
 
 const item = (overrides: Partial<ShoppingListItem> = {}): ShoppingListItem => ({
   id: 'shopping-pasta',
@@ -38,6 +39,24 @@ const renderPanel = (items: ShoppingListItem[] = [], overrides: Partial<{
 );
 
 describe('ShoppingListPanel', () => {
+  it('keeps the current page after deletions and clears undo and drafts when switching scope', async () => {
+    setActiveDataScope('guest');
+    const user = userEvent.setup();
+    const items = Array.from({ length: 41 }, (_, index) => item({ id: `item-${index}`, label: `Articolo ${index + 1}` }));
+    const props = { onAdd: vi.fn(), onRemove: vi.fn(), onTogglePurchased: vi.fn(), onUpdate: vi.fn(), onClearPurchased: vi.fn() };
+    const { rerender } = render(<ShoppingListPanel {...props} items={items} />);
+    const pagination = screen.getByRole('navigation', { name: 'Articoli da acquistare' });
+    await user.click(within(pagination).getByRole('button', { name: 'Avanti' }));
+    await user.click(within(pagination).getByRole('button', { name: 'Avanti' }));
+    await user.click(screen.getByRole('button', { name: 'Rimuovi Articolo 41' }));
+    rerender(<ShoppingListPanel {...props} items={items.slice(0, 40)} />);
+    expect(within(pagination).getByRole('status')).toHaveTextContent('Pagina 2 di 2');
+    await user.type(screen.getByLabelText('Cosa ti serve?'), 'Bozza privata');
+    act(() => setActiveDataScope('house:other'));
+    expect(screen.queryByRole('button', { name: 'Annulla' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Cosa ti serve?')).toHaveValue('');
+    expect(within(screen.getByRole('navigation', { name: 'Articoli da acquistare' })).getByRole('status')).toHaveTextContent('Pagina 1 di 2');
+  });
   it('adds a manual item with optional quantity and unit', async () => {
     const user = userEvent.setup();
     const onAdd = vi.fn().mockReturnValue('shopping-new');

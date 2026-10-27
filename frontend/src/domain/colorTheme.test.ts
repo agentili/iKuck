@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let colorTheme: typeof import('./colorTheme');
 let originalMatchMedia: PropertyDescriptor | undefined;
+let themeTokenStyle: HTMLStyleElement | null = null;
 let activeMediaQuery: {
   matches: boolean;
   addEventListener: ReturnType<typeof vi.fn>;
@@ -32,13 +33,16 @@ beforeEach(async () => {
   colorTheme = await import('./colorTheme');
   window.localStorage.clear();
   document.documentElement.removeAttribute('data-theme');
+  themeTokenStyle = document.createElement('style');
+  themeTokenStyle.textContent = ':root { --ik-browser-theme-color: light-theme-color-token; } :root[data-theme="dark"] { --ik-browser-theme-color: dark-theme-color-token; }';
+  document.head.append(themeTokenStyle);
   let themeColorMeta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   if (!themeColorMeta) {
     themeColorMeta = document.createElement('meta');
     themeColorMeta.name = 'theme-color';
     document.head.append(themeColorMeta);
   }
-  themeColorMeta.content = '#247A4A';
+  themeColorMeta.content = 'light-theme-color-token';
   originalMatchMedia = Object.getOwnPropertyDescriptor(window, 'matchMedia');
   activeMediaQuery = undefined;
   mediaChangeListener = undefined;
@@ -46,6 +50,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  themeTokenStyle?.remove();
+  themeTokenStyle = null;
   if (originalMatchMedia === undefined) {
     Reflect.deleteProperty(window, 'matchMedia');
   } else {
@@ -131,11 +137,11 @@ describe('device-only color theme preference', () => {
 
     colorTheme.saveColorThemePreference('dark');
     expect(document.documentElement.dataset.theme).toBe('dark');
-    expect(meta?.content).toBe('#101613');
+    expect(meta?.content).toBe('dark-theme-color-token');
 
     colorTheme.saveColorThemePreference('light');
     expect(document.documentElement.dataset.theme).toBe('light');
-    expect(meta?.content).toBe('#247A4A');
+    expect(meta?.content).toBe('light-theme-color-token');
   });
 
   it('updates the applied theme when the system color scheme changes', () => {
@@ -148,7 +154,7 @@ describe('device-only color theme preference', () => {
     mediaChangeListener?.({ matches: true } as MediaQueryListEvent);
 
     expect(document.documentElement.dataset.theme).toBe('dark');
-    expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content).toBe('#101613');
+    expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content).toBe('dark-theme-color-token');
   });
 
   it('does not follow system changes when an explicit preference is selected', () => {

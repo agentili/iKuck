@@ -1,3 +1,4 @@
+import { usePagination } from '../components/ui/usePagination';
 import { ChefHat } from 'lucide-react';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Link } from 'react-router-dom';
@@ -191,9 +192,10 @@ export default function PantryPage() {
     [pantryItems, stapleIds],
   );
 
+  const { visible: visiblePantryItems, controls: pantryPagination } = usePagination(pantryItems, activeScope, 'Ingredienti in dispensa');
   const groupedPantryItems = useMemo<PantryCategoryGroup[]>(() => {
     const byCategory = new Map<IngredientCategory | 'other', ParsedIngredient[]>();
-    for (const item of pantryItems) {
+    for (const item of visiblePantryItems) {
       const category = getIngredient(item.id)?.category ?? inferIngredientCategory(item.label) ?? 'other';
       const bucket = byCategory.get(category);
       if (bucket === undefined) {
@@ -215,7 +217,7 @@ export default function PantryPage() {
       }
     }
     return groups;
-  }, [pantryItems]);
+  }, [visiblePantryItems]);
   const suggestedIngredients = useMemo(
     () => findHelpfulIngredients(availableIngredientIds, 5, {
       excludedIds: dismissedIngredientSuggestionIds,
@@ -360,7 +362,7 @@ export default function PantryPage() {
         </div>
       )}
 
-      {house !== null && <CandidatesInbox houseId={house.id} />}
+      {house !== null && <details><summary>Importazioni e conferme avanzate</summary><CandidatesInbox houseId={house.id} /></details>}
 
       <PageSection
         eyebrow="Ingredienti presenti"
@@ -382,19 +384,9 @@ export default function PantryPage() {
             {pantryItems.length > 0 ? (
               <>
                 <ul aria-label="La tua dispensa" className="space-y-3">
-                  {groupedPantryItems.map((group) => (
-                    <li key={group.key} className="space-y-1">
-                      <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">
-                        {group.label}
-                      </h3>
-                      <ul className="space-y-2">
-                        {group.items.map((item) => (
-                          <IngredientChip key={item.id} item={item} onRemove={removeIngredient} />
-                        ))}
-                      </ul>
-                    </li>
-                  ))}
+                  {groupedPantryItems.map((group) => <li key={group.key}><h3 className="text-sm font-bold uppercase tracking-wider text-emerald-800">{group.label}</h3><ul className="space-y-2">{group.items.map((item) => <IngredientChip key={item.id} item={item} onRemove={removeIngredient} />)}</ul></li>)}
                 </ul>
+                {pantryPagination}
                 <Link
                   to="/"
                   className="ik-button-primary inline-flex min-h-12 w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-1 text-center text-base font-bold leading-tight sm:w-auto sm:flex-row sm:gap-2 sm:py-3"

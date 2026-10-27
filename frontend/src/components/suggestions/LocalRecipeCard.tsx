@@ -1,10 +1,10 @@
-import { Clock, ShoppingBasket, Users } from 'lucide-react';
+import { Sparkles, Clock, ShoppingBasket, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getIngredient } from '@ikuck/shared/ingredients';
 import { getRecipeMetadata } from '../../domain/recipeMetadata';
 import type { RecipeCategory, RecipeSuggestion } from '../../domain/types';
 import RecipeNutritionSummary from '../diet/RecipeNutritionSummary';
-import RecipeImage from './RecipeImage';
+
 
 const CATEGORY_LABELS: Record<RecipeCategory, string> = {
   meat: 'Carne',
@@ -33,15 +33,15 @@ export default function LocalRecipeCard({ suggestion, missingIngredientInShoppin
   const titleId = `recipe-title-${suggestion.recipe.id}`;
 
   return (
-    <article aria-labelledby={titleId} data-availability={availability} className={missingLabel ? 'ik-recipe-card flex flex-col rounded-3xl border-2 border-amber-200 bg-white p-5' : 'ik-recipe-card flex flex-col rounded-3xl border-2 border-emerald-200 bg-white p-5'}>
-      <RecipeImage recipeId={suggestion.recipe.id} recipeTitle={suggestion.recipe.title} />
+    <article aria-labelledby={titleId} data-availability={availability} data-recipe-category={suggestion.recipe.category} className={missingLabel ? 'ik-recipe-card flex flex-col rounded-3xl border-2 border-amber-200 bg-white p-5' : 'ik-recipe-card flex flex-col rounded-3xl border-2 border-emerald-200 bg-white p-5'}>
+      <div className="recipe-category-mark" aria-hidden="true"><Sparkles size={28} /> <span>{categoryLabel}</span></div>
       <p className={missingLabel ? 'mb-4 flex items-center gap-2 font-semibold text-red-700' : 'mb-4 font-semibold text-emerald-700'}>
         {missingLabel ? <ShoppingBasket size={18} aria-hidden="true" /> : null}
         {missingLabel ? `Ti manca solo: ${missingLabel}` : suggestion.quantityWarnings.length > 0 ? 'Verifica le quantità' : 'Hai tutto'}
       </p>
       <h3 id={titleId} className="text-xl font-bold leading-tight text-gray-950">{suggestion.recipe.title}</h3>
       <p className="mt-2 flex-1 leading-relaxed text-gray-600">{suggestion.recipe.description}</p>
-      {metadata !== undefined && <RecipeNutritionSummary nutrition={metadata.nutrition} />}
+      {metadata !== undefined && <details className="recipe-nutrition-disclosure"><summary>Informazioni nutrizionali</summary><RecipeNutritionSummary nutrition={metadata.nutrition} /></details>}
       {suggestion.quantityWarnings.length > 0 && (
         <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
           La quantità potrebbe non bastare per: {suggestion.quantityWarnings.map((id) => getIngredient(id)?.label ?? id).join(', ')}.

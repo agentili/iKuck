@@ -487,7 +487,7 @@ describe('Bring integration panel', () => {
     expect(mocks.write).not.toHaveBeenCalled();
   });
 
-  it('asks to reconnect after an expired Bring session without logging out of iKuck', async () => {
+  it('asks to reconnect after an expired Bring session without logging out of A tavola', async () => {
     mocks.write.mockRejectedValue(new ApiClientError(409, 'bring_reconnect_required', 'synthetic expired session'));
     const user = await renderSelectedList([{
       name: 'Pane', label: 'Pane', specification: '1 kg', state: 'purchase', mutable: true,
@@ -526,7 +526,7 @@ describe('Bring integration panel', () => {
         csrfToken: changed === 'csrf token' ? 'new-synthetic-csrf' : 'synthetic-csrf',
       });
     });
-    expect(await screen.findByText('Collega Bring! con una sessione verificata iKuck.')).toBeVisible();
+    expect(await screen.findByText('Collega Bring! con un account verificato.')).toBeVisible();
 
     await act(async () => {
       pending.resolve({

@@ -281,9 +281,9 @@ export default function RecipeDetailPage() {
 
       <header className="ik-recipe-hero mt-6 px-5 py-8 text-white sm:px-9 sm:py-10">
         <RecipeImage recipeId={recipe.id} recipeTitle={recipe.title} variant="detail" />
-        <p className="mt-5 font-semibold text-amber-300">{CATEGORY_LABELS[recipe.category]}</p>
+        <p className="recipe-detail-category mt-5 font-semibold">{CATEGORY_LABELS[recipe.category]}</p>
         <h1 className="mt-2 max-w-3xl text-4xl font-black leading-tight sm:text-6xl">{recipe.title}</h1>
-        <p className="mt-4 max-w-2xl text-lg leading-relaxed text-gray-300">{recipe.description}</p>
+        <p className="recipe-detail-description mt-4 max-w-2xl text-lg leading-relaxed">{recipe.description}</p>
         <dl className="mt-7 flex flex-wrap gap-3">
           <div className="flex min-h-11 items-center gap-2 rounded-full bg-white/10 px-4 py-2">
             <Clock size={18} aria-hidden="true" />

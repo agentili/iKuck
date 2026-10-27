@@ -52,6 +52,7 @@ export const apiRequest: ApiRequest = async <T>(path: string, options: ApiReques
       signal: options.signal,
     });
   } catch {
+    if (!options.signal?.aborted && typeof window !== 'undefined') window.dispatchEvent(new Event('app:network-error'));
     throw new ApiClientError(0, 'network_error', 'Network request failed');
   }
 

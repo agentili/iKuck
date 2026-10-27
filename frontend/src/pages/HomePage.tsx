@@ -1,353 +1,65 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { RefreshCw } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import LocalRecipeCard from '../components/suggestions/LocalRecipeCard';
-import SuggestionControls from '../components/suggestions/SuggestionControls';
-import AiRecipePanel from '../components/ai/AiRecipePanel';
-import { createSeededRandom, findRecipeSuggestions } from '../domain/suggestions';
-import { RECIPES } from '../domain/recipes';
+import KitchenArtwork from '../components/layout/KitchenArtwork';
+import { usePersistenceStatusStore } from '../store/persistenceStatusStore';
+import { hydrateDinnerDiaryStore, useDinnerDiaryStore } from '../store/dinnerDiaryStore';
+import { getActiveDataScope, subscribeActiveDataScope } from '../sync/scopeContext';
 import { toDiaryPantryRecipe } from '../domain/diaryRecipes';
-import { aggregatePantryLots } from '../domain/pantryLots';
-import type { RecipeSuggestion } from '../domain/types';
-import { hydratePantryStore, usePantryStore } from '../store/localPantryStore';
-import QuickAddIngredientsDialog from '../components/pantry/QuickAddIngredientsDialog';
-import IngredientChip from '../components/pantry/IngredientChip';
+import { RECIPES } from '../domain/recipes';
+import { useShoppingListStore } from '../store/shoppingListStore';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowRight, Leaf, CookingPot } from 'lucide-react';
+import { usePantryStore } from '../store/localPantryStore';
 import { useDietProfileStore } from '../store/dietProfileStore';
 import { useActivityStore } from '../store/activityStore';
-import { useShoppingListStore } from '../store/shoppingListStore';
-import { hydrateDinnerDiaryStore, useDinnerDiaryStore } from '../store/dinnerDiaryStore';
-import { getActiveDataScope, subscribeActiveDataScope, type SyncScope } from '../sync/scopeContext';
-import { useAuthStore } from '../auth/authStore';
-import {
-  persistenceDomains,
-  retryPersistence,
-  usePersistenceStatusStore,
-  isPantrySnapshotConflictError,
-  isPantrySnapshotConflictBackupError,
-  type PersistenceDomain,
-  type PersistenceState,
-} from '../store/persistenceStatusStore';
-
-const persistenceLabels: Record<PersistenceDomain, string> = {
-  pantry: 'dispensa',
-  'shopping-list': 'lista della spesa',
-  activity: 'attività',
-  diet: 'preferenze alimentari',
-};
-
-const blockingPersistenceStates: readonly PersistenceState[] = ['memory-only', 'sync-error'];
-
-const isPantryConflictForScope = (error: unknown, scope: SyncScope): boolean => (
-  isPantrySnapshotConflictError(error)
-    && typeof error === 'object'
-    && error !== null
-    && 'scope' in error
-    && error.scope === scope
-);
+import { findRecipeSuggestions, createSeededRandom } from '../domain/suggestions';
+import { aggregatePantryLots } from '../domain/pantryLots';
+import LocalRecipeCard from '../components/suggestions/LocalRecipeCard';
 
 export default function HomePage() {
-  const hasHydrated = usePantryStore((state) => state.hasHydrated);
-  const [hasSearched, setHasSearched] = useState(false);
-  const [allowOneMissing, setAllowOneMissing] = useState(false);
-  const [searchedAllowOneMissing, setSearchedAllowOneMissing] = useState(false);
-  const [varietySeed, setVarietySeed] = useState(0);
-  const [suggestions, setSuggestions] = useState<RecipeSuggestion[]>([]);
-  const [focusResultsTitle, setFocusResultsTitle] = useState(false);
-  const [quickAddOpen, setQuickAddOpen] = useState(false);
-  const addDialogTriggerRef = useRef<HTMLButtonElement>(null);
-  const dialogScopeRef = useRef(getActiveDataScope());
-  const closeQuickAdd = useCallback(() => {
-    setQuickAddOpen(false);
-    window.requestAnimationFrame(() => addDialogTriggerRef.current?.focus());
-  }, []);
-  const resultsTitleRef = useRef<HTMLHeadingElement>(null);
-  const pantryItems = usePantryStore((state) => state.pantryItems);
-  const addIngredients = usePantryStore((state) => state.addIngredients);
-  const removeIngredient = usePantryStore((state) => state.removeIngredient);
-  const pantryLots = usePantryStore((state) => state.pantryLots);
-  const stapleIds = usePantryStore((state) => state.stapleIds);
-  const dietProfile = useDietProfileStore((state) => state.profile);
-  const events = useActivityStore((state) => state.events);
+  const statuses = usePersistenceStatusStore((state) => state.statuses);
+  const hasStorageIssue = Object.values(statuses).some((status) => status.state === 'memory-only');
+  const items = usePantryStore((state) => state.pantryItems);
+  const lots = usePantryStore((state) => state.pantryLots);
+  const staples = usePantryStore((state) => state.stapleIds);
+  const profile = useDietProfileStore((state) => state.profile);
   const preferences = useActivityStore((state) => state.preferences);
+  const events = useActivityStore((state) => state.events);
+  const scope = useSyncExternalStore(subscribeActiveDataScope, getActiveDataScope, getActiveDataScope);
+  const savedRecipes = useDinnerDiaryStore((state) => state.recipes);
+  const addMissing = useShoppingListStore((state) => state.addMissingRecipeIngredients);
   const shoppingItems = useShoppingListStore((state) => state.items);
-  const addMissingRecipeIngredients = useShoppingListStore((state) => state.addMissingRecipeIngredients);
-  const diaryHasHydrated = useDinnerDiaryStore((state) => state.hasHydrated);
-  const savedDiaryRecipes = useDinnerDiaryStore((state) => state.recipes);
-  const activeScope = useSyncExternalStore(
-    (listener) => subscribeActiveDataScope(() => listener()),
-    getActiveDataScope,
-    getActiveDataScope,
-  );
-  const diaryRecipes = useMemo(() => savedDiaryRecipes
-    .filter((recipe) => recipe.scope === activeScope)
-    .map(toDiaryPantryRecipe), [activeScope, savedDiaryRecipes]);
-  const searchableRecipes = useMemo(() => [...RECIPES, ...diaryRecipes], [diaryRecipes]);
-  const persistenceStatuses = usePersistenceStatusStore((state) => state.statuses);
-  const user = useAuthStore((state) => state.user);
-  const csrfToken = useAuthStore((state) => state.csrfToken);
-
-  const persistenceIssue = persistenceDomains
-    .map((domain) => ({ domain, status: persistenceStatuses[domain] }))
-    .filter(({ domain, status }) => !(domain === 'pantry'
-      && isPantrySnapshotConflictError(status.error)
-      && !isPantryConflictForScope(status.error, activeScope)))
-    .find(({ status }) => blockingPersistenceStates.includes(status.state));
-  const malformedPantryBackup = persistenceIssue?.domain === 'pantry'
-    && isPantrySnapshotConflictBackupError(persistenceIssue.status.error);
-  const pantryConflict = persistenceIssue?.domain === 'pantry'
-    && isPantrySnapshotConflictError(persistenceIssue.status.error);
-  const pantryConflictCopyCount = pantryConflict
-    && typeof persistenceIssue.status.error === 'object'
-    && persistenceIssue.status.error !== null
-    && 'copies' in persistenceIssue.status.error
-    && Array.isArray(persistenceIssue.status.error.copies)
-    ? persistenceIssue.status.error.copies.length
-    : 0;
-  const hasRecoverablePantryConflict = pantryConflict && !malformedPantryBackup && pantryConflictCopyCount > 0;
-
-  const availableIngredientIds = useMemo(
-    () => [...pantryItems.filter((item) => item.known).map((item) => item.id), ...stapleIds],
-    [pantryItems, stapleIds],
-  );
-  const quantitySummaries = useMemo(
-    () => aggregatePantryLots(pantryLots),
-    [pantryLots],
-  );
-  const calculatedSuggestions = useMemo(() => {
-    if (!hasSearched) return [];
-    return findRecipeSuggestions({
-      recipes: searchableRecipes,
-      availableIds: availableIngredientIds,
-      allowOneMissing: searchedAllowOneMissing,
-      quantitySummaries,
-      dietProfile,
-      events,
-      preferences,
-      random: createSeededRandom(varietySeed),
-    });
-  }, [availableIngredientIds, dietProfile, events, hasSearched, preferences, quantitySummaries, searchedAllowOneMissing, searchableRecipes, varietySeed]);
-
-  useEffect(() => {
-    if (quickAddOpen && dialogScopeRef.current !== activeScope) closeQuickAdd();
-  }, [activeScope, closeQuickAdd, quickAddOpen]);
-
-  const openQuickAdd = () => {
-    dialogScopeRef.current = activeScope;
-    setQuickAddOpen(true);
-  };
-
-  useEffect(() => {
-    void hydratePantryStore();
-    if (!useDinnerDiaryStore.getState().hasHydrated) void hydrateDinnerDiaryStore();
-  }, []);
-
-  useEffect(() => {
-    if (hasSearched) setSuggestions(calculatedSuggestions);
-  }, [calculatedSuggestions, hasSearched]);
-
-  useEffect(() => {
-    if (!focusResultsTitle || !hasSearched) return;
-    resultsTitleRef.current?.focus();
-    setFocusResultsTitle(false);
-  }, [focusResultsTitle, hasSearched]);
-
-  if (!hasHydrated || !diaryHasHydrated) {
-    return (
-      <main className="mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
-        <p role="status" className="rounded-2xl border border-gray-200 bg-white px-5 py-4 font-semibold text-gray-700">
-          Caricamento delle tue ricette…
-        </p>
-      </main>
-    );
-  }
-
-  const calculateSuggestions = (seed: number, extended: boolean): RecipeSuggestion[] => findRecipeSuggestions({
-    recipes: searchableRecipes,
-    availableIds: availableIngredientIds,
-    allowOneMissing: extended,
-    quantitySummaries,
-    dietProfile,
-    events,
-    preferences,
-    random: createSeededRandom(seed),
-  });
-
-  const search = (extended = allowOneMissing) => {
-    setSearchedAllowOneMissing(extended);
-    setSuggestions(calculateSuggestions(varietySeed, extended));
-    setHasSearched(true);
-    setFocusResultsTitle(true);
-  };
-
-  const tryExtended = () => {
-    setAllowOneMissing(true);
-    search(true);
-  };
-
-  const refreshSuggestions = () => {
-    const nextSeed = varietySeed + 1;
-    setVarietySeed(nextSeed);
-    setSuggestions(calculateSuggestions(nextSeed, searchedAllowOneMissing));
-  };
-
-  const addMissingSuggestionToShoppingList = (suggestion: RecipeSuggestion) => {
-    addMissingRecipeIngredients(suggestion.recipe, availableIngredientIds);
-  };
-
-  const isMissingSuggestionInShoppingList = (suggestion: RecipeSuggestion) => suggestion.missingIngredientIds.some((ingredientId) => (
-    shoppingItems.some((item) => !item.purchased && item.ingredientId === ingredientId)
-  ));
-
-  const readySuggestions = suggestions.filter((suggestion) => suggestion.missingIngredientIds.length === 0);
-  const onePurchaseSuggestions = suggestions.filter((suggestion) => suggestion.missingIngredientIds.length === 1);
-  const hasPantryItems = pantryItems.length > 0;
-
-  return (
-    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-6xl px-4 pb-8 pt-5 sm:px-6 sm:pt-8 lg:px-8">
-      <header className="ik-page-intro mb-5 max-w-2xl sm:mb-7">
-        <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Cucina · {activeScope.startsWith('house:') ? 'Casa' : activeScope === 'guest' ? 'dati locali' : 'personale'}</p>
-        <h1 className="mt-1 text-4xl font-black leading-[1.04] text-gray-950 sm:text-5xl">Cucina viva</h1>
-        <p className="mt-3 max-w-xl text-base leading-relaxed text-gray-700">Aggiungi quello che hai, poi scegli cosa cucinare. La ricerca parte solo quando la avvii.</p>
-      </header>
-
-      {persistenceIssue !== undefined && (
-        <div role="alert" className="mb-5 flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
-          <p>
-            {persistenceIssue.domain === 'pantry' && isPantrySnapshotConflictError(persistenceIssue.status.error)
-              ? isPantrySnapshotConflictBackupError(persistenceIssue.status.error)
-                ? 'Il backup della dispensa è stato conservato, ma i dati non sono leggibili. Non è disponibile alcuna copia sicura da scegliere; le modifiche e la sincronizzazione restano sospese.'
-                : pantryConflictCopyCount === 1
-                  ? 'La dispensa ha una copia recuperabile. È conservata; le scritture sono sospese finché non scegli una versione.'
-                  : pantryConflictCopyCount > 1
-                    ? `La dispensa ha ${pantryConflictCopyCount} copie recuperabili. Sono tutte conservate; le scritture sono sospese finché non scegli una versione.`
-                    : 'La dispensa è in conflitto, ma non è disponibile una copia sicura da scegliere; le modifiche e la sincronizzazione restano sospese.'
-              : persistenceIssue.status.state === 'memory-only'
-                ? `Le modifiche alla ${persistenceLabels[persistenceIssue.domain]} sono disponibili solo in memoria.`
-                : `La sincronizzazione della ${persistenceLabels[persistenceIssue.domain]} non è riuscita.`}
-            {!pantryConflict && !malformedPantryBackup && <> {' '}Puoi riprovare quando vuoi.</>}
-          </p>
-          {hasRecoverablePantryConflict ? (
-            <Link to="/pantry" className="inline-flex min-h-10 items-center rounded-xl border-2 border-amber-700 px-3 py-1.5 font-bold text-amber-900 hover:bg-amber-100">Scegli una copia della dispensa</Link>
-          ) : !pantryConflict && !malformedPantryBackup ? (
-            <button type="button" onClick={() => void retryPersistence(persistenceIssue.domain)} className="min-h-10 rounded-xl border-2 border-amber-700 px-3 py-1.5 font-bold text-amber-900 hover:bg-amber-100">Riprova</button>
-          ) : null}
-        </div>
-      )}
-
-      <div className="ik-kitchen-layout mt-4">
-        <section aria-labelledby="pantry-summary-title" className="ik-pantry-workbench ik-surface space-y-4 rounded-3xl border-2 p-4 sm:p-5">
-          <div>
-            <p className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Banco ingredienti</p>
-            <h2 id="pantry-summary-title" className="mt-1 text-2xl font-black text-gray-950">{hasPantryItems ? 'Quello che hai' : 'Partiamo da cosa hai'}</h2>
-            <p className="mt-1 text-sm leading-relaxed text-gray-700">
-              {hasPantryItems
-                ? `${pantryItems.length} ${pantryItems.length === 1 ? 'ingrediente' : 'ingredienti'} · ambito ${activeScope.startsWith('house:') ? 'Casa' : activeScope === 'guest' ? 'locale' : 'personale'}`
-                : 'Aggiungi ingredienti qui: la dispensa si aggiorna senza cambiare pagina.'}
-            </p>
-          </div>
-          {pantryItems.length > 0 ? (
-            <ul aria-label="Ingredienti disponibili" className="ik-home-pantry-items flex flex-wrap gap-2">
-              {pantryItems.map((item) => <IngredientChip key={item.id} item={item} onRemove={removeIngredient} />)}
-            </ul>
-          ) : (
-            <p role="status" className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-950">Nessun ingrediente ancora aggiunto.</p>
-          )}
-          <button
-            ref={addDialogTriggerRef}
-            type="button"
-            onClick={openQuickAdd}
-            className="ik-button-primary inline-flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold sm:w-auto"
-          >Aggiungi ingredienti</button>
-          <Link to="/pantry" className="inline-flex min-h-11 items-center rounded-xl px-3 py-2 font-bold text-emerald-900 underline decoration-emerald-300 underline-offset-4 hover:bg-emerald-50">Apri tutta la dispensa</Link>
-          <SuggestionControls allowOneMissing={allowOneMissing} disabled={!hasPantryItems} onAllowOneMissingChange={setAllowOneMissing} onSearch={() => search()} />
-          {!hasPantryItems && <p className="text-sm text-gray-600">La ricerca è manuale e locale: nessuna chiamata parte aprendo la Home.</p>}
-        </section>
-
-        <section aria-label="Risultati delle ricette" className="ik-kitchen-results min-w-0">
-      <section aria-labelledby="results-title" aria-live="polite" aria-atomic="false" className="mt-0">
-        {hasSearched && (
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 id="results-title" ref={resultsTitleRef} tabIndex={-1} className="text-3xl font-black text-gray-950">Ricette per te</h2>
-              <p className="mt-1 text-gray-600">Scelte usando quello che hai indicato nella dispensa.</p>
-            </div>
-            {suggestions.length > 0 && (
-              <button type="button" onClick={refreshSuggestions} className="inline-flex min-h-11 items-center gap-2 rounded-xl border-2 border-gray-300 bg-white px-4 py-2 font-semibold text-gray-800 hover:border-gray-900">
-                <RefreshCw size={17} aria-hidden="true" />
-                Altre idee
-              </button>
-            )}
-          </div>
-        )}
-        {suggestions.length > 0 && (
-          <div className="space-y-7">
-            {readySuggestions.length > 0 && (
-              <section aria-labelledby="ready-recipes-title" className="ik-results-group ik-results-group--ready rounded-3xl border-2 border-emerald-100 bg-emerald-50/50 p-4 sm:p-5">
-                <div className="mb-4 max-w-2xl">
-                  <p className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Senza spesa</p>
-                  <h3 id="ready-recipes-title" className="mt-1 text-2xl font-black text-gray-950">Pronte da cucinare</h3>
-                  <p className="mt-1 text-sm leading-relaxed text-gray-700 sm:text-base">Hai tutti gli ingredienti necessari; controlla le quantità indicate nella ricetta.</p>
-                </div>
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {readySuggestions.map((suggestion) => <LocalRecipeCard key={suggestion.recipe.id} suggestion={suggestion} />)}
-                </div>
-              </section>
-            )}
-            {onePurchaseSuggestions.length > 0 && (
-              <section aria-labelledby="one-purchase-recipes-title" className="ik-results-group ik-results-group--one-purchase rounded-3xl border-2 border-amber-200 bg-amber-50/60 p-4 sm:p-5">
-                <div className="mb-4 max-w-2xl">
-                  <p className="text-sm font-bold uppercase tracking-[0.14em] text-amber-900">Un piccolo acquisto</p>
-                  <h3 id="one-purchase-recipes-title" className="mt-1 text-2xl font-black text-gray-950">Con un solo acquisto</h3>
-                  <p className="mt-1 text-sm leading-relaxed text-gray-700 sm:text-base">Manca un solo ingrediente: aggiungilo alla lista e la ricetta è pronta.</p>
-                </div>
-                <div className="grid gap-3 xl:grid-cols-2">
-                  {onePurchaseSuggestions.map((suggestion) => (
-                    <LocalRecipeCard
-                      key={suggestion.recipe.id}
-                      suggestion={suggestion}
-                      missingIngredientInShoppingList={isMissingSuggestionInShoppingList(suggestion)}
-                      onAddMissingIngredient={addMissingSuggestionToShoppingList}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-          </div>
-        )}
-        {hasSearched && suggestions.length === 0 && (
-          <div className="rounded-3xl border-2 border-gray-200 bg-white p-6">
-            <h3 className="text-xl font-bold text-gray-950">Nessuna ricetta pronta con questi ingredienti</h3>
-            {!allowOneMissing ? (
-              <button type="button" onClick={tryExtended} className="mt-4 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800">Prova con 1 ingrediente in più</button>
-            ) : (
-              <div className="mt-3">
-                <p className="text-gray-700">Puoi aggiungere altri ingredienti nella sezione Dispensa.</p>
-                <Link to="/pantry" className="mt-3 inline-flex min-h-11 items-center rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900">Gestisci la dispensa</Link>
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-        </section>
-      </div>
-
-      {user !== null && user.emailVerifiedAt.trim().length > 0 && csrfToken !== null && (
-        <section aria-labelledby="ai-recipes-title" className="mt-6">
-          <AiRecipePanel
-            ingredients={pantryItems.map((item) => item.label)}
-            dietProfile={dietProfile}
-            user={user}
-            csrfToken={csrfToken}
-          />
-        </section>
-      )}
-
-      <QuickAddIngredientsDialog
-        open={quickAddOpen}
-        scope={activeScope}
-        onClose={closeQuickAdd}
-        onAdd={addIngredients}
-      />
-    </main>
-  );
+  useEffect(() => { void hydrateDinnerDiaryStore(); }, [scope]);
+  const recipes = useMemo(() => [...RECIPES, ...savedRecipes.filter((recipe) => recipe.scope === scope).map(toDiaryPantryRecipe)], [savedRecipes, scope]);
+  const suggestions = useMemo(() => findRecipeSuggestions({
+    recipes, availableIds: [...items.filter((item) => item.known).map((item) => item.id), ...staples],
+    allowOneMissing: true, dietProfile: profile, preferences, events,
+    quantitySummaries: aggregatePantryLots(lots), random: createSeededRandom(0), limit: recipes.length,
+  }), [items, staples, profile, preferences, events, lots, recipes]);
+  const suggestionKey = JSON.stringify([scope, suggestions.map((suggestion) => [suggestion.recipe.id, suggestion.missingIngredientIds])]);
+  const [selection, setSelection] = useState({ key: suggestionKey, offset: 0 });
+  const offset = selection.key === suggestionKey ? selection.offset : 0;
+  if (selection.key !== suggestionKey) setSelection({ key: suggestionKey, offset: 0 });
+  const visibleSuggestions = suggestions.slice(offset, offset + 4);
+  const shoppingIngredientIds = new Set(shoppingItems.filter((item) => !item.purchased).map((item) => item.ingredientId));
+  return <main id="main-content" className="home-v2">
+    {hasStorageIssue && <p role="alert" className="app-notice notice-error">Alcune modifiche non sono salvate sul dispositivo. <Link to="/pantry">Controlla il salvataggio e riprova</Link></p>}
+    <section className="kitchen-hero"><div className="hero-copy"><div className="home-eyebrow"><Leaf size={18} aria-hidden="true" /> Meno sprechi, più gusto</div>
+    <h1>Cosa portiamo <br /><span className="home-title-accent">a tavola?</span></h1>
+    <p className="home-intro">Le cose buone iniziano da quello che hai già.</p>
+    {items.length > 0 && <Link to="/pantry" className="hero-action">Apri la tua dispensa <ArrowRight size={18} aria-hidden="true" /></Link>}
+    </div><div className="hero-art"><span className="art-label">Fatto in casa, fatto bene.</span><KitchenArtwork /><span className="art-seal">BUONO<br />OGNI GIORNO</span></div></section>
+    {items.length === 0 ? <section className="home-welcome" aria-labelledby="welcome-title">
+      <CookingPot size={48} strokeWidth={1.3} aria-hidden="true" />
+      <h2 id="welcome-title">La tua prossima cena parte da qui.</h2>
+      <p>Aggiungi il primo ingrediente. Alle idee pensiamo noi.</p>
+      <Link className="primary-action" to="/pantry">Aggiungi un ingrediente <ArrowRight size={18} aria-hidden="true" /></Link>
+    </section> : <>
+      <section aria-labelledby="tonight-title"><div className="section-heading"><h2 id="tonight-title">L’idea di oggi</h2><Link to="/pantry">{items.length} ingredienti in dispensa <ArrowRight size={16} aria-hidden="true" /></Link></div>
+      {suggestions.length > 0 ? <><div className="home-recipes">{visibleSuggestions.map((suggestion) => <LocalRecipeCard key={suggestion.recipe.id} suggestion={suggestion} missingIngredientInShoppingList={suggestion.missingIngredientIds.length > 0 && suggestion.missingIngredientIds.every((id) => shoppingIngredientIds.has(id))} onAddMissingIngredient={(choice) => addMissing(choice.recipe, [...items.filter((item) => item.known).map((item) => item.id), ...staples])} />)}</div>
+      {suggestions.length > 4 && <div className="home-ideas-controls"><p className="home-suggestion-status" role="status">Idee {offset + 1}–{Math.min(offset + 4, suggestions.length)} di {suggestions.length}</p><button className="home-more-ideas" type="button" onClick={() => setSelection({ key: suggestionKey, offset: offset + 4 >= suggestions.length ? 0 : offset + 4 })}>Altre idee <ArrowRight size={18} aria-hidden="true" /></button></div>}</> : <div className="home-welcome"><h3>Ci manca ancora qualcosa.</h3><p>Aggiungi altri ingredienti per trovare una ricetta adatta alle tue preferenze.</p><Link className="primary-action" to="/pantry">Completa la dispensa</Link></div>}</section>
+      <Link className="home-catalog" to="/recipes">Tutte le ricette <ArrowRight size={20} aria-hidden="true" /></Link>
+      <div className="kitchen-shortcuts"><Link to="/pantry"><span>01 / ORGANIZZA</span><strong>La tua dispensa <ArrowRight size={16} aria-hidden="true" /></strong><small>{items.length} ingredienti, tante possibilità.</small></Link><Link to="/recipes"><span>02 / LASCIATI ISPIRARE</span><strong>Il ricettario <ArrowRight size={16} aria-hidden="true" /></strong><small>Trova il tuo prossimo piatto del cuore.</small></Link><Link to="/shopping-list"><span>03 / PORTA A CASA</span><strong>La lista della spesa <ArrowRight size={16} aria-hidden="true" /></strong><small>Solo quello che serve, tutto in un posto.</small></Link></div>
+    </>}
+    <p className="home-footnote">La tua dispensa resta con te. Anche senza connessione.</p>
+  </main>;
 }

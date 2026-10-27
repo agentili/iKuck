@@ -7,6 +7,7 @@ import { useAuthStore } from '../auth/authStore';
 import { ApiClientError } from '../api/apiClient';
 import { setActiveDataScope, setPersonalDataScope } from '../sync/scopeContext';
 import { saveColorThemePreference } from '../domain/colorTheme';
+import { saveColorPalettePreference } from '../domain/colorPalette';
 
 const verifiedUser = {
   id: 'user-1',
@@ -18,6 +19,7 @@ describe('ProfilePage', () => {
   beforeEach(() => {
     window.localStorage.clear();
     saveColorThemePreference('system');
+    saveColorPalettePreference('pistachio-lemon');
     setActiveDataScope('guest');
     setPersonalDataScope('guest');
     useAuthStore.setState({
@@ -45,6 +47,47 @@ describe('ProfilePage', () => {
     }));
   });
 
+  it('ignores an old save response and clears confirmation state after switching accounts', async () => {
+    const actions = userEvent.setup();
+    let finishSave!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((_path: string, init?: RequestInit) => {
+      if (init?.method === 'PATCH') return new Promise<Response>((resolve) => { finishSave = resolve; });
+      const displayName = useAuthStore.getState().user?.id === verifiedUser.id ? 'Ale' : 'Bea';
+      return Promise.resolve(new Response(JSON.stringify({ profile: { displayName } }), { status: 200 }));
+    }));
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+    await screen.findByDisplayValue('Ale');
+    await actions.click(screen.getByRole('button', { name: 'Elimina account' }));
+    await actions.click(screen.getByRole('button', { name: 'Salva profilo' }));
+    act(() => useAuthStore.setState({ user: { ...verifiedUser, id: 'user-2' }, csrfToken: 'csrf-2' }));
+    await screen.findByDisplayValue('Bea');
+    expect(screen.queryByRole('button', { name: 'Conferma eliminazione account' })).not.toBeInTheDocument();
+    await act(async () => finishSave(new Response(JSON.stringify({ profile: { displayName: 'Nome precedente' } }), { status: 200 })));
+    expect(screen.getByLabelText('Nome visualizzato')).toHaveValue('Bea');
+    expect(screen.queryByText('Profilo aggiornato.')).not.toBeInTheDocument();
+  });
+
+  it('does not clear the new session after an old account deletion finishes', async () => {
+    const actions = userEvent.setup();
+    let finishDelete!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((_path: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') return new Promise<Response>((resolve) => { finishDelete = resolve; });
+      return Promise.resolve(new Response(JSON.stringify({ profile: { displayName: 'Nome' } }), { status: 200 }));
+    }));
+    const clearSession = vi.fn();
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1', clearSession });
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+    await screen.findByDisplayValue('Nome');
+    await actions.click(screen.getByRole('button', { name: 'Elimina account' }));
+    await actions.click(screen.getByRole('button', { name: 'Conferma eliminazione account' }));
+    act(() => useAuthStore.setState({ user: { ...verifiedUser, id: 'user-2' }, csrfToken: 'csrf-2' }));
+    await act(async () => finishDelete(new Response(null, { status: 204 })));
+    expect(clearSession).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().user?.id).toBe('user-2');
+    expect(screen.getByRole('heading', { name: 'Il tuo profilo' })).toBeVisible();
+  });
+
   it('offers all theme options and persists a selected preference', async () => {
     const user = userEvent.setup();
     render(<MemoryRouter><ProfilePage /></MemoryRouter>);
@@ -66,6 +109,24 @@ describe('ProfilePage', () => {
     expect(window.localStorage.getItem('ikuck-color-theme')).toBe('light');
   });
 
+  it('offers all palette options and saves the selected palette on this device', async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    const paletteGroup = screen.getByRole('radiogroup', { name: 'Palette' });
+    expect(paletteGroup).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Pistacchio e limone/ })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /Pesca e corallo/ })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Lavanda e mirtillo/ })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Mare e terracotta/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: /Lavanda e mirtillo/ }));
+
+    expect(screen.getByRole('radio', { name: /Lavanda e mirtillo/ })).toBeChecked();
+    expect(window.localStorage.getItem('ikuck-color-palette')).toBe('lavender-blueberry');
+    expect(document.documentElement).toHaveAttribute('data-palette', 'lavender-blueberry');
+  });
+
   it('keeps guest account access explicit without promising an automatic import', () => {
     render(<MemoryRouter><ProfilePage /></MemoryRouter>);
 
@@ -82,6 +143,7 @@ describe('ProfilePage', () => {
     render(<MemoryRouter><ProfilePage /></MemoryRouter>);
 
     expect(await screen.findByRole('heading', { name: 'Il tuo profilo' })).toBeInTheDocument();
+    expect(screen.getByRole('radiogroup', { name: 'Palette' })).toBeVisible();
     expect(screen.getByText('ale@example.com')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Importa i dati locali' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'La mia casa' })).toHaveAttribute('href', '/house');
@@ -103,7 +165,7 @@ describe('ProfilePage', () => {
     expect(screen.getByRole('heading', { name: 'Privacy e servizi esterni' })).toBeVisible();
     expect(screen.getByText(/il collegamento richiede una conferma esplicita.*dopo la conferma, email e password vengono inviate a Bring!/i)).toBeVisible();
     expect(screen.getByText(/la password non viene conservata.*sessione è cifrata sul server.*resta personale/i)).toBeVisible();
-    expect(screen.getByText(/nomi degli articoli e le specifiche.*non è copiata nella lista iKuck.*non è disponibile offline/i)).toBeVisible();
+    expect(screen.getByText(/nomi degli articoli e le specifiche.*non è copiata nella lista A tavola.*non è disponibile offline/i)).toBeVisible();
     expect(screen.getByText(/ingredienti delle ricette non vengono trasferiti automaticamente/i)).toBeVisible();
     expect(screen.getByText(/non garantisce la revoca.*Bring!/i)).toBeVisible();
   });

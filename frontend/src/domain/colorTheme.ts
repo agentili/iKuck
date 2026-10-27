@@ -2,8 +2,7 @@ export type ColorThemePreference = 'light' | 'dark' | 'system';
 
 const COLOR_THEME_PREFERENCE_KEY = 'ikuck-color-theme';
 const SYSTEM_COLOR_SCHEME_QUERY = '(prefers-color-scheme: dark)';
-const LIGHT_THEME_COLOR = '#247A4A';
-const DARK_THEME_COLOR = '#101613';
+const BROWSER_THEME_COLOR_TOKEN = '--ik-browser-theme-color';
 
 let sessionColorThemePreference: ColorThemePreference | null = null;
 let sessionPreferencePersistenceFailed = false;
@@ -49,7 +48,15 @@ export const applyColorTheme = (): void => {
   const theme = resolveColorTheme();
   document.documentElement.dataset.theme = theme;
   const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-  if (themeColor) themeColor.content = theme === 'dark' ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
+  if (themeColor) {
+    try {
+      const browserThemeColor = window.getComputedStyle(document.documentElement)
+        .getPropertyValue(BROWSER_THEME_COLOR_TOKEN).trim();
+      if (browserThemeColor !== '') themeColor.content = browserThemeColor;
+    } catch {
+      // Keep the static HTML theme color when computed styles are unavailable.
+    }
+  }
   colorThemeListeners.forEach((listener) => listener());
 };
 

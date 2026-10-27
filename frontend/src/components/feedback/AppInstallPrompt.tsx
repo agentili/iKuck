@@ -98,16 +98,16 @@ export default function AppInstallPrompt({ onDismiss }: AppInstallPromptProps = 
           ? 'border-blue-200 bg-blue-50'
           : 'border-emerald-200 bg-white'
       } p-4 shadow-xl sm:mx-auto sm:max-w-2xl`}
-      aria-label={ios ? 'Usa iKuck come app' : 'Installa l’applicazione iKuck'}
+      aria-label={ios ? 'Usa A tavola come app' : 'Installa l’applicazione A tavola'}
     >
       <div className="min-w-0 flex-1">
         <p className="font-bold text-gray-950" role="status">
-          {ios ? 'Usa iKuck come app' : 'Installa iKuck'}
+          {ios ? 'Usa A tavola come app' : 'Installa A tavola'}
         </p>
         <p className="mt-1 text-sm text-gray-700">
           {ios
-            ? 'Su iPhone o iPad tocca Condividi e poi “Aggiungi a Schermata Home” per usare iKuck come un’app.'
-            : 'Aggiungi iKuck alla schermata home per aprirla con un tocco e usarla anche offline.'}
+            ? 'Su iPhone o iPad tocca Condividi e poi “Aggiungi a Schermata Home” per usare A tavola come un’app.'
+            : 'Aggiungi A tavola alla schermata home per aprirla con un tocco e usarla anche offline.'}
         </p>
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">

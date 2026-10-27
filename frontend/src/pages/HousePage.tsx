@@ -8,7 +8,7 @@ import PageSection from '../components/ui/PageSection';
 
 const errorMessage = (error: unknown): string => {
   if (error instanceof ApiClientError) {
-    if (error.code === 'house_email_not_registered') return 'Questa email non è ancora registrata in iKuck.';
+    if (error.code === 'house_email_not_registered') return 'Questa email non è ancora registrata in A tavola.';
     if (error.code === 'house_user_already_member') return 'Questo account è già membro della casa.';
     if (error.code === 'house_user_already_in_house') return 'Questo account appartiene già a un’altra casa.';
     if (error.code === 'house_last_admin_required') return 'La casa deve mantenere almeno un admin.';
@@ -78,11 +78,12 @@ export default function HousePage() {
 
   if (user === null) {
     return (
-      <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-3xl px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
+      <main id="main-content" className="ik-page account-page mx-auto min-h-screen w-full max-w-3xl px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
         <PageSection
           eyebrow="La tua casa"
           title="La mia casa"
           titleId="house-title"
+        titleLevel="h1"
           description="Accedi per creare o gestire una casa condivisa."
           className="border-emerald-200 shadow-sm sm:space-y-5"
         >
@@ -95,12 +96,13 @@ export default function HousePage() {
   const isAdmin = houseState?.membership?.role === 'admin';
 
   return (
-    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-3xl px-4 py-5 pb-24 sm:px-6 sm:py-8 lg:px-8">
+    <main id="main-content" className="ik-page account-page mx-auto min-h-screen w-full max-w-3xl px-4 py-5 pb-24 sm:px-6 sm:py-8 lg:px-8">
       <div className="mb-5"><Link to="/profile" className="inline-flex min-h-11 items-center rounded-xl px-2 font-semibold text-gray-700 underline underline-offset-2">← Torna al profilo</Link></div>
       <PageSection
         eyebrow="Condivisione familiare"
         title={houseState?.house?.name ?? 'La mia casa'}
         titleId="house-title"
+        titleLevel="h1"
         className="border-emerald-200 shadow-sm sm:space-y-5"
       >
         {message !== null && <p role="status" className="mt-5 rounded-xl bg-emerald-50 p-3 font-semibold text-emerald-900">{message}</p>}

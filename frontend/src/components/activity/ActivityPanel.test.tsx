@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { CookEvent, RecipePreference } from '@ikuck/shared/contracts';
 import ActivityPanel from './ActivityPanel';
+import { setActiveDataScope } from '../../sync/scopeContext';
 
 const event: CookEvent = {
   id: 'event-1',
@@ -25,6 +26,24 @@ const preference: RecipePreference = {
 };
 
 describe('ActivityPanel', () => {
+  it('clamps the last history page after removal and clears undo when the scope changes', async () => {
+    setActiveDataScope('guest');
+    const user = userEvent.setup();
+    const events = Array.from({ length: 41 }, (_, index) => ({ ...event, id: `event-${index}`, recipeTitle: `Cena ${index + 1}` }));
+    const props = { preferences: [], onRemoveEvent: vi.fn().mockReturnValue(true), onRestoreEvent: vi.fn().mockReturnValue(true), onClearActivity: vi.fn() };
+    const { rerender } = render(<ActivityPanel {...props} events={events} />);
+    const navigation = screen.getByRole('navigation', { name: 'Ricette cucinate' });
+    await user.click(within(navigation).getByRole('button', { name: 'Avanti' }));
+    await user.click(within(navigation).getByRole('button', { name: 'Avanti' }));
+    await user.click(screen.getByRole('button', { name: 'Rimuovi evento Cena 41' }));
+    rerender(<ActivityPanel {...props} events={events.slice(0, 40)} />);
+    expect(within(navigation).getByRole('status')).toHaveTextContent('Pagina 2 di 2');
+    expect(screen.getByRole('button', { name: 'Annulla' })).toBeVisible();
+    act(() => setActiveDataScope('house:other'));
+    expect(screen.queryByRole('button', { name: 'Annulla' })).not.toBeInTheDocument();
+    expect(within(screen.getByRole('navigation', { name: 'Ricette cucinate' })).getByRole('status')).toHaveTextContent('Pagina 1 di 2');
+    expect(props.onRestoreEvent).not.toHaveBeenCalled();
+  });
   it('explains empty activity', () => {
     render(<ActivityPanel events={[]} preferences={[]} onRemoveEvent={vi.fn()} onRestoreEvent={vi.fn()} onClearActivity={vi.fn()} />);
 

@@ -11,7 +11,7 @@ test('scope storage property denial does not prevent SPA startup', async ({ page
   });
   await page.route('**/v1/**', (route) => route.fulfill({ status: 200, json: null }));
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cosa portiamo a tavola?' })).toBeVisible();
 });
 
 test('persisted pantry survives reload when localStorage getItem is denied', async ({ page }) => {
@@ -19,11 +19,10 @@ test('persisted pantry survives reload when localStorage getItem is denied', asy
   await page.goto('/pantry');
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await page.goto('/pantry');
+  await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
+  await page.getByRole('combobox', { name: 'Ingredienti presenti' }).fill('pomodoro');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
-  await page.getByRole('dialog', { name: 'Aggiungi ingredienti' }).getByRole('combobox', { name: 'Ingredienti presenti' }).fill('pomodoro');
-  await page.getByRole('dialog', { name: 'Aggiungi ingredienti' }).getByRole('button', { name: 'Aggiungi ingredienti' }).click();
   await expect(page.getByText('Pomodoro', { exact: true })).toBeVisible();
   await page.waitForFunction(() => new Promise<boolean>((resolve) => {
     const request = indexedDB.open('ikuck-local-v2');
@@ -64,12 +63,10 @@ test('persisted pantry survives reload when localStorage getItem is denied', asy
 
 test('successful IndexedDB pantry write outranks a stale mirror when mirror update and removal fail across reload', async ({ page }) => {
   await installOfflineBackend(page);
-  await page.goto('/');
+  await page.goto('/pantry');
   const addItem = async (name: string) => {
-    await page.getByRole('button', { name: 'Aggiungi ingredienti' }).first().click();
-    const dialog = page.getByRole('dialog', { name: 'Aggiungi ingredienti' });
-    await dialog.getByRole('combobox', { name: 'Ingredienti presenti' }).fill(name);
-    await dialog.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+    await page.getByRole('combobox', { name: 'Ingredienti presenti' }).fill(name);
+    await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
   };
   await addItem('pomodoro');
   await expect(page.getByText('Pomodoro', { exact: true })).toBeVisible();
@@ -133,20 +130,18 @@ test('legacy mirror newer than IndexedDB remains visible when the pending marker
     }));
   });
   await installOfflineBackend(page);
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await page.goto('/pantry');
+  await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
   await expect(page.getByText('Pomodoro', { exact: true })).toBeVisible();
   await expect(page.getByText('Pasta', { exact: true })).toHaveCount(0);
 });
 
 test('new pantry item survives reload when IndexedDB write fails but localStorage mirror succeeds', async ({ page }) => {
   await installOfflineBackend(page);
-  await page.goto('/');
+  await page.goto('/pantry');
   const addItem = async (name: string) => {
-    await page.getByRole('button', { name: 'Aggiungi ingredienti' }).first().click();
-    const dialog = page.getByRole('dialog', { name: 'Aggiungi ingredienti' });
-    await dialog.getByRole('combobox', { name: 'Ingredienti presenti' }).fill(name);
-    await dialog.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+    await page.getByRole('combobox', { name: 'Ingredienti presenti' }).fill(name);
+    await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
   };
   await addItem('pomodoro');
   await expect(page.getByText('Pomodoro', { exact: true })).toBeVisible();
@@ -174,7 +169,7 @@ test('motion storage denial does not prevent SPA startup', async ({ page }) => {
   });
   await page.route('**/v1/**', (route) => route.fulfill({ status: 200, json: null }));
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cosa portiamo a tavola?' })).toBeVisible();
   expect(await page.locator('html').getAttribute('data-motion')).toBe('system');
 });
 
@@ -211,7 +206,7 @@ test('verified house member gets a recoverable storage error when purge-marker s
   const initialSyncResponse = page.waitForResponse((response) => new URL(response.url()).pathname === '/v1/sync'
     && response.request().method() === 'POST');
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cosa portiamo a tavola?' })).toBeVisible();
   await initialSyncResponse;
   await page.evaluate(() => window.sessionStorage.setItem('deny-house-purge-storage', '1'));
   trackFunctionalWrites = true;
@@ -219,7 +214,7 @@ test('verified house member gets a recoverable storage error when purge-marker s
   await expect(page.getByRole('alert').filter({ hasText: /non posso verificare la sicurezza dei dati della casa/i })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Navigazione principale' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Ricarica l’app' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Cosa portiamo a tavola?' })).toHaveCount(0);
   expect(functionalWrites).toEqual([]);
 });
 
@@ -258,65 +253,40 @@ test('session motion choice stays checked after leaving and returning to Profile
   expect(await page.locator('html').getAttribute('data-motion')).toBe('reduced');
 });
 
-test('quick add is modal, traps keyboard focus, scrolls internally, and preserves the page', async ({ page }) => {
+test('pantry autocomplete stays keyboard reachable at 320px with 200% text and preserves editing', async ({ page }) => {
+  await installOfflineBackend(page);
   await page.setViewportSize({ width: 320, height: 700 });
-  await page.goto('/');
+  await page.goto('/pantry');
   await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
-  const trigger = page.getByRole('button', { name: 'Aggiungi ingredienti' }).first();
-  await trigger.click();
-  const dialog = page.getByRole('dialog', { name: 'Aggiungi ingredienti' });
-  expect(await dialog.evaluate((element) => element.matches(':modal'))).toBe(true);
-  const backgroundFocusWasBlocked = await trigger.evaluate((element) => {
-    element.focus();
-    return document.activeElement !== element;
-  });
-  expect(backgroundFocusWasBlocked).toBe(true);
-  await expect(dialog.getByRole('combobox', { name: 'Ingredienti presenti' })).toBeFocused();
-  const dimensions = await dialog.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    return { top: rect.top, bottom: rect.bottom, height: rect.height, maxHeight: style.maxHeight, overflowY: style.overflowY };
-  });
-  expect(dimensions.top).toBeGreaterThanOrEqual(0);
-  expect(dimensions.bottom).toBeLessThanOrEqual(700);
-  expect(['auto', 'scroll']).toContain(dimensions.overflowY);
-  const input = dialog.getByRole('combobox', { name: 'Ingredienti presenti' });
-  await input.fill('pom');
-  await expect(dialog.getByRole('listbox', { name: 'Ingredienti suggeriti' })).toBeVisible();
+  const input = page.getByRole('combobox', { name: 'Ingredienti presenti' });
+  await input.focus();
+  await page.keyboard.type('pom');
+  await expect(page.getByRole('listbox', { name: 'Ingredienti suggeriti' })).toBeVisible();
   await input.press('Escape');
-  await expect(dialog.getByRole('listbox')).toHaveCount(0);
-  await page.keyboard.press('Escape');
-  await expect(dialog).toHaveCount(0);
-  await trigger.click();
-  const reopened = page.getByRole('dialog', { name: 'Aggiungi ingredienti' });
-  const beforeScroll = await page.evaluate(() => window.scrollY);
-  await reopened.getByRole('button', { name: 'Aggiungi ingredienti' }).focus();
-  await page.keyboard.press('Tab');
-  expect(await reopened.evaluate((element) => element.contains(document.activeElement))).toBe(true);
-  const addButton = reopened.getByRole('button', { name: 'Aggiungi ingredienti' });
+  await expect(page.getByRole('listbox', { name: 'Ingredienti suggeriti' })).toHaveCount(0);
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('pom');
+  await input.fill('pomodoro');
+  await input.press('Enter');
+  await expect(page.getByRole('list', { name: 'La tua dispensa' }).getByText('Pomodoro', { exact: true })).toBeVisible();
+  await expect(input).toHaveValue('');
+  const addButton = page.getByRole('button', { name: 'Aggiungi ingredienti' });
   await addButton.focus();
-  const focusReachable = await addButton.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const dialogElement = element.closest('dialog')!;
-    return rect.top >= dialogElement.getBoundingClientRect().top && rect.bottom <= dialogElement.getBoundingClientRect().bottom;
-  });
-  expect(focusReachable).toBe(true);
-  expect(await reopened.evaluate((element) => (element as HTMLDialogElement).scrollTop)).toBeGreaterThan(0);
-  expect(await page.evaluate(() => window.scrollY)).toBe(beforeScroll);
-  await page.keyboard.press('Shift+Tab');
-  expect(await reopened.evaluate((element) => element.contains(document.activeElement))).toBe(true);
-  await page.keyboard.press('Escape');
-  await expect(trigger).toBeFocused();
+  await expect(addButton).toBeFocused();
+  await input.fill('pasta');
+  await addButton.click();
+  await expect(page.getByRole('list', { name: 'La tua dispensa' }).getByText('Pasta', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
+  await page.getByRole('link', { name: 'Cucina', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'L’idea di oggi' })).toBeVisible();
 });
 
 test('recipe result cards show known servings in browser', async ({ page }) => {
   await page.route('**/v1/**', (route) => route.fulfill({ status: 200, json: null }));
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Aggiungi ingredienti' }).first().click();
-  const dialog = page.getByRole('dialog', { name: 'Aggiungi ingredienti' });
-  await dialog.getByRole('combobox', { name: 'Ingredienti presenti' }).fill('pasta, tonno, passata');
-  await dialog.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
-  await page.getByRole('button', { name: 'Trova ricette' }).click();
+  await page.goto('/pantry');
+  await page.getByRole('combobox', { name: 'Ingredienti presenti' }).fill('pasta, tonno, passata');
+  await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await page.getByRole('link', { name: 'Cucina', exact: true }).click();
   const card = page.getByRole('article', { name: 'Pasta tonno e pomodoro' });
   await expect(card).toContainText('2 porzioni');
 });

@@ -7,7 +7,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 const appVersion = process.env.npm_package_version ?? '1.0.0';
 
 const createVersionMetadata = (version: string, rawBuildId: string | undefined) => ({
-  name: 'iKuck' as const,
+  name: 'A tavola' as const,
   version,
   buildId: rawBuildId?.trim() || 'local',
 });
@@ -64,16 +64,16 @@ export default defineConfig({
         'icons/maskable-icon-512x512.png',
       ],
       manifest: {
-        name: 'iKuck',
-        short_name: 'iKuck',
+        name: 'A tavola',
+        short_name: 'A tavola',
         description: 'Ricette semplici basate sugli ingredienti della tua dispensa.',
         id: '/',
         start_url: '/',
         scope: '/',
         display: 'standalone',
         orientation: 'portrait-primary',
-        theme_color: '#247A4A',
-        background_color: '#FAFBF7',
+        theme_color: '#F7F7EC',
+        background_color: '#F7F7EC',
         lang: 'it',
         categories: ['food', 'lifestyle'],
         shortcuts: [

@@ -117,6 +117,29 @@ describe('auth store', () => {
     }));
   });
 
+  it.each([false, true])('preserves a new login when an older logout finishes (failure: %s)', async (fails) => {
+    let resolveLogout!: () => void;
+    let rejectLogout!: (error: unknown) => void;
+    const pendingLogout = new Promise<void>((resolve, reject) => { resolveLogout = resolve; rejectLogout = reject; });
+    const nextUser = { ...verifiedUser, id: 'user-2', email: 'other@example.com' };
+    const request = vi.fn()
+      .mockResolvedValueOnce(verifiedSession)
+      .mockReturnValueOnce(pendingLogout)
+      .mockResolvedValueOnce({ ...verifiedSession, user: nextUser, csrfToken: 'csrf-2' }) as ApiRequest;
+    const store = createAuthStore(request);
+    await store.getState().login(verifiedUser.email, 'a long enough password');
+    const logout = store.getState().logout();
+    await store.getState().login(nextUser.email, 'another long password');
+    if (fails) {
+      rejectLogout(new ApiClientError(0, 'network_error', 'Network unavailable'));
+      await expect(logout).rejects.toMatchObject({ code: 'network_error' });
+    } else {
+      resolveLogout();
+      await logout;
+    }
+    expect(store.getState()).toMatchObject({ user: nextUser, csrfToken: 'csrf-2', expiresAt: verifiedSession.expiresAt });
+  });
+
   it('clears in-memory session state when the logout request fails', async () => {
     const request = vi.fn()
       .mockResolvedValueOnce(verifiedSession)

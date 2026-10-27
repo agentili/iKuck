@@ -1,11 +1,13 @@
 import { MemoryRouter } from 'react-router-dom';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import AppHeader from './AppHeader';
 import { useAuthStore } from '../../auth/authStore';
 import { usePantryCandidatesBadgeStore } from '../../store/pantryCandidatesBadgeStore';
 import { saveColorThemePreference } from '../../domain/colorTheme';
+import { setActiveDataScope } from '../../sync/scopeContext';
+import { useHouseStore } from '../../house/houseStore';
 
 describe('AppHeader', () => {
   beforeEach(() => {
@@ -14,6 +16,8 @@ describe('AppHeader', () => {
     document.documentElement.dataset.theme = 'light';
     useAuthStore.setState({ user: null, connection: 'unknown' });
     usePantryCandidatesBadgeStore.getState().reset();
+    setActiveDataScope('guest');
+    useHouseStore.getState().clear();
   });
 
   it('toggles the resolved theme and exposes the opposite action on mobile and desktop', async () => {
@@ -69,8 +73,36 @@ describe('AppHeader', () => {
 
     expect(screen.getAllByRole('link', { name: 'Profilo' })).toHaveLength(2);
     expect(screen.getAllByRole('link', { name: 'Casa' })).toHaveLength(2);
-    expect(screen.getAllByText('Account verificato')).toHaveLength(2);
+    expect(screen.getByRole('status', { name: 'Stato account e dati' })).toHaveTextContent('Account verificato');
     expect(screen.queryByText('ale@example.com')).not.toBeInTheDocument();
+  });
+
+  it('keeps account identity, offline state and actual data scope visible together', () => {
+    useAuthStore.setState({ user: { id: 'user-1', email: 'ale@example.com', emailVerifiedAt: '2026-09-12' }, connection: 'offline' });
+    useHouseStore.setState({ state: { house: { id: 'old-house', name: 'Casa precedente', createdAt: '2026-09-12' }, membership: { role: 'member', joinedAt: '2026-09-12' }, members: [] } });
+    setActiveDataScope('account:user-1');
+    render(<MemoryRouter><AppHeader /></MemoryRouter>);
+    const status = screen.getByRole('status', { name: 'Stato account e dati' });
+    expect(status).toHaveTextContent('Account verificato');
+    expect(status).toHaveTextContent('Offline');
+    expect(status).toHaveTextContent('Dati personali');
+    expect(status).not.toHaveTextContent('Casa precedente');
+    act(() => setActiveDataScope('house:old-house'));
+    expect(status).toHaveTextContent('Casa · Casa precedente');
+    act(() => setActiveDataScope('guest'));
+    expect(status).toHaveTextContent('Dati ospite sul dispositivo');
+  });
+
+  it('responds to the browser going offline for guests', () => {
+    render(<MemoryRouter><AppHeader /></MemoryRouter>);
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+    try {
+      act(() => window.dispatchEvent(new Event('offline')));
+      expect(screen.getByRole('status', { name: 'Stato account e dati' })).toHaveTextContent('Offline');
+      expect(screen.getByRole('status', { name: 'Stato account e dati' })).toHaveTextContent('Ospite · dati locali');
+    } finally {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+    }
   });
 
   it('mostra il badge dei candidati pendenti sulla scheda Dispensa', () => {

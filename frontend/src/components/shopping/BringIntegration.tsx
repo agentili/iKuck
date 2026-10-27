@@ -91,7 +91,7 @@ export default function BringIntegration({ userId, csrfToken }: { userId: string
   const run = useCallback(async <T,>(work: (signal: AbortSignal) => Promise<T>, apply: (result: T) => void) => {
     if (!current()) return;
     if (!navigator.onLine) {
-      setError('Bring! richiede Internet. La lista iKuck resta disponibile offline.');
+      setError('Bring! richiede Internet. La lista locale resta disponibile offline.');
       return;
     }
 
@@ -216,7 +216,7 @@ export default function BringIntegration({ userId, csrfToken }: { userId: string
       setSnapshot(null);
       setListId('');
       setReconnect(false);
-      setMessage('Bring! scollegato da iKuck. Le liste su Bring! non sono state cancellate.');
+      setMessage('Bring! scollegato da A tavola. Le liste su Bring! non sono state cancellate.');
     });
   };
 
@@ -268,14 +268,14 @@ export default function BringIntegration({ userId, csrfToken }: { userId: string
   return (
     <section className="ik-surface rounded-3xl border-2 bg-white p-4 sm:p-6" aria-labelledby="bring-title">
       <h2 id="bring-title" className="text-3xl font-black">Lista Bring!</h2>
-      <p className="mt-2 text-[var(--ik-ink-muted)]">La lista resta su Bring! e richiede Internet. La lista iKuck rimane separata.</p>
+      <p className="mt-2 text-[var(--ik-ink-muted)]">La lista resta su Bring! e richiede Internet. La lista locale rimane separata.</p>
       {!online && <p role="status" className="mt-3">Sei offline: i dati Bring! mostrati potrebbero non essere aggiornati. Le modifiche sono disabilitate.</p>}
       {busy && <p role="status" className="mt-3">Operazione Bring! in corso…</p>}
       {error !== null && <p role="alert" className="mt-3 text-[var(--ik-tomato)]">{error}</p>}
       {message !== null && <p role="status" className="mt-3 text-[var(--ik-basil-dark)]">{message}</p>}
 
       {!sessionMatches ? (
-        <p role="status" className="mt-4">Collega Bring! con una sessione verificata iKuck.</p>
+        <p role="status" className="mt-4">Collega Bring! con un account verificato.</p>
       ) : (
         <>
           <button type="button" disabled={busy || !online} onClick={() => { void loadStatus(); }} className="ik-button-secondary mt-3 min-h-11 border px-3">
@@ -290,7 +290,7 @@ export default function BringIntegration({ userId, csrfToken }: { userId: string
               {disconnected && status !== null && <form onSubmit={connect} className="mt-4">
                 <fieldset disabled={busy || !online} className="grid gap-3">
                   <legend className="font-bold">{reconnect ? 'Ricollega Bring!' : 'Collega Bring!'}</legend>
-                  <p>Le credenziali sono inviate a Bring! tramite il backend iKuck. La password non viene conservata; i token sono cifrati sul server. API non ufficiale.</p>
+                  <p>Le credenziali sono inviate a Bring! tramite il server dell’app. La password non viene conservata; i token sono cifrati sul server. API non ufficiale.</p>
                   <label className="grid gap-1">Email Bring!
                     <input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={254} required className="ik-input min-h-11 px-3" />
                   </label>
@@ -299,7 +299,7 @@ export default function BringIntegration({ userId, csrfToken }: { userId: string
                   </label>
                   <label className="flex min-h-11 items-center gap-2">
                     <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-                    Autorizzo iKuck ad accedere e modificare le mie liste Bring! quando lo richiedo.
+                    Autorizzo A tavola ad accedere e modificare le mie liste Bring! quando lo richiedo.
                   </label>
                   <button type="submit" disabled={!consent} className="ik-button-primary min-h-11 px-4">Collega Bring!</button>
                 </fieldset>

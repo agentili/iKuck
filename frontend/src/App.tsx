@@ -1,3 +1,4 @@
+import NotificationCenter from './components/feedback/NotificationCenter';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { useAuthStore } from './auth/authStore';
@@ -192,6 +193,7 @@ export default function App() {
     <BrowserRouter>
       <div className="app-shell min-h-screen">
         <AppHeader />
+        <NotificationCenter />
         {(pantryMergeSummary !== null || pantryMergeFailed) && (
           <PantryMergeNotice
             summary={pantryMergeSummary}

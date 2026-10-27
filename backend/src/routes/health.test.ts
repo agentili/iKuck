@@ -12,12 +12,12 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
 
-describe('GET /healthz', () => {
+describe.each(['/healthz', '/v1/health'])('GET %s', (path) => {
   it('returns ok only when PostgreSQL and Redis are reachable', async () => {
     const app = createApp(createDependencies());
     apps.push(app);
 
-    const response = await app.inject({ method: 'GET', url: '/healthz' });
+    const response = await app.inject({ method: 'GET', url: path });
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ status: 'ok' });
@@ -30,7 +30,7 @@ describe('GET /healthz', () => {
     });
     apps.push(app);
 
-    const response = await app.inject({ method: 'GET', url: '/healthz' });
+    const response = await app.inject({ method: 'GET', url: path });
 
     expect(response.statusCode).toBe(503);
     expect(response.json()).toEqual({ status: 'degraded' });

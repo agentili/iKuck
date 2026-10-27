@@ -44,6 +44,9 @@ export const createPlaywrightConfig = (env: NodeJS.ProcessEnv = process.env): Pl
     use: {
       baseURL,
       trace: 'retain-on-failure',
+      launchOptions: env.IKUCK_PLAYWRIGHT_EXECUTABLE_PATH?.trim()
+        ? { executablePath: env.IKUCK_PLAYWRIGHT_EXECUTABLE_PATH.trim() }
+        : undefined,
     },
     globalSetup: live ? './e2e/liveSetup.ts' : undefined,
     projects: live

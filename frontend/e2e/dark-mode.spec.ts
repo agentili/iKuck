@@ -6,7 +6,7 @@ const themePreferenceKey = 'ikuck-color-theme';
 const firstPaintThemeKey = 'ikuck-e2e-first-paint-theme';
 
 const auditedPages = [
-  { path: '/', heading: 'Cucina viva', name: 'home' },
+  { path: '/', heading: 'Cosa portiamo a tavola?', name: 'home' },
   { path: '/shopping-list', heading: 'Lista della spesa', name: 'shopping-list' },
   { path: '/recipes/pasta-tonno-pomodoro', heading: 'Pasta tonno e pomodoro', name: 'recipe-detail' },
   { path: '/profile', heading: 'Accedi al tuo profilo', name: 'profile' },
@@ -14,6 +14,9 @@ const auditedPages = [
 
 const expectTheme = async (page: Page, theme: 'light' | 'dark'): Promise<void> => {
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+  const browserThemeColor = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ik-browser-theme-color').trim());
+  expect(browserThemeColor).not.toBe('');
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', browserThemeColor);
 };
 
 test.beforeEach(async ({ context, page }) => {
@@ -126,7 +129,7 @@ test('reapplies dark theme from the service-worker cache while offline without a
 
   await page.emulateMedia({ colorScheme: 'light' });
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cosa portiamo a tavola?' })).toBeVisible();
   await page.getByRole('button', { name: 'Attiva tema scuro' }).click();
   await expectTheme(page, 'dark');
   await page.waitForFunction(() => 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null);
@@ -134,7 +137,7 @@ test('reapplies dark theme from the service-worker cache while offline without a
 
   await context.setOffline(true);
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cosa portiamo a tavola?' })).toBeVisible();
   await expectTheme(page, 'dark');
   await expect.poll(() => page.evaluate((key) => JSON.parse(sessionStorage.getItem(key) ?? '[]') as string[], firstPaintThemeKey))
     .toEqual(['dark']);

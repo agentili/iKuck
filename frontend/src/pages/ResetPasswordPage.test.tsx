@@ -25,6 +25,7 @@ describe('ResetPasswordPage', () => {
     await user.click(screen.getByRole('button', { name: 'Salva nuova password' }));
 
     expect(await screen.findByRole('heading', { name: 'Password aggiornata' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Torna all’accesso' })).toHaveAttribute('href', '/profile');
     expect(screen.queryByText('secret-reset-token-123456789012345')).not.toBeInTheDocument();
     expect(replaceState).toHaveBeenCalledWith(expect.anything(), '', '/reset-password');
     expect(vi.mocked(fetch)).toHaveBeenCalledWith('/v1/auth/reset-password', expect.objectContaining({

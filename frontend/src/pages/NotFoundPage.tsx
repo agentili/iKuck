@@ -15,7 +15,7 @@ export default function NotFoundPage({ resource = 'recipe' }: NotFoundPageProps)
   }, []);
 
   return (
-    <main ref={mainRef} id="main-content" tabIndex={-1} className="mx-auto grid min-h-screen max-w-xl place-content-center px-4 py-12 text-center">
+    <main ref={mainRef} id="main-content" tabIndex={-1} className="ik-page auth-page mx-auto grid max-w-xl place-content-center px-4 py-12 text-center">
       <p className="text-6xl" aria-hidden="true">🍳</p>
       <h1 className="mt-5 text-4xl font-black text-gray-950">{isRecipe ? 'Ricetta non trovata' : 'Pagina non trovata'}</h1>
       <p className="mt-3 text-lg leading-relaxed text-gray-600">

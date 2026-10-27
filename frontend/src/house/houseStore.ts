@@ -1,6 +1,7 @@
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 import type { HouseRole, HouseState } from '@ikuck/shared/contracts';
 import type { ApiRequest } from '../api/apiClient';
+import { useAuthStore } from '../auth/authStore';
 import {
   addHouseMember,
   changeHouseMemberRole,
@@ -44,11 +45,27 @@ export const createHouseStore = ({ request }: HouseStoreOptions = {}): HouseStor
     }
   };
 
-  const refresh = async (): Promise<HouseState | null> => run(async () => {
-    const next = await fetchHouseState(request);
-    set({ state: next });
-    return next;
-  });
+  const refresh = async (): Promise<HouseState | null> => {
+    const { user, csrfToken } = useAuthStore.getState();
+    const userId = user?.id ?? null;
+    const isCurrentSession = () => {
+      const current = useAuthStore.getState();
+      return (current.user?.id ?? null) === userId && current.csrfToken === csrfToken;
+    };
+    set({ isLoading: true, error: null });
+    try {
+      const next = await fetchHouseState(request);
+      if (!isCurrentSession()) return null;
+      set({ state: next });
+      return next;
+    } catch (error) {
+      if (!isCurrentSession()) return null;
+      set({ error });
+      throw error;
+    } finally {
+      if (isCurrentSession()) set({ isLoading: false });
+    }
+  };
 
   return {
     state: null,
@@ -80,7 +97,7 @@ export const createHouseStore = ({ request }: HouseStoreOptions = {}): HouseStor
       await leaveHouse(csrfToken, request);
       set({ state: null });
     }),
-    clear: () => set({ state: null, error: null }),
+    clear: () => set({ state: null, error: null, isLoading: false }),
   };
 });
 

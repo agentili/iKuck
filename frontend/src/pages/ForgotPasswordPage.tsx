@@ -32,8 +32,8 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <main id="main-content" className="mx-auto flex min-h-screen w-full max-w-xl items-center px-4 py-8 sm:px-6">
-      <section className="w-full rounded-3xl border-2 border-gray-200 bg-white p-6 shadow-sm sm:p-8">
+    <main id="main-content" className="ik-page auth-page mx-auto w-full max-w-xl px-4 py-8 sm:px-6">
+      <section className="editorial-panel w-full rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
         {submitted ? (
           <>
             <h1 className="text-3xl font-black text-gray-950">Controlla la tua email</h1>

@@ -1,5 +1,7 @@
+import PaginatedList from '../ui/PaginatedList';
 import { Check, Circle, Plus, ShoppingCart, Trash2 } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { useState, useSyncExternalStore, type FormEvent } from 'react';
+import { getActiveDataScope, subscribeActiveDataScope } from '../../sync/scopeContext';
 import type { PantryUnit, ShoppingListItem, ShoppingListItemPayload } from '@ikuck/shared/contracts';
 import { parseIngredientInput } from '@ikuck/shared/ingredients';
 import { getRecipeById } from '../../domain/recipes';
@@ -213,7 +215,12 @@ function ShoppingListItemRow({
   );
 }
 
-export default function ShoppingListPanel({
+export default function ShoppingListPanel(props: ShoppingListPanelProps) {
+  const scope = useSyncExternalStore(subscribeActiveDataScope, getActiveDataScope, getActiveDataScope);
+  return <ShoppingListPanelContent key={scope} {...props} />;
+}
+
+function ShoppingListPanelContent({
   items,
   onAdd,
   onTogglePurchased,
@@ -401,7 +408,7 @@ export default function ShoppingListPanel({
                 Da acquistare <span className="font-semibold text-[var(--ik-ink-muted)]">({pendingItems.length})</span>
               </h3>
               <ul className="mt-3 grid gap-3">
-                {pendingItems.map((item) => (
+                <PaginatedList list identity="pending-shopping-items" label="Articoli da acquistare">{pendingItems.map((item) => (
                   <ShoppingListItemRow
                     key={item.id}
                     item={item}
@@ -415,7 +422,7 @@ export default function ShoppingListPanel({
                     }}
                     isEditing={editingItemId === item.id}
                   />
-                ))}
+                ))}</PaginatedList>
               </ul>
             </section>
           )}
@@ -436,7 +443,7 @@ export default function ShoppingListPanel({
               </div>
               {purchasedSectionOpen && (
                 <ul className="mt-3 grid gap-3">
-                  {purchasedItems.map((item) => (
+                  <PaginatedList list identity="purchased-shopping-items" label="Articoli acquistati">{purchasedItems.map((item) => (
                     <ShoppingListItemRow
                       key={item.id}
                       item={item}
@@ -450,7 +457,7 @@ export default function ShoppingListPanel({
                       }}
                       isEditing={editingItemId === item.id}
                     />
-                  ))}
+                  ))}</PaginatedList>
                 </ul>
               )}
             </section>

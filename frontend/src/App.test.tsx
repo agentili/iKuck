@@ -159,7 +159,7 @@ describe('App synchronization lifecycle', () => {
       expect(fetchMock).toHaveBeenNthCalledWith(1, '/v1/house', expect.objectContaining({ method: 'GET' }));
 
       screen.getByRole('button', { name: 'Riprova' }).click();
-      expect(await screen.findByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+      expect(await screen.findByRole('heading', { name: 'Cosa portiamo a tavola?' })).toBeVisible();
       expect(fetchMock).toHaveBeenNthCalledWith(2, '/v1/house', expect.objectContaining({ method: 'GET' }));
       expect(getActiveDataScope()).toBe('account:user-1');
       await waitFor(() => expect(syncVerifiedSession).toHaveBeenCalledOnce());
@@ -296,7 +296,7 @@ describe('App synchronization lifecycle', () => {
     render(<App />);
 
     expect(restoreSession).toHaveBeenCalledOnce();
-    await screen.findByRole('heading', { name: 'Cucina viva' });
+    await screen.findByRole('heading', { name: 'Cosa portiamo a tavola?' });
   });
 
   it('hydrates pantry data before an authenticated profile uses it', async () => {
@@ -370,14 +370,14 @@ describe('App synchronization lifecycle', () => {
 
     render(<App />);
 
-    expect(await screen.findByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Cosa portiamo a tavola?' })).toBeVisible();
     expect(screen.queryByLabelText('Ingredienti presenti')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Apri tutta la dispensa' })).toHaveAttribute('href', '/pantry');
-    expect(screen.getByRole('button', { name: 'Trova ricette' })).toBeEnabled();
+    expect(screen.getByRole('link', { name: /ingredienti in dispensa/ })).toHaveAttribute('href', '/pantry');
+    expect(screen.getByRole('heading', { name: 'L’idea di oggi' })).toBeVisible();
   });
 
   it.each([
-    ['/', 'Cucina viva'],
+    ['/', 'Cosa portiamo a tavola?'],
     ['/pantry', 'La tua dispensa'],
     ['/recipes/pasta-tonno-pomodoro', 'Pasta tonno e pomodoro'],
     ['/profile', 'Accedi al tuo profilo'],

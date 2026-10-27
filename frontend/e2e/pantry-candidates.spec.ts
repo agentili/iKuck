@@ -17,6 +17,10 @@ test('l’inbox «Da confermare» non è disponibile per gli ospiti e non chiama
 });
 
 test('un utente verificato con una Casa recupera i candidati con una sola chiamata API', async ({ page }) => {
+  let candidateReads = 0;
+  page.on('request', (request) => {
+    if (request.method() === 'GET' && new URL(request.url()).pathname === '/v1/pantry/candidates') candidateReads += 1;
+  });
   await installOfflineBackend(page, {
     responses: {
       'GET /v1/auth/session': {
@@ -65,7 +69,9 @@ test('un utente verificato con una Casa recupera i candidati con una sola chiama
   await page.goto('/pantry');
   // Attende che il bootstrap della Casa sia completato e l'inbox sia renderizzata.
   await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
+  await page.locator('summary').filter({ hasText: /^Importazioni e conferme avanzate$/ }).click();
   await expect(page.getByRole('heading', { name: 'Da confermare' })).toBeVisible();
   await expect(page.getByRole('checkbox', { name: 'Seleziona Latte' })).toBeVisible();
   await expect(page.getByText('1 l')).toBeVisible();
+  expect(candidateReads).toBe(1);
 });

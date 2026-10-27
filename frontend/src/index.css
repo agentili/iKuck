@@ -1,79 +1,92 @@
 @import '@fontsource-variable/bricolage-grotesque';
+@import './theme/palettes.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --tk-white: 255 255 255;
-  --tk-gray-50: 249 250 251;
-  --tk-gray-100: 243 244 246;
-  --tk-gray-200: 229 231 235;
-  --tk-gray-300: 209 213 219;
-  --tk-gray-400: 156 163 175;
-  --tk-gray-500: 107 114 128;
-  --tk-gray-600: 75 85 99;
-  --tk-gray-700: 55 65 81;
-  --tk-gray-800: 31 41 55;
-  --tk-gray-900: 17 24 39;
-  --tk-gray-950: 3 7 18;
-  --tk-emerald-50: 236 253 245;
-  --tk-emerald-100: 209 250 229;
-  --tk-emerald-200: 167 243 208;
-  --tk-emerald-300: 110 231 183;
-  --tk-emerald-500: 16 185 129;
-  --tk-emerald-600: 5 150 105;
-  --tk-emerald-700: 4 120 87;
-  --tk-emerald-800: 6 95 70;
-  --tk-emerald-900: 6 78 59;
-  --tk-emerald-950: 2 44 34;
-  --tk-amber-50: 255 251 235;
-  --tk-amber-100: 254 243 199;
-  --tk-amber-200: 253 230 138;
-  --tk-amber-300: 252 211 77;
-  --tk-amber-400: 251 191 36;
-  --tk-amber-500: 245 158 11;
-  --tk-amber-700: 180 83 9;
-  --tk-amber-800: 146 64 14;
-  --tk-amber-900: 120 53 15;
-  --tk-amber-950: 69 26 3;
-  --tk-rose-50: 255 241 242;
-  --tk-rose-100: 255 228 230;
-  --tk-rose-200: 254 205 211;
-  --tk-rose-300: 253 164 175;
-  --tk-rose-600: 225 29 72;
-  --tk-rose-700: 190 18 60;
-  --tk-rose-800: 159 18 57;
-  --tk-rose-900: 136 19 55;
-  --tk-rose-950: 76 5 25;
-  --tk-red-50: 254 242 242;
-  --tk-red-100: 254 226 226;
-  --tk-red-200: 254 202 202;
-  --tk-red-300: 252 165 165;
-  --tk-red-700: 185 28 28;
-  --tk-red-800: 153 27 27;
-  --tk-red-900: 127 29 29;
-  --tk-red-950: 69 10 10;
-  --tk-porcelain: 250 251 247;
-  --tk-ink: 24 48 40;
-  --tk-basil: 36 122 74;
-  --tk-sage: 225 236 228;
-  --tk-tomato: 217 76 53;
-  --tk-yolk: 242 190 62;
-  --ik-porcelain: #fafbf7;
-  --ik-ink: #183028;
-  --ik-ink-muted: #52665b;
-  --ik-basil: #247a4a;
-  --ik-basil-dark: #165c35;
-  --ik-sage: #e1ece4;
-  --ik-mist: #f1f3ed;
-  --ik-yolk: #f2be3e;
-  --ik-yolk-soft: #fff3cb;
-  --ik-tomato: #b9382a;
-  --ik-tomato-soft: #fde9e5;
-  --ik-border: #c9d8cf;
-  --ik-border-strong: #92ac9c;
-  --ik-surface: #ffffff;
+  /* Utility colors stay connected to the selected palette's semantic tokens. */
+  --tk-white: var(--palette-surface-rgb);
+  --tk-gray-50: var(--palette-page-rgb);
+  --tk-gray-100: var(--palette-surface-rgb);
+  --tk-gray-200: var(--palette-border-rgb);
+  --tk-gray-300: var(--palette-border-strong-rgb);
+  --tk-gray-400: var(--palette-muted-rgb);
+  --tk-gray-500: var(--palette-muted-rgb);
+  --tk-gray-600: var(--palette-muted-rgb);
+  --tk-gray-700: var(--palette-ink-rgb);
+  --tk-gray-800: var(--palette-ink-rgb);
+  --tk-gray-900: var(--palette-ink-rgb);
+  --tk-gray-950: var(--palette-ink-rgb);
+  --tk-emerald-50: var(--palette-sage-rgb);
+  --tk-emerald-100: var(--palette-sage-rgb);
+  --tk-emerald-200: var(--palette-sage-mid-rgb);
+  --tk-emerald-300: var(--palette-sage-mid-rgb);
+  --tk-emerald-500: var(--palette-sage-dark-rgb);
+  --tk-emerald-600: var(--palette-sage-dark-rgb);
+  --tk-emerald-700: var(--palette-sage-dark-rgb);
+  --tk-emerald-800: var(--palette-sage-dark-rgb);
+  --tk-emerald-900: var(--palette-sage-dark-rgb);
+  --tk-emerald-950: var(--palette-ink-rgb);
+  --tk-amber-50: var(--palette-warm-soft-rgb);
+  --tk-amber-100: var(--palette-warm-soft-rgb);
+  --tk-amber-200: var(--palette-warm-rgb);
+  --tk-amber-300: var(--palette-warm-hover-rgb);
+  --tk-amber-400: var(--palette-warm-rgb);
+  --tk-amber-500: var(--palette-warm-ink-rgb);
+  --tk-amber-700: var(--palette-warm-ink-rgb);
+  --tk-amber-800: var(--palette-warm-ink-rgb);
+  --tk-amber-900: var(--palette-warm-ink-rgb);
+  --tk-amber-950: var(--palette-ink-rgb);
+  --tk-rose-50: var(--palette-primary-soft-rgb);
+  --tk-rose-100: var(--palette-primary-soft-rgb);
+  --tk-rose-200: var(--palette-primary-mid-rgb);
+  --tk-rose-300: var(--palette-primary-mid-rgb);
+  --tk-rose-600: var(--palette-primary-rgb);
+  --tk-rose-700: var(--palette-primary-dark-rgb);
+  --tk-rose-800: var(--palette-primary-dark-rgb);
+  --tk-rose-900: var(--palette-primary-dark-rgb);
+  --tk-rose-950: var(--palette-ink-rgb);
+  --tk-red-50: var(--palette-danger-soft-rgb);
+  --tk-red-100: var(--palette-danger-soft-rgb);
+  --tk-red-200: var(--palette-danger-mid-rgb);
+  --tk-red-300: var(--palette-danger-mid-rgb);
+  --tk-red-700: var(--palette-danger-rgb);
+  --tk-red-800: var(--palette-danger-dark-rgb);
+  --tk-red-900: var(--palette-danger-dark-rgb);
+  --tk-red-950: var(--palette-ink-rgb);
+  --tk-porcelain: var(--palette-page-rgb);
+  --tk-ink: var(--palette-ink-rgb);
+  --tk-basil: var(--palette-sage-dark-rgb);
+  --tk-sage: var(--palette-sage-rgb);
+  --tk-tomato: var(--palette-danger-rgb);
+  --tk-yolk: var(--palette-warm-rgb);
+
+  --ik-porcelain: rgb(var(--palette-page-rgb));
+  --ik-browser-theme-color: var(--palette-browser-theme-color);
+  --ik-ink: rgb(var(--palette-ink-rgb));
+  --ik-ink-muted: rgb(var(--palette-muted-rgb));
+  --ik-basil: rgb(var(--palette-sage-dark-rgb));
+  --ik-basil-dark: rgb(var(--palette-sage-dark-rgb));
+  --ik-berry: rgb(var(--palette-primary-rgb));
+  --ik-berry-dark: rgb(var(--palette-primary-dark-rgb));
+  --ik-berry-soft: rgb(var(--palette-primary-soft-rgb));
+  --ik-sage: rgb(var(--palette-sage-rgb));
+  --ik-mist: rgb(var(--palette-mist-rgb));
+  --ik-yolk: rgb(var(--palette-warm-rgb));
+  --ik-yolk-soft: rgb(var(--palette-warm-soft-rgb));
+  --ik-yolk-ink: rgb(var(--palette-warm-ink-rgb));
+  --ik-tomato: rgb(var(--palette-danger-rgb));
+  --ik-tomato-dark: rgb(var(--palette-danger-dark-rgb));
+  --ik-tomato-soft: rgb(var(--palette-danger-soft-rgb));
+  --ik-ocean: rgb(var(--palette-ocean-rgb));
+  --ik-ocean-soft: rgb(var(--palette-ocean-soft-rgb));
+  --ik-purple: rgb(var(--palette-purple-rgb));
+  --ik-purple-soft: rgb(var(--palette-purple-soft-rgb));
+  --ik-border: rgb(var(--palette-border-rgb));
+  --ik-border-strong: rgb(var(--palette-border-strong-rgb));
+  --ik-surface: rgb(var(--palette-surface-rgb));
   --ik-radius-control: 12px;
   --ik-radius-panel: 20px;
   --ik-radius-feature: 28px;
@@ -83,22 +96,25 @@
   --ik-space-4: 1rem;
   --ik-space-5: 1.5rem;
   --ik-space-6: 2rem;
-  --ik-shadow-surface: 0 12px 30px rgb(24 48 40 / 0.08);
-  --ik-shadow-lift: 0 16px 32px rgb(24 48 40 / 0.13);
-  --ik-focus: #d99d12;
-  --ik-on-yolk: #183028;
-  --ik-yolk-hover: #f8cf69;
-  --ik-warn-ink: #8a5700;
-  --ik-accent-border: #e0b348;
-  --ik-accent-border-2: #dcae40;
-  --ik-shadow-card: 0 4px 12px rgb(24 48 40 / 0.05);
-  --ik-shadow-navigation: 0 -8px 24px rgb(15 23 42 / 0.08);
-  --ik-overlay: rgb(24 48 40 / 0.55);
+  --ik-shadow-surface: 0 12px 30px rgb(var(--palette-shadow-rgb) / 0.08);
+  --ik-shadow-lift: 0 16px 32px rgb(var(--palette-shadow-rgb) / 0.13);
+  --ik-shadow-card: 0 4px 12px rgb(var(--palette-shadow-rgb) / 0.05);
+  --ik-shadow-navigation: 0 -8px 24px rgb(var(--palette-shadow-rgb) / 0.1);
+  --ik-overlay: rgb(var(--palette-overlay-rgb) / 0.58);
+  --ik-focus: rgb(var(--palette-focus-rgb));
+  --ik-on-yolk: rgb(var(--palette-on-warm-rgb));
+  --ik-yolk-hover: rgb(var(--palette-warm-hover-rgb));
+  --ik-warn-ink: rgb(var(--palette-warm-ink-rgb));
+  --ik-accent-border: rgb(var(--palette-warm-ink-rgb));
+  --ik-accent-border-2: rgb(var(--palette-primary-rgb));
   --ik-nav-height: 5rem;
+  --ik-header-height: 5.375rem;
   --ik-layout-content-max-width: 72rem;
   --ik-layout-content-max-width-desktop: 80rem;
   --ik-layout-grid-gap: 1rem;
   --ik-layout-grid-gap-desktop: 1.5rem;
+
+  color-scheme: light;
   font-family: 'Bricolage Grotesque Variable', system-ui, sans-serif;
   color: var(--ik-ink);
   background: var(--ik-porcelain);
@@ -108,94 +124,20 @@
 
 html[data-theme='dark'] {
   color-scheme: dark;
-  --tk-white: 19 26 22;
-  --tk-gray-50: 17 20 23;
-  --tk-gray-100: 22 24 27;
-  --tk-gray-200: 33 35 39;
-  --tk-gray-300: 48 51 57;
-  --tk-gray-400: 89 94 103;
-  --tk-gray-500: 132 137 146;
-  --tk-gray-600: 158 165 175;
-  --tk-gray-700: 174 181 193;
-  --tk-gray-800: 197 205 216;
-  --tk-gray-900: 210 216 229;
-  --tk-gray-950: 226 231 245;
-  --tk-emerald-50: 6 43 26;
-  --tk-emerald-100: 10 67 38;
-  --tk-emerald-200: 18 102 64;
-  --tk-emerald-300: 31 152 104;
-  --tk-emerald-500: 76 232 181;
-  --tk-emerald-600: 106 244 201;
-  --tk-emerald-700: 132 246 213;
-  --tk-emerald-800: 154 244 219;
-  --tk-emerald-900: 169 245 225;
-  --tk-emerald-950: 198 250 238;
-  --tk-amber-50: 47 38 2;
-  --tk-amber-100: 77 63 5;
-  --tk-amber-200: 130 106 8;
-  --tk-amber-300: 114 80 0; /* Tuned for contrast on inverted hero panels and pale-text hover actions. */
-  --tk-amber-400: 138 87 0; /* Tuned for contrast with gray-950 text in dark mode. */
-  --tk-amber-500: 236 157 23;
-  --tk-amber-700: 239 149 80;
-  --tk-amber-800: 235 158 110;
-  --tk-amber-900: 235 170 133;
-  --tk-amber-950: 248 202 176;
-  --tk-rose-50: 41 2 5;
-  --tk-rose-100: 53 2 6;
-  --tk-rose-200: 72 4 13;
-  --tk-rose-300: 107 7 19;
-  --tk-rose-600: 219 42 81;
-  --tk-rose-700: 230 72 111;
-  --tk-rose-800: 231 99 136;
-  --tk-rose-900: 231 120 154;
-  --tk-rose-950: 246 171 192;
-  --tk-red-50: 39 5 5;
-  --tk-red-100: 54 4 4;
-  --tk-red-200: 75 5 5;
-  --tk-red-300: 106 8 8;
-  --tk-red-700: 227 92 92; /* Tuned for AA contrast on dark surfaces. */
-  --tk-red-800: 223 105 105;
-  --tk-red-900: 221 128 128;
-  --tk-red-950: 241 178 178;
-  --tk-porcelain: 16 22 19;
-  --tk-ink: 232 239 233;
-  --tk-basil: 69 184 119;
-  --tk-sage: 28 40 35;
-  --tk-tomato: 255 138 122;
-  --tk-yolk: 242 190 62;
-  --ik-porcelain: #101613;
-  --ik-surface: #171e1a;
-  --ik-ink: #e8efe9;
-  --ik-ink-muted: #9fb0a7;
-  --ik-basil: #45b877;
-  --ik-basil-dark: #3aa16a;
-  --ik-sage: #1c2823;
-  --ik-mist: #1a211d;
-  --ik-yolk: #f2be3e;
-  --ik-yolk-soft: #3a2f0e;
-  --ik-tomato: #ff8a7a;
-  --ik-tomato-soft: #3a1512;
-  --ik-border: #2b3630;
-  --ik-border-strong: #3f4d45;
-  --ik-focus: #f5c451;
-  --ik-on-yolk: #183028;
-  --ik-yolk-hover: #f6d47e;
-  --ik-warn-ink: #f2ca7a;
-  --ik-accent-border: #8a6a1e;
-  --ik-accent-border-2: #8a6a1e;
   --ik-shadow-surface: 0 12px 30px rgb(0 0 0 / 0.45);
   --ik-shadow-lift: 0 16px 32px rgb(0 0 0 / 0.55);
   --ik-shadow-card: 0 4px 12px rgb(0 0 0 / 0.35);
-  --ik-shadow-navigation: 0 -8px 24px rgb(0 0 0 / 0.45);
+  --ik-shadow-navigation: 0 -8px 24px rgb(0 0 0 / 0.5);
   --ik-overlay: rgb(0 0 0 / 0.72);
 }
-
 * {
   box-sizing: border-box;
 }
 
 html {
   min-width: 320px;
+  scroll-padding-block-start: calc(var(--ik-header-height) + 0.75rem);
+  scroll-padding-block-end: calc(var(--ik-nav-height) + env(safe-area-inset-bottom) + 0.75rem);
   background: var(--ik-porcelain);
 }
 
@@ -246,14 +188,6 @@ details:not([open]) > :not(summary) {
   background: var(--ik-yolk);
 }
 
-.ik-page {
-  padding-bottom: max(2rem, env(safe-area-inset-bottom));
-  max-width: var(--ik-layout-content-max-width);
-}
-
-.ik-page-intro {
-  max-width: 42rem;
-}
 
 .ik-eyebrow {
   color: var(--ik-basil-dark);
@@ -265,36 +199,12 @@ details:not([open]) > :not(summary) {
 
 .ik-surface {
   border-color: var(--ik-border);
+  background: var(--ik-surface);
   border-radius: var(--ik-radius-feature);
   box-shadow: var(--ik-shadow-surface);
 }
 
-.ik-input {
-  border-color: var(--ik-border);
-  border-radius: var(--ik-radius-control);
-  background: var(--ik-surface);
-  color: var(--ik-ink);
-}
 
-.ik-input:focus {
-  border-color: var(--ik-basil);
-}
-
-.ik-button-primary {
-  border-radius: var(--ik-radius-control);
-  background: var(--ik-basil);
-  color: var(--ik-porcelain);
-}
-
-.ik-button-primary:hover:not(:disabled) {
-  background: var(--ik-basil-dark);
-}
-
-.ik-button-secondary {
-  border-color: var(--ik-border-strong);
-  border-radius: var(--ik-radius-control);
-  color: var(--ik-ink);
-}
 
 .ik-surface--quiet {
   background: var(--ik-mist);
@@ -374,32 +284,6 @@ details:not([open]) > :not(summary) {
   background: var(--ik-yolk-soft);
 }
 
-.ik-recipe-card {
-  border-radius: var(--ik-radius-panel);
-  box-shadow: var(--ik-shadow-card);
-  transition: box-shadow 160ms ease, transform 160ms ease;
-}
-
-.ik-recipe-card[data-availability='ready'] {
-  border-color: var(--ik-border-strong);
-}
-
-.ik-recipe-card[data-availability='one-missing'] {
-  border-color: var(--ik-accent-border-2);
-}
-
-.ik-recipe-card:hover {
-  box-shadow: var(--ik-shadow-lift);
-  transform: translateY(-2px);
-}
-
-.ik-recipe-card[data-availability='ready'] > p:first-child {
-  color: var(--ik-basil-dark);
-}
-
-.ik-recipe-card[data-availability='one-missing'] > p:first-child {
-  color: var(--ik-warn-ink);
-}
 
 .ik-back-link {
   border-radius: var(--ik-radius-control);
@@ -410,6 +294,18 @@ details:not([open]) > :not(summary) {
   border-radius: var(--ik-radius-feature);
   background: var(--ik-ink);
   box-shadow: var(--ik-shadow-surface);
+}
+
+.recipe-detail-category {
+  color: var(--ik-yolk);
+}
+
+.recipe-detail-description {
+  color: var(--ik-porcelain);
+}
+
+html[data-theme='dark'] .recipe-detail-category {
+  color: var(--ik-porcelain);
 }
 
 .ik-profile-surface {
@@ -449,86 +345,7 @@ details:not([open]) > :not(summary) {
   background: var(--ik-porcelain);
 }
 
-.app-navigation {
-  padding-bottom: env(safe-area-inset-bottom);
-  box-shadow: var(--ik-shadow-navigation);
-}
-
-.app-navigation-label-compact {
-  display: none;
-}
-
-.app-navigation-label-narrow {
-  display: none;
-}
-
-.app-overlay {
-  bottom: calc(var(--ik-nav-height) + env(safe-area-inset-bottom));
-}
-
-@media (max-width: 639px) {
-  .app-shell {
-    padding-bottom: calc(max(5rem, 7em) + env(safe-area-inset-bottom));
-  }
-
-  .app-navigation {
-    width: 100vw;
-  }
-
-  .app-navigation > ul {
-    width: 100%;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-
-  .app-navigation a {
-    padding-inline: 0.25rem;
-    font-size: 0.6875rem;
-  }
-
-  .app-navigation-label-full {
-    display: none;
-  }
-
-  .app-navigation-label-compact {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .ik-page {
-    padding-bottom: calc(var(--ik-nav-height) + env(safe-area-inset-bottom) + 2rem);
-  }
-
-  .ik-recipe-card:hover {
-    transform: none;
-  }
-}
-
 @media (max-width: 359px) {
-  .app-navigation > ul {
-    column-gap: 0;
-    padding-inline: 0;
-  }
-
-  .app-navigation a {
-    padding-inline: 0;
-    font-size: 0.5625rem;
-  }
-
-  .app-navigation-label-compact {
-    display: none;
-  }
-
-  .app-navigation-label-narrow {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   .ik-ingredient-entry {
     flex-direction: column;
   }
@@ -548,129 +365,6 @@ details:not([open]) > :not(summary) {
   }
 }
 
-@media (min-width: 640px) {
-  .app-navigation {
-    padding-bottom: 0;
-    box-shadow: none;
-  }
-
-  .app-overlay {
-    bottom: 1rem;
-  }
-}
-
-.app-shell {
-  min-height: 100vh;
-  padding-top: 3.5rem;
-}
-
-.app-sidebar {
-  height: 3.5rem;
-}
-
-.app-sidebar-account,
-.app-mobile-scope,
-.app-mobile-links {
-  display: none;
-}
-
-@media (min-width: 768px) {
-  .app-shell {
-    padding-top: 0;
-    padding-left: 16rem;
-  }
-
-  .app-sidebar {
-    width: 16rem;
-    height: 100vh;
-    border-right: 1px solid var(--ik-border);
-    border-bottom: 0;
-  }
-
-  .app-sidebar-brand {
-    min-height: 5rem;
-    justify-content: flex-start;
-  }
-
-  .app-navigation {
-    position: static;
-    width: 100%;
-    margin: 1rem 0 0;
-    padding: 0 0.75rem;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-  }
-
-  .app-navigation > ul {
-    display: grid;
-    max-width: none;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.35rem;
-    padding: 0;
-  }
-
-  .app-navigation a {
-    min-height: 3rem;
-    flex-direction: row;
-    justify-content: flex-start;
-    gap: 0.75rem;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.9375rem;
-    text-align: left;
-  }
-
-  .app-navigation-label-full {
-    display: inline !important;
-    overflow: visible !important;
-  }
-
-  .app-navigation-label-compact,
-  .app-navigation-label-narrow {
-    display: none !important;
-  }
-
-  .app-sidebar-account {
-    display: block;
-  }
-
-  .app-mobile-scope {
-    display: none;
-  }
-}
-
-@media (max-width: 767px) {
-  .app-shell {
-    padding-bottom: calc(max(5rem, 7em) + env(safe-area-inset-bottom));
-  }
-
-  .app-sidebar-account {
-    display: none;
-  }
-
-  .app-navigation {
-    position: fixed;
-    inset-inline: 0;
-    bottom: 0;
-  }
-
-  .app-mobile-scope {
-    display: block;
-    max-width: 25vw;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .app-mobile-links {
-    display: flex;
-    flex-shrink: 0;
-  }
-
-  .app-navigation > ul {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-}
 
 .ik-recipe-image {
   min-width: 0;
@@ -714,22 +408,6 @@ details:not([open]) > :not(summary) {
   aspect-ratio: 16 / 9;
 }
 
-.ik-quick-add-overlay {
-  background: var(--ik-overlay);
-}
-
-.ik-quick-add-dialog {
-  box-sizing: border-box;
-  width: min(calc(100vw - 2rem), 36rem);
-  max-height: calc(100dvh - 2rem);
-  margin: auto;
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-
-.ik-quick-add-dialog::backdrop {
-  background: transparent;
-}
 
 .ik-recipe-hero .ik-recipe-image figcaption {
   color: var(--ik-ink-muted);

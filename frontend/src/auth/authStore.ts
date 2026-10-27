@@ -153,8 +153,9 @@ export const createAuthStore = (options: AuthStoreOptions | ApiRequest = {}): Au
         });
       },
       logout: async () => {
+        const userId = get().user?.id ?? null;
         const csrfToken = get().csrfToken;
-        if (get().user === null || csrfToken === null) {
+        if (userId === null || csrfToken === null) {
           clearSession();
           return;
         }
@@ -163,7 +164,7 @@ export const createAuthStore = (options: AuthStoreOptions | ApiRequest = {}): Au
           try {
             await request('/v1/auth/logout', { method: 'POST', csrfToken });
           } finally {
-            clearSession();
+            if (get().user?.id === userId && get().csrfToken === csrfToken) clearSession();
           }
         });
       },

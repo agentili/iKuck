@@ -26,8 +26,8 @@ describe('AppInstallPrompt', () => {
 
     render(<AppInstallPrompt />);
 
-    expect(screen.queryByText('Installa iKuck')).not.toBeInTheDocument();
-    expect(screen.queryByText('Usa iKuck come app')).not.toBeInTheDocument();
+    expect(screen.queryByText('Installa A tavola')).not.toBeInTheDocument();
+    expect(screen.queryByText('Usa A tavola come app')).not.toBeInTheDocument();
   });
 
   it('mostra il suggerimento di installazione quando arriva beforeinstallprompt', async () => {
@@ -36,7 +36,7 @@ describe('AppInstallPrompt', () => {
     render(<AppInstallPrompt />);
     window.dispatchEvent(event);
 
-    await screen.findByText('Installa iKuck');
+    await screen.findByText('Installa A tavola');
     expect(screen.getByRole('button', { name: /^Installa/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Più tardi' })).toBeInTheDocument();
   });
@@ -54,7 +54,7 @@ describe('AppInstallPrompt', () => {
     expect(prompt).toHaveBeenCalledOnce();
     expect(localStorage.getItem(DISMISSED_KEY)).toBe('1');
     await waitFor(() =>
-      expect(screen.queryByText('Installa iKuck')).not.toBeInTheDocument(),
+      expect(screen.queryByText('Installa A tavola')).not.toBeInTheDocument(),
     );
   });
 
@@ -87,18 +87,18 @@ describe('AppInstallPrompt', () => {
     // Il rifiuto è memorizzato; alla successiva caricamento (navigazione) il banner non riappare.
     unmount();
     render(<AppInstallPrompt />);
-    expect(screen.queryByText('Installa iKuck')).not.toBeInTheDocument();
-    expect(screen.queryByText('Usa iKuck come app')).not.toBeInTheDocument();
+    expect(screen.queryByText('Installa A tavola')).not.toBeInTheDocument();
+    expect(screen.queryByText('Usa A tavola come app')).not.toBeInTheDocument();
   });
 
   it('espone il posizionamento non invadente (sopra la nav inferiore su mobile, centrato su desktop)', async () => {
     const { event } = dispatchBeforeInstallPrompt('accepted');
     render(<AppInstallPrompt />);
     window.dispatchEvent(event);
-    await screen.findByText('Installa iKuck');
+    await screen.findByText('Installa A tavola');
 
     const banner = screen.getByRole('complementary', {
-      name: 'Installa l’applicazione iKuck',
+      name: 'Installa l’applicazione A tavola',
     });
 
     expect(banner).toHaveClass('app-overlay', 'fixed', 'inset-x-4', 'z-50');

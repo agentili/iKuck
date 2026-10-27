@@ -5,6 +5,14 @@ import { useAuthStore } from '../../auth/authStore';
 import { useHouseStore } from '../../house/houseStore';
 import { usePantryCandidatesBadgeStore } from '../../store/pantryCandidatesBadgeStore';
 import { resolveColorTheme, saveColorThemePreference, subscribeColorTheme } from '../../domain/colorTheme';
+import { getActiveDataScope, subscribeActiveDataScope } from '../../sync/scopeContext';
+
+const subscribeConnectivity = (listener: () => void) => {
+  window.addEventListener('online', listener);
+  window.addEventListener('offline', listener);
+  return () => { window.removeEventListener('online', listener); window.removeEventListener('offline', listener); };
+};
+const getConnectivity = () => navigator.onLine;
 
 const primaryLinks = [
   { path: '/', label: 'Cucina', compactLabel: 'Cucina', narrowLabel: 'Cucina', icon: Home },
@@ -24,6 +32,9 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
   const connection = useAuthStore((state) => state.connection);
   const house = useHouseStore((state) => state.state?.house ?? null);
   const pendingCount = usePantryCandidatesBadgeStore((state) => state.pendingCount);
+  const activeScope = useSyncExternalStore(subscribeActiveDataScope, getActiveDataScope, getActiveDataScope);
+  const browserOnline = useSyncExternalStore(subscribeConnectivity, getConnectivity, () => true);
+  const offline = connection === 'offline' || !browserOnline;
   const resolvedTheme = useSyncExternalStore(subscribeColorTheme, resolveColorTheme, () => 'light');
   const toggleTheme = () => {
     saveColorThemePreference(resolvedTheme === 'dark' ? 'light' : 'dark');
@@ -38,17 +49,15 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
       {resolvedTheme === 'dark' ? <Sun size={19} aria-hidden="true" /> : <Moon size={19} aria-hidden="true" />}
     </button>
   );
-  const accountStatus = connection === 'offline'
-    ? 'Offline'
-    : user === null
+  const accountStatus = user === null
       ? 'Ospite · dati locali'
       : user.emailVerifiedAt.trim() === '' ? 'Account non verificato' : 'Account verificato';
   const scopeLabel = scopeUnverified
     ? 'Ambito da verificare'
-    : house === null ? 'Ambito personale' : `Casa · ${house.name}`;
-  const mobileScopeLabel = scopeUnverified
-    ? 'Ambito da verificare'
-    : house === null ? accountStatus : `Casa · ${house.name}`;
+    : activeScope === 'guest' ? 'Dati ospite sul dispositivo'
+      : activeScope.startsWith('house:')
+        ? house !== null && activeScope === `house:${house.id}` ? `Casa · ${house.name}` : 'Dati della Casa'
+        : 'Dati personali';
 
   return (
     <header className="ik-app-header app-sidebar fixed left-0 top-0 z-40 flex h-auto w-full flex-col border-b border-gray-200 bg-white">
@@ -56,8 +65,12 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
         Salta al contenuto
       </a>
       <div className="app-sidebar-brand flex min-h-14 items-center justify-between gap-3 border-b border-gray-200 px-4 sm:px-6 lg:px-7">
-        <Link to="/" aria-label="iKuck" className="shrink-0 rounded-lg text-xl font-black tracking-tight text-emerald-900">iKuck</Link>
-        <span className="app-mobile-scope text-xs font-bold text-gray-600">{mobileScopeLabel}</span>
+        <Link to="/" aria-label="A tavola" className="shrink-0 rounded-lg text-xl font-black tracking-tight text-emerald-900">A tavola<span className="brand-caption">La cucina di ogni giorno</span></Link>
+        <div className="app-header-context" role="status" aria-label="Stato account e dati">
+          <span className="app-header-account">{accountStatus}</span>
+          <span className="app-header-scope">{scopeLabel}</span>
+          {offline && <span className="app-header-offline"><WifiOff size={14} aria-hidden="true" /> Offline</span>}
+        </div>
         <div className="app-mobile-links items-center gap-1">
           <Link to="/profile" aria-label="Profilo" className="grid min-h-11 min-w-11 place-items-center rounded-xl text-gray-800 hover:bg-gray-100"><UserRound size={19} aria-hidden="true" /></Link>
           <Link to="/house" aria-label="Casa" className="grid min-h-11 min-w-11 place-items-center rounded-xl text-gray-800 hover:bg-gray-100"><Home size={19} aria-hidden="true" /></Link>
@@ -107,11 +120,6 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
         </ul>
       </nav>
       <div className="app-sidebar-account mt-auto border-t border-gray-200 p-4">
-        <p className="flex items-center gap-2 text-sm font-bold text-gray-900">
-          {connection === 'offline' && <WifiOff size={16} aria-hidden="true" />}
-          <span>{accountStatus}</span>
-        </p>
-        <p className="mt-1 truncate text-xs text-gray-600">{scopeLabel}</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Link to="/profile" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-300 px-3 py-2 text-sm font-bold text-gray-800 hover:bg-gray-50"><UserRound size={16} aria-hidden="true" /> Profilo</Link>
           <Link to="/house" className="inline-flex min-h-11 items-center rounded-xl border border-gray-300 px-3 py-2 text-sm font-bold text-gray-800 hover:bg-gray-50">Casa</Link>

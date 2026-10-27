@@ -13,7 +13,7 @@ test.describe('production target smoke checks', () => {
 
   test('serves the guest flow and keeps primary navigation reachable', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cosa portiamo a tavola?' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Profilo', exact: true })).toBeVisible();
 
     await page.getByRole('link', { name: 'Dispensa', exact: true }).click();
@@ -26,6 +26,7 @@ test.describe('production target smoke checks', () => {
     await expect(page.getByRole('heading', { name: 'Lista della spesa' })).toBeVisible();
     await page.getByRole('link', { name: 'Torna alle ricette', exact: true }).click();
 
+    await page.getByRole('link', { name: 'Diario', exact: true }).click();
     await page.getByRole('link', { name: 'Attività', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'La tua attività' })).toBeVisible();
 
@@ -60,8 +61,10 @@ test.describe('production target smoke checks', () => {
     await page.getByText('Filtri alimentari', { exact: true }).click();
     await expect(page.getByLabel('Dieta')).toHaveValue('vegetarian');
 
-    await page.getByRole('link', { name: 'Profilo', exact: true }).click();
+    await page.getByRole('link', { name: 'Ricette', exact: true }).click();
+    await page.locator('summary').filter({ hasText: /^Crea con AI$/ }).click();
     const aiPanel = page.getByRole('region', { name: 'Ricette AI private' });
+    await aiPanel.locator('details[data-ai-consent] summary').click();
     await expect(aiPanel.getByRole('checkbox', { name: /acconsento all’invio a .*ingredienti della dispensa/i })).toBeVisible();
     await expect(aiPanel.getByRole('button', { name: 'Genera ricetta AI' })).toHaveCount(0);
   });

@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import PaginatedList from '../ui/PaginatedList';
+import { useState, useSyncExternalStore } from 'react';
+import { getActiveDataScope, subscribeActiveDataScope } from '../../sync/scopeContext';
 import { Plus, Trash2 } from 'lucide-react';
 import type { PantryLot, PantryUnit } from '@ikuck/shared/contracts';
 import { aggregatePantryLots, getExpiryStatus } from '../../domain/pantryLots';
@@ -46,7 +48,12 @@ const detailsFromLot = (lot: PantryLot): PantryLotDetails => ({
   expiresAt: lot.expiresAt,
 });
 
-export default function PantryLotsPanel({ ingredients, lots, onAddLot, onRemoveLot, onRestoreLot, onUpdateLot }: PantryLotsPanelProps) {
+export default function PantryLotsPanel(props: PantryLotsPanelProps) {
+  const scope = useSyncExternalStore(subscribeActiveDataScope, getActiveDataScope, getActiveDataScope);
+  return <PantryLotsPanelContent key={scope} {...props} />;
+}
+
+function PantryLotsPanelContent({ ingredients, lots, onAddLot, onRemoveLot, onRestoreLot, onUpdateLot }: PantryLotsPanelProps) {
   const [editorKey, setEditorKey] = useState<string | null>(null);
   const [removedLot, setRemovedLot] = useState<PantryLot | null>(null);
   const aggregates = aggregatePantryLots(lots);
@@ -85,7 +92,7 @@ export default function PantryLotsPanel({ ingredients, lots, onAddLot, onRemoveL
         </div>
       </summary>
       <div className="mt-3 grid gap-3">
-        {ingredients.map((ingredient) => {
+        <PaginatedList identity="pantry-lot-ingredients" label="Ingredienti con lotti">{ingredients.map((ingredient) => {
           const ingredientLots = lots.filter((lot) => lot.ingredientId === ingredient.id);
           const aggregate = aggregates.find((item) => item.ingredientId === ingredient.id);
           const newEditorKey = `new:${ingredient.id}`;
@@ -116,7 +123,7 @@ export default function PantryLotsPanel({ ingredients, lots, onAddLot, onRemoveL
                 </button>
               </div>
               <ul className="mt-3 grid gap-2" aria-label={`Lotti di ${ingredient.label}`}>
-                {ingredientLots.map((lot, index) => (
+                <PaginatedList list identity={`ingredient-lots:${ingredient.id}`} label={`Lotti di ${ingredient.label}`}>{ingredientLots.map((lot, index) => (
                   <li key={lot.id} className="rounded-xl border border-gray-200 bg-white p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-sm text-gray-700">
@@ -144,7 +151,7 @@ export default function PantryLotsPanel({ ingredients, lots, onAddLot, onRemoveL
                       />
                     )}
                   </li>
-                ))}
+                ))}</PaginatedList>
               </ul>
               {editorKey === newEditorKey && (
                 <PantryLotEditor
@@ -158,7 +165,7 @@ export default function PantryLotsPanel({ ingredients, lots, onAddLot, onRemoveL
               )}
             </article>
           );
-        })}
+        })}</PaginatedList>
       </div>
     </details>
     {removedLot !== null && (

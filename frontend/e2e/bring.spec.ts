@@ -307,6 +307,11 @@ class StatefulBringBackend {
   }
 }
 
+const openBring = async (page: Page): Promise<void> => {
+  const disclosure = page.locator('details').filter({ has: page.locator('summary').filter({ hasText: /^Bring!$/ }) });
+  if (!(await disclosure.evaluate((element) => (element as HTMLDetailsElement).open))) await disclosure.locator('summary').click();
+};
+
 const backends = new WeakMap<Page, StatefulBringBackend>();
 const installBackend = async (page: Page, options: BringBackendOptions = {}): Promise<StatefulBringBackend> => {
   const backend = new StatefulBringBackend(options);
@@ -345,12 +350,12 @@ test('guest keeps local list and cannot connect Bring', async ({ page }) => {
   await page.getByRole('button', { name: 'Aggiungi alla lista' }).click();
   await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Bring!' }).click();
-  await expect(page.getByText(/Per collegare Bring! accedi a un account iKuck verificato\./)).toBeVisible();
+  await openBring(page);
+  await expect(page.getByText(/Per collegare Bring! serve un account verificato\./)).toBeVisible();
   expect(backend.bringRequests).toEqual([]);
   await expect(page.getByRole('link', { name: 'Accedi o verifica il tuo account' })).toHaveAttribute('href', '/profile');
 
-  await page.getByRole('button', { name: 'iKuck' }).click();
+  await page.locator('summary').filter({ hasText: /^Bring!$/ }).click();
   await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
@@ -364,13 +369,16 @@ test('verified account connects and reads only its explicitly chosen Bring list'
   const backend = await installBackend(page);
   await loginAs(page, 'a');
   await page.goto('/shopping-list');
-  await page.getByRole('button', { name: 'Bring!' }).click();
+  await expect(page.locator('summary').filter({ hasText: /^Bring!$/ }).locator('..')).not.toHaveAttribute('open', '');
+  await expect(page.getByLabel('Email Bring!')).toHaveCount(0);
+  expect(backend.bringRequests).toEqual([]);
+  await openBring(page);
 
   const email = page.getByLabel('Email Bring!');
   const password = page.getByLabel('Password Bring!');
   await email.fill('bring-account@example.test');
   await password.fill('synthetic-only-bring-password');
-  await page.getByRole('checkbox', { name: /Autorizzo iKuck ad accedere/ }).check();
+  await page.getByRole('checkbox', { name: /Autorizzo A tavola ad accedere/ }).check();
   await page.getByRole('button', { name: 'Collega Bring!', exact: true }).click();
 
   const list = page.getByRole('combobox', { name: 'Lista Bring!' });
@@ -391,8 +399,9 @@ test('verified account connects and reads only its explicitly chosen Bring list'
   expect(backend.bringRequests.filter((request) => request.method === 'GET' && request.path.endsWith('/items')).map((request) => request.listId)).toEqual([LIST_TWO]);
 
   await page.reload();
+  await openBring(page);
   await expect(page.getByRole('heading', { name: 'Lista Bring!' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Bring!', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('summary').filter({ hasText: /^Bring!$/ }).locator('..')).toHaveAttribute('open', '');
   const reopenedList = page.getByRole('combobox', { name: 'Lista Bring!' });
   await expect(reopenedList).toHaveValue('');
   await reopenedList.selectOption(LIST_TWO);
@@ -407,6 +416,7 @@ test('adds and confirms a remote ingredient without writing it to local sync', a
   const backend = await installBackend(page, { connected: ['a'], items: { a: { [LIST_TWO]: [] } } });
   await loginAs(page, 'a');
   await page.goto('/shopping-list');
+  await openBring(page);
   await expect(page.getByRole('heading', { name: 'Lista Bring!' })).toBeVisible();
   await page.getByRole('combobox', { name: 'Lista Bring!' }).selectOption(LIST_TWO);
   await expect(page.getByText('La lista Bring! è vuota.')).toBeVisible();
@@ -421,7 +431,7 @@ test('adds and confirms a remote ingredient without writing it to local sync', a
   const syncCountAfterWrite = backend.syncMutations.length;
   expect(backend.syncWriteTypes).toEqual([]);
 
-  await page.getByRole('button', { name: 'iKuck', exact: true }).click();
+  await page.locator('summary').filter({ hasText: /^Bring!$/ }).click();
   await expect(page.getByRole('heading', { name: 'Lista della spesa' })).toBeVisible();
   await expect(page.getByText('La lista è vuota')).toBeVisible();
   await expect(page.getByText('Latte', { exact: true })).toHaveCount(0);
@@ -436,6 +446,7 @@ test('updates completes restores and removes the selected item by raw Bring name
   const backend = await installBackend(page, { connected: ['a'] });
   await loginAs(page, 'a');
   await page.goto('/shopping-list');
+  await openBring(page);
   await expect(page.getByRole('heading', { name: 'Lista Bring!' })).toBeVisible();
   await page.getByRole('combobox', { name: 'Lista Bring!' }).selectOption(LIST_TWO);
   const milk = page.locator('[data-bring-name="Milch"]');
@@ -475,6 +486,7 @@ test('keeps an uncertain write draft until the user reconciles the remote list',
   const backend = await installBackend(page, { connected: ['a'], items: { a: { [LIST_TWO]: [] } }, uncertainNextWrite: true });
   await loginAs(page, 'a');
   await page.goto('/shopping-list');
+  await openBring(page);
   await expect(page.getByRole('heading', { name: 'Lista Bring!' })).toBeVisible();
   await page.getByRole('combobox', { name: 'Lista Bring!' }).selectOption(LIST_TWO);
   await expect(page.getByText('La lista Bring! è vuota.')).toBeVisible();
@@ -504,6 +516,7 @@ test('reconnects with a fresh remote session after Bring expires', async ({ page
   const backend = await installBackend(page, { connected: ['a'], expiredRead: true });
   await loginAs(page, 'a');
   await page.goto('/shopping-list');
+  await openBring(page);
   await expect(page.getByRole('heading', { name: 'Lista Bring!' })).toBeVisible();
   await page.getByRole('combobox', { name: 'Lista Bring!' }).selectOption(LIST_TWO);
   await expect(page.getByText('Il collegamento è scaduto. Ricollega Bring!.')).toBeVisible();
@@ -515,7 +528,7 @@ test('reconnects with a fresh remote session after Bring expires', async ({ page
 
   await page.getByLabel('Email Bring!').fill('bring-account@example.test');
   await page.getByLabel('Password Bring!').fill('synthetic-only-reconnect-password');
-  await page.getByRole('checkbox', { name: /Autorizzo iKuck ad accedere/ }).check();
+  await page.getByRole('checkbox', { name: /Autorizzo A tavola ad accedere/ }).check();
   await page.getByRole('button', { name: 'Collega Bring!', exact: true }).click();
   await expect(page.getByText('Bring! collegato. Scegli la lista da aprire.')).toBeVisible();
   await page.getByRole('combobox', { name: 'Lista Bring!' }).selectOption(LIST_TWO);
@@ -577,7 +590,7 @@ test('does not apply account A items after the session switches to account B', a
 
   await loginAs(page, 'a');
   await page.goto('/shopping-list');
-  await page.getByRole('button', { name: 'Bring!', exact: true }).click();
+  await openBring(page);
   await page.getByRole('combobox', { name: 'Lista Bring!' }).selectOption(LIST_ONE);
   await expect(page.locator('[data-bring-name="Water"]').getByText('Acqua', { exact: true })).toBeVisible();
   await page.evaluate(() => {
@@ -600,7 +613,7 @@ test('does not apply account A items after the session switches to account B', a
     await expect(page.getByText('Ospite · dati locali')).toHaveCount(0);
 
     await page.getByRole('link', { name: 'Spesa', exact: true }).click();
-    await page.getByRole('button', { name: 'Bring!', exact: true }).click();
+    await openBring(page);
     await page.getByRole('combobox', { name: 'Lista Bring!' }).selectOption(LIST_TWO);
     await expect(page.locator('[data-bring-name="Cookies"]').getByText('Biscotti', { exact: true })).toBeVisible();
 
@@ -629,7 +642,7 @@ test('keeps remote reads and mutations disabled offline until explicit refresh',
   const backend = await installBackend(page, { connected: ['a'] });
   await loginAs(page, 'a');
   await page.goto('/shopping-list');
-  await page.getByRole('button', { name: 'Bring!', exact: true }).click();
+  await openBring(page);
   await page.getByRole('combobox', { name: 'Lista Bring!' }).selectOption(LIST_TWO);
   await expect(page.locator('[data-bring-name="Milch"]').getByText('Latte', { exact: true })).toBeVisible();
   const initialReadCount = backend.itemReads.length;
@@ -652,17 +665,17 @@ test('keeps remote reads and mutations disabled offline until explicit refresh',
   expect(backend.syncWriteTypes).toEqual([]);
 });
 
-test('disconnects iKuck without deleting remote Bring lists', async ({ page }) => {
+test('disconnects A tavola without deleting remote Bring lists', async ({ page }) => {
   const backend = await installBackend(page, { connected: ['a'] });
   await loginAs(page, 'a');
   await page.goto('/shopping-list');
-  await page.getByRole('button', { name: 'Bring!', exact: true }).click();
+  await openBring(page);
   await page.getByRole('combobox', { name: 'Lista Bring!' }).selectOption(LIST_TWO);
   await expect(page.locator('[data-bring-name="Milch"]').getByText('Latte', { exact: true })).toBeVisible();
   const remoteItemsBeforeDisconnect = backend.getItems('a', LIST_TWO);
 
   await page.getByRole('button', { name: 'Scollega Bring!' }).click();
-  await expect(page.getByText('Bring! scollegato da iKuck. Le liste su Bring! non sono state cancellate.')).toBeVisible();
+  await expect(page.getByText('Bring! scollegato da A tavola. Le liste su Bring! non sono state cancellate.')).toBeVisible();
   expect(backend.getConnection('a')).toBeNull();
   expect(backend.getItems('a', LIST_TWO)).toEqual(remoteItemsBeforeDisconnect);
   expect(backend.bringRequests.filter((request) => request.method === 'DELETE' && request.path.endsWith('/connection'))).toHaveLength(1);
@@ -670,7 +683,7 @@ test('disconnects iKuck without deleting remote Bring lists', async ({ page }) =
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Lista della spesa' })).toBeVisible();
   await expect(page.getByText('La lista è vuota')).toBeVisible();
-  await page.getByRole('button', { name: 'Bring!', exact: true }).click();
+  await openBring(page);
   await expect(page.getByLabel('Email Bring!')).toBeVisible();
   expect(backend.getConnection('a')).toBeNull();
   expect(backend.getItems('a', LIST_TWO)).toEqual(remoteItemsBeforeDisconnect);
@@ -686,7 +699,7 @@ test('keeps duplicate raw names read-only when their remote identity is ambiguou
   const backend = await installBackend(page, { connected: ['a'], items: { a: { [LIST_TWO]: duplicates } } });
   await loginAs(page, 'a');
   await page.goto('/shopping-list');
-  await page.getByRole('button', { name: 'Bring!', exact: true }).click();
+  await openBring(page);
   await page.getByRole('combobox', { name: 'Lista Bring!' }).selectOption(LIST_TWO);
   const milkRows = page.locator('[data-bring-name="Milch"]');
   await expect(milkRows).toHaveCount(2);

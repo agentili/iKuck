@@ -1,5 +1,7 @@
+import PaginatedList from '../ui/PaginatedList';
 import { Heart, Star, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
+import { getActiveDataScope, subscribeActiveDataScope } from '../../sync/scopeContext';
 import type { CookEvent, RecipePreference } from '@ikuck/shared/contracts';
 import { getRecipeById } from '../../domain/recipes';
 import UndoToast from '../feedback/UndoToast';
@@ -19,7 +21,12 @@ const formatDate = (value: string): string => new Intl.DateTimeFormat('it-IT', {
   timeStyle: 'short',
 }).format(new Date(value));
 
-export default function ActivityPanel({ events, preferences, onRemoveEvent, onRestoreEvent, onClearActivity }: ActivityPanelProps) {
+export default function ActivityPanel(props: ActivityPanelProps) {
+  const scope = useSyncExternalStore(subscribeActiveDataScope, getActiveDataScope, getActiveDataScope);
+  return <ActivityPanelContent key={scope} {...props} />;
+}
+
+function ActivityPanelContent({ events, preferences, onRemoveEvent, onRestoreEvent, onClearActivity }: ActivityPanelProps) {
   const [removedEvents, setRemovedEvents] = useState<CookEvent[] | null>(null);
 
   const removeEvent = (id: string) => {
@@ -60,7 +67,7 @@ export default function ActivityPanel({ events, preferences, onRemoveEvent, onRe
             <EmptyState text="Non hai ancora segnato ricette come cucinate." />
           ) : (
             <ul className="mt-3 grid gap-3">
-              {events.map((event) => (
+              <PaginatedList list identity="cooking-history" label="Ricette cucinate">{events.map((event) => (
                 <li key={event.id} className="flex items-start gap-3 rounded-2xl border-2 border-gray-200 bg-gray-50 p-4">
                   <div className="min-w-0 flex-1">
                     <p className="font-bold text-gray-950">{event.recipeTitle}</p>
@@ -71,7 +78,7 @@ export default function ActivityPanel({ events, preferences, onRemoveEvent, onRe
                     <Trash2 size={18} aria-hidden="true" />
                   </button>
                 </li>
-              ))}
+              ))}</PaginatedList>
             </ul>
           )}
         </section>
@@ -80,7 +87,7 @@ export default function ActivityPanel({ events, preferences, onRemoveEvent, onRe
           <section aria-labelledby="recipe-preferences-title">
             <h2 id="recipe-preferences-title" className="text-xl font-black text-gray-950">Preferiti e valutazioni</h2>
             <ul className="mt-3 grid gap-3 sm:grid-cols-2">
-              {preferences.map((preference) => {
+              <PaginatedList list identity="recipe-preferences" label="Preferiti e valutazioni">{preferences.map((preference) => {
                 const title = getRecipeById(preference.recipeId)?.title ?? preference.recipeId;
                 return (
                   <li key={preference.recipeId} className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-4">
@@ -92,7 +99,7 @@ export default function ActivityPanel({ events, preferences, onRemoveEvent, onRe
                     {preference.note !== null && <p className="mt-2 text-sm text-gray-700">Nota privata: {preference.note}</p>}
                   </li>
                 );
-              })}
+              })}</PaginatedList>
             </ul>
           </section>
         )}

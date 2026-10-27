@@ -32,7 +32,7 @@ test('verifica email con token valido: conferma, successo e link al profilo', as
   await page.getByRole('button', { name: 'Conferma email' }).click();
 
   await expect(page.getByRole('heading', { name: 'Email verificata' })).toBeVisible();
-  await expect(page.getByText('Il tuo account iKuck è pronto per la sincronizzazione.')).toBeVisible();
+  await expect(page.getByText('Il tuo account A tavola è pronto per la sincronizzazione.')).toBeVisible();
   expect(verifyCalled).toBe(true);
 
   const link = page.getByRole('link', { name: 'Vai al tuo profilo' });

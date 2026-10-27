@@ -27,8 +27,8 @@ const verifiedResponses: Record<string, OfflineApiResponse> = {
   'GET /v1/ai-recipes': { json: { recipes: [] } },
 };
 
-const installVerifiedBackend = (page: Page, extraResponses: Record<string, OfflineApiResponse> = {}): void => {
-  void installOfflineBackend(page, { responses: { ...verifiedResponses, ...extraResponses } });
+const installVerifiedBackend = async (page: Page, extraResponses: Record<string, OfflineApiResponse> = {}): Promise<void> => {
+  await installOfflineBackend(page, { responses: { ...verifiedResponses, ...extraResponses } });
 };
 
 const auditPage = async (page: Page, pageName: string): Promise<void> => {
@@ -48,7 +48,7 @@ type AuditedPage = {
 };
 
 const auditedPages: AuditedPage[] = [
-  { path: '/', heading: 'Cucina viva', name: 'home', auth: false },
+  { path: '/', heading: 'Cosa portiamo a tavola?', name: 'home', auth: false },
   { path: '/recipes', heading: 'Ricette', name: 'recipes-library', auth: false },
   { path: '/pantry', heading: 'La tua dispensa', name: 'pantry', auth: false },
   { path: '/shopping-list', heading: 'Lista della spesa', name: 'shopping-list', auth: false },
@@ -60,8 +60,9 @@ const auditedPages: AuditedPage[] = [
   { path: '/recipes/pasta-tonno-pomodoro', heading: 'Pasta tonno e pomodoro', name: 'recipe-detail', auth: false },
 ] as const;
 
-test.beforeEach(async ({ context }) => {
+test.beforeEach(async ({ context, page }) => {
   await context.clearCookies();
+  await installOfflineBackend(page);
 });
 
 test.afterEach(async ({ page }) => {
@@ -77,11 +78,11 @@ for (const theme of ['light', 'dark'] as const) {
     });
 
     for (const pageDef of auditedPages) {
-      test(`${pageDef.name} supera il gate axe`, async ({ page }) => {
+      test(`${pageDef.name} supera il gate axe`, async ({ page }, testInfo) => {
         if (pageDef.auth) {
-          installVerifiedBackend(page);
+          await installVerifiedBackend(page);
         } else {
-          installOfflineBackend(page);
+          await installOfflineBackend(page);
         }
 
         await page.goto(pageDef.path);
@@ -92,6 +93,9 @@ for (const theme of ['light', 'dark'] as const) {
         }
 
         await auditPage(page, `${pageDef.name} [tema ${theme}]`);
+        const screenshot = testInfo.outputPath(`${pageDef.name}-${theme}.png`);
+        await page.screenshot({ path: screenshot, fullPage: true });
+        await testInfo.attach(`${pageDef.name}-${theme}`, { path: screenshot, contentType: 'image/png' });
       });
     }
   });
@@ -100,14 +104,14 @@ for (const theme of ['light', 'dark'] as const) {
 // Scenari di accessibilità esistenti (invarianze di interazione, temi e soglie di tocco).
 test('guest home passes the critical and serious axe gate', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cosa portiamo a tavola?' })).toBeVisible();
   await auditPage(page, 'guest home');
 });
 
 test('verified home passes the critical and serious axe gate', async ({ page }) => {
-  installVerifiedBackend(page);
+  await installVerifiedBackend(page);
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cosa portiamo a tavola?' })).toBeVisible();
   await auditPage(page, 'verified home');
 });
 
@@ -118,14 +122,14 @@ test('pantry passes the critical and serious axe gate', async ({ page }) => {
 });
 
 test('profile passes the critical and serious axe gate', async ({ page }) => {
-  installVerifiedBackend(page);
+  await installVerifiedBackend(page);
   await page.goto('/profile');
   await expect(page.getByRole('heading', { name: 'Il tuo profilo' })).toBeVisible();
   await auditPage(page, 'profile');
 });
 
 test('dinner diary passes the critical and serious axe gate', async ({ page }) => {
-  installVerifiedBackend(page);
+  await installVerifiedBackend(page);
   await page.goto('/dinner-diary');
   await expect(page.getByRole('heading', { name: 'Diario delle cene' })).toBeVisible();
   await auditPage(page, 'dinner diary');
@@ -138,11 +142,11 @@ test('shopping list passes the critical and serious axe gate', async ({ page }) 
 });
 
 test('Bring connection form is labeled and accessible before credential entry', async ({ page }) => {
-  installVerifiedBackend(page, {
+  await installVerifiedBackend(page, {
     'GET /v1/integrations/bring': { json: { enabled: true, connected: false, connectionId: null } },
   });
   await page.goto('/shopping-list');
-  await page.getByRole('button', { name: 'Bring!', exact: true }).click();
+  await page.locator('summary').filter({ hasText: /^Bring!$/ }).click();
   await expect(page.getByLabel('Email Bring!')).toBeVisible();
   await expect(page.getByLabel('Password Bring!')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Collega Bring!', exact: true })).toBeDisabled();
@@ -151,7 +155,7 @@ test('Bring connection form is labeled and accessible before credential entry', 
   const touchTargets = [
     page.getByLabel('Email Bring!'),
     page.getByLabel('Password Bring!'),
-    page.getByRole('checkbox', { name: /Autorizzo iKuck ad accedere/ }).locator('xpath=..'),
+    page.getByRole('checkbox', { name: /Autorizzo A tavola ad accedere/ }).locator('xpath=..'),
     page.getByRole('button', { name: 'Collega Bring!', exact: true }),
   ];
   for (const target of touchTargets) {
@@ -182,6 +186,7 @@ test('Bring list actions pass axe and remain touch-friendly at 320px with 200% t
   });
   await page.goto('/shopping-list');
   await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+  await page.locator('summary').filter({ hasText: /^Bring!$/ }).click();
   await expect(page.getByRole('heading', { name: 'Lista Bring!' })).toBeVisible();
   await page.getByRole('combobox', { name: 'Lista Bring!' }).selectOption(listId);
   await expect(page.locator('[data-bring-name="Milch"]').getByText('Latte', { exact: true })).toBeVisible();
@@ -189,8 +194,7 @@ test('Bring list actions pass axe and remain touch-friendly at 320px with 200% t
   await auditPage(page, 'Bring remote list and actions at 320px/200% text');
 
   const touchTargets = [
-    page.getByRole('button', { name: 'iKuck', exact: true }),
-    page.getByRole('button', { name: 'Bring!', exact: true }),
+    page.locator('summary').filter({ hasText: /^Bring!$/ }),
     page.getByRole('button', { name: 'Scollega Bring!' }),
     page.getByRole('combobox', { name: 'Lista Bring!' }),
     page.getByLabel('Cosa aggiungere a Bring!'),
@@ -200,7 +204,7 @@ test('Bring list actions pass axe and remain touch-friendly at 320px with 200% t
     page.getByRole('button', { name: 'Rimuovi Latte da Bring!' }),
     page.getByRole('button', { name: 'Ripristina Pane su Bring!' }),
     page.getByRole('button', { name: 'Rimuovi Pane da Bring!' }),
-    page.locator('summary'),
+    page.locator('summary').filter({ hasText: /^Modifica specifica di Latte$/ }),
   ];
   for (const target of touchTargets) {
     const box = await target.boundingBox();

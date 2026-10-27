@@ -1,8 +1,8 @@
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { PlatformDependencies } from '../platform.js';
 
 export const registerHealthRoute = (dependencies: PlatformDependencies): FastifyPluginAsync => async (app) => {
-  app.get('/healthz', async (_request, reply) => {
+  const health = async (_request: FastifyRequest, reply: FastifyReply) => {
     try {
       await Promise.all([dependencies.database.ping(), dependencies.cache.ping()]);
       return { status: 'ok' };
@@ -13,5 +13,8 @@ export const registerHealthRoute = (dependencies: PlatformDependencies): Fastify
       );
       return reply.code(503).send({ status: 'degraded' });
     }
-  });
+  };
+
+  app.get('/healthz', health);
+  app.get('/v1/health', health);
 };

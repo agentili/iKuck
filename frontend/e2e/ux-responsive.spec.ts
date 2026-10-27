@@ -1,41 +1,55 @@
-import { writeFile } from 'node:fs/promises';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
 
-const evidence = '../design/ux-ui-proposal/evidence/screenshots';
-
-const settleAndScreenshot = async (page: Page, name: string) => {
+const settleAndScreenshot = async (page: Page, testInfo: TestInfo, name: string, fullPage = true) => {
   await page.evaluate(async () => {
     await document.fonts.ready;
     await Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => undefined)));
   });
-  await page.screenshot({ path: `${evidence}/${name}.png`, fullPage: true });
+  const path = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({ path, fullPage });
+  await testInfo.attach(name, { path, contentType: 'image/png' });
 };
 
-test('Cucina viva responsive geometry and visual evidence at required widths', async ({ page }) => {
+const populateHome = async (page: Page) => {
+  await page.getByRole('link', { name: 'Aggiungi un ingrediente' }).click();
+  await page.getByRole('combobox', { name: 'Ingredienti presenti' }).fill('pasta, tonno, passata');
+  await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await expect(page.getByRole('list', { name: 'La tua dispensa' }).getByText('Pasta', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Cucina', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'L’idea di oggi' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Trova ricette' })).toHaveCount(0);
+};
+
+test.beforeEach(async ({ page }) => { await installOfflineBackend(page); });
+test.afterEach(async ({ page }) => { assertOfflineBackendClean(page); });
+
+test('automatic Home ideas remain usable at required widths and 200% text', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
-  await settleAndScreenshot(page, 'cucina-viva-390-empty');
-
-  const quickAdd = page.getByRole('button', { name: 'Aggiungi ingredienti' });
-  await quickAdd.click();
-  const dialog = page.getByRole('dialog', { name: 'Aggiungi ingredienti' });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('combobox', { name: 'Ingredienti presenti' }).fill('pasta, tonno, passata');
-  await dialog.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
-  await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
-
-  const search = page.getByRole('button', { name: 'Trova ricette' });
-  const navigation = page.getByRole('navigation', { name: 'Navigazione principale' });
-  const measurements: object[] = [];
-  const [searchBox, navigationBox] = await Promise.all([search.boundingBox(), navigation.boundingBox()]);
-  expect(searchBox).not.toBeNull();
+  await expect(page.getByRole('heading', { name: 'Cosa portiamo a tavola?' })).toBeVisible();
+  await expect(page.locator('.hero-art')).toBeHidden();
+  await settleAndScreenshot(page, testInfo, 'a-tavola-390-empty');
+  await populateHome(page);
+  const [recipeBox, navigationBox, headerBox] = await Promise.all([
+    page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' }).boundingBox(),
+    page.getByRole('navigation', { name: 'Navigazione principale' }).boundingBox(),
+    page.getByRole('banner').boundingBox(),
+  ]);
+  const initialGeometry = { recipe: recipeBox, navigation: navigationBox, header: headerBox, scrollY: await page.evaluate(() => window.scrollY) };
+  await testInfo.attach('initial-home-geometry', { body: JSON.stringify(initialGeometry, null, 2), contentType: 'application/json' });
+  await settleAndScreenshot(page, testInfo, 'a-tavola-390-first-viewport', false);
+  expect(recipeBox, JSON.stringify(initialGeometry)).not.toBeNull();
   expect(navigationBox).not.toBeNull();
-  expect(searchBox!.y + searchBox!.height).toBeLessThanOrEqual(navigationBox!.y - 16);
-  measurements.push({ width: 390, height: 844, searchBottom: searchBox!.y + searchBox!.height, navigationTop: navigationBox!.y, gap: navigationBox!.y - (searchBox!.y + searchBox!.height) });
-  await settleAndScreenshot(page, 'cucina-viva-390-populated');
+  expect(headerBox).not.toBeNull();
+  expect(initialGeometry.scrollY).toBe(0);
+  expect(recipeBox!.y).toBeGreaterThanOrEqual(headerBox!.y + headerBox!.height);
+  expect(recipeBox!.y + recipeBox!.height, JSON.stringify(initialGeometry)).toBeLessThanOrEqual(navigationBox!.y);
+  await settleAndScreenshot(page, testInfo, 'a-tavola-390-populated');
 
-  for (const width of [320, 768, 1440]) {
+  const measurements: object[] = [];
+  for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: width === 320 ? 700 : 900 });
     await page.evaluate((zoom) => { document.documentElement.style.fontSize = zoom ? '200%' : ''; }, width === 320);
     const geometry = await page.evaluate(() => ({
@@ -44,63 +58,76 @@ test('Cucina viva responsive geometry and visual evidence at required widths', a
       nav: document.querySelector('nav[aria-label="Navigazione principale"]')?.getBoundingClientRect().toJSON() ?? null,
       main: document.querySelector('main#main-content')?.getBoundingClientRect().toJSON() ?? null,
     }));
-    measurements.push({ width, height: width === 320 ? 700 : 900, rootFontSize: width === 320 ? '200%' : '100%', ...geometry });
+    measurements.push({ width, rootFontSize: width === 320 ? '200%' : '100%', ...geometry });
     expect(geometry.content, `horizontal overflow at ${width}px: ${JSON.stringify(geometry)}`).toBeLessThanOrEqual(geometry.viewport);
     expect(geometry.nav).not.toBeNull();
     expect(geometry.main).not.toBeNull();
-    await settleAndScreenshot(page, `cucina-viva-${width}${width === 320 ? '-zoom200' : ''}`);
+    await expect(page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' })).toBeVisible();
+    if (width < 768) await expect(page.locator('.hero-art')).toBeHidden();
+    if (width === 320) {
+      const wordGeometry = await page.getByRole('heading', { name: 'Cosa portiamo a tavola?' }).evaluate((heading) => {
+        const word = 'portiamo';
+        const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node !== null) {
+          const start = node.textContent?.indexOf(word) ?? -1;
+          if (start >= 0) {
+            const range = document.createRange();
+            range.setStart(node, start);
+            range.setEnd(node, start + word.length);
+            return { word, rects: Array.from(range.getClientRects(), (rect) => rect.toJSON()) };
+          }
+          node = walker.nextNode();
+        }
+        return { word, rects: [] };
+      });
+      await testInfo.attach('home-title-word-320-zoom200', { body: JSON.stringify(wordGeometry, null, 2), contentType: 'application/json' });
+      expect(wordGeometry.rects, `Home title splits the word portiamo: ${JSON.stringify(wordGeometry)}`).toHaveLength(1);
+      const metadata = await page.getByRole('article', { name: 'Pasta tonno e pomodoro' }).locator('dl').evaluate((list) => ({
+        bounds: list.getBoundingClientRect().toJSON(),
+        items: Array.from(list.querySelectorAll('dd')).map((item) => ({ label: item.textContent?.trim() ?? '', bounds: item.getBoundingClientRect().toJSON() })),
+      }));
+      await testInfo.attach('recipe-metadata-320-zoom200', { body: JSON.stringify(metadata, null, 2), contentType: 'application/json' });
+      expect(metadata.items).toHaveLength(3);
+      for (const [index, item] of metadata.items.entries()) {
+        expect(item.bounds.left, JSON.stringify(metadata)).toBeGreaterThanOrEqual(metadata.bounds.left);
+        expect(item.bounds.right, JSON.stringify(metadata)).toBeLessThanOrEqual(metadata.bounds.right + 1);
+        for (const other of metadata.items.slice(index + 1)) {
+          const overlapWidth = Math.min(item.bounds.right, other.bounds.right) - Math.max(item.bounds.left, other.bounds.left);
+          const overlapHeight = Math.min(item.bounds.bottom, other.bounds.bottom) - Math.max(item.bounds.top, other.bounds.top);
+          expect(overlapWidth <= 0 || overlapHeight <= 0, `metadata overlaps: ${JSON.stringify({ item, other })}`).toBe(true);
+        }
+      }
+    }
+    await settleAndScreenshot(page, testInfo, `a-tavola-${width}${width === 320 ? '-zoom200' : ''}`);
   }
-  await writeFile(`${evidence}/responsive-geometry.json`, `${JSON.stringify(measurements, null, 2)}\n`, 'utf8');
+  await testInfo.attach('responsive-geometry', { body: JSON.stringify(measurements, null, 2), contentType: 'application/json' });
 });
 
-test('il prompt di installazione PWA sta sopra la nav inferiore e non copre l’azione primaria (390×844)', async ({
-  page,
-}) => {
+test('PWA install prompt stays above mobile navigation and leaves the pantry action reachable', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cosa portiamo a tavola?' })).toBeVisible();
+  await populateHome(page);
 
-  const quickAdd = page.getByRole('button', { name: 'Aggiungi ingredienti' });
-  await quickAdd.click();
-  const dialog = page.getByRole('dialog', { name: 'Aggiungi ingredienti' });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('combobox', { name: 'Ingredienti presenti' }).fill('pasta, pomodoro');
-  await dialog.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
-  await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
-
-  const search = page.getByRole('button', { name: 'Trova ricette' });
-  await search.click();
-  await expect(page.getByRole('heading', { name: 'Ricette per te' })).toBeVisible();
-
-  // beforeinstallprompt non viene inviato in headless: lo si simula per rendere il banner.
   await page.evaluate(() => {
     const event = new Event('beforeinstallprompt', { cancelable: true, bubbles: true });
     Object.defineProperty(event, 'prompt', { value: () => Promise.resolve(), configurable: true });
-    Object.defineProperty(event, 'userChoice', {
-      value: Promise.resolve({ outcome: 'dismissed' }),
-      configurable: true,
-    });
+    Object.defineProperty(event, 'userChoice', { value: Promise.resolve({ outcome: 'dismissed' }), configurable: true });
     window.dispatchEvent(event);
   });
 
-  const banner = page.getByRole('complementary', {
-    name: 'Installa l’applicazione iKuck',
-  });
+  const banner = page.getByRole('complementary', { name: 'Installa l’applicazione A tavola' });
   await expect(banner).toBeVisible();
-
   const bannerBox = await banner.boundingBox();
-  const navigation = page.getByRole('navigation', { name: 'Navigazione principale' });
-  const navBox = await navigation.boundingBox();
-  const searchBox = await search.boundingBox();
+  const navBox = await page.getByRole('navigation', { name: 'Navigazione principale' }).boundingBox();
   expect(bannerBox).not.toBeNull();
   expect(navBox).not.toBeNull();
-  expect(searchBox).not.toBeNull();
-
-  // Ancorato sopra la barra di navigazione inferiore: bottom = nav-height + safe-area-inset-bottom.
   expect(bannerBox!.y + bannerBox!.height).toBeLessThanOrEqual(navBox!.y + 1);
-  // Larghezza piena con margini laterali sul viewport da 390px.
   expect(bannerBox!.x).toBeGreaterThanOrEqual(14);
   expect(bannerBox!.x + bannerBox!.width).toBeLessThanOrEqual(390 - 14);
-  // Non copre il bottone primario dell’action panel.
-  expect(searchBox!.y + searchBox!.height).toBeLessThanOrEqual(bannerBox!.y + 1);
+  const action = page.getByRole('region', { name: 'L’idea di oggi' }).getByRole('link', { name: '3 ingredienti in dispensa' });
+  await action.scrollIntoViewIfNeeded();
+  await action.click();
+  await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
 });

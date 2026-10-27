@@ -4,7 +4,7 @@ import { createVersionMetadata } from './versioning';
 describe('PWA version metadata', () => {
   it('creates stable release metadata for the manifest and diagnostics', () => {
     expect(createVersionMetadata('1.0.0', 'abc1234')).toEqual({
-      name: 'iKuck',
+      name: 'A tavola',
       version: '1.0.0',
       buildId: 'abc1234',
     });

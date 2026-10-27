@@ -1,3 +1,7 @@
+import AiRecipePanel from '../components/ai/AiRecipePanel';
+import { usePantryStore } from '../store/localPantryStore';
+import { useDietProfileStore } from '../store/dietProfileStore';
+import PaginatedList from '../components/ui/PaginatedList';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { LockKeyhole } from 'lucide-react';
@@ -43,6 +47,13 @@ const newestFirst = (
 );
 
 export default function RecipesPage() {
+  const scope = useSyncExternalStore(subscribeActiveDataScope, getActiveDataScope, getActiveDataScope);
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const csrfToken = useAuthStore((state) => state.csrfToken);
+  return <RecipesPageContent key={JSON.stringify([scope, userId, csrfToken])} />;
+}
+
+function RecipesPageContent() {
   const user = useAuthStore((state) => state.user);
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const activeScope = useSyncExternalStore(
@@ -55,6 +66,9 @@ export default function RecipesPage() {
   const userId = user?.id ?? null;
 
   const [query, setQuery] = useState('');
+  const [aiOpen, setAiOpen] = useState(false);
+  const pantryItems = usePantryStore((state) => state.pantryItems);
+  const dietProfile = useDietProfileStore((state) => state.profile);
   const [libraryRecipes, setLibraryRecipes] = useState<SavedRecipe[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryError, setLibraryError] = useState<string | null>(null);
@@ -247,7 +261,7 @@ export default function RecipesPage() {
           )}
           {!libraryLoading && libraryError === null && filteredLibrary.length > 0 && (
             <div className="grid gap-4 grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
-              {filteredLibrary.map((recipe) => (
+              <PaginatedList identity={`${activeScope}:${query}:filteredLibrary`} label="ricette salvate">{filteredLibrary.map((recipe) => (
                 <RecipeCard
                   key={recipe.id}
                   variant="salvata"
@@ -262,7 +276,7 @@ export default function RecipesPage() {
                   openHref={`/recipes/${encodeURIComponent(recipe.id)}?scope=${encodeURIComponent(activeScope)}`}
                   openAriaLabel={`Apri ${recipe.title}`}
                 />
-              ))}
+              ))}</PaginatedList>
             </div>
           )}
         </PageSection>
@@ -306,7 +320,7 @@ export default function RecipesPage() {
           )}
           {verified && !savedLoading && savedError === null && filteredSaved.length > 0 && (
             <div className="grid gap-4 grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
-              {filteredSaved.map((recipe) => (
+              <PaginatedList identity={`${activeScope}:${query}:filteredSaved`} label="ricette AI">{filteredSaved.map((recipe) => (
                 <RecipeCard
                   key={recipe.id}
                   variant="ai"
@@ -317,7 +331,7 @@ export default function RecipesPage() {
                   onToggle={() => toggleExpanded(recipe.id)}
                   detailsId={`saved-recipe-details-${recipe.id}`}
                 />
-              ))}
+              ))}</PaginatedList>
             </div>
           )}
         </PageSection>
@@ -340,7 +354,7 @@ export default function RecipesPage() {
           )}
           {!isEmptySearch && (
             <div className="grid gap-4 grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
-              {filteredSuggested.map((recipe) => (
+              <PaginatedList identity={`${activeScope}:${query}:filteredSuggested`} label="catalogo">{filteredSuggested.map((recipe) => (
                 <RecipeCard
                   key={recipe.id}
                   variant="catalogo"
@@ -349,12 +363,16 @@ export default function RecipesPage() {
                   openHref={`/recipes/${recipe.id}`}
                   openAriaLabel={`Apri ${recipe.title}`}
                 />
-              ))}
+              ))}</PaginatedList>
             </div>
           )}
         </PageSection>
         </div>
       </div>
+      <details className="editorial-panel mt-8" onToggle={(event) => setAiOpen(event.currentTarget.open)}>
+        <summary className="min-h-11 cursor-pointer p-4 font-bold">Crea con AI</summary>
+        {aiOpen && <div className="p-4"><AiRecipePanel key={`${activeScope}:${userId ?? 'guest'}:${csrfToken ?? ''}`} ingredients={pantryItems.map((item) => item.label)} dietProfile={dietProfile} user={user} csrfToken={csrfToken} /></div>}
+      </details>
     </main>
   );
 }

@@ -1,3 +1,4 @@
+import PaginatedList from '../components/ui/PaginatedList';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { CalendarDays, Check, Pencil, Save, Trash2, X } from 'lucide-react';
 import type { AiConsent, AiRecipeProvider } from '@ikuck/shared/contracts';
@@ -471,7 +472,7 @@ export default function DinnerDiaryPage() {
           <EmptyState text="Non hai ancora registrato una cena." />
         ) : (
           <ol className="space-y-3">
-            {orderedEntries.map((entry) => {
+            <PaginatedList list identity={getActiveDataScope()} label="cene">{orderedEntries.map((entry) => {
               const manageable = canManageEntry(entry, userId, houseId, houseRole);
               const linkedRecipeIds = new Set(entry.value.recipes.map((recipe) => recipe.recipeId));
               const availableRecipes = savedRecipes.filter((recipe) => recipe.scope === entry.scope && !linkedRecipeIds.has(recipe.value.id));
@@ -507,7 +508,7 @@ export default function DinnerDiaryPage() {
                   </article>
                 </li>
               );
-            })}
+            })}</PaginatedList>
           </ol>
         )}
       </PageSection>

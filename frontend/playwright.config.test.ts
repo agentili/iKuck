@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { createPlaywrightConfig } from './playwright.config';
 
 describe('Playwright execution profiles', () => {
+  it('keeps bundled Chromium by default and permits an explicit local executable', () => {
+    expect(createPlaywrightConfig({}).use?.launchOptions).toBeUndefined();
+    expect(createPlaywrightConfig({ IKUCK_PLAYWRIGHT_EXECUTABLE_PATH: ' /usr/bin/chromium ' }).use?.launchOptions).toEqual({ executablePath: '/usr/bin/chromium' });
+  });
   it('uses the supplied HTTPS target without a local web server in production mode', () => {
     const config = createPlaywrightConfig({
       E2E_BASE_URL: 'https://staging.example.test',

@@ -8,12 +8,13 @@ import { ApiClientError } from '../api/apiClient';
 import RecipesPage from './RecipesPage';
 import { useAuthStore } from '../auth/authStore';
 import { setActiveDataScope } from '../sync/scopeContext';
-import { fetchAiRecipes } from '../ai/aiRecipeApi';
+import { fetchAiConsentStatus, fetchAiRecipes } from '../ai/aiRecipeApi';
 import { writeSavedRecipes, clearDinnerDiary } from '../storage/dinnerDiaryStorage';
 import { hydrateDinnerDiaryStore } from '../store/dinnerDiaryStore';
 
 vi.mock('../ai/aiRecipeApi', () => ({
   fetchAiRecipes: vi.fn(),
+  fetchAiConsentStatus: vi.fn(),
 }));
 
 // The diary store is only needed by the page to hydrate RecipeDetailPage data:
@@ -159,12 +160,37 @@ const setVerifiedSession = (): void => {
 
 beforeEach((): void => {
   vi.mocked(fetchAiRecipes).mockReset();
+  vi.mocked(fetchAiConsentStatus).mockReset().mockResolvedValue({ consent: { enabled: false, updatedAt: '2026-10-26T00:00:00.000Z' }, selectedProvider: 'gemini' });
   vi.mocked(hydrateDinnerDiaryStore).mockClear();
   useAuthStore.setState({ user: null, csrfToken: null, expiresAt: null });
   setActiveDataScope('guest');
 });
 
 describe('RecipesPage', () => {
+  it('loads AI consent only after opening generation and resets the section when the session changes', async () => {
+    const actions = userEvent.setup();
+    setVerifiedSession();
+    vi.mocked(fetchAiRecipes).mockResolvedValue([]);
+    renderPage();
+    await waitFor(() => expect(fetchAiRecipes).toHaveBeenCalledOnce());
+    expect(fetchAiConsentStatus).not.toHaveBeenCalled();
+    await actions.click(screen.getByText('Crea con AI', { selector: 'summary' }));
+    await waitFor(() => expect(fetchAiConsentStatus).toHaveBeenCalledOnce());
+    expect(screen.getByText('Crea con AI', { selector: 'summary' }).closest('details')).toHaveAttribute('open');
+    act(() => useAuthStore.setState({ user: { ...user, id: 'user-2' }, csrfToken: 'csrf-user-2' }));
+    expect(screen.getByText('Crea con AI', { selector: 'summary' }).closest('details')).not.toHaveAttribute('open');
+    expect(fetchAiConsentStatus).toHaveBeenCalledOnce();
+  });
+
+  it('drops a saved AI response from the previous session without exposing it in the new account', async () => {
+    setVerifiedSession();
+    let resolveOld!: (recipes: GeneratedRecipe[]) => void;
+    vi.mocked(fetchAiRecipes).mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; })).mockResolvedValue([]);
+    renderPage();
+    act(() => useAuthStore.setState({ user: { ...user, id: 'user-2' }, csrfToken: 'csrf-user-2' }));
+    await act(async () => resolveOld([orataRecipe]));
+    expect(screen.queryByRole('heading', { name: 'Orata al forno' })).not.toBeInTheDocument();
+  });
   it('renderizza i tre gruppi con le badge di fonte per una sessione verificata', async () => {
     setVerifiedSession();
     vi.mocked(fetchAiRecipes).mockResolvedValue([orataRecipe]);

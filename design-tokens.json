@@ -1,107 +1,672 @@
 {
   "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
-  "$description": "Un sistema locale-first per decidere cosa cucinare con ciò che è già in casa.",
+  "$description": "A tavola: un sistema locale-first con quattro palette tenui e coordinate. Pistacchio e limone è la scelta predefinita.",
   "color": {
     "$type": "color",
     "primary": {
       "$value": {
         "colorSpace": "srgb",
         "components": [
-          0.094,
-          0.188,
-          0.157
+          0.211765,
+          0.25098,
+          0.215686
         ],
-        "hex": "#183028"
+        "hex": "#364037"
       }
     },
     "porcelain": {
       "$value": {
         "colorSpace": "srgb",
         "components": [
-          0.98,
-          0.984,
-          0.969
+          0.968627,
+          0.968627,
+          0.92549
         ],
-        "hex": "#fafbf7"
+        "hex": "#f7f7ec"
       }
     },
-    "basil": {
+    "ink": {
       "$value": {
         "colorSpace": "srgb",
         "components": [
-          0.141,
-          0.478,
-          0.29
+          0.211765,
+          0.25098,
+          0.215686
         ],
-        "hex": "#247a4a"
-      }
-    },
-    "basilDark": {
-      "$value": {
-        "colorSpace": "srgb",
-        "components": [
-          0.086,
-          0.361,
-          0.208
-        ],
-        "hex": "#165c35"
-      }
-    },
-    "sage": {
-      "$value": {
-        "colorSpace": "srgb",
-        "components": [
-          0.882,
-          0.925,
-          0.894
-        ],
-        "hex": "#e1ece4"
-      }
-    },
-    "mist": {
-      "$value": {
-        "colorSpace": "srgb",
-        "components": [
-          0.945,
-          0.953,
-          0.929
-        ],
-        "hex": "#f1f3ed"
-      }
-    },
-    "tomato": {
-      "$value": {
-        "colorSpace": "srgb",
-        "components": [
-          0.725,
-          0.22,
-          0.165
-        ],
-        "hex": "#b9382a"
-      }
-    },
-    "yolk": {
-      "$value": {
-        "colorSpace": "srgb",
-        "components": [
-          0.949,
-          0.745,
-          0.243
-        ],
-        "hex": "#f2be3e"
+        "hex": "#364037"
       }
     },
     "inkMuted": {
       "$value": {
         "colorSpace": "srgb",
         "components": [
-          0.322,
-          0.4,
-          0.357
+          0.368627,
+          0.407843,
+          0.368627
         ],
-        "hex": "#52665b"
+        "hex": "#5e685e"
       }
-    }
+    },
+    "surface": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.988235,
+          0.988235,
+          0.956863
+        ],
+        "hex": "#fcfcf4"
+      }
+    },
+    "basil": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.333333,
+          0.423529,
+          0.301961
+        ],
+        "hex": "#556c4d"
+      }
+    },
+    "basilDark": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.262745,
+          0.345098,
+          0.239216
+        ],
+        "hex": "#43583d"
+      }
+    },
+    "sage": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.898039,
+          0.92549,
+          0.866667
+        ],
+        "hex": "#e5ecdd"
+      }
+    },
+    "mist": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.933333,
+          0.905882,
+          0.835294
+        ],
+        "hex": "#eee7d5"
+      }
+    },
+    "border": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.858824,
+          0.870588,
+          0.811765
+        ],
+        "hex": "#dbdecf"
+      }
+    },
+    "borderStrong": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.678431,
+          0.705882,
+          0.454902
+        ],
+        "hex": "#adb474"
+      }
+    },
+    "tomato": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.509804,
+          0.301961,
+          0.258824
+        ],
+        "hex": "#824d42"
+      }
+    },
+    "tomatoSoft": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.960784,
+          0.886275,
+          0.854902
+        ],
+        "hex": "#f5e2da"
+      }
+    },
+    "yolk": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.901961,
+          0.8,
+          0.513725
+        ],
+        "hex": "#e6cc83"
+      }
+    },
+    "yolkSoft": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.956863,
+          0.929412,
+          0.843137
+        ],
+        "hex": "#f4edd7"
+      }
+    },
+    "focus": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.462745,
+          0.392157,
+          0.247059
+        ],
+        "hex": "#76643f"
+      }
+    },
+    "onYolk": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.211765,
+          0.25098,
+          0.215686
+        ],
+        "hex": "#364037"
+      }
+    },
+    "warnInk": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.431373,
+          0.313725,
+          0.121569
+        ],
+        "hex": "#6e501f"
+      }
+    },
+    "accentBorder": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.745098,
+          0.596078,
+          0.32549
+        ],
+        "hex": "#be9853"
+      }
+    },
+    "accentBorderStrong": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.462745,
+          0.392157,
+          0.247059
+        ],
+        "hex": "#76643f"
+      }
+    },
+    "dark": {
+      "$type": "color",
+      "surface": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.172549,
+            0.180392,
+            0.145098
+          ],
+          "hex": "#2c2e25"
+        }
+      },
+      "ink": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.952941,
+            0.956863,
+            0.901961
+          ],
+          "hex": "#f3f4e6"
+        }
+      },
+      "inkMuted": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.764706,
+            0.780392,
+            0.705882
+          ],
+          "hex": "#c3c7b4"
+        }
+      },
+      "basil": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.768627,
+            0.866667,
+            0.694118
+          ],
+          "hex": "#c4ddb1"
+        }
+      },
+      "sage": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.2,
+            0.247059,
+            0.176471
+          ],
+          "hex": "#333f2d"
+        }
+      },
+      "mist": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.219608,
+            0.211765,
+            0.168627
+          ],
+          "hex": "#38362b"
+        }
+      },
+      "border": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.305882,
+            0.301961,
+            0.231373
+          ],
+          "hex": "#4e4d3b"
+        }
+      },
+      "borderStrong": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.564706,
+            0.52549,
+            0.360784
+          ],
+          "hex": "#90865c"
+        }
+      },
+      "tomato": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.862745,
+            0.588235,
+            0.498039
+          ],
+          "hex": "#dc967f"
+        }
+      },
+      "tomatoSoft": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.290196,
+            0.188235,
+            0.168627
+          ],
+          "hex": "#4a302b"
+        }
+      },
+      "yolk": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.929412,
+            0.827451,
+            0.552941
+          ],
+          "hex": "#edd38d"
+        }
+      },
+      "yolkSoft": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.286275,
+            0.247059,
+            0.164706
+          ],
+          "hex": "#493f2a"
+        }
+      },
+      "focus": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.94902,
+            0.831373,
+            0.490196
+          ],
+          "hex": "#f2d47d"
+        }
+      },
+      "onYolk": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.133333,
+            0.141176,
+            0.113725
+          ],
+          "hex": "#22241d"
+        }
+      },
+      "warnInk": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.945098,
+            0.815686,
+            0.541176
+          ],
+          "hex": "#f1d08a"
+        }
+      },
+      "accentBorder": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.733333,
+            0.619608,
+            0.356863
+          ],
+          "hex": "#bb9e5b"
+        }
+      },
+      "accentBorderStrong": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.858824,
+            0.780392,
+            0.552941
+          ],
+          "hex": "#dbc78d"
+        }
+      },
+      "porcelain": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.133333,
+            0.141176,
+            0.113725
+          ],
+          "hex": "#22241d"
+        }
+      },
+      "basilDark": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.768627,
+            0.866667,
+            0.694118
+          ],
+          "hex": "#c4ddb1"
+        }
+      },
+      "primary": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.952941,
+            0.956863,
+            0.901961
+          ],
+          "hex": "#f3f4e6"
+        }
+      },
+      "browserThemeColor": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.133333,
+            0.141176,
+            0.113725
+          ],
+          "hex": "#22241d"
+        }
+      },
+      "berry": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.858824,
+            0.780392,
+            0.552941
+          ],
+          "hex": "#dbc78d"
+        }
+      },
+      "berryDark": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.92549,
+            0.87451,
+            0.694118
+          ],
+          "hex": "#ecdfb1"
+        }
+      },
+      "berrySoft": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.290196,
+            0.254902,
+            0.168627
+          ],
+          "hex": "#4a412b"
+        }
+      },
+      "yolkInk": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.945098,
+            0.815686,
+            0.541176
+          ],
+          "hex": "#f1d08a"
+        }
+      },
+      "ocean": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.529412,
+            0.698039,
+            0.729412
+          ],
+          "hex": "#87b2ba"
+        }
+      },
+      "purple": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.768627,
+            0.658824,
+            0.890196
+          ],
+          "hex": "#c4a8e3"
+        }
+      },
+      "tomatoDark": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.937255,
+            0.713725,
+            0.635294
+          ],
+          "hex": "#efb6a2"
+        }
+      },
+      "oceanSoft": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.160784,
+            0.219608,
+            0.231373
+          ],
+          "hex": "#29383b"
+        }
+      },
+      "purpleSoft": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [
+            0.239216,
+            0.188235,
+            0.278431
+          ],
+          "hex": "#3d3047"
+        }
+      }
+    },
+    "browserThemeColor": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.968627,
+          0.968627,
+          0.92549
+        ],
+        "hex": "#f7f7ec"
+      }
+    },
+    "berry": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.462745,
+          0.392157,
+          0.247059
+        ],
+        "hex": "#76643f"
+      }
+    },
+    "berryDark": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.360784,
+          0.305882,
+          0.180392
+        ],
+        "hex": "#5c4e2e"
+      }
+    },
+    "berrySoft": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.933333,
+          0.905882,
+          0.835294
+        ],
+        "hex": "#eee7d5"
+      }
+    },
+    "yolkInk": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.431373,
+          0.313725,
+          0.121569
+        ],
+        "hex": "#6e501f"
+      }
+    },
+    "ocean": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.286275,
+          0.419608,
+          0.45098
+        ],
+        "hex": "#496b73"
+      }
+    },
+    "purple": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.423529,
+          0.290196,
+          0.572549
+        ],
+        "hex": "#6c4a92"
+      }
+    },
+    "tomatoDark": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.364706,
+          0.239216,
+          0.203922
+        ],
+        "hex": "#5d3d34"
+      }
+    },
+    "oceanSoft": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.886275,
+          0.921569,
+          0.917647
+        ],
+        "hex": "#e2ebea"
+      }
+    },
+    "purpleSoft": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.898039,
+          0.909804,
+          0.803922
+        ],
+        "hex": "#e5e8cd"
+      }
+    },
+    "$description": "Palette predefinita Pistacchio e limone; le varianti complete sono in frontend/src/theme/palettes.css."
   },
   "spacing": {
     "$type": "dimension",
@@ -158,32 +723,17 @@
     }
   },
   "typography": {
-    "h1": {
+    "display": {
       "$type": "typography",
       "$value": {
-        "fontFamily": "Bricolage Grotesque Variable, system-ui, sans-serif",
+        "fontFamily": "Georgia, Times New Roman, serif",
         "fontSize": {
-          "value": 3.75,
+          "value": 2.75,
           "unit": "rem"
         },
-        "fontWeight": 800,
+        "fontWeight": 400,
         "letterSpacing": {
-          "value": -0.03,
-          "unit": "em"
-        }
-      }
-    },
-    "h2": {
-      "$type": "typography",
-      "$value": {
-        "fontFamily": "Bricolage Grotesque Variable, system-ui, sans-serif",
-        "fontSize": {
-          "value": 2,
-          "unit": "rem"
-        },
-        "fontWeight": 800,
-        "letterSpacing": {
-          "value": -0.02,
+          "value": -0.04,
           "unit": "em"
         }
       }
@@ -198,6 +748,50 @@
         },
         "fontWeight": 450
       }
+    }
+  },
+  "components": {
+    "button-primary": {
+      "backgroundColor": "{color.basil}",
+      "textColor": "{color.porcelain}",
+      "rounded": "{rounded.control}",
+      "minimumHeight": {
+        "$value": {
+          "value": 44,
+          "unit": "px"
+        }
+      }
+    },
+    "button-primary-hover": {
+      "backgroundColor": "{color.basilDark}",
+      "textColor": "{color.porcelain}",
+      "rounded": "{rounded.control}"
+    },
+    "editorial-panel": {
+      "backgroundColor": "{color.surface}",
+      "textColor": "{color.ink}",
+      "borderColor": "{color.border}",
+      "rounded": "{rounded.panel}"
+    },
+    "action-panel": {
+      "backgroundColor": "{color.ink}",
+      "textColor": "{color.porcelain}",
+      "rounded": "{rounded.feature}"
+    },
+    "ready-recipe": {
+      "backgroundColor": "{color.sage}",
+      "textColor": "{color.primary}",
+      "rounded": "{rounded.panel}"
+    },
+    "one-purchase-recipe": {
+      "backgroundColor": "{color.yolk}",
+      "textColor": "{color.onYolk}",
+      "rounded": "{rounded.panel}"
+    },
+    "error-surface": {
+      "backgroundColor": "{color.tomatoSoft}",
+      "textColor": "{color.tomato}",
+      "rounded": "{rounded.panel}"
     }
   }
 }

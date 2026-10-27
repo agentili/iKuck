@@ -257,8 +257,7 @@ test('records a dinner, edits and confirms an AI draft, then finds it in recipe 
   expect(confirmationBody).toMatchObject({ draft: { title: 'Pasta e zucchine della cena' } });
 
   await page.getByRole('link', { name: 'Cucina', exact: true }).first().click();
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
-  await page.getByRole('button', { name: 'Trova ricette' }).click();
+  await expect(page.getByRole('heading', { name: 'Cosa portiamo a tavola?' })).toBeVisible();
   await expect(page.getByRole('article', { name: 'Pasta e zucchine della cena' })).toHaveAttribute('data-availability', 'ready');
   await page.getByRole('link', { name: 'Apri Pasta e zucchine della cena' }).click();
   await expect(page.getByRole('heading', { name: 'Pasta e zucchine della cena' })).toBeVisible();
