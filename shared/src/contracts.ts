@@ -10,6 +10,7 @@ export const SYNC_ENTITY_TYPES = [
   'generated_recipe',
   'dinner_entry',
   'saved_recipe',
+  'meal_plan_entry',
 ] as const;
 
 export type SyncEntityType = typeof SYNC_ENTITY_TYPES[number];
@@ -25,6 +26,7 @@ export const HOUSE_SYNC_ENTITY_TYPES = [
   'generated_recipe',
   'dinner_entry',
   'saved_recipe',
+  'meal_plan_entry',
 ] as const satisfies readonly SyncEntityType[];
 
 export const PERSONAL_SYNC_ENTITY_TYPES = [
@@ -34,6 +36,46 @@ export const PERSONAL_SYNC_ENTITY_TYPES = [
 export type SyncOperation = 'upsert' | 'delete';
 
 export type SyncMutationScope = `account:${string}` | `house:${string}`;
+
+export type PlanVersion = 2;
+
+export type PlanState = { date: string; revision: string; serverSequence: number } & (
+  | { kind: 'automatic' | 'manual'; recipeId: string }
+  | { kind: 'deleted'; recipeId: null }
+);
+
+export type PlanCommandBase = {
+  version: PlanVersion;
+  scope: SyncMutationScope;
+  date: string;
+  operationId: string;
+  deviceId: string;
+  clientUpdatedAt: string;
+};
+
+export type PlanCommand = PlanCommandBase & (
+  | { action: 'manual_set'; recipeId: string }
+  | { action: 'manual_delete' }
+  | { action: 'auto_create'; recipeId: string; baseRevision: null }
+  | { action: 'explicit_regenerate'; recipeId: string; baseRevision: string }
+);
+
+export interface PlanResult {
+  version: PlanVersion;
+  operationId: string;
+  outcome: 'applied' | 'conflict';
+  current: PlanState | null;
+}
+
+export interface MealPlanCapabilities {
+  version: PlanVersion;
+  syncReadVersion: 2;
+}
+
+export interface HouseTimeZoneState {
+  timeZone: string | null;
+  revision: string | null;
+}
 
 export interface SyncMutation {
   mutationId: string;
@@ -121,9 +163,25 @@ export interface AiConsent {
   updatedAt: string;
   homeProvider?: AiRecipeProvider;
   dinnerProvider?: AiRecipeProvider;
+  chatProvider?: AiRecipeProvider;
+  chatPolicyVersion?: 'chef-chat-v1';
 }
 
 export type AiRecipeProvider = 'openai' | 'gemini';
+
+export interface ChefChatTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface ChefChatRequest {
+  message: string;
+  history: ChefChatTurn[];
+}
+
+export interface ChefChatResponse {
+  reply: string;
+}
 
 export interface GeneratedRecipeIngredient {
   name: string;

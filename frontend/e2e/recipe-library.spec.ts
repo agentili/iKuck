@@ -194,7 +194,7 @@ test('nav: «Ricette» raggiungibile, nome accessibile completo, nessun overflow
   await page.route('**/v1/house', (route) => route.fulfill({ status: 200, json: { house: null } }));
   await page.goto('/');
 
-  const ricette = page.getByRole('link', { name: 'Ricette' });
+  const ricette = page.getByRole('link', { name: 'Ricette', exact: true });
   await expect(ricette).toBeVisible();
 
   // Attende che main#main-content sia montato prima di leggere le geometrie:

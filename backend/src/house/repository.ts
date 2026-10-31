@@ -1,5 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { and, asc, eq, sql } from 'drizzle-orm';
-import type { HouseMember, HouseRole, HouseState, HouseSummary } from '@ikuck/shared/contracts';
+import type { HouseMember, HouseRole, HouseState, HouseSummary, HouseTimeZoneState } from '@ikuck/shared/contracts';
 import type { ApplicationDatabase } from '../db/client.js';
 import { dinnerConsumptionReceipts, houseMemberships, houses, processedSyncMutations, s2sServiceCredentials, s2sServiceGrants, syncItems, userProfiles, users } from '../db/schema.js';
 import type { HouseRole as ValidatedHouseRole } from './validation.js';
@@ -15,6 +16,8 @@ export interface HouseRecord {
   id: string;
   name: string;
   createdByUserId: string | null;
+  timeZone: string | null;
+  timeZoneRevision: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,6 +35,14 @@ export interface HouseRepository {
   createHouse: (input: { name: string; userId: string; now: Date }) => Promise<{ house: HouseRecord; membership: HouseMembershipRecord }>;
   getStateForUser: (userId: string) => Promise<HouseState | null>;
   getMembershipForUser: (userId: string) => Promise<HouseMembershipRecord | null>;
+  getTimeZoneForUser: (userId: string) => Promise<{ kind: 'ok'; state: HouseTimeZoneState } | { kind: 'membership_required' }>;
+  initializeTimeZoneForUser: (userId: string, timeZone: string) => Promise<{ kind: 'ok'; state: HouseTimeZoneState } | { kind: 'membership_required' }>;
+  updateTimeZoneForUser: (input: { userId: string; timeZone: string | null; expectedRevision: string | null }) => Promise<
+    | { kind: 'updated'; state: HouseTimeZoneState }
+    | { kind: 'conflict'; state: HouseTimeZoneState }
+    | { kind: 'admin_required' }
+    | { kind: 'membership_required' }
+  >;
   addExistingMember: (input: { adminUserId: string; email: string; now: Date }) => Promise<
     | { kind: 'added'; member: HouseMember }
     | { kind: 'admin_required' }
@@ -60,6 +71,8 @@ const toHouseRecord = (house: typeof houses.$inferSelect): HouseRecord => ({
   id: house.id,
   name: house.name,
   createdByUserId: house.createdByUserId,
+  timeZone: house.timeZone,
+  timeZoneRevision: house.timeZoneRevision,
   createdAt: house.createdAt,
   updatedAt: house.updatedAt,
 });
@@ -93,6 +106,24 @@ const toState = (house: HouseRecord, membership: HouseMembershipRecord, members:
   members,
 });
 
+const createKeyedLock = () => {
+  const tails = new Map<string, Promise<void>>();
+  return async <T>(key: string, operation: () => Promise<T>): Promise<T> => {
+    const previous = tails.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const tail = previous.then(() => held);
+    tails.set(key, tail);
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (tails.get(key) === tail) tails.delete(key);
+    }
+  };
+};
+
 export const createMemoryHouseRepository = (seedUsers: readonly SeedHouseUser[] = []): HouseRepository & {
   seedUser: (user: SeedHouseUser) => void;
 } => {
@@ -101,6 +132,7 @@ export const createMemoryHouseRepository = (seedUsers: readonly SeedHouseUser[] 
   const housesById = new Map<string, HouseRecord>();
   const membershipsByUser = new Map<string, HouseMembershipRecord>();
   const membershipsByHouse = new Map<string, HouseMembershipRecord[]>();
+  const withHouseLock = createKeyedLock();
 
   const seedUser = (user: SeedHouseUser): void => {
     usersById.set(user.id, user);
@@ -122,7 +154,9 @@ export const createMemoryHouseRepository = (seedUsers: readonly SeedHouseUser[] 
     createHouse: async ({ name, userId, now }) => {
       if (membershipsByUser.has(userId)) throw new HouseMembershipExistsError();
       const id = `house-${housesById.size + 1}`;
-      const house: HouseRecord = { id, name, createdByUserId: userId, createdAt: now, updatedAt: now };
+      const house: HouseRecord = {
+        id, name, createdByUserId: userId, timeZone: null, timeZoneRevision: null, createdAt: now, updatedAt: now,
+      };
       const membership: HouseMembershipRecord = {
         id: `membership-${membershipsByUser.size + 1}`,
         houseId: id,
@@ -144,6 +178,47 @@ export const createMemoryHouseRepository = (seedUsers: readonly SeedHouseUser[] 
       return toState(house, membership, listMembers(house.id));
     },
     getMembershipForUser,
+    getTimeZoneForUser: async (userId) => {
+      const initial = membershipsByUser.get(userId);
+      if (initial === undefined) return { kind: 'membership_required' };
+      return withHouseLock(initial.houseId, async () => {
+        const current = membershipsByUser.get(userId);
+        const house = housesById.get(initial.houseId);
+        if (current?.houseId !== initial.houseId || house === undefined) return { kind: 'membership_required' };
+        return { kind: 'ok', state: { timeZone: house.timeZone, revision: house.timeZoneRevision } };
+      });
+    },
+    initializeTimeZoneForUser: async (userId, timeZone) => {
+      const initial = membershipsByUser.get(userId);
+      if (initial === undefined) return { kind: 'membership_required' };
+      return withHouseLock(initial.houseId, async () => {
+        const current = membershipsByUser.get(userId);
+        const house = housesById.get(initial.houseId);
+        if (current?.houseId !== initial.houseId || house === undefined) return { kind: 'membership_required' };
+        if (house.timeZoneRevision === null) {
+          house.timeZone = timeZone;
+          house.timeZoneRevision = randomUUID();
+          house.updatedAt = new Date();
+        }
+        return { kind: 'ok', state: { timeZone: house.timeZone, revision: house.timeZoneRevision } };
+      });
+    },
+    updateTimeZoneForUser: async ({ userId, timeZone, expectedRevision }) => {
+      const initial = membershipsByUser.get(userId);
+      if (initial === undefined) return { kind: 'membership_required' };
+      return withHouseLock(initial.houseId, async () => {
+        const current = membershipsByUser.get(userId);
+        const house = housesById.get(initial.houseId);
+        if (current?.houseId !== initial.houseId || house === undefined) return { kind: 'membership_required' };
+        if (current.role !== 'admin') return { kind: 'admin_required' };
+        const state = { timeZone: house.timeZone, revision: house.timeZoneRevision };
+        if (state.revision !== expectedRevision) return { kind: 'conflict', state };
+        house.timeZone = timeZone;
+        house.timeZoneRevision = randomUUID();
+        house.updatedAt = new Date();
+        return { kind: 'updated', state: { timeZone: house.timeZone, revision: house.timeZoneRevision } };
+      });
+    },
     addExistingMember: async ({ adminUserId, email, now }) => {
       const adminMembership = membershipsByUser.get(adminUserId);
       if (adminMembership?.role !== 'admin') return { kind: 'admin_required' };
@@ -257,6 +332,67 @@ export const createDrizzleHouseRepository = (database: ApplicationDatabase['db']
       const [membership] = await database.select().from(houseMemberships).where(eq(houseMemberships.userId, userId)).limit(1);
       return membership === undefined ? null : toMembershipRecord(membership);
     },
+    getTimeZoneForUser: async (userId) => database.transaction(async (transaction) => {
+      await transaction.execute(sql`SELECT id FROM ${users} WHERE id = ${userId} FOR SHARE`);
+      const [membership] = await transaction.select({ houseId: houseMemberships.houseId })
+        .from(houseMemberships).where(eq(houseMemberships.userId, userId)).limit(1);
+      if (membership === undefined) return { kind: 'membership_required' as const };
+      const rows = await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${membership.houseId} FOR SHARE`);
+      if (rows.length === 0) return { kind: 'membership_required' as const };
+      const [currentMembership] = await transaction.select({ houseId: houseMemberships.houseId })
+        .from(houseMemberships).where(and(
+          eq(houseMemberships.userId, userId), eq(houseMemberships.houseId, membership.houseId),
+        )).limit(1);
+      if (currentMembership === undefined) return { kind: 'membership_required' as const };
+      const [house] = await transaction.select({ timeZone: houses.timeZone, revision: houses.timeZoneRevision })
+        .from(houses).where(eq(houses.id, membership.houseId)).limit(1);
+      if (house === undefined) return { kind: 'membership_required' as const };
+      return { kind: 'ok' as const, state: { timeZone: house.timeZone, revision: house.revision } };
+    }),
+    initializeTimeZoneForUser: async (userId, timeZone) => database.transaction(async (transaction) => {
+      await transaction.execute(sql`SELECT id FROM ${users} WHERE id = ${userId} FOR SHARE`);
+      const [membership] = await transaction.select({ houseId: houseMemberships.houseId })
+        .from(houseMemberships).where(eq(houseMemberships.userId, userId)).limit(1);
+      if (membership === undefined) return { kind: 'membership_required' as const };
+      const houseRows = await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${membership.houseId} FOR UPDATE`);
+      if (houseRows.length === 0) return { kind: 'membership_required' as const };
+      const [currentMembership] = await transaction.select({ houseId: houseMemberships.houseId })
+        .from(houseMemberships).where(and(
+          eq(houseMemberships.userId, userId), eq(houseMemberships.houseId, membership.houseId),
+        )).limit(1);
+      if (currentMembership === undefined) return { kind: 'membership_required' as const };
+      const [house] = await transaction.select({ timeZone: houses.timeZone, revision: houses.timeZoneRevision })
+        .from(houses).where(eq(houses.id, membership.houseId)).limit(1);
+      if (house === undefined) return { kind: 'membership_required' as const };
+      if (house.revision !== null) return { kind: 'ok' as const, state: { timeZone: house.timeZone, revision: house.revision } };
+      const revision = randomUUID();
+      await transaction.update(houses).set({ timeZone, timeZoneRevision: revision, updatedAt: new Date() })
+        .where(eq(houses.id, membership.houseId));
+      return { kind: 'ok' as const, state: { timeZone, revision } };
+    }),
+    updateTimeZoneForUser: async ({ userId, timeZone, expectedRevision }) => database.transaction(async (transaction) => {
+      await transaction.execute(sql`SELECT id FROM ${users} WHERE id = ${userId} FOR SHARE`);
+      const [membership] = await transaction.select({ houseId: houseMemberships.houseId, role: houseMemberships.role })
+        .from(houseMemberships).where(eq(houseMemberships.userId, userId)).limit(1);
+      if (membership === undefined) return { kind: 'membership_required' as const };
+      const houseRows = await transaction.execute(sql`SELECT id FROM ${houses} WHERE id = ${membership.houseId} FOR UPDATE`);
+      if (houseRows.length === 0) return { kind: 'membership_required' as const };
+      const [currentMembership] = await transaction.select({ role: houseMemberships.role })
+        .from(houseMemberships).where(and(
+          eq(houseMemberships.userId, userId), eq(houseMemberships.houseId, membership.houseId),
+        )).limit(1);
+      if (currentMembership === undefined) return { kind: 'membership_required' as const };
+      if (currentMembership.role !== 'admin') return { kind: 'admin_required' as const };
+      const [house] = await transaction.select({ timeZone: houses.timeZone, revision: houses.timeZoneRevision })
+        .from(houses).where(eq(houses.id, membership.houseId)).limit(1).for('update');
+      if (house === undefined) return { kind: 'membership_required' as const };
+      const state = { timeZone: house.timeZone, revision: house.revision };
+      if (state.revision !== expectedRevision) return { kind: 'conflict' as const, state };
+      const revision = randomUUID();
+      await transaction.update(houses).set({ timeZone, timeZoneRevision: revision, updatedAt: new Date() })
+        .where(eq(houses.id, membership.houseId));
+      return { kind: 'updated' as const, state: { timeZone, revision } };
+    }),
     addExistingMember: async ({ adminUserId, email, now }) => database.transaction(async (transaction) => {
       const [adminMembership] = await transaction.select().from(houseMemberships).where(eq(houseMemberships.userId, adminUserId)).limit(1);
       if (adminMembership?.role !== 'admin') return { kind: 'admin_required' as const };

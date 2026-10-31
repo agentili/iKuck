@@ -8,10 +8,11 @@ import { useSyncExternalStore } from 'react';
 import { isSimplifiedHeader } from '../../config/features';
 
 interface SimplifiedHeaderProps {
+  isMenuOpen?: boolean;
   onMenuClick?: () => void;
 }
 
-export const SimplifiedHeader = memo(({ onMenuClick }: SimplifiedHeaderProps) => {
+export const SimplifiedHeader = memo(({ isMenuOpen = false, onMenuClick }: SimplifiedHeaderProps) => {
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
   const connection = useAuthStore((state) => state.connection);
@@ -56,7 +57,9 @@ export const SimplifiedHeader = memo(({ onMenuClick }: SimplifiedHeaderProps) =>
             onClick={onMenuClick}
             className="p-2 rounded-xl text-[var(--sc-ink)] hover:bg-[var(--sc-peach-soft)] transition-colors"
             aria-label="Menu"
-            aria-expanded={false}
+            aria-haspopup="dialog"
+            aria-expanded={isMenuOpen}
+            aria-controls={isMenuOpen ? 'profile-modal' : undefined}
           >
             <Menu className="w-6 h-6" aria-hidden="true" />
           </button>
@@ -67,12 +70,12 @@ export const SimplifiedHeader = memo(({ onMenuClick }: SimplifiedHeaderProps) =>
 
         {/* Center: Page title (optional) */}
         <div className="flex-1 text-center hidden sm:block">
-          <h1 className="text-sm font-semibold text-[var(--sc-ink-faint)] truncate">
+          <span aria-hidden="true" className="text-sm font-semibold text-[var(--sc-ink-faint)] truncate">
             {location.pathname === '/' ? 'Chef' : 
              location.pathname.startsWith('/discover') ? 'Cerca' :
              location.pathname.startsWith('/plan') ? 'Piano' :
              location.pathname.startsWith('/saved') ? 'Salvate' : 'iKuck'}
-          </h1>
+          </span>
         </div>
 
         {/* Right: Theme + Profile */}

@@ -5,6 +5,13 @@ import {
   installOfflineBackend,
   type OfflineApiResponse,
 } from './helpers/backendMode';
+import {
+  isSousChefBuild,
+  kitchenHeading,
+  kitchenNavigationLabel,
+  kitchenPath,
+  openPantryInventory,
+} from './helpers/appMode';
 
 const themePreferenceKey = 'ikuck-color-theme';
 
@@ -27,8 +34,8 @@ const verifiedResponses: Record<string, OfflineApiResponse> = {
   'GET /v1/ai-recipes': { json: { recipes: [] } },
 };
 
-const installVerifiedBackend = (page: Page, extraResponses: Record<string, OfflineApiResponse> = {}): void => {
-  void installOfflineBackend(page, { responses: { ...verifiedResponses, ...extraResponses } });
+const installVerifiedBackend = async (page: Page, extraResponses: Record<string, OfflineApiResponse> = {}): Promise<void> => {
+  await installOfflineBackend(page, { responses: { ...verifiedResponses, ...extraResponses } });
 };
 
 const auditPage = async (page: Page, pageName: string): Promise<void> => {
@@ -48,7 +55,8 @@ type AuditedPage = {
 };
 
 const auditedPages: AuditedPage[] = [
-  { path: '/', heading: 'Cucina viva', name: 'home', auth: false },
+  ...(isSousChefBuild ? [{ path: '/', heading: 'Chef', name: 'chef', auth: false }] : []),
+  { path: kitchenPath, heading: kitchenHeading, name: 'home', auth: false },
   { path: '/recipes', heading: 'Ricette', name: 'recipes-library', auth: false },
   { path: '/pantry', heading: 'La tua dispensa', name: 'pantry', auth: false },
   { path: '/shopping-list', heading: 'Lista della spesa', name: 'shopping-list', auth: false },
@@ -60,8 +68,9 @@ const auditedPages: AuditedPage[] = [
   { path: '/recipes/pasta-tonno-pomodoro', heading: 'Pasta tonno e pomodoro', name: 'recipe-detail', auth: false },
 ] as const;
 
-test.beforeEach(async ({ context }) => {
+test.beforeEach(async ({ context, page }) => {
   await context.clearCookies();
+  await installOfflineBackend(page);
 });
 
 test.afterEach(async ({ page }) => {
@@ -79,14 +88,17 @@ for (const theme of ['light', 'dark'] as const) {
     for (const pageDef of auditedPages) {
       test(`${pageDef.name} supera il gate axe`, async ({ page }) => {
         if (pageDef.auth) {
-          installVerifiedBackend(page);
+          await installVerifiedBackend(page);
         } else {
-          installOfflineBackend(page);
+          await installOfflineBackend(page);
         }
 
         await page.goto(pageDef.path);
         if (pageDef.heading !== undefined) {
-          await expect(page.getByRole('heading', { name: pageDef.heading, exact: true })).toBeVisible();
+          const heading = pageDef.name === 'chef'
+            ? page.locator('main').getByRole('heading', { name: pageDef.heading, exact: true })
+            : page.getByRole('heading', { name: pageDef.heading, exact: true });
+          await expect(heading).toBeVisible();
         } else {
           await expect(page.locator('main')).toBeVisible();
         }
@@ -99,15 +111,15 @@ for (const theme of ['light', 'dark'] as const) {
 
 // Scenari di accessibilità esistenti (invarianze di interazione, temi e soglie di tocco).
 test('guest home passes the critical and serious axe gate', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await page.goto(kitchenPath);
+  await expect(page.getByRole('heading', { name: kitchenHeading })).toBeVisible();
   await auditPage(page, 'guest home');
 });
 
 test('verified home passes the critical and serious axe gate', async ({ page }) => {
-  installVerifiedBackend(page);
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await installVerifiedBackend(page);
+  await page.goto(kitchenPath);
+  await expect(page.getByRole('heading', { name: kitchenHeading })).toBeVisible();
   await auditPage(page, 'verified home');
 });
 
@@ -118,14 +130,14 @@ test('pantry passes the critical and serious axe gate', async ({ page }) => {
 });
 
 test('profile passes the critical and serious axe gate', async ({ page }) => {
-  installVerifiedBackend(page);
+  await installVerifiedBackend(page);
   await page.goto('/profile');
   await expect(page.getByRole('heading', { name: 'Il tuo profilo' })).toBeVisible();
   await auditPage(page, 'profile');
 });
 
 test('dinner diary passes the critical and serious axe gate', async ({ page }) => {
-  installVerifiedBackend(page);
+  await installVerifiedBackend(page);
   await page.goto('/dinner-diary');
   await expect(page.getByRole('heading', { name: 'Diario delle cene' })).toBeVisible();
   await auditPage(page, 'dinner diary');
@@ -138,7 +150,7 @@ test('shopping list passes the critical and serious axe gate', async ({ page }) 
 });
 
 test('Bring connection form is labeled and accessible before credential entry', async ({ page }) => {
-  installVerifiedBackend(page, {
+  await installVerifiedBackend(page, {
     'GET /v1/integrations/bring': { json: { enabled: true, connected: false, connectionId: null } },
   });
   await page.goto('/shopping-list');
@@ -167,8 +179,10 @@ test('Bring list actions pass axe and remain touch-friendly at 320px with 200% t
   await page.setViewportSize({ width: 320, height: 700 });
   await installVerifiedBackend(page, {
     'GET /v1/integrations/bring': { json: { enabled: true, connected: true, connectionId } },
-    'GET /v1/integrations/bring/lists': { json: { connectionId, lists: [{ id: listId, name: 'Casa' }] } },
-    'GET /v1/integrations/bring/items': {
+    [`GET /v1/integrations/bring/lists?connectionId=${connectionId}`]: {
+      json: { connectionId, lists: [{ id: listId, name: 'Casa' }] },
+    },
+    [`GET /v1/integrations/bring/items?connectionId=${connectionId}&listId=${listId}`]: {
       json: {
         connectionId,
         listId,
@@ -226,7 +240,7 @@ test('keeps focus indicators visible for links, controls and summaries', async (
   await page.goto('/shopping-list');
 
   const focusableSelectors = [
-    page.getByRole('link', { name: 'Cucina' }),
+    page.getByRole('link', { name: kitchenNavigationLabel }),
     page.getByLabel('Cosa ti serve?'),
     page.getByRole('button', { name: 'Aggiungi alla lista' }),
     page.getByText('Aggiungi dettagli (facoltativi)'),
@@ -263,6 +277,7 @@ test('keeps pantry recipe action compact at 200% text zoom', async ({ page }) =>
   await page.goto('/pantry');
   await page.getByLabel('Ingredienti presenti').fill('pasta');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await openPantryInventory(page);
 
   await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
   const recipeAction = page.getByRole('link', { name: 'Vai alle ricette' });
@@ -282,7 +297,10 @@ test('keeps primary navigation fixed and touch-friendly on mobile', async ({ pag
   const navigation = page.getByRole('navigation', { name: 'Navigazione principale' });
   expect(await navigation.evaluate((element) => window.getComputedStyle(element).position)).toBe('fixed');
 
-  for (const name of ['Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario']) {
+  const navigationLabels = isSousChefBuild
+    ? ['Dispensa', 'Spesa', 'Chef', 'Piano', 'Ricette']
+    : ['Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario'];
+  for (const name of navigationLabels) {
     const box = await navigation.getByRole('link', { name }).boundingBox();
     expect(box, `${name} should have a measurable touch target`).not.toBeNull();
     expect(box!.width).toBeGreaterThanOrEqual(44);
@@ -298,8 +316,20 @@ test('keeps primary navigation fixed and touch-friendly on mobile', async ({ pag
 
 test('keeps mobile navigation labels concise and on one line', async ({ page }) => {
   const scenarios = [
-    { width: 390, height: 844, zoom: false, labels: ['Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario'] },
-    { width: 320, height: 700, zoom: true, labels: ['Cucina', 'Ric.', 'Disp.', 'Spesa', 'Diario'] },
+    {
+      width: 390,
+      height: 844,
+      zoom: false,
+      labels: isSousChefBuild ? ['Dispensa', 'Spesa', 'Chef', 'Piano', 'Ricette'] : ['Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario'],
+      accessibleNames: isSousChefBuild ? ['Dispensa', 'Spesa', 'Chef', 'Piano', 'Ricette'] : ['Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario'],
+    },
+    {
+      width: 320,
+      height: 700,
+      zoom: true,
+      labels: isSousChefBuild ? ['Disp.', 'Sp.', 'Chef', 'Pi.', 'Ric.'] : ['Cucina', 'Ric.', 'Disp.', 'Spesa', 'Diario'],
+      accessibleNames: isSousChefBuild ? ['Dispensa', 'Spesa', 'Chef', 'Piano', 'Ricette'] : ['Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario'],
+    },
   ];
 
   for (const scenario of scenarios) {
@@ -313,6 +343,7 @@ test('keeps mobile navigation labels concise and on one line', async ({ page }) 
     await expect(navigation.getByRole('link')).toHaveCount(scenario.labels.length);
     const items = await navigation.getByRole('link').evaluateAll((links) => links.map((link) => {
       const visibleLabels = Array.from(link.querySelectorAll('span'))
+        .filter((label) => label.querySelector('span') === null)
         .filter((label) => window.getComputedStyle(label).display !== 'none');
       const label = visibleLabels[0];
       if (label === undefined) return { label: '', wraps: true, accessibleName: link.getAttribute('aria-label') };
@@ -333,7 +364,7 @@ test('keeps mobile navigation labels concise and on one line', async ({ page }) 
 
     expect(items.map((item) => item.label)).toEqual(scenario.labels);
     expect(items.every((item) => !item.wraps), JSON.stringify(items)).toBe(true);
-    expect(items.map((item) => item.accessibleName)).toEqual(['Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario']);
+    expect(items.map((item) => item.accessibleName)).toEqual(scenario.accessibleNames);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
   }
 });
@@ -344,6 +375,7 @@ test('keeps common mobile actions comfortably tappable', async ({ page }) => {
   await page.goto('/pantry');
   await page.getByLabel('Ingredienti presenti').fill('pasta');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await openPantryInventory(page);
   const removeIngredientBox = await page.getByRole('button', { name: 'Rimuovi Pasta' }).boundingBox();
   expect(removeIngredientBox).not.toBeNull();
   expect(removeIngredientBox!.width).toBeGreaterThanOrEqual(44);
@@ -364,7 +396,7 @@ test('respects reduced motion, heading order and icon-only accessible names', as
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/recipes/pasta-tonno-pomodoro');
 
-  const transitionDuration = await page.getByRole('link', { name: 'Cucina' }).evaluate((element) => (
+  const transitionDuration = await page.getByRole('link', { name: kitchenNavigationLabel }).evaluate((element) => (
     window.getComputedStyle(element).transitionDuration
   ));
   expect(transitionDuration).toBe('0s');

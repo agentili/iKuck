@@ -7,6 +7,11 @@ import { useAuthStore } from '../auth/authStore';
 import { ApiClientError } from '../api/apiClient';
 import { setActiveDataScope, setPersonalDataScope } from '../sync/scopeContext';
 import { saveColorThemePreference } from '../domain/colorTheme';
+import { mealPlanApi } from '../mealPlan/api';
+import { readMealPlanSnapshot, saveGuestPlanState } from '../mealPlan/storage';
+import * as features from '../config/features';
+import * as planStorage from '../mealPlan/storage';
+import * as planService from '../mealPlan/service';
 
 const verifiedUser = {
   id: 'user-1',
@@ -89,6 +94,105 @@ describe('ProfilePage', () => {
     expect(screen.getByRole('button', { name: 'Elimina account' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Accedi con Google' })).not.toBeInTheDocument();
     expect(screen.getByText('Accesso con Google non disponibile in questo ambiente.')).toBeVisible();
+  });
+
+  it('keeps the plan import unavailable while the Sous-Chef rollout flag is off', async () => {
+    vi.spyOn(features, 'isSousChef').mockReturnValue(false);
+    await saveGuestPlanState({ date: '2026-11-03', revision: crypto.randomUUID(), serverSequence: 0,
+      kind: 'manual', recipeId: 'guest-pasta' });
+    setActiveDataScope('account:user-1');
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
+    const guestRead = vi.spyOn(planStorage, 'readMealPlanSnapshot');
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    await screen.findByRole('heading', { name: 'Il tuo profilo' });
+    await act(async () => { await Promise.all(guestRead.mock.results.map((result) => result.value)); });
+    expect(screen.queryByRole('button', { name: 'Importa Piano ospite' })).not.toBeInTheDocument();
+  });
+
+  it('requires a separate explicit confirmation before importing guest plan choices', async () => {
+    vi.spyOn(features, 'isSousChef').mockReturnValue(true);
+    const user = userEvent.setup();
+    const guestPlan = {
+      date: '2026-11-03', revision: '223e4567-e89b-42d3-a456-426614174001', serverSequence: 0,
+      kind: 'manual' as const, recipeId: 'guest-pasta',
+    };
+    const serverPlan = { ...guestPlan, revision: '323e4567-e89b-42d3-a456-426614174002', serverSequence: 1 };
+    await saveGuestPlanState(guestPlan);
+    setActiveDataScope('account:user-1');
+    setPersonalDataScope('account:user-1');
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1', expiresAt: '2026-10-12T10:00:00.000Z' });
+
+    vi.spyOn(mealPlanApi, 'getCapabilities').mockResolvedValue({ version: 2, syncReadVersion: 2 });
+    vi.spyOn(mealPlanApi, 'readSyncPage').mockResolvedValue({ changes: [], nextCursor: 0 });
+    vi.spyOn(mealPlanApi, 'readStates').mockImplementation(async (_scope, dates) => dates.map((date) => ({
+      date, state: date === serverPlan.date ? serverPlan : null,
+    })));
+    const importCommands = vi.spyOn(mealPlanApi, 'importCommands').mockImplementation(async (_scope, items) => ({
+      version: 2,
+      results: items.map((item) => ({
+        sourceId: item.sourceId,
+        localRevision: item.localRevision,
+        result: { version: 2, operationId: item.command.operationId, outcome: 'applied', current: serverPlan },
+      })),
+    }));
+
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+    const importButton = await screen.findByRole('button', { name: 'Importa Piano ospite' });
+    expect(importButton).toBeEnabled();
+    expect(mealPlanApi.getCapabilities).not.toHaveBeenCalled();
+    expect(importCommands).not.toHaveBeenCalled();
+
+    await user.click(importButton);
+    expect(screen.getByRole('button', { name: 'Conferma importazione Piano' })).toBeVisible();
+    expect(mealPlanApi.getCapabilities).not.toHaveBeenCalled();
+    expect(importCommands).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Conferma importazione Piano' }));
+    expect(await screen.findByText(/Importazione Piano completata/)).toBeVisible();
+    expect(importCommands).toHaveBeenCalledWith('account:user-1', [expect.objectContaining({
+      source: 'guest', sourceId: guestPlan.date, localRevision: guestPlan.revision,
+      command: expect.objectContaining({ scope: 'account:user-1', date: guestPlan.date, action: 'manual_set', recipeId: guestPlan.recipeId }),
+    })], 'csrf-1');
+    await expect(readMealPlanSnapshot('guest')).resolves.toMatchObject({ states: {} });
+  });
+
+  it('requires a new guest-plan confirmation after changing the destination account', async () => {
+    vi.spyOn(features, 'isSousChef').mockReturnValue(true);
+    await saveGuestPlanState({ date: '2026-11-03', revision: crypto.randomUUID(), serverSequence: 0,
+      kind: 'manual', recipeId: 'guest-pasta' });
+    setActiveDataScope('account:user-1');
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
+    const user = userEvent.setup();
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+    await user.click(await screen.findByRole('button', { name: 'Importa Piano ospite' }));
+    expect(screen.getByRole('button', { name: 'Conferma importazione Piano' })).toBeVisible();
+
+    await act(async () => {
+      setActiveDataScope('account:user-2');
+      useAuthStore.setState({ user: { ...verifiedUser, id: 'user-2', email: 'second@example.test' }, csrfToken: 'csrf-2' });
+    });
+
+    expect(screen.getByText('second@example.test')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Conferma importazione Piano' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Importa Piano ospite' })).toBeVisible();
+  });
+
+  it('does not label a preserved guest source as a completed import', async () => {
+    vi.spyOn(features, 'isSousChef').mockReturnValue(true);
+    await saveGuestPlanState({ date: '2026-11-03', revision: crypto.randomUUID(), serverSequence: 0,
+      kind: 'manual', recipeId: 'guest-pasta' });
+    setActiveDataScope('account:user-1');
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
+    vi.spyOn(planService, 'importGuestMealPlan').mockResolvedValue({ queued: 0, acknowledged: 0, conflicts: 0,
+      pending: 0, preservedConflicts: 1 });
+    const user = userEvent.setup();
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+    await user.click(await screen.findByRole('button', { name: 'Importa Piano ospite' }));
+    await user.click(screen.getByRole('button', { name: 'Conferma importazione Piano' }));
+    const summary = await screen.findByText(/^Importazione Piano /);
+    expect(summary).toHaveTextContent('parziale');
+    expect(summary).toHaveTextContent('1 scelte conservate da rivedere');
   });
 
   it('explains Bring data transfer, personal encrypted sessions, and disconnect limits', async () => {

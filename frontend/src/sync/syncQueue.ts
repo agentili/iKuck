@@ -15,7 +15,7 @@ import type { PantryMergeSummary } from '@ikuck/shared/pantryMerge';
 import type { DinnerEntry, SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { isDinnerEntry, isSavedRecipe } from '@ikuck/shared/dinnerDiary';
 import type { DinnerConsumptionCommand, PantryConsumptionPlan } from '@ikuck/shared/pantryConsumption';
-import { ApiClientError, apiRequest, type ApiRequest } from '../api/apiClient';
+import { ApiClientError, apiRequest, type ApiRequest, type ApiRequestOptions } from '../api/apiClient';
 import {
   deleteMeta,
   deleteQueueScope,
@@ -50,6 +50,10 @@ import {
   writeCookEvents,
   writeRecipePreferences,
 } from '../storage/activityStorage';
+import { clearDailyRecipes } from '../storage/dailyRecipeStorage';
+import { createMealPlanApi } from '../mealPlan/api';
+import { importPendingAccountMealPlan } from '../mealPlan/reconciliation';
+import { clearMealPlanSnapshot, readMealPlanOutbox } from '../mealPlan/storage';
 import { clearShoppingList, readShoppingList, writeShoppingList } from '../storage/shoppingListStorage';
 import { clearDietProfile, readDietProfile, readPersistedDietProfile, writeDietProfile } from '../storage/dietProfileStorage';
 import { clearDinnerDiary, clearDinnerDiaryRecords, readDinnerEntries, readSavedRecipes, writeDinnerEntries, writeSavedRecipes } from '../storage/dinnerDiaryStorage';
@@ -71,6 +75,7 @@ export const GUEST_SYNC_SCOPE: SyncScope = 'guest';
 export const getAccountSyncScope = (userId: string): SyncScope => `account:${userId}`;
 
 const SHARED_ENTITY_TYPES = new Set<SyncEntityType>(HOUSE_SYNC_ENTITY_TYPES);
+const MEAL_PLAN_ENTITY_TYPE: SyncEntityType = 'meal_plan_entry';
 const PANTRY_ENTITY_TYPES = new Set<SyncEntityType>(['pantry_item', 'pantry_lot', 'staple_preference']);
 
 const assertPantrySyncAvailable = async (scopes: readonly SyncScope[]): Promise<void> => {
@@ -105,7 +110,11 @@ const guestSnapshotFingerprint = (snapshot: PantrySnapshot): string => {
 
 const pendingScopeApplications = new Map<SyncScope, Set<Promise<void>>>();
 
-const clearFunctionalSnapshots = async (scope: SyncScope, preservePersonalDrafts = false): Promise<void> => {
+const clearFunctionalSnapshots = async (
+  scope: SyncScope,
+  preservePersonalDrafts = false,
+  preserveMealPlanSnapshot = false,
+): Promise<void> => {
   await Promise.allSettled([...(pendingScopeApplications.get(scope) ?? [])]);
   await waitForScopedWrites(scope);
   await pendingQueueWrites;
@@ -115,6 +124,8 @@ const clearFunctionalSnapshots = async (scope: SyncScope, preservePersonalDrafts
     clearCookEvents(scope),
     clearRecipePreferences(scope),
     clearDietProfile(scope),
+    clearDailyRecipes(scope),
+    ...(preserveMealPlanSnapshot ? [] : [clearMealPlanSnapshot(scope)]),
     preservePersonalDrafts ? clearDinnerDiaryRecords(scope) : clearDinnerDiary(scope),
   ]);
   const failure = cleared.find((result): result is PromiseRejectedResult => result.status === 'rejected');
@@ -508,7 +519,7 @@ const PANTRY_MERGE_ENTITY_TYPES = new Set<SyncEntityType>([
 const clearQueueScope = async (scope: SyncScope, mutationIds?: ReadonlySet<string>): Promise<void> => {
   const queued = await readQueueValues<QueuedMutation>(scope);
   for (const mutation of queued) {
-    if (PANTRY_MERGE_ENTITY_TYPES.has(mutation.entityType)
+    if (mutation.entityType !== MEAL_PLAN_ENTITY_TYPE && PANTRY_MERGE_ENTITY_TYPES.has(mutation.entityType)
       && (mutationIds === undefined || mutationIds.has(mutation.mutationId))) {
       await deleteQueueValue(mutation.mutationId, scope);
     }
@@ -615,9 +626,11 @@ export async function initializeSessionScope(
       // mutations on the server and let its semantic migration resolve them.
       await importPendingAccountQueue(session, request, accountScope, ensureCurrent);
       ensureCurrent();
-      // The server migrated these records; keep the personal consent queue,
-      // account cursor and local-only recipe drafts, never obsolete functional snapshots.
-      await clearFunctionalSnapshots(accountScope, true);
+      const pendingAccountPlan = await readMealPlanOutbox([accountScope], ensureCurrent);
+      ensureCurrent();
+      // Keep the account snapshot beside its durable outbox until every command
+      // has a verified House receipt and the source queue entry is committed away.
+      await clearFunctionalSnapshots(accountScope, true, pendingAccountPlan.length > 0);
       ensureCurrent();
       resumeScope(houseScope);
       setActiveDataScope(houseScope);
@@ -677,8 +690,10 @@ async function importPendingAccountQueue(
   assertCurrent();
   const pendingDinnerConsumptions = await readDinnerConsumptionOutbox(accountScope, assertCurrent);
   assertCurrent();
-  const queued = (await readQueueValues<QueuedMutation>(accountScope))
-    .filter((mutation) => SHARED_ENTITY_TYPES.has(mutation.entityType)
+  const accountQueue = await readQueueValues<QueuedMutation>(accountScope);
+  const queued = accountQueue
+    .filter((mutation) => mutation.entityType !== MEAL_PLAN_ENTITY_TYPE
+      && SHARED_ENTITY_TYPES.has(mutation.entityType)
       && !pendingDinnerConsumptions.some((record) => isDinnerConsumptionRelatedMutation(mutation, record)))
     .sort(compareMutations);
   assertCurrent();
@@ -705,11 +720,11 @@ const syncQueueScopes = (accountScope: SyncScope, activeScope: SyncScope): SyncS
 
 const readPendingSyncMutations = async (accountScope: SyncScope, activeScope: SyncScope): Promise<QueuedMutation[]> => {
   const values = await Promise.all(syncQueueScopes(accountScope, activeScope).map((scope) => readQueueValues<QueuedMutation>(scope)));
-  return values.flat().sort(compareMutations);
+  return values.flat().filter((mutation) => mutation.entityType !== MEAL_PLAN_ENTITY_TYPE).sort(compareMutations);
 };
 
 export async function readQueuedMutations(scope: SyncScope): Promise<SyncMutation[]> {
-  const values = await readQueueValues<QueuedMutation>(scope);
+  const values = (await readQueueValues<QueuedMutation>(scope)).filter((mutation) => mutation.entityType !== MEAL_PLAN_ENTITY_TYPE);
   return values.sort(compareMutations).map(toMutation);
 }
 
@@ -1155,7 +1170,41 @@ export async function syncNow({ fetch, request = apiRequest, session, isSessionC
     if (activeScope.startsWith('house:')) {
       await importPendingAccountQueue(session, request, accountScope, assertCurrentContext, fetch);
       assertCurrentContext();
+      const planRequest: ApiRequest = async <T>(path: string, options?: ApiRequestOptions) => request<T>(path, {
+        ...options,
+        ...(fetch === undefined ? {} : { fetch }),
+      });
+      try {
+        await importPendingAccountMealPlan({
+          accountScope,
+          targetScope: activeScope,
+          csrfToken: session.csrfToken,
+          api: createMealPlanApi(planRequest),
+          isCurrent: () => {
+            try {
+              assertCurrentContext();
+              return true;
+            } catch {
+              return false;
+            }
+          },
+        });
+      } catch (error) {
+        assertCurrentContext();
+        if (!isScopeWritable(activeScope) || isScopeUncertain(activeScope)
+          || error instanceof ApiClientError && (error.status === 401 || error.status === 403)) throw error;
+        // Keep the account outbox durable and let unrelated House sync continue.
+        // A later reconnect retries this same authenticated import receipt.
+      }
+      assertCurrentContext();
     }
+    const pendingCount = async (): Promise<{ total: number; sync: number }> => {
+      const queued = await current(() => readPendingSyncMutations(accountScope, activeScope));
+      const accountPlan = activeScope.startsWith('house:')
+        ? await current(() => readMealPlanOutbox([accountScope], assertCurrentContext))
+        : [];
+      return { total: queued.length + accountPlan.length, sync: queued.length };
+    };
     const deviceId = await current(getDeviceId);
     let cursor = await current(() => readSyncCursor(cursorScope));
     let uploaded = dinnerConsumptionsUploaded;
@@ -1209,14 +1258,14 @@ export async function syncNow({ fetch, request = apiRequest, session, isSessionC
       uploaded += batch.length;
       downloaded += result.changes.length;
       cursor = nextCursor;
-      const pending = (await current(() => readPendingSyncMutations(accountScope, activeScope))).length;
-      if (pending === 0 && !serverHasMore) {
-        return { uploaded, downloaded, pending, complete: true };
+      const pending = await pendingCount();
+      if (pending.sync === 0 && !serverHasMore) {
+        return { uploaded, downloaded, pending: pending.total, complete: pending.total === 0 };
       }
     }
 
-    const pending = (await current(() => readPendingSyncMutations(accountScope, activeScope))).length;
-    return { uploaded, downloaded, pending, complete: false };
+    const pending = await pendingCount();
+    return { uploaded, downloaded, pending: pending.total, complete: false };
   })().finally(() => {
     if (syncPromises.get(syncKey) === operation) {
       syncPromises.delete(syncKey);

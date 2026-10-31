@@ -185,9 +185,9 @@ describe('house routes', () => {
     expect(result.statusCode).toBe(204);
     expect(migrateUserSharedDataToHouse).toHaveBeenCalledExactlyOnceWith('admin-1', 'house-1', [pending]);
     const personal = await app.inject({ method: 'POST', url: '/v1/house/account-queue/import', headers, payload: { mutations: [{ ...pending, entityType: 'ai_consent', payload: { enabled: true, updatedAt: pending.clientUpdatedAt } }] } });
-    expect(personal.statusCode).toBe(400);
+    expect(personal.statusCode).toBe(409);
     const foreign = await app.inject({ method: 'POST', url: '/v1/house/account-queue/import', headers, payload: { mutations: [{ ...pending, syncScope: 'account:another-user' }] } });
-    expect(foreign.statusCode).toBe(400);
+    expect(foreign.statusCode).toBe(409);
     expect(migrateUserSharedDataToHouse).toHaveBeenCalledTimes(1);
     await app.close();
   });
@@ -223,7 +223,7 @@ describe('house routes', () => {
 
     expect(response.statusCode).toBe(204);
     expect(mergeGuestDietProfileToHouse).toHaveBeenCalledExactlyOnceWith('admin-1', 'house-1', mutation);
-    expect(forgedScope.statusCode).toBe(400);
+    expect(forgedScope.statusCode).toBe(409);
     expect(mergeGuestDietProfileToHouse).toHaveBeenCalledTimes(1);
     await app.close();
   });

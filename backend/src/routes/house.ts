@@ -26,6 +26,11 @@ const guestPantrySchema = z.object({
   lots: z.array(pantryLotSchema).max(1000),
   stapleIds: z.array(z.string().trim().min(1).max(128)).max(500),
 }).strict();
+const timeZoneInitializeSchema = z.object({ timeZone: z.string().min(1).max(128) }).strict();
+const timeZoneUpdateSchema = z.object({
+  timeZone: z.string().min(1).max(128).nullable(),
+  expectedRevision: z.uuid().nullable(),
+}).strict();
 
 const invalidPayload = (): AuthServiceError => new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');
 
@@ -39,6 +44,29 @@ export const registerHouseRoutes = ({ service, authService, rateLimiter, appOrig
   app.get('/v1/house', async (request) => {
     const { session } = await requireVerifiedSession(request, authService);
     return await service.getState(session.userId);
+  });
+
+  app.get('/v1/house/time-zone', async (request) => {
+    const { session } = await requireVerifiedSession(request, authService);
+    return service.getTimeZone(session.userId);
+  });
+
+  app.post('/v1/house/time-zone/initialize', async (request) => {
+    ensureSameOrigin(request, appOrigin);
+    const { session } = await requireVerifiedSession(request, authService);
+    ensureCsrf(request, session.csrfTokenHash);
+    const { timeZone } = parseBody(timeZoneInitializeSchema, request.body);
+    return service.initializeTimeZone(session.userId, timeZone);
+  });
+
+  app.put('/v1/house/time-zone', async (request, reply) => {
+    ensureSameOrigin(request, appOrigin);
+    const { session } = await requireVerifiedSession(request, authService);
+    ensureCsrf(request, session.csrfTokenHash);
+    const { timeZone, expectedRevision } = parseBody(timeZoneUpdateSchema, request.body);
+    const result = await service.updateTimeZone(session.userId, timeZone, expectedRevision);
+    if (result.kind === 'conflict') return reply.code(409).send({ code: 'timezone_conflict', ...result.state });
+    return result.state;
   });
 
   app.post('/v1/house', async (request, reply) => {

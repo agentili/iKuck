@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { SyncMutation } from '@ikuck/shared/contracts';
+import type { PlanCommand, SyncMutation } from '@ikuck/shared/contracts';
 import { createMemorySyncRepository, resolveScopeForCurrentMembership, SyncMembershipRequiredError, SyncScopeInvalidError } from './repository.js';
 
 const mutation = (clientUpdatedAt: string, mutationId: string, label: string) => ({
@@ -244,6 +244,52 @@ describe('sync repository', () => {
     });
   });
 
+  it('grants chat without granting Home and revokes chat without changing other grants', async () => {
+    const repository = createMemorySyncRepository();
+    const granted = await repository.updateAiConsent('user-1', {
+      enabled: true, chatProvider: 'openai', chatPolicyVersion: 'chef-chat-v1',
+      expectedRevision: '1970-01-01T00:00:00.000Z',
+    });
+    expect(granted).toMatchObject({ enabled: true, chatProvider: 'openai', chatPolicyVersion: 'chef-chat-v1' });
+    expect(granted).not.toHaveProperty('homeProvider');
+    expect(granted).not.toHaveProperty('dinnerProvider');
+    const revoked = await repository.updateAiConsent('user-1', { chatProvider: null });
+    expect(revoked).toMatchObject({ enabled: true });
+    expect(revoked).not.toHaveProperty('chatProvider');
+    expect(revoked).not.toHaveProperty('chatPolicyVersion');
+    await expect(repository.updateAiConsent('user-1', {
+      chatProvider: 'openai', chatPolicyVersion: 'chef-chat-v1', expectedRevision: granted.updatedAt,
+    })).rejects.toMatchObject({ code: 'ai_consent_revision_conflict' });
+  });
+
+  it('checks the chat provider and policy under the dispatch lock after revocation', async () => {
+    const repository = createMemorySyncRepository();
+    const granted = await repository.updateAiConsent('user-1', {
+      enabled: true, chatProvider: 'openai', chatPolicyVersion: 'chef-chat-v1', expectedRevision: '1970-01-01T00:00:00.000Z',
+    });
+    const dispatch = vi.fn().mockResolvedValue('reply');
+    await expect(repository.withAiConsentDispatch('user-1', { kind: 'chat', provider: 'gemini', policyVersion: 'chef-chat-v1' }, dispatch))
+      .rejects.toMatchObject({ code: 'ai_consent_required' });
+    await expect(repository.withAiConsentDispatch('user-1', { kind: 'chat', provider: 'openai', policyVersion: 'chef-chat-v1' }, dispatch))
+      .resolves.toBe('reply');
+    await repository.updateAiConsent('user-1', { chatProvider: null });
+    await expect(repository.withAiConsentDispatch('user-1', { kind: 'chat', provider: 'openai', policyVersion: 'chef-chat-v1' }, dispatch))
+      .rejects.toMatchObject({ code: 'ai_consent_required' });
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(granted.chatPolicyVersion).toBe('chef-chat-v1');
+  });
+
+  it('rejects a chat consent grant through the direct sync repository writer', async () => {
+    const repository = createMemorySyncRepository();
+    const timestamp = new Date().toISOString();
+    await expect(repository.applyMutation('user-1', {
+      mutationId: 'forged-chat', deviceId: 'device', entityType: 'ai_consent', entityId: 'profile', operation: 'upsert',
+      payload: { enabled: true, updatedAt: timestamp, chatProvider: 'openai', chatPolicyVersion: 'chef-chat-v1' },
+      clientUpdatedAt: timestamp,
+    })).rejects.toMatchObject({ code: 'ai_consent_required' });
+    expect(await repository.readEntity('user-1', 'ai_consent', 'profile')).toBeNull();
+  });
+
   it('requires an explicit Home provider marker for every consent enable', async () => {
     const repository = createMemorySyncRepository();
 
@@ -465,7 +511,7 @@ describe('sync repository', () => {
         purchased: false, sourceRecipeId: null, createdAt: timestamp, updatedAt: timestamp,
       },
       syncScope: 'account:user-1',
-    })).rejects.toMatchObject({ code: 'sync_scope_invalid', status: 400 });
+    })).rejects.toMatchObject({ code: 'sync_scope_invalid', status: 409 });
 
     await expect(repository.readEntity('user-1', 'shopping_list_item', 'shopping-1')).resolves.toBeNull();
   });
@@ -706,10 +752,12 @@ describe('sync repository', () => {
 
   it('rolls back in-memory pending account staging when semantic pantry migration fails', async () => {
     let failDuringMerge = false;
+    let userIsInHouse = false;
     let migrationClockCalls = 0;
     const repository = createMemorySyncRepository({
       scopeResolver: async (userId) => userId === 'user-1'
-        ? { kind: 'user', id: 'user-1' } : { kind: 'house', id: 'house-1' },
+        ? userIsInHouse ? { kind: 'house', id: 'house-1' } : { kind: 'user', id: 'user-1' }
+        : { kind: 'house', id: 'house-1' },
       clock: () => {
         if (failDuringMerge && ++migrationClockCalls === 2) throw new Error('injected semantic merge failure');
         return new Date('2026-09-12T12:00:00.000Z');
@@ -732,11 +780,18 @@ describe('sync repository', () => {
       syncScope: 'account:user-1' as const,
     };
     failDuringMerge = true;
+    userIsInHouse = true;
     await expect(repository.migrateUserSharedDataToHouse('user-1', 'house-1', [pending]))
       .rejects.toThrow('injected semantic merge failure');
-    await expect(repository.readEntity('user-1', 'pantry_lot', accountLot.id)).resolves.toMatchObject({
-      payload: expect.objectContaining({ quantity: 200 }),
-    });
+    const changesAfterFailure = await repository.readAll('user-1');
+    expect(changesAfterFailure).toEqual(expect.arrayContaining([
+      expect.objectContaining({ entityType: 'pantry_lot', entityId: houseLot.id, syncScope: 'house:house-1' }),
+    ]));
+    expect(changesAfterFailure).not.toContainEqual(expect.objectContaining({
+      entityType: 'pantry_lot', entityId: accountLot.id, syncScope: 'account:user-1',
+    }));
+    await expect(repository.readChanges('user-1', 0, 100, 'account:user-1', ['pantry_lot']))
+      .rejects.toMatchObject({ code: 'sync_scope_invalid' });
     await expect(repository.readEntity('member-2', 'pantry_lot', houseLot.id)).resolves.toMatchObject({
       payload: expect.objectContaining({ quantity: 300 }),
     });
@@ -770,6 +825,58 @@ describe('sync repository', () => {
 
     const lots = (await repository.readAll('house-admin')).filter((change) => change.entityType === 'pantry_lot' && change.operation === 'upsert');
     expect(lots).toEqual([expect.objectContaining({ payload: expect.objectContaining({ quantity: 1200, unit: 'g' }) })]);
+  });
+
+  it('keeps a newer house manual choice exclusive when an older account choice loses migration', async () => {
+    let joined = false;
+    const repository = createMemorySyncRepository({
+      scopeResolver: async (userId) => userId === 'house-admin' || joined
+        ? { kind: 'house', id: 'house-1' }
+        : null,
+      clock: () => new Date('2026-10-29T12:00:00.000Z'),
+    });
+    const date = '2026-10-30';
+    const houseScope = 'house:house-1';
+    const accountScope = 'account:user-1';
+    const manualCommand = (
+      scope: PlanCommand['scope'], operationId: string, recipeId: string, clientUpdatedAt: string,
+    ): PlanCommand => ({
+      version: 2, scope, date, operationId, deviceId: 'account-house-migration-device', clientUpdatedAt,
+      action: 'manual_set', recipeId,
+    });
+
+    const houseChoice = await repository.applyMealPlanCommand('house-admin', manualCommand(
+      houseScope, 'house-newer-choice', 'house-winning-recipe', '2026-01-02T00:00:00.000Z',
+    ));
+    const accountChoice = await repository.applyMealPlanCommand('user-1', manualCommand(
+      accountScope, 'account-older-choice', 'account-losing-recipe', '2026-01-01T00:00:00.000Z',
+    ));
+    expect(houseChoice.outcome).toBe('applied');
+    expect(accountChoice.outcome).toBe('applied');
+    await repository.updateAiConsent('user-1', { enabled: false });
+
+    joined = true;
+    await repository.migrateUserSharedDataToHouse('user-1', 'house-1');
+
+    // The losing non-automatic account source is quarantined raw and its date
+    // is fenced: neither the account source nor the fenced plan is served.
+    await expect(repository.readMealPlanStates('user-1', houseScope, [date]))
+      .rejects.toMatchObject({ code: 'plan_migration_quarantined' });
+    await expect(repository.readChanges('user-1', 0, 100, houseScope, ['meal_plan_entry']))
+      .rejects.toMatchObject({ code: 'plan_migration_quarantined' });
+    const recovery = await repository.readMealPlanRecovery('user-1');
+    expect(recovery).toHaveLength(1);
+    expect(recovery[0]).toMatchObject({
+      planDate: date,
+      reasonCode: 'target_projection_inconsistent',
+      sourceSnapshot: { state: expect.any(Object), projection: expect.any(Object) },
+      targetSnapshot: { state: expect.any(Object), projection: expect.any(Object) },
+      observed: { manualTuple: null, command: null },
+    });
+    await expect(repository.readChanges('user-1', 0, 100, houseScope, ['meal_plan_entry', 'ai_consent']))
+      .rejects.toMatchObject({ code: 'sync_scope_invalid', status: 409 });
+    await expect(repository.readChanges('user-1', 0, 100, accountScope, ['meal_plan_entry']))
+      .rejects.toMatchObject({ code: 'sync_scope_invalid', status: 409 });
   });
 
   it('uses the semantic pantry merge while migrating all pre-house data', async () => {

@@ -1,22 +1,34 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import { SYNC_ENTITY_TYPES } from '@ikuck/shared/contracts';
 import type { SyncMutation } from '@ikuck/shared/contracts';
 import type { AuthService } from '../auth/service.js';
+import type { AuthRateLimiter } from '../auth/rateLimit.js';
 import { ensureCsrf, ensureSameOrigin, requireVerifiedSession } from './auth.js';
 import { syncMutationSchema } from '../sync/validation.js';
+import { PlanCommandRequiredError } from '../mealPlan/validation.js';
+import { MealPlanCapabilityUnavailableError } from './mealPlan.js';
 import { isSharedEntityType, SyncScopeInvalidError, type SyncRepository } from '../sync/repository.js';
 
 export interface SyncRouteDependencies {
   repository: SyncRepository;
   authService: AuthService;
   appOrigin: string;
+  rateLimiter?: AuthRateLimiter;
 }
+
+const legacyEntityTypes = [
+  'pantry_item', 'pantry_lot', 'staple_preference', 'shopping_list_item', 'cook_event',
+  'recipe_preference', 'diet_profile', 'ai_consent', 'generated_recipe', 'dinner_entry', 'saved_recipe',
+] as const satisfies readonly SyncMutation['entityType'][];
 
 const syncSchema = z.object({
   deviceId: z.string().min(1).max(128),
   cursor: z.number().int().min(0),
   syncScope: z.string().regex(/^(account|house):[^:]+$/).optional(),
   mutations: z.array(syncMutationSchema).max(100),
+  supportedEntityTypes: z.array(z.enum(SYNC_ENTITY_TYPES)).max(SYNC_ENTITY_TYPES.length).optional(),
+  mealPlanReadVersion: z.literal(2).optional(),
 });
 
 export class SyncPayloadError extends Error {
@@ -51,12 +63,23 @@ export const registerSyncRoutes = ({ repository, authService, appOrigin }: SyncR
       cursor: number;
       syncScope?: SyncMutation['syncScope'];
       mutations: SyncMutation[];
+      supportedEntityTypes?: SyncMutation['entityType'][];
+      mealPlanReadVersion?: 2;
     };
+    if (body.mutations.some((mutation) => mutation.entityType === 'meal_plan_entry')) throw new PlanCommandRequiredError();
+    if (body.mealPlanReadVersion === 2 && !await repository.isMealPlanV2Enabled()) throw new MealPlanCapabilityUnavailableError();
     if (body.mutations.some((mutation) => isSharedEntityType(mutation.entityType) && mutation.syncScope === undefined)) {
       throw new SyncScopeRequiredError();
     }
     if (body.mutations.some((mutation) => mutation.syncScope?.startsWith('house:') && !isSharedEntityType(mutation.entityType))) {
       throw new SyncScopeInvalidError();
+    }
+    const requestedEntityTypes = body.supportedEntityTypes ?? (body.mealPlanReadVersion === 2
+      ? [...legacyEntityTypes, 'meal_plan_entry' as const]
+      : legacyEntityTypes);
+    const supportedEntityTypes = requestedEntityTypes.filter((type) => type !== 'meal_plan_entry' || body.mealPlanReadVersion === 2);
+    if (body.syncScope !== undefined) {
+      await repository.readChanges(session.userId, body.cursor, 1, body.syncScope, supportedEntityTypes);
     }
     if (body.mutations.some((mutation) => mutation.deviceId !== body.deviceId)) {
       throw new SyncPayloadError();
@@ -66,7 +89,7 @@ export const registerSyncRoutes = ({ repository, authService, appOrigin }: SyncR
       await repository.applyMutation(session.userId, mutation);
     }
 
-    const changes = await repository.readChanges(session.userId, body.cursor, 200, body.syncScope);
+    const changes = await repository.readChanges(session.userId, body.cursor, 200, body.syncScope, supportedEntityTypes);
     return {
       changes,
       nextCursor: changes.reduce((cursor, change) => Math.max(cursor, change.serverSequence), body.cursor),

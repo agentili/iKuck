@@ -32,9 +32,10 @@ const formatMoment = (value: string | null): string => {
 
 interface CandidatesInboxProps {
   houseId: string | null;
+  hideWhenEmpty?: boolean;
 }
 
-export default function CandidatesInbox({ houseId }: CandidatesInboxProps) {
+export default function CandidatesInbox({ houseId, hideWhenEmpty = false }: CandidatesInboxProps) {
   const { user, csrfToken, connection } = useAuthStore();
   const setPendingCount = usePantryCandidatesBadgeStore((state) => state.setPendingCount);
   const setHouse = usePantryCandidatesBadgeStore((state) => state.setHouse);
@@ -139,7 +140,7 @@ export default function CandidatesInbox({ houseId }: CandidatesInboxProps) {
     setRetryAction(null);
   };
 
-  if (!ready) return null;
+  if (!ready || (hideWhenEmpty && candidates.length === 0 && !loading && error === null && processing.size === 0)) return null;
 
   return (
     <section aria-label="Da confermare" className="ik-surface mt-6 rounded-3xl border-2 border-emerald-200 bg-white p-4 shadow-sm sm:mt-8 sm:p-6">

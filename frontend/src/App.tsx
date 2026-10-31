@@ -21,6 +21,7 @@ import ActivityPage from './pages/ActivityPage';
 import DinnerDiaryPage from './pages/DinnerDiaryPage';
 import RecipesPage from './pages/RecipesPage';
 import PantryPage from './pages/PantryPage';
+import PlanPage from './pages/PlanPage';
 import NotFoundPage from './pages/NotFoundPage';
 import PantryMergeNotice from './components/feedback/PantryMergeNotice';
 import { apiRequest } from './api/apiClient';
@@ -201,9 +202,15 @@ export default function App() {
     return (
       <BrowserRouter>
         <div className="sous-chef-shell min-h-screen bg-[var(--sc-cream)]">
+          <a className="sous-chef-skip-link" href="#sous-chef-main-content">
+            Vai al contenuto principale
+          </a>
           {/* Simplified Header */}
           {isSimplifiedHeader() && (
-            <SimplifiedHeader onMenuClick={() => setIsProfileModalOpen(true)} />
+            <SimplifiedHeader
+              isMenuOpen={isProfileModalOpen}
+              onMenuClick={() => setIsProfileModalOpen(true)}
+            />
           )}
           
           {/* Profile Modal */}
@@ -213,35 +220,39 @@ export default function App() {
           />
 
           {/* Main Content with padding for header and bottom nav */}
-          <main 
-            id="main-content" 
+          <div
             className={`sous-chef-main min-h-screen ${
               isBottomNav() ? 'pb-20' : 'pb-8'
             } ${
               isSimplifiedHeader() ? 'pt-16' : 'pt-0'
             }`}
           >
-            <Routes>
-              {/* SOUS-CHEF Routes */}
-              <Route path="/" element={<ChatPage />} />
-              <Route path="/discover" element={<DiscoverPage />} />
-              <Route path="/saved" element={<SavedPage />} />
-              
-              {/* Existing Routes (preserved) */}
-              <Route path="/recipes" element={<RecipesPage />} />
-              <Route path="/recipes/:recipeId" element={<RecipeDetailPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              <Route path="/house" element={<HousePage />} />
-              <Route path="/pantry" element={<PantryPage />} />
-              <Route path="/shopping-list" element={<ShoppingListPage />} />
-              <Route path="/activity" element={<ActivityPage />} />
-              <Route path="/dinner-diary" element={<DinnerDiaryPage />} />
-              <Route path="/verify-email" element={<VerifyEmailPage />} />
-              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-              <Route path="/reset-password" element={<ResetPasswordPage />} />
-              <Route path="*" element={<NotFoundPage resource="page" />} />
-            </Routes>
-          </main>
+            <div id="sous-chef-main-content" className="sous-chef-main-content" tabIndex={-1}>
+              <Routes>
+                {/* SOUS-CHEF Routes */}
+                <Route path="/" element={<ChatPage />} />
+                <Route path="/cucina" element={<HomePage />} />
+                <Route path="/discover" element={<DiscoverPage />} />
+                <Route path="/saved" element={<SavedPage />} />
+                {/* T02: Piano is a standalone screen; its real model lands in T06/T07 */}
+                <Route path="/plan" element={<PlanPage />} />
+
+                {/* Existing Routes (preserved) */}
+                <Route path="/recipes" element={<RecipesPage />} />
+                <Route path="/recipes/:recipeId" element={<RecipeDetailPage />} />
+                <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/house" element={<HousePage />} />
+                <Route path="/pantry" element={<PantryPage />} />
+                <Route path="/shopping-list" element={<ShoppingListPage />} />
+                <Route path="/activity" element={<ActivityPage />} />
+                <Route path="/dinner-diary" element={<DinnerDiaryPage />} />
+                <Route path="/verify-email" element={<VerifyEmailPage />} />
+                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
+                <Route path="*" element={<NotFoundPage resource="page" />} />
+              </Routes>
+            </div>
+          </div>
 
           {/* Bottom Navigation */}
           {isBottomNav() && <BottomNav />}

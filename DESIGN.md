@@ -33,7 +33,7 @@ colors:
   peachSoft: "#FFF0E8"
   apricot: "#F8C8A0"
   apricotSoft: "#FDEFE0"
-  terracotta: "#E8A078"
+  terracotta: "#8F4828"
   terracottaStrong: "#D48C64"
   coral: "#F0A080"
   coralSoft: "#FDE8E0"
@@ -41,7 +41,7 @@ colors:
   honeySoft: "#FDF8E0"
   chatInk: "#3D3530"
   chatInkSoft: "#6B635B"
-  chatInkFaint: "#A8A098"
+  chatInkFaint: "#6B625A"
   darkCream: "#2D2824"
   darkPeach: "#5C4A3D"
   darkPeachSoft: "#4A3D33"
@@ -55,7 +55,7 @@ colors:
   darkHoneySoft: "#4A4333"
   darkChatInk: "#F5F0E8"
   darkChatInkSoft: "#C8C0B8"
-  darkChatInkFaint: "#8A827A"
+  darkChatInkFaint: "#C6BEB5"
 typography:
   h1:
     fontFamily: "Bricolage Grotesque Variable, system-ui, sans-serif"

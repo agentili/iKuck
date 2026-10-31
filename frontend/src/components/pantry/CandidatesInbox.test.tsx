@@ -109,6 +109,22 @@ describe('CandidatesInbox', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('hides an empty confirmation section in Sous-Chef', async () => {
+    setupAuthenticated();
+    fetchMock.mockResolvedValue(json({ candidates: [] }));
+    render(<MemoryRouter><CandidatesInbox houseId="house-a" hideWhenEmpty /></MemoryRouter>);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Da confermare' })).not.toBeInTheDocument());
+  });
+
+  it('shows actual candidates when empty sections are hidden', async () => {
+    setupAuthenticated();
+    fetchMock.mockResolvedValue(json({ candidates }));
+    render(<MemoryRouter><CandidatesInbox houseId="house-a" hideWhenEmpty /></MemoryRouter>);
+    expect(await screen.findByRole('checkbox', { name: 'Seleziona Latte' })).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Da confermare' })).toBeVisible();
+  });
+
   it('mostra lo stato vuoto quando non ci sono candidati', async () => {
     setupAuthenticated();
     fetchMock.mockResolvedValue(json({ candidates: [] }));

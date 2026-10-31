@@ -2,9 +2,10 @@ import { createServer, type Server } from 'node:http';
 import { cp, mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
+import { openPantryInventory } from './helpers/appMode';
 import { spawn } from 'node:child_process';
 import { expect, test } from '@playwright/test';
-import { installOfflineBackend } from './helpers/backendMode';
+import { installOfflineBackend, type OfflineApiResponse } from './helpers/backendMode';
 
 const buildRoot = resolve('.pwa-test');
 const buildA = join(buildRoot, 'build-a');
@@ -24,8 +25,26 @@ const contentTypes: Record<string, string> = {
 interface PwaServer {
   url: string;
   swapToBuildB: () => Promise<void>;
+  assertApiClean: () => void;
   close: () => Promise<void>;
 }
+
+const pwaApiResponses: Record<string, OfflineApiResponse> = {
+  'GET /v1/auth/session': {
+    json: {
+      authenticated: true,
+      user: { id: 'pwa-user', email: 'pwa@example.com', emailVerifiedAt: '2026-09-15T08:00:00.000Z' },
+      csrfToken: 'pwa-csrf',
+      expiresAt: '2026-10-15T08:00:00.000Z',
+    },
+  },
+  'GET /v1/profile': { json: { profile: { displayName: 'PWA' } } },
+  'GET /v1/house': { json: null },
+  'GET /v1/sync': { json: { changes: [], nextCursor: 0 } },
+  'POST /v1/sync': { json: { accepted: [], changes: [], nextCursor: 0 } },
+  'GET /v1/ai-recipes/consent': { json: { consent: { enabled: false, updatedAt: '2026-09-18T10:00:00.000Z' }, selectedProvider: 'openai' } },
+  'GET /v1/ai-recipes': { json: { recipes: [] } },
+};
 
 const runBuild = async (outputDirectory: string, buildId: string): Promise<void> => {
   const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -45,10 +64,30 @@ const runBuild = async (outputDirectory: string, buildId: string): Promise<void>
   if (result.code !== 0) throw new Error(`PWA build ${buildId} failed:\n${output}`);
 };
 
-const createPwaServer = async (): Promise<PwaServer> => {
+const createPwaServer = async (apiResponses: Record<string, OfflineApiResponse>): Promise<PwaServer> => {
   const serverRoot = buildA;
+  const unexpectedApiRequests: string[] = [];
   const server: Server = createServer(async (request, response) => {
-    const pathname = decodeURIComponent(new URL(request.url ?? '/', 'http://127.0.0.1').pathname);
+    const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
+    const pathname = decodeURIComponent(requestUrl.pathname);
+    if (pathname === '/v1' || pathname.startsWith('/v1/')) {
+      const method = request.method ?? 'GET';
+      const configured = apiResponses[`${method} ${pathname}`];
+      const defaultSession = method === 'GET' && pathname === '/v1/auth/session'
+        ? { json: { authenticated: false } }
+        : undefined;
+      const apiResponse = configured ?? defaultSession;
+      if (apiResponse === undefined) {
+        unexpectedApiRequests.push(`${method} ${pathname}${requestUrl.search}`);
+        response.writeHead(501, { 'content-type': 'application/json; charset=utf-8' });
+        response.end(JSON.stringify({ error: 'unexpected_api_request' }));
+        return;
+      }
+      response.writeHead(apiResponse.status ?? 200, { 'content-type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify(apiResponse.json));
+      return;
+    }
+
     const relativePath = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
     const requestedFile = join(serverRoot, relativePath);
     let filePath = requestedFile;
@@ -80,6 +119,11 @@ const createPwaServer = async (): Promise<PwaServer> => {
 
   return {
     url: `http://127.0.0.1:${address.port}`,
+    assertApiClean: () => {
+      if (unexpectedApiRequests.length > 0) {
+        throw new Error(`PWA E2E made unexpected API requests: ${unexpectedApiRequests.join(', ')}`);
+      }
+    },
     swapToBuildB: async () => {
       await rm(serverRoot, { recursive: true, force: true });
       await cp(buildB, serverRoot, { recursive: true });
@@ -101,7 +145,7 @@ test.beforeAll(async () => {
   await mkdir(buildRoot, { recursive: true });
   await runBuild(buildA, 'build-a');
   await runBuild(buildB, 'build-b');
-  pwaServer = await createPwaServer();
+  pwaServer = await createPwaServer(pwaApiResponses);
 });
 
 test.afterAll(async () => {
@@ -110,24 +154,7 @@ test.afterAll(async () => {
 });
 
 test('updates the service worker without losing IndexedDB data', async ({ page, context }) => {
-  await installOfflineBackend(page, {
-    responses: {
-      'GET /v1/auth/session': {
-        json: {
-          authenticated: true,
-          user: { id: 'pwa-user', email: 'pwa@example.com', emailVerifiedAt: '2026-09-15T08:00:00.000Z' },
-          csrfToken: 'pwa-csrf',
-          expiresAt: '2026-10-15T08:00:00.000Z',
-        },
-      },
-      'GET /v1/profile': { json: { profile: { displayName: 'PWA' } } },
-      'GET /v1/house': { json: null },
-      'GET /v1/sync': { json: { changes: [], nextCursor: 0 } },
-      'POST /v1/sync': { json: { accepted: [], changes: [], nextCursor: 0 } },
-      'GET /v1/ai-recipes/consent': { json: { consent: { enabled: false, updatedAt: '2026-09-18T10:00:00.000Z' }, selectedProvider: 'openai' } },
-      'GET /v1/ai-recipes': { json: { recipes: [] } },
-    },
-  });
+  await installOfflineBackend(page, { responses: pwaApiResponses, serviceWorkers: 'allow' });
 
   await page.goto(`${pwaServer.url}/pantry`);
   const versionAResponse = await page.request.get(`${pwaServer.url}/version.json`);
@@ -137,11 +164,13 @@ test('updates the service worker without losing IndexedDB data', async ({ page, 
   await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
   await page.getByLabel('Ingredienti presenti').fill('pasta, pomodoro');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await openPantryInventory(page);
   await expect(page.getByRole('list', { name: 'La tua dispensa' }).getByText('Pasta', { exact: true })).toBeVisible();
   // The first reload must occur after the initial worker activates; otherwise
   // the navigation can race installation and never acquire a controller.
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload();
+  await openPantryInventory(page);
   await expect(page.getByRole('list', { name: 'La tua dispensa' }).getByText('Pasta', { exact: true })).toBeVisible();
   await page.waitForFunction(() => 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null);
 
@@ -167,10 +196,12 @@ test('updates the service worker without losing IndexedDB data', async ({ page, 
   await expect(page.getByText('build-b', { exact: true })).toBeVisible();
 
   await page.goto(`${pwaServer.url}/pantry`);
+  await openPantryInventory(page);
   await expect(page.getByRole('list', { name: 'La tua dispensa' }).getByText('Pasta', { exact: true })).toBeVisible();
 
   await context.setOffline(true);
   await page.reload();
   await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
   await context.setOffline(false);
+  pwaServer.assertApiClean();
 });

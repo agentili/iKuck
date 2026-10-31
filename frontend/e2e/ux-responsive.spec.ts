@@ -1,7 +1,17 @@
 import { writeFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
+import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
+import { goToKitchen, kitchenHeading } from './helpers/appMode';
 
 const evidence = '../design/ux-ui-proposal/evidence/screenshots';
+
+test.beforeEach(async ({ page }) => {
+  await installOfflineBackend(page);
+});
+
+test.afterEach(async ({ page }) => {
+  assertOfflineBackendClean(page);
+});
 
 const settleAndScreenshot = async (page: Page, name: string) => {
   await page.evaluate(async () => {
@@ -13,8 +23,8 @@ const settleAndScreenshot = async (page: Page, name: string) => {
 
 test('Cucina viva responsive geometry and visual evidence at required widths', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await goToKitchen(page);
+  await expect(page.getByRole('heading', { name: kitchenHeading })).toBeVisible();
   await settleAndScreenshot(page, 'cucina-viva-390-empty');
 
   const quickAdd = page.getByRole('button', { name: 'Aggiungi ingredienti' });
@@ -57,8 +67,8 @@ test('il prompt di installazione PWA sta sopra la nav inferiore e non copre l’
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await goToKitchen(page);
+  await expect(page.getByRole('heading', { name: kitchenHeading })).toBeVisible();
 
   const quickAdd = page.getByRole('button', { name: 'Aggiungi ingredienti' });
   await quickAdd.click();

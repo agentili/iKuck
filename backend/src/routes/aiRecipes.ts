@@ -39,10 +39,12 @@ const consentRequestSchema = z.object({
   enabled: z.boolean().optional(),
   homeProvider: z.enum(['openai', 'gemini']).nullable().optional(),
   dinnerProvider: z.enum(['openai', 'gemini']).nullable().optional(),
+  chatProvider: z.enum(['openai', 'gemini']).nullable().optional(),
+  chatPolicyVersion: z.literal('chef-chat-v1').optional(),
   expectedRevision: z.string().datetime({ offset: true }).optional(),
 }).strict().refine((value) => (
-  value.enabled !== undefined || value.homeProvider !== undefined || value.dinnerProvider !== undefined
-));
+  value.enabled !== undefined || value.homeProvider !== undefined || value.dinnerProvider !== undefined || value.chatProvider !== undefined
+)).refine((value) => value.chatProvider != null ? value.chatPolicyVersion === 'chef-chat-v1' : value.chatPolicyVersion === undefined);
 
 const dinnerReconstructionRequestSchema = z.object({
   dinnerText: z.string().max(DIARY_TEXT_MAX_LENGTH).refine((value) => value.trim().length > 0),
@@ -189,7 +191,8 @@ export const registerAiRecipeRoutes = ({
     ensureCsrf(request, session.csrfTokenHash);
     const update = parseConsentUpdate(request.body);
     if ((update.homeProvider !== undefined && update.homeProvider !== null && update.homeProvider !== recipeProvider)
-      || (update.dinnerProvider !== undefined && update.dinnerProvider !== null && update.dinnerProvider !== recipeProvider)) {
+      || (update.dinnerProvider !== undefined && update.dinnerProvider !== null && update.dinnerProvider !== recipeProvider)
+      || (update.chatProvider !== undefined && update.chatProvider !== null && update.chatProvider !== recipeProvider)) {
       throw new AuthServiceError('ai_provider_mismatch', 409, 'AI consent provider does not match the selected provider');
     }
     try {

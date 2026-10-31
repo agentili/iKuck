@@ -5,6 +5,7 @@ import { useSyncExternalStore } from 'react';
 import type { GeneratedRecipe } from '@ikuck/shared/contracts';
 import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { ApiClientError } from '../api/apiClient';
+import { isSousChef } from '../config/features';
 import { fetchAiRecipes } from '../ai/aiRecipeApi';
 import { useAuthStore } from '../auth/authStore';
 import { adaptPantryRecipe, adaptGeneratedRecipe, adaptSavedRecipe, searchRecipes } from '../domain/recipeSearch';
@@ -204,6 +205,17 @@ export default function RecipesPage() {
         <p className="mt-3 max-w-xl text-base leading-relaxed text-gray-700">
           Le tue ricette salvate, quelle generate con l’AI e il catalogo della casa.
         </p>
+        {isSousChef() && (
+          <div className="mt-4">
+            {/* T02: the dinner diary is reachable from Ricette with the flag on. */}
+            <Link
+              to="/dinner-diary"
+              className="inline-flex min-h-11 items-center rounded-xl border-2 border-emerald-200 bg-emerald-50 px-4 py-2 font-bold text-emerald-900 hover:border-emerald-500"
+            >
+              Diario delle cene
+            </Link>
+          </div>
+        )}
       </header>
 
       <div className="ik-kitchen-layout ik-kitchen-layout--two-columns mt-4">

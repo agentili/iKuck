@@ -1,6 +1,7 @@
 import { ChefHat } from 'lucide-react';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { isSousChef } from '../config/features';
+import { Link, useNavigate } from 'react-router-dom';
 import DietFiltersPanel from '../components/diet/DietFiltersPanel';
 import IngredientChip from '../components/pantry/IngredientChip';
 import IngredientInput from '../components/pantry/IngredientInput';
@@ -105,6 +106,16 @@ const pantryCopySummary = (copy: PantrySnapshotConflictCopy): string => {
   return `${itemLabels.length} ${itemLabels.length === 1 ? 'ingrediente' : 'ingredienti'}${itemLabels.length > 0 ? `: ${itemLabels.join(', ')}` : ''}; ${lotCount} ${lotCount === 1 ? 'lotto' : 'lotti'}; ${stapleSummary}`;
 };
 
+function InventoryDisclosure({ children }: { children: ReactNode }) {
+  if (!isSousChef()) return <>{children}</>;
+  return (
+    <details className="ik-disclosure rounded-2xl border border-emerald-200 p-2 min-[361px]:p-4">
+      <summary className="min-h-11 cursor-pointer font-bold">Inventario</summary>
+      <div className="pt-3">{children}</div>
+    </details>
+  );
+}
+
 export default function PantryPage() {
   const activeScope = useSyncExternalStore(
     (listener) => subscribeActiveDataScope(() => listener()),
@@ -145,6 +156,16 @@ export default function PantryPage() {
   } | null>(null);
   const [archiveRecoveryError, setArchiveRecoveryError] = useState<{ scope: SyncScope; message: string } | null>(null);
   const visibleArchiveRecoveryError = archiveRecoveryError?.scope === activeScope ? archiveRecoveryError.message : null;
+
+  const navigate = useNavigate();
+
+  // T02: leaving the pantry must work on direct entry too, where the document
+  // history has nothing to pop: fall back to the shell home instead of a dead back.
+  const handleBack = (): void => {
+    const historyState = window.history.state as { idx?: number } | null;
+    if ((historyState?.idx ?? 0) > 0) navigate(-1);
+    else navigate('/');
+  };
 
   useEffect(() => {
     void hydratePantryStore();
@@ -295,6 +316,13 @@ export default function PantryPage() {
   return (
     <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-6xl px-4 pb-8 pt-5 sm:px-6 sm:pt-8 lg:px-8">
       <header className="ik-page-intro mb-5 max-w-2xl sm:mb-7">
+        <button
+          type="button"
+          onClick={handleBack}
+          className="ik-back-link -ml-2 mb-3 inline-flex min-h-11 items-center rounded-xl px-2 font-semibold text-emerald-800 underline underline-offset-2 hover:bg-emerald-50"
+        >
+          ← Indietro
+        </button>
         <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Organizza la tua cucina</p>
         <h1 className="mt-1 text-4xl font-black leading-[1.04] text-gray-950 sm:text-6xl">La tua dispensa</h1>
         <p className="mt-3 max-w-xl text-base leading-relaxed text-gray-700 sm:text-lg">Tieni qui ingredienti, lotti, scadenze e preferenze: le ricette useranno sempre questi dati.</p>
@@ -360,7 +388,7 @@ export default function PantryPage() {
         </div>
       )}
 
-      {house !== null && <CandidatesInbox houseId={house.id} />}
+      {house !== null && !isSousChef() && <CandidatesInbox houseId={house.id} />}
 
       <PageSection
         eyebrow="Ingredienti presenti"
@@ -379,6 +407,7 @@ export default function PantryPage() {
             <IngredientInput onAdd={handleAdd} />
           </div>
           <div className="ik-kitchen-column min-w-0">
+            <InventoryDisclosure>
             {pantryItems.length > 0 ? (
               <>
                 <ul aria-label="La tua dispensa" className="space-y-3">
@@ -396,11 +425,11 @@ export default function PantryPage() {
                   ))}
                 </ul>
                 <Link
-                  to="/"
-                  className="ik-button-primary inline-flex min-h-12 w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-1 text-center text-base font-bold leading-tight sm:w-auto sm:flex-row sm:gap-2 sm:py-3"
+                  to={isSousChef() ? '/cucina' : '/'}
+                  className="ik-button-primary flex min-h-12 w-full min-w-0 flex-col items-center justify-center gap-1 px-2 py-1 text-center text-sm font-bold leading-snug sm:inline-flex sm:w-auto sm:flex-row sm:gap-2 sm:px-4 sm:py-3 sm:text-base"
                 >
                   <ChefHat size={19} aria-hidden="true" />
-                  Vai alle ricette
+                  <span className="block w-full">Vai alle ricette</span>
                 </Link>
               </>
             ) : (
@@ -415,9 +444,12 @@ export default function PantryPage() {
                 </span>
               </>
             )}
+            </InventoryDisclosure>
           </div>
         </div>
       </PageSection>
+
+      {house !== null && isSousChef() && <CandidatesInbox houseId={house.id} hideWhenEmpty />}
 
       {!pantryConflict && archivedConflicts.length > 0 && (
         <details className="ik-disclosure mt-4 rounded-3xl border-2 border-amber-200 bg-amber-50/60 p-4 sm:p-5">

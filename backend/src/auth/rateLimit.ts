@@ -11,6 +11,7 @@ export const AUTH_RATE_LIMITS = {
   bringConnect: { windowSeconds: 15 * 60, ipLimit: 30, emailLimit: 10, actorLimit: 10 },
   bringRead: { windowSeconds: 60, ipLimit: 300, emailLimit: 120, actorLimit: 120 },
   bringWrite: { windowSeconds: 60, ipLimit: 120, emailLimit: 60, actorLimit: 60 },
+  mealPlanCommand: { windowSeconds: 60, ipLimit: 120, emailLimit: 120, actorLimit: 60 },
 } as const;
 
 export type AuthRateLimitAction = keyof typeof AUTH_RATE_LIMITS;

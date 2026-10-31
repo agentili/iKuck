@@ -18,7 +18,20 @@ export const ProfileModal = memo(({ isOpen, onClose }: ProfileModalProps) => {
   const resolvedTheme = useSyncExternalStore(subscribeColorTheme, resolveColorTheme, () => 'light');
   
   const modalRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const toggleTheme = () => saveColorThemePreference(resolvedTheme === 'dark' ? 'light' : 'dark');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    previouslyFocusedRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+
+    return () => {
+      if (previouslyFocusedRef.current?.isConnected) previouslyFocusedRef.current.focus();
+      previouslyFocusedRef.current = null;
+    };
+  }, [isOpen]);
 
   // Close on Escape
   useEffect(() => {
@@ -86,7 +99,7 @@ export const ProfileModal = memo(({ isOpen, onClose }: ProfileModalProps) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+    <div id="profile-modal" className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       
       <div 

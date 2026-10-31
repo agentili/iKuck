@@ -58,6 +58,7 @@ export const start = async () => {
   const houseRepository = createDrizzleHouseRepository(database.db);
   const sync = createDrizzleSyncRepository(database.db, {
     maxClientClockSkewMs: config.syncMaxClientClockSkewMs,
+    mealPlanV2Enabled: true,
     scopeResolver: async (userId) => {
       const membership = await houseRepository.getMembershipForUser(userId);
       return membership === null ? null : { kind: 'house', id: membership.houseId };
@@ -110,7 +111,7 @@ export const start = async () => {
         appOrigin: config.appOrigin,
         secureCookies: config.nodeEnvironment === 'production',
       },
-      sync: { repository: sync, authService: auth, appOrigin: config.appOrigin },
+      sync: { repository: sync, authService: auth, appOrigin: config.appOrigin, rateLimiter: authRateLimiter },
       house: { service: houseService, authService: auth, appOrigin: config.appOrigin, rateLimiter: authRateLimiter },
       dinnerDiary: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       dinnerConsumption: { repository: sync, authService: auth, appOrigin: config.appOrigin },

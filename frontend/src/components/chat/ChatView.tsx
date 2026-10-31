@@ -1,261 +1,215 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { DayIndicator } from './DayIndicator';
-import { MessageList } from './MessageList';
-import { QuickReplies } from './QuickReplies';
-import { InputBar } from './InputBar';
-import { RecipeDetailModal } from '../recipe/RecipeDetailModal';
-import { useChatStore } from './chatStore';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useAuthStore } from '../../auth/authStore';
-import type { ConnectionState } from '../../auth/authStore';
-import { hydratePantryStore } from '../../store/localPantryStore';
-import { fetchAiConsentStatus } from '../../ai/aiRecipeApi';
+import { useChefChatStore } from '../../ai/chefChatStore';
+import { InputBar } from './InputBar';
+import { DailyRecipeCard } from './DailyRecipeCard';
+import { getActiveDataScope, subscribeActiveDataScope } from '../../sync/scopeContext';
 
-interface ChatViewProps {
-  onStartCooking?: (recipe: any) => void;
-  onOpenPantry?: () => void;
-}
-
-export const ChatView = ({ 
-  onStartCooking, 
-  onOpenPantry 
-}: ChatViewProps) => {
-  const navigate = useNavigate();
-  const verified = useAuthStore((state) => state.user !== null && state.user.emailVerifiedAt.trim().length > 0 && state.csrfToken !== null);
+export const ChatView = () => {
+  const scope = useSyncExternalStore(
+    (listener) => subscribeActiveDataScope(() => listener()),
+    getActiveDataScope,
+    getActiveDataScope,
+  );
+  const connection = useAuthStore((state) => state.connection);
   const user = useAuthStore((state) => state.user);
   const csrfToken = useAuthStore((state) => state.csrfToken);
-  const connection = useAuthStore((state) => state.connection);
+
+  const messages = useChefChatStore((state) => state.messages);
+  const isSending = useChefChatStore((state) => state.isSending);
+  const error = useChefChatStore((state) => state.error);
+  const consentStatus = useChefChatStore((state) => state.consentStatus);
+  const isConsentLoaded = useChefChatStore((state) => state.isConsentLoaded);
+  const hasHydrated = useChefChatStore((state) => state.hasHydrated);
+  const sendMessage = useChefChatStore((state) => state.sendMessage);
+  const hydrate = useChefChatStore((state) => state.hydrate);
+  const loadConsentStatus = useChefChatStore((state) => state.loadConsentStatus);
+  const clearError = useChefChatStore((state) => state.clearError);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const isGenerating = useChatStore((state) => state.isGenerating);
-  const consentStatus = useChatStore((state) => state.consentStatus);
-  const selectedProvider = useChatStore((state) => state.selectedProvider);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
-  const [modalRecipe, setModalRecipe] = useState<any>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
-  const messageCount = useChatStore((state) => state.messages.length);
-
-  // Scroll to bottom when messages change
-  useEffect(() => {
+  const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messageCount]);
-
-  // Initialize pantry and consent on mount
-  const initConsent = useCallback(async () => {
-    await hydratePantryStore();
-    
-    if (verified && user && csrfToken) {
-      try {
-        const status = await fetchAiConsentStatus();
-        useChatStore.getState().setConsentStatus(
-          status.consent.enabled && status.consent.homeProvider === status.selectedProvider 
-            ? 'granted' 
-            : status.consent.enabled 
-              ? 'required' 
-              : 'unknown'
-        );
-        useChatStore.getState().setSelectedProvider(status.selectedProvider);
-      } catch {
-        useChatStore.getState().setConsentStatus('unknown');
-      }
-    }
-  }, [verified, user, csrfToken]);
+  };
 
   useEffect(() => {
-    initConsent();
-  }, [initConsent]);
+    scrollToBottom();
+  }, [messages]);
 
-  const handleSendMessage = (text: string) => {
-    // Add user message
-    useChatStore.getState().addMessage({
-      id: `user-${Date.now()}`,
-      role: 'user',
-      type: 'text',
-      timestamp: new Date(),
-      content: text,
-    });
+  useEffect(() => {
+    void hydrate();
+  }, [hydrate, scope]);
 
-    // Quick reply handlers for specific commands
-    const lower = text.toLowerCase();
-    
-    if (lower.includes('veloce') || lower.includes('poco tempo') || lower.includes('15') || lower.includes('20')) {
-      useChatStore.getState().handleQuickReply('fast');
-      return;
+  useEffect(() => {
+    if (user !== null && user.emailVerifiedAt.trim().length > 0 && csrfToken !== null) {
+      void loadConsentStatus();
     }
-    if (lower.includes('vegetarian') || lower.includes('veg') || lower.includes('senza carne')) {
-      useChatStore.getState().handleQuickReply('veg');
-      return;
-    }
-    if (lower.includes('pollo') || lower.includes('carne')) {
-      useChatStore.getState().handleQuickReply('custom', text);
-      return;
-    }
-    if (lower.includes('pesce') || lower.includes('salmone')) {
-      useChatStore.getState().handleQuickReply('custom', text);
-      return;
-    }
-    if (lower.includes('dispensa') || lower.includes('cosa ho')) {
-      useChatStore.getState().handleQuickReply('pantry');
-      return;
-    }
-    if (lower.includes('altre') || lower.includes('altro') || lower.includes('altre idee')) {
-      useChatStore.getState().handleQuickReply('more');
-      return;
-    }
-    if (lower.includes('diario') || lower.includes('cotture') || lower.includes('storico')) {
-      useChatStore.getState().handleQuickReply('diary');
-      return;
-    }
+  }, [user, csrfToken, loadConsentStatus]);
 
-    // Default: simulate AI response
-    setTimeout(() => {
-      const response = {
-        id: `ai-response-${Date.now()}`,
-        role: 'assistant' as const,
-        type: 'text' as const,
-        timestamp: new Date(),
-        content: `Ho capito: "${text}". Cerco qualcosa di adatto... 🤔\n\nProva a dirmi: "veloce", "vegetariano", "pollo", "pesce", "forno" o "svuotafrigo".`,
-      };
-      useChatStore.getState().addMessage(response);
-    }, 800);
-  };
+  const isVerified = user !== null && user.emailVerifiedAt.trim().length > 0 && csrfToken !== null;
+  const chatEnabled = isVerified && consentStatus?.consent.enabled === true && consentStatus?.consent.chatProvider !== undefined && consentStatus?.consent.chatPolicyVersion === 'chef-chat-v1';
+  const canSend = hasHydrated && chatEnabled && !isSending;
 
-  const handleQuickReply = (action: string) => {
-    if (action === 'diary') {
-      navigate('/dinner-diary');
-      return;
-    }
-    if (action === 'shopping') {
-      navigate('/shopping-list');
-      return;
-    }
-    if (action === 'house') {
-      navigate('/house');
-      return;
-    }
-    useChatStore.getState().handleQuickReply(action as any);
-  };
-
-  const handleDayChange = (day: 'today' | 'yesterday' | 'dayBefore') => {
-    useChatStore.getState().selectDay(day);
-  };
-
-  const handleStartCooking = (recipe: any) => {
-    if (onStartCooking) onStartCooking(recipe);
-  };
-
-  const handleViewRecipe = (recipe: any) => {
-    setModalRecipe(recipe);
-    setIsModalOpen(true);
-  };
-
-  const handleSaveRecipe = (recipe: any) => {
-    useChatStore.getState().addSavedRecipe(recipe);
-  };
-
-  const handleOpenPantry = () => {
-    if (onOpenPantry) onOpenPantry();
-    else navigate('/pantry');
-  };
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setModalRecipe(null);
-  };
-
-  const handleModalStartCooking = (recipe: any) => {
-    setIsModalOpen(false);
-    setModalRecipe(null);
-    if (onStartCooking) onStartCooking(recipe);
-  };
-
-  // Show consent notice if not granted
-  const showConsentNotice = verified && consentStatus !== 'granted';
-
-  // Sync status color
-  const getSyncStatusLabel = () => {
-    switch (connection) {
-      case 'online': return 'Online';
-      case 'offline': return 'Offline';
-      default: return 'Connessione...';
-    }
-  };
-
-  const syncStatusStyle = (connection: ConnectionState) => {
-    switch (connection) {
-      case 'online': return 'var(--sc-sage)';
-      case 'offline': return 'var(--sc-terracotta)';
-      default: return 'var(--sc-ink-faint)';
-    }
-  };
+  if (!hasHydrated) {
+    return (
+      <main id="main-content" className="mx-auto flex min-h-[calc(100dvh-9rem)] w-full max-w-2xl flex-col bg-[var(--sc-cream)] pb-6" role="main">
+        <div className="px-4 pt-3 text-sm text-[var(--sc-ink-soft)]" role="status">
+          {connection === 'offline' ? 'Offline: puoi consultare i dati disponibili su questo dispositivo.' : connection === 'online' ? 'Online' : 'Connessione in corso…'}
+        </div>
+        <DailyRecipeCard />
+        <section className="mt-auto flex-1 px-4 pt-4 flex flex-col" aria-label="Chef">
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-[var(--sc-ink-soft)] text-center">Caricamento chat…</p>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
-    <div className="flex flex-col min-h-screen bg-[var(--sc-cream)]">
-      {/* Day Indicator + Sync Status */}
-      <div className="flex items-center justify-between px-4 py-2">
-        <DayIndicator onDayChange={handleDayChange} />
-        <div className="flex items-center gap-2 text-xs font-medium" style={{ color: syncStatusStyle(connection) }}>
-          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: syncStatusStyle(connection) }} />
-          <span>{getSyncStatusLabel()}</span>
-        </div>
+    <main id="main-content" className="mx-auto flex min-h-[calc(100dvh-9rem)] w-full max-w-2xl flex-col bg-[var(--sc-cream)] pb-6" role="main">
+      <div className="px-4 pt-3 text-sm text-[var(--sc-ink-soft)]" role="status">
+        {connection === 'offline' ? 'Offline: puoi consultare i dati disponibili su questo dispositivo.' : connection === 'online' ? 'Online' : 'Connessione in corso…'}
       </div>
 
-      {/* Consent Notice */}
-      {showConsentNotice && (
-        <div className="mx-4 mt-2 mb-4 p-4 rounded-2xl border border-[var(--sc-peach-soft)] bg-[var(--sc-cream)]" role="alert">
-          <div className="flex items-start gap-3">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[var(--sc-terracotta)] text-[var(--sc-cream)]">
-              🤖
-            </span>
-            <div className="min-w-0 flex-1">
-              <h3 className="text-lg font-bold text-[var(--sc-ink)]">Consenso AI per ricette</h3>
-              <p className="mt-1 text-sm leading-relaxed text-[var(--sc-ink-soft)]">
-                Per generare ricette personalizzate, serve il tuo consenso per inviare ingredienti e profilo alimentare a <strong>{selectedProvider === 'openai' ? 'OpenAI' : selectedProvider === 'gemini' ? 'Gemini di Google' : 'il provider AI'}</strong>.
+      <DailyRecipeCard />
+
+      <section
+        ref={scrollAreaRef}
+        className="mt-auto flex-1 min-h-0 px-4 pt-4 flex flex-col overflow-hidden"
+        aria-label="Chef"
+      >
+        <header className="flex-shrink-0">
+          <h1 className="text-xl font-bold text-[var(--sc-ink)]">Chef</h1>
+          {!isVerified && (
+            <p className="mt-1 text-sm text-[var(--sc-ink-soft)]">
+              Accedi con un account verificato per usare la chat con Chef.
+            </p>
+          )}
+          {isVerified && !isConsentLoaded && (
+            <p className="mt-1 text-sm text-[var(--sc-ink-soft)]">Verifica consenso AI…</p>
+          )}
+          {isVerified && isConsentLoaded && !chatEnabled && (
+            <div className="mt-2 rounded-xl border border-[var(--sc-apricot-soft)] bg-[var(--sc-peach-soft)] p-3">
+              <p className="text-sm font-medium text-[var(--sc-terracotta)]">
+                La chat Chef richiede il consenso per l'invio dei dati al provider AI.
               </p>
-              <button
-                onClick={() => {
-                  useChatStore.getState().setConsentStatus('granted');
-                  useChatStore.getState().setSelectedProvider('openai');
-                }}
-                className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--sc-terracotta)] px-4 py-2 font-bold text-[var(--sc-cream)] hover:bg-[var(--sc-terracotta-strong)]"
-              >
-                Autorizza e genera
-              </button>
+              <p className="mt-1 text-xs text-[var(--sc-ink-soft)]">
+                Vai a <a href="/cucina" className="underline font-medium">Cucina e ricette AI</a> per autorizzare la chat (provider: {consentStatus?.selectedProvider ?? 'non selezionato'}).
+              </p>
+            </div>
+          )}
+          {isVerified && isConsentLoaded && consentStatus?.consent.enabled && consentStatus?.consent.chatPolicyVersion !== 'chef-chat-v1' && (
+            <div className="mt-2 rounded-xl border border-[var(--sc-apricot-soft)] bg-[var(--sc-peach-soft)] p-3">
+              <p className="text-sm font-medium text-[var(--sc-terracotta)]">
+                Il consenso per la chat AI non è aggiornato alla versione corrente.
+              </p>
+              <p className="mt-1 text-xs text-[var(--sc-ink-soft)]">
+                Vai a <a href="/cucina" className="underline font-medium">Cucina e ricette AI</a> per riabilitare la chat.
+              </p>
+            </div>
+          )}
+        </header>
+
+        <div className="flex-1 min-h-0 overflow-y-auto" role="log" aria-live="polite" aria-atomic="false">
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center flex-1 min-h-0 px-4 py-8 text-center">
+              <p className="text-[var(--sc-ink-soft)] text-base mb-2">
+                Ciao! Sono Chef, il tuo assistente di cucina.
+              </p>
+              <p className="text-[var(--sc-ink-faint)] text-sm max-w-xs">
+                Chiedimi una ricetta, un consiglio sugli ingredienti o come organizzare la spesa.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {messages.map((message) => (
+                <div key={message.id} className="px-4">
+                  <MessageBubble message={message} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div ref={messagesEndRef} />
+
+        {error && (
+          <div className="flex-shrink-0 px-4 pb-2" role="alert">
+            <div className="rounded-xl bg-[var(--sc-coral-soft)] border border-[var(--sc-coral-soft)] p-3 text-sm font-medium text-[var(--sc-terracotta)] flex items-center justify-between gap-2">
+              <span>{error}</span>
+              <button type="button" onClick={clearError} className="text-[var(--sc-terracotta)] underline hover:no-underline">Chiudi</button>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Messages */}
-      <main className="flex-1 overflow-hidden" id="main-content">
-        <MessageList
-          onStartCooking={handleStartCooking}
-          onViewRecipe={handleViewRecipe}
-          onSaveRecipe={handleSaveRecipe}
-        />
-        <div ref={messagesEndRef} />
-      </main>
-
-      {/* Quick Replies */}
-      <QuickReplies onQuickReply={handleQuickReply} />
-
-      {/* Input Bar */}
-      <InputBar
-        onSendMessage={handleSendMessage}
-        onVoiceInput={() => console.log('Voice input not implemented yet')}
-        onScanner={handleOpenPantry}
-        disabled={isGenerating}
-      />
-
-      {/* Recipe Detail Modal */}
-      <RecipeDetailModal
-        isOpen={isModalOpen}
-        onClose={handleCloseModal}
-        recipe={modalRecipe}
-        onStartCooking={handleModalStartCooking}
-      />
-    </div>
+        {hasHydrated && (
+          <InputBar
+            onSendMessage={sendMessage}
+            disabled={!canSend}
+          />
+        )}
+      </section>
+    </main>
   );
 };
 
 ChatView.displayName = 'ChatView';
+
+function MessageBubble({ message }: { message: { id: string; role: 'user' | 'assistant'; content: string; timestamp: Date; isOptimistic?: boolean } }) {
+  const isUser = message.role === 'user';
+  const formatTime = (date: Date) => date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+
+  if (isUser) {
+    return (
+      <div
+        className="chat-bubble-user max-w-[85%] ml-auto animate-slide-up"
+        style={{
+          backgroundColor: 'var(--sc-terracotta)',
+          color: 'var(--sc-cream)',
+          borderRadius: 'var(--sc-radius-bubble)',
+          borderBottomRightRadius: '6px',
+          padding: '14px 18px',
+          opacity: message.isOptimistic ? 0.7 : 1,
+        }}
+      >
+        <p className="whitespace-pre-wrap leading-relaxed" style={{ fontFamily: 'DM Sans, system-ui, sans-serif', fontSize: '0.9375rem', lineHeight: 1.5 }}>
+          {message.content}
+        </p>
+        <p className="mt-2 text-[var(--sc-cream)]/70 text-xs text-right" style={{ fontFamily: 'DM Sans, system-ui, sans-serif' }}>
+          {formatTime(message.timestamp)}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="chat-bubble-assistant max-w-[85%] animate-slide-up"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      style={{
+        backgroundColor: 'var(--sc-cream)',
+        color: 'var(--sc-ink)',
+        borderRadius: 'var(--sc-radius-bubble)',
+        borderBottomLeftRadius: '6px',
+        padding: '14px 18px',
+        border: '1px solid var(--sc-peach-soft)',
+        boxShadow: 'var(--sc-shadow-soft)',
+      }}
+    >
+      <p className="whitespace-pre-wrap text-[var(--sc-ink)] leading-relaxed" style={{ fontFamily: 'DM Sans, system-ui, sans-serif', fontSize: '0.9375rem', lineHeight: 1.5 }}>
+        {message.content}
+      </p>
+      <p className="mt-2 text-[var(--sc-ink-faint)] text-xs text-right" style={{ fontFamily: 'DM Sans, system-ui, sans-serif' }}>
+        {formatTime(message.timestamp)}
+      </p>
+    </div>
+  );
+}
+
+if (typeof window !== 'undefined') {
+  (window as any).__useChefChatStore = useChefChatStore;
+}

@@ -6,8 +6,19 @@ import { type AuthRouteDependencies, registerAuthRoutes } from './routes/auth.js
 import { registerHealthRoute } from './routes/health.js';
 import { type ProfileRouteDependencies, registerProfileRoutes } from './routes/profile.js';
 import { type SyncRouteDependencies, registerSyncRoutes } from './routes/sync.js';
+import { registerMealPlanRoutes, MealPlanCapabilityUnavailableError } from './routes/mealPlan.js';
+import {
+  PlanCommandRequiredError,
+  PlanCommandValidationError,
+  PlanOperationIdReusedError,
+  PlanReadValidationError,
+  PlanRecoveryNotFoundError,
+  PlanRecoveryRevisionConflictError,
+  PlanRecoveryResolutionReusedError,
+  PlanScopeInvalidError,
+} from './mealPlan/validation.js';
 import { SyncPayloadError, SyncScopeRequiredError } from './routes/sync.js';
-import { SyncDiaryRecipeLimitError, SyncMembershipRequiredError, SyncScopeInvalidError } from './sync/repository.js';
+import { SyncDiaryRecipeLimitError, SyncMembershipRequiredError, SyncScopeInvalidError, HouseMigrationPendingError, PlanMigrationQuarantinedError } from './sync/repository.js';
 import { DinnerConsumptionConflictError, DinnerConsumptionInputError } from './pantry/consumptionService.js';
 import { type PantryLotRouteDependencies, registerPantryLotRoutes } from './routes/pantryLots.js';
 import { type ShoppingListRouteDependencies, registerShoppingListRoutes } from './routes/shoppingList.js';
@@ -16,6 +27,7 @@ import { type RecipePreferenceRouteDependencies, registerRecipePreferenceRoutes 
 import { type DietProfileRouteDependencies, registerDietProfileRoutes } from './routes/dietProfile.js';
 import { type RecipeNutritionRouteDependencies, registerRecipeNutritionRoutes } from './routes/recipeNutrition.js';
 import { type AiRecipeRouteDependencies, registerAiRecipeRoutes } from './routes/aiRecipes.js';
+import { registerChefChatRoutes, type ChefChatDependencies } from './routes/chefChat.js';
 import { type HouseRouteDependencies, registerHouseRoutes } from './routes/house.js';
 import { type DinnerDiaryRecipeRouteDependencies, registerDinnerDiaryRecipeRoutes } from './routes/dinnerDiaryRecipes.js';
 import { type DinnerConsumptionRouteDependencies, registerDinnerConsumptionRoutes } from './routes/dinnerConsumption.js';
@@ -39,6 +51,7 @@ export interface ExtendedPlatformDependencies extends PlatformDependencies {
   dietProfile?: DietProfileRouteDependencies;
   recipeNutrition?: RecipeNutritionRouteDependencies;
   aiRecipes?: AiRecipeRouteDependencies;
+  chefChat?: ChefChatDependencies;
   house?: HouseRouteDependencies;
   dinnerDiary?: DinnerDiaryRecipeRouteDependencies;
   dinnerConsumption?: DinnerConsumptionRouteDependencies;
@@ -56,8 +69,17 @@ export const createApp = (
     logController: options.logController ?? new LogController({ disableRequestLogging: shouldDisableRequestLogging }),
     ...(options.trustProxy === undefined ? {} : { trustProxy: options.trustProxy }),
   });
+  app.addHook('onRequest', async (request, reply) => {
+    if (request.url.split('?')[0] === '/v1/chef-chat') reply.header('cache-control', 'no-store');
+  });
   app.setErrorHandler((error, request, reply) => {
     if (reply.sent) return reply;
+    if (request.url.split('?')[0] === '/v1/chef-chat' && !(error instanceof AuthServiceError)) {
+      if (typeof error === 'object' && error !== null && 'statusCode' in error && typeof error.statusCode === 'number' && error.statusCode >= 400 && error.statusCode < 500) {
+        return reply.code(400).send({ code: 'invalid_payload', message: 'Request payload is invalid' });
+      }
+      return reply.code(503).send({ code: 'provider_unavailable', message: 'AI chat is unavailable' });
+    }
     if (request.url.split('?')[0] === '/v1/s2s/dinner-context') {
       reply.header('cache-control', 'no-store').header('vary', 'Authorization');
       if (dependencies.s2sDinnerContext?.isRequestExpired(request.raw)) {
@@ -68,6 +90,12 @@ export const createApp = (
       }
       app.log.error({ error: error instanceof Error ? error.name : 'unknown' }, 'S2S request failed');
       return reply.code(503).send({ code: 'service_unavailable' });
+    }
+    if (error instanceof PlanCommandRequiredError || error instanceof PlanCommandValidationError || error instanceof PlanOperationIdReusedError || error instanceof PlanReadValidationError || error instanceof PlanRecoveryNotFoundError || error instanceof PlanRecoveryRevisionConflictError || error instanceof PlanRecoveryResolutionReusedError || error instanceof PlanScopeInvalidError || error instanceof MealPlanCapabilityUnavailableError || error instanceof PlanMigrationQuarantinedError) {
+      return reply.code(error.status).send({ code: error.code, message: error.message });
+    }
+    if (error instanceof HouseMigrationPendingError) {
+      return reply.code(error.status).header('retry-after', String(error.retryAfterSeconds)).send({ code: error.code, message: error.message, retryable: true });
     }
     if (error instanceof SyncPayloadError || error instanceof SyncScopeInvalidError || error instanceof SyncScopeRequiredError || error instanceof SyncMembershipRequiredError || error instanceof SyncDiaryRecipeLimitError || error instanceof DinnerConsumptionInputError || error instanceof DinnerConsumptionConflictError) {
       return reply.code(error.status).send({ code: error.code, message: error.message });
@@ -85,9 +113,15 @@ export const createApp = (
     return reply.code(500).send({ code: 'internal_error', message: 'Internal server error' });
   });
   app.register(registerHealthRoute(dependencies));
-  if (dependencies.auth !== undefined) app.register(registerAuthRoutes(dependencies.auth));
+  if (dependencies.auth !== undefined) {
+    app.register(registerAuthRoutes(dependencies.auth));
+    app.register(registerChefChatRoutes(dependencies.chefChat ?? { authService: dependencies.auth.service, appOrigin: dependencies.auth.appOrigin }));
+  }
   if (dependencies.profile !== undefined) app.register(registerProfileRoutes(dependencies.profile));
-  if (dependencies.sync !== undefined) app.register(registerSyncRoutes(dependencies.sync));
+  if (dependencies.sync !== undefined) {
+    app.register(registerSyncRoutes(dependencies.sync));
+    app.register(registerMealPlanRoutes(dependencies.sync));
+  }
   if (dependencies.pantryLots !== undefined) app.register(registerPantryLotRoutes(dependencies.pantryLots));
   if (dependencies.shoppingList !== undefined) app.register(registerShoppingListRoutes(dependencies.shoppingList));
   if (dependencies.activity !== undefined) app.register(registerActivityRoutes(dependencies.activity));

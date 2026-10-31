@@ -21,6 +21,24 @@ interface MonkeyReport {
  * dove non si conoscono a priori tutti gli endpoint chiamati.
  */
 export async function installPermissiveBackend(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const inputUrl = input instanceof Request ? input.url : String(input);
+      const url = new URL(inputUrl, window.location.href);
+      if (url.origin !== window.location.origin || !url.pathname.startsWith('/v1/')) {
+        return nativeFetch(input, init);
+      }
+
+      const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
+      const payload = method === 'GET' ? null : { accepted: true };
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+  });
+
   await page.route('**/v1/**', async (route) => {
     const method = route.request().method();
     if (method === 'GET') {

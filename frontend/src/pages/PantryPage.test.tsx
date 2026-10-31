@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_STAPLE_IDS, parseIngredientInput } from '@ikuck/shared/ingredients';
 import { DEFAULT_DIET_PROFILE } from '../domain/dietary';
 import PantryPage from './PantryPage';
+import * as features from '../config/features';
 import { usePantryStore } from '../store/localPantryStore';
 import { useDietProfileStore } from '../store/dietProfileStore';
 import { reportPersistenceMemoryOnly, usePersistenceStatusStore } from '../store/persistenceStatusStore';
@@ -91,6 +92,19 @@ describe('PantryPage', () => {
       hasHydrated: true,
       profile: { ...DEFAULT_DIET_PROFILE, updatedAt: '2026-09-13T12:00:00.000Z' },
     });
+  });
+
+  it('keeps ingredient entry visible and opens a separate inventory in Sous-Chef', async () => {
+    vi.spyOn(features, 'isSousChef').mockReturnValue(true);
+    seedPantry('pasta');
+    const user = userEvent.setup();
+    renderPantry();
+    expect(screen.getByLabelText('Ingredienti presenti')).toBeVisible();
+    const disclosure = screen.getByText('Inventario', { exact: true }).closest('details');
+    expect(disclosure).not.toHaveAttribute('open');
+    await user.click(screen.getByText('Inventario', { exact: true }));
+    expect(within(screen.getByRole('list', { name: 'La tua dispensa' })).getByText('Pasta')).toBeVisible();
+    vi.restoreAllMocks();
   });
 
   it('shows a dedicated loading state while pantry hydration is pending', () => {

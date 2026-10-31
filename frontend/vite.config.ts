@@ -44,6 +44,7 @@ export default defineConfig({
     'import.meta.env.VITE_SOUS_CHEF': JSON.stringify(process.env.VITE_SOUS_CHEF ?? 'false'),
   },
   server: {
+    host: '127.0.0.1',
     proxy: {
       '/v1': {
         target: 'http://127.0.0.1:3000',

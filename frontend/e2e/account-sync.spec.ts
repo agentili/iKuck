@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
+import { openPantryInventory } from './helpers/appMode';
 
 const verifiedUser = {
   id: 'user-1',
@@ -110,15 +111,17 @@ test('keeps the house pantry and guest source when an explicitly requested merge
   await page.goto('/pantry');
 
   await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
+  await openPantryInventory(page);
   await expect(page.getByText('Riso', { exact: true })).toBeVisible();
   expect(mergeLotIdLengths).toHaveLength(0);
-  await page.getByRole('link', { name: 'Profilo' }).click();
+  await page.goto('/profile');
   await page.getByRole('button', { name: 'Importa i dati locali' }).click();
   await page.getByRole('button', { name: 'Conferma importazione' }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'Non è stato possibile completare l’operazione' })).toBeVisible();
   await expect.poll(() => mergeLotIdLengths.length).toBeGreaterThan(0);
   expect(mergeLotIdLengths).toContain(161);
   await page.getByRole('link', { name: 'Dispensa' }).click();
+  await openPantryInventory(page);
   await expect(page.getByText('Riso', { exact: true })).toBeVisible();
   await expect.poll(() => syncScopes.includes('house:house-e2e')).toBe(true);
   const preservedGuestLotIdLength = await page.evaluate(async () => {
@@ -153,11 +156,13 @@ test('guest pantry survives reload while the API is offline', async ({ page }) =
 
   await page.getByLabel('Ingredienti presenti').fill('pasta, tonno');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await openPantryInventory(page);
   await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
 
   await page.unroute('**/v1/auth/session');
   await page.route('**/v1/auth/session', (route) => route.abort());
   await page.reload();
+  await openPantryInventory(page);
   await expect(page.getByText('Tonno', { exact: true })).toBeVisible();
 });
 
@@ -188,7 +193,7 @@ test('verified users explicitly import the local pantry into the account', async
   await page.reload();
   await page.getByLabel('Ingredienti presenti').fill('pasta');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
-  await page.getByRole('link', { name: 'Profilo' }).click();
+  await page.goto('/profile');
   await expect(page.getByRole('heading', { name: 'Il tuo profilo' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Importa i dati locali' }).click();
@@ -323,14 +328,16 @@ test('two verified accounts share the house pantry while member authorization st
   await memberPage.reload();
   await memberPage.getByLabel('Ingredienti presenti').fill('pasta');
   await memberPage.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await openPantryInventory(memberPage);
   await expect(memberPage.getByText('Pasta', { exact: true })).toBeVisible();
 
   bVerified = true;
   await memberPage.reload();
   await expect(memberPage.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
+  await openPantryInventory(memberPage);
   await expect(memberPage.getByText('Riso', { exact: true })).toBeVisible();
   expect(mergeRequests.filter((request) => request.userId === member.id)).toHaveLength(0);
-  await memberPage.getByRole('link', { name: 'Profilo' }).click();
+  await memberPage.goto('/profile');
   await memberPage.getByRole('button', { name: 'Importa i dati locali' }).click();
   await memberPage.getByRole('button', { name: 'Conferma importazione' }).click();
   await expect(memberPage.getByText(/Sincronizzazione completata/)).toBeVisible();
@@ -343,6 +350,7 @@ test('two verified accounts share the house pantry while member authorization st
   await expect.poll(() => syncResponses.some((response) => response.userId === member.id
     && response.changes.some((change) => change.entityId === 'admin-rice'))).toBe(true);
   await memberPage.goto('/pantry');
+  await openPantryInventory(memberPage);
   await expect(memberPage.getByText('Riso', { exact: true })).toBeVisible();
   const unauthorizedMemberAction = await memberPage.evaluate(async () => (await fetch('/v1/house/members', {
     method: 'POST',

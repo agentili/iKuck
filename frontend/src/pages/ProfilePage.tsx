@@ -1,7 +1,7 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiClientError, apiRequest } from '../api/apiClient';
-import { getActiveDataScope, subscribeActiveDataScope } from '../sync/scopeContext';
+import { getActiveDataScope, subscribeActiveDataScope, type SyncScope } from '../sync/scopeContext';
 import AccountPanel from '../components/account/AccountPanel';
 import { useAuthStore } from '../auth/authStore';
 import { importLocalData } from '../sync/syncQueue';
@@ -11,6 +11,9 @@ import { hasUnpersistedMotionPreference, isReducedMotionPreference, saveReducedM
 import { type ColorThemePreference, getColorThemePreference, hasUnpersistedColorTheme, saveColorThemePreference, subscribeColorTheme } from '../domain/colorTheme';
 import ErrorBanner from '../components/ui/ErrorBanner';
 import PageSection from '../components/ui/PageSection';
+import { readMealPlanSnapshot } from '../mealPlan/storage';
+import { importGuestMealPlan } from '../mealPlan/service';
+import { isSousChef } from '../config/features';
 
 function ThemePreferenceControl() {
   const preference = useSyncExternalStore(subscribeColorTheme, getColorThemePreference, () => 'system');
@@ -80,7 +83,7 @@ export default function ProfilePage() {
   const logout = useAuthStore((state) => state.logout);
   const linkGoogle = useAuthStore((state) => state.linkGoogle);
   const clearSession = useAuthStore((state) => state.clearSession);
-  const activeScope = useSyncExternalStore(subscribeActiveDataScope, getActiveDataScope, () => 'guest');
+  const activeScope = useSyncExternalStore<SyncScope>(subscribeActiveDataScope, getActiveDataScope, () => 'guest');
   const hasHouse = activeScope.startsWith('house:');
   const [displayName, setDisplayName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -88,6 +91,11 @@ export default function ProfilePage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
   const [confirmImport, setConfirmImport] = useState(false);
+  const [confirmPlanImport, setConfirmPlanImport] = useState(false);
+  const [guestPlanCount, setGuestPlanCount] = useState<number | null>(null);
+  const [guestPlanLoadFailed, setGuestPlanLoadFailed] = useState(false);
+  const [isImportingPlan, setIsImportingPlan] = useState(false);
+  const planImportGeneration = useRef(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +116,31 @@ export default function ProfilePage() {
       active = false;
     };
   }, [user]);
+
+  useEffect(() => {
+    if (user === null || !isSousChef()) return;
+    let active = true;
+    setGuestPlanLoadFailed(false);
+    void readMealPlanSnapshot('guest')
+      .then((snapshot) => {
+        if (active) setGuestPlanCount(Object.keys(snapshot.states).length);
+      })
+      .catch(() => {
+        if (active) setGuestPlanLoadFailed(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    planImportGeneration.current += 1;
+    setConfirmPlanImport(false);
+    setIsImportingPlan(false);
+    setMessage(null);
+    setError(null);
+    return () => { planImportGeneration.current += 1; };
+  }, [activeScope, csrfToken, user?.id]);
 
   if (user === null) {
     return (
@@ -169,6 +202,42 @@ export default function ProfilePage() {
     } finally {
       setIsImporting(false);
       setConfirmImport(false);
+    }
+  };
+
+  const handlePlanImport = async () => {
+    if (!isSousChef() || !confirmPlanImport || csrfToken === null || activeScope === 'guest' || user.emailVerifiedAt.trim().length === 0) return;
+    const scope = activeScope;
+    const currentUserId = user.id;
+    const generation = planImportGeneration.current;
+    setIsImportingPlan(true);
+    setMessage(null);
+    setError(null);
+    let completed = false;
+    const isCurrent = () => {
+      const current = useAuthStore.getState();
+      return planImportGeneration.current === generation && current.user?.id === currentUserId
+        && current.csrfToken === csrfToken && getActiveDataScope() === scope;
+    };
+    const assertCurrent = (): void => {
+      if (!isCurrent()) throw new Error('La sessione o la Casa è cambiata durante l\'importazione del Piano.');
+    };
+    try {
+      const result = await importGuestMealPlan({ scope, csrfToken, assertCurrent });
+      assertCurrent();
+      const guest = await readMealPlanSnapshot('guest');
+      assertCurrent();
+      setGuestPlanCount(Object.keys(guest.states).length);
+      const complete = result.pending === 0 && result.preservedConflicts === 0;
+      setMessage(`Importazione Piano ${complete ? 'completata' : 'parziale'}: ${result.queued} scelte accodate, ${result.acknowledged} esiti ricevuti, ${result.conflicts} conflitti server, ${result.pending} in attesa; ${result.preservedConflicts} scelte conservate da rivedere. Le sorgenti ospite non confermate restano sul dispositivo.`);
+      completed = true;
+    } catch (importError) {
+      if (isCurrent()) setError(operationError(importError));
+    } finally {
+      if (isCurrent()) {
+        setIsImportingPlan(false);
+        if (completed) setConfirmPlanImport(false);
+      }
     }
   };
 
@@ -267,6 +336,25 @@ export default function ProfilePage() {
           <p className="text-gray-600">{hasHouse
             ? 'Importa esplicitamente i dati ospite nella Casa attiva. La dispensa ospite viene unita senza duplicare le quantità e rimossa dal dispositivo solo dopo la conferma del server; gli altri dati ospite restano sul dispositivo.'
             : 'Importa esplicitamente i dati ospite nel tuo account. I dati locali resteranno sul dispositivo e non verranno cancellati.'}</p>
+          {isSousChef() && guestPlanLoadFailed && <p role="status" className="rounded-xl bg-amber-50 p-3 font-semibold text-amber-950">Non è stato possibile verificare il Piano ospite su questo dispositivo.</p>}
+          {isSousChef() && guestPlanCount !== null && guestPlanCount > 0 && (
+            <section aria-labelledby="guest-plan-import-title" className="grid gap-3 rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-4">
+              <div>
+                <h3 id="guest-plan-import-title" className="font-black text-emerald-950">Piano ospite sul dispositivo</h3>
+                <p className="mt-1 text-sm text-emerald-900">{guestPlanCount} scelte locali. L’importazione è separata dal resto dei dati e non parte con il login. Le voci sorgente vengono rimosse solo dopo la conferma del server; conflitti e interruzioni conservano il Piano ospite.</p>
+              </div>
+              {!confirmPlanImport ? (
+                <button type="button" onClick={() => setConfirmPlanImport(true)} disabled={isImportingPlan || csrfToken === null || activeScope === 'guest'} className="min-h-11 w-fit rounded-xl bg-emerald-800 px-4 py-2 font-bold text-white hover:bg-emerald-900 disabled:opacity-60">Importa Piano ospite</button>
+              ) : (
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-amber-300 bg-amber-50 p-3">
+                  <p className="basis-full font-semibold text-amber-950">Confermi l’importazione di {guestPlanCount} scelte del Piano ospite {hasHouse ? 'nella Casa attiva' : 'nell’account'}? Le voci in conflitto resteranno sul dispositivo.</p>
+                  <button type="button" onClick={() => void handlePlanImport()} disabled={isImportingPlan || csrfToken === null || activeScope === 'guest'} className="min-h-11 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800 disabled:opacity-60">{isImportingPlan ? 'Importazione…' : 'Conferma importazione Piano'}</button>
+                  <button type="button" onClick={() => setConfirmPlanImport(false)} disabled={isImportingPlan} className="min-h-11 rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900 disabled:opacity-60">Annulla</button>
+                </div>
+              )}
+              {activeScope === 'guest' && <p className="text-sm font-semibold text-amber-950">Attiva prima un account o una Casa come ambito di destinazione.</p>}
+            </section>
+          )}
           <div className="flex flex-wrap gap-3">
             {!confirmImport ? (
               <button type="button" onClick={() => setConfirmImport(true)} disabled={isImporting || csrfToken === null} className="min-h-11 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800 disabled:opacity-60">Importa i dati locali</button>

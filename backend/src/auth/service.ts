@@ -12,6 +12,8 @@ export type AuthErrorCode =
   | 'invalid_token'
   | 'password_too_short'
   | 'provider_unavailable'
+  | 'provider_timeout'
+  | 'ai_chat_rate_limited'
   | 'session_required'
   | 'csrf_failed'
   | 'invalid_payload'

@@ -114,6 +114,35 @@ const saveRecipe = (app: ReturnType<typeof createApp>, recipe: unknown) => app.i
 });
 
 describe('AI recipe routes', () => {
+  it('grants only chat consent for the selected provider through the verified endpoint', async () => {
+    const { app } = createAiApp();
+    const current = await app.inject({ method: 'GET', url: '/v1/ai-recipes/consent', headers });
+    const response = await app.inject({ method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+      payload: { enabled: true, chatProvider: 'openai', chatPolicyVersion: 'chef-chat-v1', expectedRevision: current.json().consent.updatedAt },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().consent).toMatchObject({ enabled: true, chatProvider: 'openai', chatPolicyVersion: 'chef-chat-v1' });
+    expect(response.json().consent).not.toHaveProperty('homeProvider');
+    expect(response.json().consent).not.toHaveProperty('dinnerProvider');
+    await app.close();
+  });
+
+  it('rejects a chat grant combined with global revocation', async () => {
+    const { app } = createAiApp();
+    const initial = await app.inject({ method: 'GET', url: '/v1/ai-recipes/consent', headers });
+    const granted = await app.inject({ method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+      payload: { enabled: true, chatProvider: 'openai', chatPolicyVersion: 'chef-chat-v1', expectedRevision: initial.json().consent.updatedAt },
+    });
+    expect(granted.statusCode).toBe(200);
+    const conflicting = await app.inject({ method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+      payload: { enabled: false, chatProvider: 'openai', chatPolicyVersion: 'chef-chat-v1', expectedRevision: granted.json().consent.updatedAt },
+    });
+    expect(conflicting.statusCode).toBe(403);
+    const after = await app.inject({ method: 'GET', url: '/v1/ai-recipes/consent', headers });
+    expect(after.json().consent).toEqual(granted.json().consent);
+    await app.close();
+  });
+
   it('fails closed for legacy consent enables without a current revision', async () => {
     const { app, repository } = createAiApp();
 

@@ -34,6 +34,17 @@ const pantryItemSchema = z.object({
 
 const staplePreferenceSchema = z.object({ enabled: z.boolean() }).strict();
 
+const isCalendarDate = (value: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+};
+
+const mealPlanEntrySchema = z.object({
+  date: z.string().refine(isCalendarDate),
+  recipeId: z.string().trim().min(1).max(128),
+}).strict();
+
 const payloadSchemas = {
   pantry_item: pantryItemSchema,
   pantry_lot: exactPayload(pantryLotSchema, [
@@ -54,6 +65,7 @@ const payloadSchemas = {
   generated_recipe: generatedRecipeSchema,
   dinner_entry: z.custom<unknown>(isDinnerEntry),
   saved_recipe: z.custom<unknown>(isSavedRecipe),
+  meal_plan_entry: mealPlanEntrySchema,
 } satisfies Record<SyncEntityType, z.ZodTypeAny>;
 
 type EntityPayload = {
@@ -97,6 +109,7 @@ export const syncMutationSchema = z.union([
   buildEntityMutationSchema('generated_recipe', payloadSchemas.generated_recipe, (entityId, payload) => payload.id === entityId),
   buildEntityMutationSchema('dinner_entry', payloadSchemas.dinner_entry, (entityId, payload) => typeof payload === 'object' && payload !== null && 'id' in payload && payload.id === entityId),
   buildEntityMutationSchema('saved_recipe', payloadSchemas.saved_recipe, (entityId, payload) => typeof payload === 'object' && payload !== null && 'id' in payload && payload.id === entityId),
+  buildEntityMutationSchema('meal_plan_entry', payloadSchemas.meal_plan_entry, (entityId, payload) => payload.date === entityId, isCalendarDate),
 ]);
 
 const storedAiConsentMutationSchema = z.union([
