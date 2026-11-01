@@ -430,7 +430,7 @@ export interface SyncRepository extends DinnerConsumptionRepository {
     dispatch: (consent: AiConsent) => Promise<T>,
     signal?: AbortSignal,
   ) => Promise<T>;
-  readChanges: (userId: string, cursor: number, limit: number, requestedScope?: SyncMutation['syncScope'], supportedEntityTypes?: readonly SyncMutation['entityType'][]) => Promise<SyncChange[]>;
+  readChanges: (userId: string, cursor: number, limit: number, requestedScope?: SyncMutation['syncScope'], supportedEntityTypes?: readonly SyncMutation['entityType'][], validateSupportedTypesForScope?: boolean) => Promise<SyncChange[]>;
   readAll: (userId: string) => Promise<SyncChange[]>;
   readEntity: (userId: string, entityType: SyncMutation['entityType'], entityId: string) => Promise<StoredSyncItem | null>;
   migrateUserSharedDataToHouse: (userId: string, houseId: string, pendingAccountMutations?: readonly SyncMutation[]) => Promise<void>;
@@ -1842,11 +1842,11 @@ export const createMemorySyncRepository = (repositoryOptions: SyncRepositoryOpti
       }
       return mutation.entityType === 'ai_consent' ? withConsentLock(userId, apply) : apply();
     },
-    readChanges: async (userId, cursor, limit, requestedScope, supportedEntityTypes) => {
+    readChanges: async (userId, cursor, limit, requestedScope, supportedEntityTypes, validateSupportedTypesForScope = true) => {
       const resolved = await resolveReadScopes(userId, options, requestedScope);
-      if (resolved.mode === 'account' && resolved.currentHouse !== null
+      if (validateSupportedTypesForScope && resolved.mode === 'account' && resolved.currentHouse !== null
         && supportedEntityTypes?.some(isSharedEntityType) === true) throw new SyncScopeInvalidError();
-      if (resolved.mode === 'house' && supportedEntityTypes?.some((type) => !isSharedEntityType(type)) === true) {
+      if (validateSupportedTypesForScope && resolved.mode === 'house' && supportedEntityTypes?.some((type) => !isSharedEntityType(type)) === true) {
         throw new SyncScopeInvalidError();
       }
       const pending = houseMigrationPending.get(userId);
@@ -3833,7 +3833,7 @@ export const createDrizzleSyncRepository = (
       return apply();
     },
 
-  readChanges: async (userId, cursor, limit, requestedScope, supportedEntityTypes) => database.transaction(async (transaction) => {
+  readChanges: async (userId, cursor, limit, requestedScope, supportedEntityTypes, validateSupportedTypesForScope = true) => database.transaction(async (transaction) => {
     const [membership] = await transaction.select({ houseId: houseMemberships.houseId })
       .from(houseMemberships)
       .where(eq(houseMemberships.userId, userId))
@@ -3854,14 +3854,14 @@ export const createDrizzleSyncRepository = (
     if (requestedScope === `account:${userId}`) {
       mode = 'account';
       scopes = [userScope(userId)];
-      if (currentHouse !== null && supportedEntityTypes?.some(isSharedEntityType) === true) {
+      if (validateSupportedTypesForScope && currentHouse !== null && supportedEntityTypes?.some(isSharedEntityType) === true) {
         throw new SyncScopeInvalidError();
       }
     } else if (requestedScope?.startsWith('account:')) {
       throw new SyncMembershipRequiredError();
     } else if (requestedScope?.startsWith('house:')) {
       if (currentHouse === null || requestedScope !== `house:${currentHouse.id}`) throw new SyncMembershipRequiredError();
-      if (supportedEntityTypes?.some((type) => !isSharedEntityType(type)) === true) throw new SyncScopeInvalidError();
+      if (validateSupportedTypesForScope && supportedEntityTypes?.some((type) => !isSharedEntityType(type)) === true) throw new SyncScopeInvalidError();
       mode = 'house';
       scopes = [currentHouse];
     } else if (currentHouse !== null) {

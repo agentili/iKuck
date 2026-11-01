@@ -186,8 +186,10 @@ describe('house routes', () => {
     expect(migrateUserSharedDataToHouse).toHaveBeenCalledExactlyOnceWith('admin-1', 'house-1', [pending]);
     const personal = await app.inject({ method: 'POST', url: '/v1/house/account-queue/import', headers, payload: { mutations: [{ ...pending, entityType: 'ai_consent', payload: { enabled: true, updatedAt: pending.clientUpdatedAt } }] } });
     expect(personal.statusCode).toBe(409);
+    expect(personal.json()).toMatchObject({ code: 'sync_scope_invalid' });
     const foreign = await app.inject({ method: 'POST', url: '/v1/house/account-queue/import', headers, payload: { mutations: [{ ...pending, syncScope: 'account:another-user' }] } });
     expect(foreign.statusCode).toBe(409);
+    expect(foreign.json()).toMatchObject({ code: 'sync_scope_invalid' });
     expect(migrateUserSharedDataToHouse).toHaveBeenCalledTimes(1);
     await app.close();
   });
@@ -224,6 +226,7 @@ describe('house routes', () => {
     expect(response.statusCode).toBe(204);
     expect(mergeGuestDietProfileToHouse).toHaveBeenCalledExactlyOnceWith('admin-1', 'house-1', mutation);
     expect(forgedScope.statusCode).toBe(409);
+    expect(forgedScope.json()).toMatchObject({ code: 'sync_scope_invalid' });
     expect(mergeGuestDietProfileToHouse).toHaveBeenCalledTimes(1);
     await app.close();
   });

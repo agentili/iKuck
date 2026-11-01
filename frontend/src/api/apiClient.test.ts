@@ -54,6 +54,18 @@ describe('api client', () => {
     });
   });
 
+  it.each([400, 409])('preserves sync_scope_invalid when the server returns HTTP %i', async (status) => {
+    const fetch = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ code: 'sync_scope_invalid', message: 'The requested sync scope is not valid for this entity' }),
+      { status },
+    ));
+
+    await expect(apiRequest('/v1/sync', { method: 'POST', body: {}, fetch })).rejects.toMatchObject({
+      status,
+      code: 'sync_scope_invalid',
+    });
+  });
+
   it('maps a failed fetch to a stable network error', async () => {
     const fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
 

@@ -78,8 +78,10 @@ export const registerSyncRoutes = ({ repository, authService, appOrigin }: SyncR
       ? [...legacyEntityTypes, 'meal_plan_entry' as const]
       : legacyEntityTypes);
     const supportedEntityTypes = requestedEntityTypes.filter((type) => type !== 'meal_plan_entry' || body.mealPlanReadVersion === 2);
+    // Server-generated legacy defaults mix personal and shared entity types; only a client-declared list is a scope claim.
+    const validateSupportedTypesForScope = body.supportedEntityTypes !== undefined;
     if (body.syncScope !== undefined) {
-      await repository.readChanges(session.userId, body.cursor, 1, body.syncScope, supportedEntityTypes);
+      await repository.readChanges(session.userId, body.cursor, 1, body.syncScope, supportedEntityTypes, validateSupportedTypesForScope);
     }
     if (body.mutations.some((mutation) => mutation.deviceId !== body.deviceId)) {
       throw new SyncPayloadError();
@@ -89,7 +91,7 @@ export const registerSyncRoutes = ({ repository, authService, appOrigin }: SyncR
       await repository.applyMutation(session.userId, mutation);
     }
 
-    const changes = await repository.readChanges(session.userId, body.cursor, 200, body.syncScope, supportedEntityTypes);
+    const changes = await repository.readChanges(session.userId, body.cursor, 200, body.syncScope, supportedEntityTypes, validateSupportedTypesForScope);
     return {
       changes,
       nextCursor: changes.reduce((cursor, change) => Math.max(cursor, change.serverSequence), body.cursor),

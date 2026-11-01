@@ -262,6 +262,35 @@ describe('sync queue', () => {
     expect(requestB).toHaveBeenCalledOnce();
   });
 
+  it.each([400, 409])('preserves the House queue and cursor for sync_scope_invalid HTTP %i, then retries cleanly', async (status) => {
+    const houseScope = 'house:sync-scope-invalid' as const;
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    const mutationId = `scope-invalid-${status}`;
+    const cursor = 11;
+    await enqueueMutation(houseScope, { ...sampleMutation(mutationId), syncScope: houseScope });
+    await writeMeta(`syncCursor:${houseScope}`, cursor);
+    const onMembershipLost = vi.fn();
+    const request = vi.fn()
+      .mockRejectedValueOnce(new ApiClientError(status, 'sync_scope_invalid', 'The requested sync scope is not valid for this entity'))
+      .mockResolvedValueOnce({ changes: [], nextCursor: cursor + 1 });
+
+    await expect(syncVerifiedSession(session, { request, onMembershipLost })).resolves.toBeNull();
+    expect(getSyncStatus(accountScope)).toMatchObject({
+      state: 'error', error: expect.objectContaining({ status, code: 'sync_scope_invalid' }),
+    });
+    expect(getActiveDataScope()).toBe(houseScope);
+    expect(onMembershipLost).not.toHaveBeenCalled();
+    await expect(readQueuedMutations(houseScope)).resolves.toEqual([expect.objectContaining({ mutationId, syncScope: houseScope })]);
+    await expect(readSyncCursor(houseScope)).resolves.toBe(cursor);
+
+    await expect(syncVerifiedSession(session, { request, onMembershipLost })).resolves.toMatchObject({ complete: true });
+    await expect(readQueuedMutations(houseScope)).resolves.toEqual([]);
+    await expect(readSyncCursor(houseScope)).resolves.toBe(cursor + 1);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(onMembershipLost).not.toHaveBeenCalled();
+  });
+
   it('keeps house and account cursors independent across joining and leaving', async () => {
     const houseScope = 'house:cursor-house' as const;
     const accountRequest = vi.fn().mockResolvedValue({ changes: [], nextCursor: 7 });

@@ -1,6 +1,6 @@
 # Condivisione della casa — scope e import account
 
-Questo documento descrive il contratto applicativo corrente per la condivisione della casa.
+Questo documento descrive il contratto applicativo corrente per la condivisione della casa. Per gli status e gli errori HTTP versionati del sync, vedi [API v1](api/v1.md) e la [nota di migrazione 400→409](migrations/sync-scope-invalid-http-409.md).
 
 ## Matrice degli scope
 
