@@ -1,12 +1,9 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import {
   assertOfflineBackendClean,
   installOfflineBackend,
   type OfflineApiResponse,
 } from './helpers/backendMode';
-
-const themePreferenceKey = 'ikuck-color-theme';
 
 const verifiedSession = {
   authenticated: true,

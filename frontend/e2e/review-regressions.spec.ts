@@ -1,5 +1,4 @@
 import { expect, test } from '@playwright/test';
-import AxeBuilder from '@axe-core/playwright';
 import { installOfflineBackend } from './helpers/backendMode';
 
 test('scope storage property denial does not prevent SPA startup', async ({ page }) => {
