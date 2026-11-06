@@ -142,7 +142,7 @@ export default function CandidatesInbox({ houseId }: CandidatesInboxProps) {
   if (!ready) return null;
 
   return (
-    <section aria-label="Da confermare" className="ik-surface mt-6 rounded-3xl border-2 border-emerald-200 bg-white p-4 shadow-sm sm:mt-8 sm:p-6">
+    <section aria-label="Da confermare" className="ik-surface ik-surface--feature mt-6 rounded-3xl border-2 border-emerald-200 bg-white p-4 shadow-sm sm:mt-8 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="candidates-title" className="text-lg font-bold text-gray-950">Da confermare</h2>

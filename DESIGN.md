@@ -3,59 +3,32 @@ version: alpha
 name: iKuck cucina domestica
 description: "Un sistema locale-first per decidere cosa cucinare con ciò che è già in casa."
 colors:
-  primary: "#183028"
-  porcelain: "#FAFBF7"
-  basil: "#247A4A"
-  basilDark: "#165C35"
-  sage: "#E1ECE4"
-  mist: "#F1F3ED"
-  tomato: "#B9382A"
-  yolk: "#F2BE3E"
-  inkMuted: "#52665B"
-  darkPage: "#101613"
-  darkSurface: "#171E1A"
-  darkInk: "#E8EFE9"
-  darkInkMuted: "#9FB0A7"
-  darkBasil: "#45B877"
-  darkBasilDark: "#3AA16A"
-  darkSage: "#1C2823"
-  darkMist: "#1A211D"
-  darkYolkSoft: "#3A2F0E"
-  darkTomato: "#FF8A7A"
-  darkTomatoSoft: "#3A1512"
-  onYolk: "#183028"
-  recipeCategory: "#FCD34D"
-  darkRecipeCategory: "#725000"
-  darkWarnInk: "#F2CA7A"
-  # SOUS-CHEF extensions (warm/soft palette for chat UI)
-  cream: "#FEFEF8"
-  peach: "#FFE4D0"
-  peachSoft: "#FFF0E8"
-  apricot: "#F8C8A0"
-  apricotSoft: "#FDEFE0"
-  terracotta: "#E8A078"
-  terracottaStrong: "#D48C64"
-  coral: "#F0A080"
-  coralSoft: "#FDE8E0"
-  honey: "#F0D080"
-  honeySoft: "#FDF8E0"
-  chatInk: "#3D3530"
-  chatInkSoft: "#6B635B"
-  chatInkFaint: "#A8A098"
-  darkCream: "#2D2824"
-  darkPeach: "#5C4A3D"
-  darkPeachSoft: "#4A3D33"
-  darkApricot: "#C88A5C"
-  darkApricotSoft: "#5C4333"
-  darkTerracotta: "#E8A078"
-  darkTerracottaStrong: "#D48C64"
-  darkCoral: "#E89474"
-  darkSageSoft: "#2D4A33"
-  darkHoney: "#D4B85C"
-  darkHoneySoft: "#4A4333"
-  darkChatInk: "#F5F0E8"
-  darkChatInkSoft: "#C8C0B8"
-  darkChatInkFaint: "#8A827A"
+  primary: "#A86F4A"
+  porcelain: "#FFF8F0"
+  surface: "#FFFFFF"
+  apricot: "#E8A87C"
+  apricotDark: "#C88B5E"
+  peach: "#FFE8D6"
+  cream: "#FFF0E0"
+  yolk: "#FFD6A5"
+  inkMuted: "#8B7355"
+  darkPage: "#2D1F16"
+  darkSurface: "#3D2B1F"
+  darkInk: "#FFE8D6"
+  darkInkMuted: "#C8A88A"
+  darkApricot: "#FFB88A"
+  darkApricotDark: "#E8A87C"
+  darkPeach: "#5D3A2E"
+  darkCream: "#4A3728"
+  darkYolkSoft: "#5D4528"
+  darkTomato: "#FFB3B3"
+  darkTomatoSoft: "#4A201A"
+  overlay: "rgba(168, 111, 74, 0.55)"
+  onYolk: "#3D2B1F"
+  recipeCategory: "#FFD6A5"
+  darkRecipeCategory: "#8B5A1A"
+  darkWarnInk: "#FFD6A5"
+
 typography:
   h1:
     fontFamily: "Bricolage Grotesque Variable, system-ui, sans-serif"
@@ -76,22 +49,22 @@ typography:
     lineHeight: 1.55
   # SOUS-CHEF chat typography
   chat-title:
-    fontFamily: "Outfit, system-ui, sans-serif"
+    fontFamily: "Bricolage Grotesque Variable, system-ui, sans-serif"
     fontSize: "1.5rem"
     fontWeight: 700
     lineHeight: 1.2
   chat-body:
-    fontFamily: "DM Sans, system-ui, sans-serif"
+    fontFamily: "Bricolage Grotesque Variable, system-ui, sans-serif"
     fontSize: "1rem"
     fontWeight: 450
     lineHeight: 1.55
   chat-bubble:
-    fontFamily: "DM Sans, system-ui, sans-serif"
+    fontFamily: "Bricolage Grotesque Variable, system-ui, sans-serif"
     fontSize: "0.9375rem"
     fontWeight: 400
     lineHeight: 1.5
   chat-quick-reply:
-    fontFamily: "DM Sans, system-ui, sans-serif"
+    fontFamily: "Bricolage Grotesque Variable, system-ui, sans-serif"
     fontSize: "0.8125rem"
     fontWeight: 500
     lineHeight: 1.4
@@ -109,13 +82,13 @@ spacing:
   xl: "32px"
 components:
   button-primary:
-    backgroundColor: "{colors.basil}"
+    backgroundColor: "{colors.apricot}"
     textColor: "{colors.porcelain}"
     rounded: "{rounded.control}"
     padding: "12px 16px"
     height: "48px"
   button-primary-hover:
-    backgroundColor: "{colors.basilDark}"
+    backgroundColor: "{colors.apricotDark}"
     textColor: "{colors.porcelain}"
     rounded: "{rounded.control}"
     padding: "12px 16px"
@@ -132,7 +105,7 @@ components:
     backgroundColor: "{colors.darkInk}"
     textColor: "{colors.darkRecipeCategory}"
   ready-recipe:
-    backgroundColor: "{colors.sage}"
+    backgroundColor: "{colors.peach}"
     textColor: "{colors.primary}"
     rounded: "{rounded.panel}"
     padding: "16px"
@@ -147,7 +120,7 @@ components:
     rounded: "{rounded.control}"
     padding: "12px 16px"
   quiet-surface:
-    backgroundColor: "{colors.mist}"
+    backgroundColor: "{colors.cream}"
     textColor: "{colors.inkMuted}"
     rounded: "{rounded.panel}"
     padding: "16px"
@@ -157,13 +130,13 @@ components:
     rounded: "{rounded.panel}"
     padding: "16px"
   button-primary-dark:
-    backgroundColor: "{colors.darkBasil}"
+    backgroundColor: "{colors.darkApricot}"
     textColor: "{colors.darkPage}"
     rounded: "{rounded.control}"
     padding: "12px 16px"
     height: "48px"
   button-primary-dark-hover:
-    backgroundColor: "{colors.darkBasilDark}"
+    backgroundColor: "{colors.darkApricotDark}"
     textColor: "{colors.darkPage}"
     rounded: "{rounded.control}"
     padding: "12px 16px"
@@ -174,7 +147,7 @@ components:
     rounded: "{rounded.feature}"
     padding: "16px"
   ready-recipe-dark:
-    backgroundColor: "{colors.darkSage}"
+    backgroundColor: "{colors.darkPeach}"
     textColor: "{colors.darkInk}"
     rounded: "{rounded.panel}"
     padding: "16px"
@@ -194,7 +167,7 @@ components:
     rounded: "{rounded.panel}"
     padding: "16px"
   quiet-surface-dark:
-    backgroundColor: "{colors.darkMist}"
+    backgroundColor: "{colors.darkCream}"
     textColor: "{colors.darkInkMuted}"
     rounded: "{rounded.panel}"
     padding: "16px"
@@ -203,63 +176,100 @@ components:
     textColor: "{colors.darkInk}"
     rounded: "{rounded.panel}"
     padding: "16px"
-  # SOUS-CHEF chat components
+  # Chat components share the core iKuck palette
   chat-bubble-assistant:
-    backgroundColor: "{colors.cream}"
-    textColor: "{colors.chatInk}"
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.primary}"
+    typography: "{typography.chat-bubble}"
     rounded: "{rounded.bubble}"
     padding: "14px 18px"
-    border: "1px solid {colors.peachSoft}"
-    borderBottomLeftRadius: "6px"
-    boxShadow: "0 2px 16px rgba(61,53,48,0.05)"
   chat-bubble-user:
-    backgroundColor: "{colors.terracotta}"
-    textColor: "{colors.cream}"
+    backgroundColor: "{colors.apricot}"
+    textColor: "{colors.porcelain}"
+    typography: "{typography.chat-bubble}"
     rounded: "{rounded.bubble}"
     padding: "14px 18px"
-    borderBottomRightRadius: "6px"
   chat-bubble-recipe:
-    backgroundColor: "{colors.cream}"
-    textColor: "{colors.chatInk}"
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.primary}"
     rounded: "{rounded.feature}"
     padding: "0"
-    border: "1px solid {colors.peachSoft}"
-    boxShadow: "0 8px 32px rgba(61,53,48,0.07)"
   chat-bubble-error:
-    backgroundColor: "{colors.coralSoft}"
-    textColor: "{colors.terracotta}"
+    backgroundColor: "{colors.tomatoSoft}"
+    textColor: "{colors.tomato}"
     rounded: "{rounded.panel}"
     padding: "12px 16px"
   chat-quick-reply:
-    backgroundColor: "{colors.peachSoft}"
-    textColor: "{colors.terracotta}"
-    border: "1px solid {colors.apricotSoft}"
+    backgroundColor: "{colors.peach}"
+    textColor: "{colors.primary}"
+    typography: "{typography.chat-quick-reply}"
     rounded: "{rounded.pill}"
     padding: "10px 16px"
-    fontSize: "13px"
-    fontWeight: 500
   chat-input-bar:
-    backgroundColor: "{colors.cream}"
-    border: "1px solid {colors.peachSoft}"
-    rounded: "16px"
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.primary}"
+    rounded: "{rounded.control}"
     padding: "2px"
   chat-day-indicator:
-    backgroundColor: "{colors.peachSoft}"
-    textColor: "{colors.terracotta}"
+    backgroundColor: "{colors.peach}"
+    textColor: "{colors.primary}"
     rounded: "{rounded.pill}"
     padding: "10px 18px"
   chat-badge:
-    backgroundColor: "{colors.terracotta}"
-    textColor: "{colors.cream}"
+    backgroundColor: "{colors.apricot}"
+    textColor: "{colors.porcelain}"
     rounded: "{rounded.pill}"
     padding: "6px 12px"
-    fontSize: "11px"
-    fontWeight: 700
+  chat-bubble-assistant-dark:
+    backgroundColor: "{colors.darkSurface}"
+    textColor: "{colors.darkInk}"
+    typography: "{typography.chat-bubble}"
+    rounded: "{rounded.bubble}"
+    padding: "14px 18px"
+  chat-bubble-user-dark:
+    backgroundColor: "{colors.darkApricot}"
+    textColor: "{colors.darkPage}"
+    typography: "{typography.chat-bubble}"
+    rounded: "{rounded.bubble}"
+    padding: "14px 18px"
+  chat-bubble-recipe-dark:
+    backgroundColor: "{colors.darkSurface}"
+    textColor: "{colors.darkInk}"
+    rounded: "{rounded.feature}"
+    padding: "0"
+  chat-bubble-error-dark:
+    backgroundColor: "{colors.darkTomatoSoft}"
+    textColor: "{colors.darkTomato}"
+    rounded: "{rounded.panel}"
+    padding: "12px 16px"
+  chat-quick-reply-dark:
+    backgroundColor: "{colors.darkPeach}"
+    textColor: "{colors.darkInk}"
+    typography: "{typography.chat-quick-reply}"
+    rounded: "{rounded.pill}"
+    padding: "10px 16px"
+  chat-input-bar-dark:
+    backgroundColor: "{colors.darkSurface}"
+    textColor: "{colors.darkInk}"
+    rounded: "{rounded.control}"
+    padding: "2px"
+  chat-day-indicator-dark:
+    backgroundColor: "{colors.darkPeach}"
+    textColor: "{colors.darkInk}"
+    rounded: "{rounded.pill}"
+    padding: "10px 18px"
+  chat-badge-dark:
+    backgroundColor: "{colors.darkApricot}"
+    textColor: "{colors.darkPage}"
+    rounded: "{rounded.pill}"
+    padding: "6px 12px"
+  profile-modal-backdrop:
+    backgroundColor: "{colors.overlay}"
   chat-day-dot:
     width: "10px"
     height: "10px"
     borderRadius: "50%"
-    backgroundColor: "{colors.terracotta}"
+    backgroundColor: "{colors.tomato}"
   chat-day-dot-dim:
     backgroundColor: "{colors.chatInkFaint}"
 ---
@@ -268,22 +278,24 @@ components:
 
 iKuck is a local-first domestic kitchen tool. Its primary Home surface is **Operate**: someone should add ingredients and start a recipe search before exploring optional settings. Recipe results are **Compare** surfaces, while Profile and private AI recipes are **Configure** surfaces.
 
-The visual language is practical and warm rather than restaurant-luxury or generic SaaS: deep green ink, paper-like porcelain, basil for actions, sage for ready-to-cook state, yolk for a single missing purchase, and tomato only for destructive or blocking states.
+The visual language is practical and warm: warm brown ink, cream background, apricot for actions, peach for ready-to-cook state, yolk for a single missing purchase, and coral only for destructive or blocking states.
 
 # Colors
 
 - **Ink / primary:** structural text, high-emphasis surfaces, and the recipe detail hero.
 - **Porcelain:** page background and readable surface text against dark ink.
-- **Basil:** the one high-emphasis action color; use for actions that create progress.
-- **Sage:** availability and completed/ready state; never use it as a warning.
+- **Apricot:** the one high-emphasis action color; use for actions that create progress.
+- **Peach:** availability and completed/ready state; never use it as a warning.
 - **Yolk:** attention without alarm, specifically the one-purchase recipe path and keyboard focus ring.
-- **Tomato:** destructive, failed, or irreversible action only.
-- **Dark theme:** `html[data-theme='dark']` maps page/ink/surface to `{colors.darkPage}`, `{colors.darkInk}`, and `{colors.darkSurface}`; basil remains the progress action, while sage, mist, yolk, and tomato retain their existing meanings with dark-mode values.
+- **Tomato/Coral:** destructive, failed, or irreversible action only.
+- **Dark theme:** `html[data-theme='dark']` maps page/ink/surface to `{colors.darkPage}`, `{colors.darkInk}`, and `{colors.darkSurface}`; apricot remains the progress action, while peach, cream, yolk, and tomato retain their existing meanings with dark-mode values.
 - **Recipe hero category:** use `{colors.recipeCategory}` on the light ink hero and `{colors.darkRecipeCategory}` on the inverted light hero surface to preserve readable contrast.
 - **Yolk contrast:** foreground on yolk stays `{colors.onYolk}` in both themes; warning copy and accent borders use the dedicated dark tokens rather than inheriting the inverted ink color.
-- **Mist and border:** quiet separation; do not stack shadows, glass, or gradients to fake depth.
+- **Cream and border:** quiet separation; do not stack shadows, glass, or gradients to fake depth.
 
-The light palette is unchanged. Dark amber steps `#725000` / `#8A5700` and red-700 `#E35C5C` are tuned for contrast on inverted surfaces; use borders `#2B3630` / `#3F4D45`, the `#F5C451` keyboard ring, `#F2CA7A` warning text, and `#8A6A1E` accent borders with restrained black shadows.
+The light palette uses warm tones. Dark amber steps `#8B5A1A` / `#A86F4A` and coral `#FFB3B3` are tuned for contrast on inverted surfaces; use borders `#4A3728` / `#5D3A2E`, the `#FFD6A5` keyboard ring, `#FFD6A5` warning text, and `#8A6A1E` accent borders with restrained black shadows.
+
+Legacy Tailwind color utilities are compatibility aliases, not separate palettes: gray maps to ink, porcelain, cream, and border tokens; orange/amber map to peach, apricot, and yolk; red/rose map to tomato tokens. Keep their light and dark values in sync with this specification.
 
 # Typography
 
@@ -314,12 +326,12 @@ Controls use 12px radii, regular panels use 20px radii, and major action or feat
 
 Do:
 - Put the action before optional controls.
-- State availability in plain language: “Hai tutto” or “Ti manca solo…”.
+- State availability in plain language: "Hai tutto" or "Ti manca solo…".
 - Use semantic status and route users directly to the next task.
 - Preserve keyboard focus, live-region feedback, safe-area clearance, and reduced-motion support.
 
 Don't:
-- Use violet/indigo to imply “AI”. Private AI is an account surface, not a new product brand.
+- Use violet/indigo to imply "AI". Private AI is an account surface, not a new product brand.
 - Use a hero-plus-three-cards marketing composition on Home.
 - Center every section or add decorative statistics.
 - Make the primary action depend on scrolling past explanatory copy.

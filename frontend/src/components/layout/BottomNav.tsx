@@ -16,7 +16,7 @@ export const BottomNav = memo(() => {
   if (!isBottomNav()) return null;
   
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[var(--sc-cream)] border-t border-[var(--sc-peach-soft)] px-2 py-2 sm:px-4" role="navigation" aria-label="Navigazione principale">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-[var(--ik-border)] bg-[var(--ik-surface)] px-2 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:px-4" role="navigation" aria-label="Navigazione principale">
       <div className="mx-auto flex justify-around max-w-xl">
         {navItems.map(({ path, label, icon: Icon }) => {
           const isCurrent = location.pathname === path || (path !== '/' && location.pathname.startsWith(path + '/'));
@@ -27,8 +27,8 @@ export const BottomNav = memo(() => {
               aria-current={isCurrent ? 'page' : undefined}
               className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-colors min-w-[60px] ${
                 isCurrent
-                  ? 'bg-[var(--sc-peach-soft)] text-[var(--sc-terracotta)]'
-                  : 'text-[var(--sc-ink-faint)] hover:bg-[var(--sc-peach-soft)] hover:text-[var(--sc-terracotta)]'
+                  ? 'bg-[var(--ik-sage)] text-[var(--ik-basil-dark)]'
+                  : 'text-[var(--ik-ink-muted)] hover:bg-[var(--ik-mist)] hover:text-[var(--ik-basil-dark)]'
               }`}
             >
               <Icon className="w-6 h-6 stroke-2" aria-hidden="true" />

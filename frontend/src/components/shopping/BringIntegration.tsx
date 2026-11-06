@@ -266,7 +266,7 @@ export default function BringIntegration({ userId, csrfToken }: { userId: string
   const disconnected = status === null || !status.connected || status.connectionId === null || reconnect;
 
   return (
-    <section className="ik-surface rounded-3xl border-2 bg-white p-4 sm:p-6" aria-labelledby="bring-title">
+    <section className="ik-surface ik-surface--feature rounded-3xl border-2 bg-white p-4 sm:p-6" aria-labelledby="bring-title">
       <h2 id="bring-title" className="text-3xl font-black">Lista Bring!</h2>
       <p className="mt-2 text-[var(--ik-ink-muted)]">La lista resta su Bring! e richiede Internet. La lista iKuck rimane separata.</p>
       {!online && <p role="status" className="mt-3">Sei offline: i dati Bring! mostrati potrebbero non essere aggiornati. Le modifiche sono disabilitate.</p>}

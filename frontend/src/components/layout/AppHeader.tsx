@@ -56,7 +56,7 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
         Salta al contenuto
       </a>
       <div className="app-sidebar-brand flex min-h-14 items-center justify-between gap-3 border-b border-gray-200 px-4 sm:px-6 lg:px-7">
-        <Link to="/" aria-label="iKuck" className="shrink-0 rounded-lg text-xl font-black tracking-tight text-emerald-900">iKuck</Link>
+        <Link to="/" aria-label="iKuck" className="shrink-0 rounded-lg text-xl font-black tracking-tight text-[var(--ik-apricot)]">iKuck</Link>
         <span className="app-mobile-scope text-xs font-bold text-gray-600">{mobileScopeLabel}</span>
         <div className="app-mobile-links items-center gap-1">
           <Link to="/profile" aria-label="Profilo" className="grid min-h-11 min-w-11 place-items-center rounded-xl text-gray-800 hover:bg-gray-100"><UserRound size={19} aria-hidden="true" /></Link>

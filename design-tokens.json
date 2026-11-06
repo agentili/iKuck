@@ -7,99 +7,99 @@
       "$value": {
         "colorSpace": "srgb",
         "components": [
-          0.094,
-          0.188,
-          0.157
+          0.659,
+          0.435,
+          0.290
         ],
-        "hex": "#183028"
+        "hex": "#A86F4A"
       }
     },
     "porcelain": {
       "$value": {
         "colorSpace": "srgb",
         "components": [
-          0.98,
-          0.984,
-          0.969
+          1.0,
+          0.973,
+          0.941
         ],
-        "hex": "#fafbf7"
+        "hex": "#FFF8F0"
       }
     },
-    "basil": {
+    "apricot": {
       "$value": {
         "colorSpace": "srgb",
         "components": [
-          0.141,
-          0.478,
-          0.29
+          0.910,
+          0.659,
+          0.486
         ],
-        "hex": "#247a4a"
+        "hex": "#E8A87C"
       }
     },
-    "basilDark": {
+    "apricotDark": {
       "$value": {
         "colorSpace": "srgb",
         "components": [
-          0.086,
-          0.361,
-          0.208
+          0.784,
+          0.545,
+          0.369
         ],
-        "hex": "#165c35"
+        "hex": "#C88B5E"
       }
     },
-    "sage": {
+    "peach": {
       "$value": {
         "colorSpace": "srgb",
         "components": [
-          0.882,
-          0.925,
-          0.894
+          1.0,
+          0.910,
+          0.839
         ],
-        "hex": "#e1ece4"
+        "hex": "#FFE8D6"
       }
     },
-    "mist": {
+    "cream": {
       "$value": {
         "colorSpace": "srgb",
         "components": [
-          0.945,
-          0.953,
-          0.929
+          1.0,
+          0.941,
+          0.878
         ],
-        "hex": "#f1f3ed"
+        "hex": "#FFF0E0"
       }
     },
     "tomato": {
       "$value": {
         "colorSpace": "srgb",
         "components": [
-          0.725,
-          0.22,
-          0.165
+          0.961,
+          0.663,
+          0.663
         ],
-        "hex": "#b9382a"
+        "hex": "#F5A9A9"
       }
     },
     "yolk": {
       "$value": {
         "colorSpace": "srgb",
         "components": [
-          0.949,
-          0.745,
-          0.243
+          1.0,
+          0.839,
+          0.647
         ],
-        "hex": "#f2be3e"
+        "hex": "#FFD6A5"
       }
     },
     "inkMuted": {
       "$value": {
         "colorSpace": "srgb",
         "components": [
-          0.322,
-          0.4,
-          0.357
+          0.545,
+          0.451,
+          0.333
         ],
-        "hex": "#52665b"
+        "hex": "#8B7355"
       }
     }
   },

@@ -24,18 +24,6 @@ export const QuickReplies = memo(({ onQuickReply }: QuickRepliesProps) => {
           key={reply.id}
           onClick={() => handleClick(reply.action)}
           className="chat-quick-reply"
-          style={{
-            backgroundColor: 'var(--sc-peach-soft)',
-            color: 'var(--sc-terracotta)',
-            border: '1px solid var(--sc-apricot-soft)',
-            borderRadius: 'var(--sc-radius-pill)',
-            padding: '10px 16px',
-            fontSize: '13px',
-            fontWeight: 500,
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            fontFamily: 'DM Sans, system-ui, sans-serif',
-          }}
           aria-label={reply.label}
         >
           {reply.label}

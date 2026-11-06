@@ -274,10 +274,10 @@ export default function DiscoverPage() {
             onClick={() => applyFilter(filter.id)}
             onKeyDown={(e) => handleKeyDown(e, filter.id)}
             aria-pressed={activeFilter === filter.id}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-colors focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-[var(--sc-terracotta)] ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)] ${
               activeFilter === filter.id
-                ? 'bg-[var(--sc-terracotta)] text-[var(--sc-cream)]'
-                : 'bg-[var(--sc-peach-soft)] text-[var(--sc-terracotta)] hover:bg-[var(--sc-apricot-soft)]'
+                ? 'bg-[var(--ik-basil)] text-[var(--ik-porcelain)]'
+                : 'bg-[var(--ik-sage)] text-[var(--ik-ink)] hover:bg-[var(--ik-mist)]'
             }`}
           >
             {filter.icon && <span aria-hidden="true">{filter.icon}</span>}
@@ -289,11 +289,11 @@ export default function DiscoverPage() {
       {/* Empty filter state */}
       {isEmptyFilter && (
         <div className="text-center py-12 px-4" role="status">
-          <p className="text-[var(--sc-ink-soft)] mb-2">Nessuna ricetta corrisponde al filtro selezionato.</p>
+          <p className="text-[var(--ik-ink-muted)] mb-2">Nessuna ricetta corrisponde al filtro selezionato.</p>
           <button
             type="button"
             onClick={() => applyFilter('all')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium bg-[var(--sc-terracotta)] text-[var(--sc-cream)] hover:bg-[var(--sc-terracotta-strong)]"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium bg-[var(--ik-basil)] text-[var(--ik-porcelain)] hover:bg-[var(--ik-basil-dark)]"
           >
             Mostra tutte
           </button>

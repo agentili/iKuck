@@ -295,7 +295,7 @@ export default function ShoppingListPanel({
 
   return (
     <>
-    <section aria-labelledby="shopping-list-title" className="ik-surface rounded-[var(--ik-radius-feature)] border-2 border-[var(--ik-border)] bg-[var(--ik-surface)] p-4 shadow-sm sm:p-6">
+    <section aria-labelledby="shopping-list-title" className="ik-surface ik-surface--feature rounded-[var(--ik-radius-feature)] border-2 border-[var(--ik-border)] bg-[var(--ik-surface)] p-4 shadow-sm sm:p-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-[var(--ik-basil-dark)]">

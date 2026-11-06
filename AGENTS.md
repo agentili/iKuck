@@ -59,22 +59,21 @@ Run Docker integration and standalone environments with dedicated Compose projec
 
 ## Dev environment
 
-- Frontend: `cd frontend && npm run dev` — Vite on `http://localhost:5173`, proxies `/v1/*` to `http://127.0.0.1:3000`; `npm run build` emits `dist/` and `/version.json` (`VITE_BUILD_ID` defaults to the short Git SHA).
+- Frontend: `cd frontend && npm run dev` — Vite on `http://localhost:5173`, proxies `/v1/*` to `http://127.0.0.1:3000`; `npm run build` emits `dist/` and `/version.json` (`VITE_BUILD_ID` defaults to the short Git SHA). CI uses Node 24 for both packages.
 - Backend: `cd backend && npm run dev` — requires Node ≥24, loads `backend/.env` if present, serves `http://127.0.0.1:3000`; `GET /healthz` is the readiness endpoint. `npm run build` emits to `dist/`; apply migrations with `npm run db:migrate` after building.
 - Full local stack: `docker compose -f compose.dev.yml up --build` (API on :3000, PostgreSQL, Redis).
 
 ## Exact commands (verified from package.json)
 
 ```powershell
-npm --prefix frontend run dev
-npm --prefix frontend run build
 npm --prefix frontend run lint
 npm --prefix frontend run test
-npm --prefix backend run dev
-npm --prefix backend run build
+npm --prefix frontend run test:e2e:pwa
+npm --prefix frontend run test:e2e:production
 npm --prefix backend run lint
 npm --prefix backend run test
 npm --prefix backend run test:integration
+npm --prefix backend run build
 npm run verify
 ```
 
@@ -93,8 +92,8 @@ Before releasing a change to production, follow the release procedure in `docs/p
 
 ## Pitfalls
 
-- `npm run verify` is PowerShell (`scripts/verify-repository.ps1`); it needs `pwsh` on Linux and aborts with exit code 2 when `node_modules` is missing in either package.
-- Offline E2E (`npm --prefix frontend run test:e2e`) builds the app and serves it via preview on `:4173`; override with `IKUCK_PLAYWRIGHT_PREVIEW_PORT` on port clash.
+- `npm run verify` invokes the literal `powershell` command from root `package.json`; on Linux, `pwsh` alone does not satisfy that command name. The verifier exits with code 2 if `node_modules` is missing in either package.
+- Offline E2E (`npm --prefix frontend run test:e2e`) builds the app and serves preview on `:4173`; it runs the mobile and desktop offline projects, while PWA-update and accessibility have separate scripts. Override with `IKUCK_PLAYWRIGHT_PREVIEW_PORT` on port clash.
 - `npm --prefix frontend run test:e2e:live` requires `E2E_BASE_URL`; `E2E_PRODUCTION=true` additionally requires HTTPS `E2E_BASE_URL` and cannot be combined with `E2E_LIVE`.
 - Backend integration tests run against live PostgreSQL/Redis (`deploy/docker-compose.integration.yml` defaults to ports 55432/56379) and are skipped without both integration env vars.
 - Do not hand-edit generated files: `frontend/dist/`, `backend/dist/`, `/version.json`.

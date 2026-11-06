@@ -37,7 +37,10 @@ export const ChatView = ({
 
   // Scroll to bottom when messages change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const prefersReducedMotion = (typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+      || document.documentElement.dataset.motion === 'reduced';
+    messagesEndRef.current?.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth' });
   }, [messageCount]);
 
   // Initialize pantry and consent on mount
@@ -183,14 +186,14 @@ export const ChatView = ({
 
   const syncStatusStyle = (connection: ConnectionState) => {
     switch (connection) {
-      case 'online': return 'var(--sc-sage)';
-      case 'offline': return 'var(--sc-terracotta)';
-      default: return 'var(--sc-ink-faint)';
+      case 'online': return 'var(--ik-basil)';
+      case 'offline': return 'var(--ik-tomato)';
+      default: return 'var(--ik-ink-muted)';
     }
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-[var(--sc-cream)]">
+    <div className="flex flex-col min-h-screen bg-[var(--ik-porcelain)]">
       {/* Day Indicator + Sync Status */}
       <div className="flex items-center justify-between px-4 py-2">
         <DayIndicator onDayChange={handleDayChange} />
@@ -202,14 +205,14 @@ export const ChatView = ({
 
       {/* Consent Notice */}
       {showConsentNotice && (
-        <div className="mx-4 mt-2 mb-4 p-4 rounded-2xl border border-[var(--sc-peach-soft)] bg-[var(--sc-cream)]" role="alert">
+        <div className="mx-4 mt-2 mb-4 rounded-2xl border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4" role="alert">
           <div className="flex items-start gap-3">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[var(--sc-terracotta)] text-[var(--sc-cream)]">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[var(--ik-basil)] text-[var(--ik-porcelain)]">
               🤖
             </span>
             <div className="min-w-0 flex-1">
-              <h3 className="text-lg font-bold text-[var(--sc-ink)]">Consenso AI per ricette</h3>
-              <p className="mt-1 text-sm leading-relaxed text-[var(--sc-ink-soft)]">
+              <h3 className="text-lg font-bold text-[var(--ik-ink)]">Consenso AI per ricette</h3>
+              <p className="mt-1 text-sm leading-relaxed text-[var(--ik-ink-muted)]">
                 Per generare ricette personalizzate, serve il tuo consenso per inviare ingredienti e profilo alimentare a <strong>{selectedProvider === 'openai' ? 'OpenAI' : selectedProvider === 'gemini' ? 'Gemini di Google' : 'il provider AI'}</strong>.
               </p>
               <button
@@ -217,7 +220,7 @@ export const ChatView = ({
                   useChatStore.getState().setConsentStatus('granted');
                   useChatStore.getState().setSelectedProvider('openai');
                 }}
-                className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--sc-terracotta)] px-4 py-2 font-bold text-[var(--sc-cream)] hover:bg-[var(--sc-terracotta-strong)]"
+                className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--ik-basil)] px-4 py-2 font-bold text-[var(--ik-porcelain)] hover:bg-[var(--ik-basil-dark)]"
               >
                 Autorizza e genera
               </button>

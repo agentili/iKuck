@@ -103,7 +103,7 @@ export default function ShoppingListPage() {
         ) : canUseBring ? (
           <BringIntegration key={`${user!.id}:${csrfToken!}`} userId={user!.id} csrfToken={csrfToken!} />
         ) : (
-          <section className="ik-surface rounded-3xl p-4">
+          <section className="ik-surface ik-surface--feature rounded-3xl p-4">
             <h2 className="text-2xl font-black">Lista Bring!</h2>
             <p>Per collegare Bring! accedi a un account iKuck verificato. La lista iKuck resta utilizzabile senza account e offline.</p>
             <Link to="/profile" className="ik-back-link inline-flex min-h-11 items-center">Accedi o verifica il tuo account</Link>

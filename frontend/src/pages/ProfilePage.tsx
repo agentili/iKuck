@@ -26,7 +26,7 @@ function ThemePreferenceControl() {
   };
 
   return (
-    <section aria-labelledby="color-theme-title" className="ik-surface ik-profile-surface mt-5 rounded-3xl border-2 p-5">
+    <section aria-labelledby="color-theme-title" className="ik-surface ik-profile-surface mt-5 rounded-2xl border-2 p-5">
       <h2 id="color-theme-title" className="text-xl font-black text-gray-950">Tema</h2>
       <fieldset role="radiogroup" aria-labelledby="color-theme-title" className="mt-3 flex flex-wrap gap-3 border-0 p-0">
         {options.map(({ value, label }) => (
@@ -47,7 +47,7 @@ function MotionPreferenceControl() {
   const [reduced, setReduced] = useState(isReducedMotionPreference);
   const [storageUnavailable, setStorageUnavailable] = useState(hasUnpersistedMotionPreference);
   return (
-    <section aria-labelledby="motion-preference-title" className="ik-surface ik-profile-surface mt-5 rounded-3xl border-2 p-5">
+    <section aria-labelledby="motion-preference-title" className="ik-surface ik-profile-surface mt-5 rounded-2xl border-2 p-5">
       <h2 id="motion-preference-title" className="text-xl font-black text-gray-950">Movimento</h2>
       <label className="mt-3 flex min-h-11 items-start gap-3 font-semibold text-gray-800">
         <input type="checkbox" checked={reduced} onChange={(event) => { setReduced(event.target.checked); setStorageUnavailable(!saveReducedMotionPreference(event.target.checked)); }} className="mt-1 h-5 w-5 accent-emerald-700" />
