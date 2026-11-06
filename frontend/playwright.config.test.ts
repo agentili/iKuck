@@ -25,7 +25,7 @@ describe('Playwright execution profiles', () => {
 
     expect(config.use?.baseURL).toBe('http://127.0.0.1:4173');
     expect(config.webServer).toMatchObject({
-      command: 'npm run build && npm run preview -- --host 127.0.0.1 --port 4173 --strictPort',
+      command: 'VITE_SOUS_CHEF=true npm run build && npm run preview -- --host 127.0.0.1 --port 4173 --strictPort',
       url: 'http://127.0.0.1:4173',
       reuseExistingServer: false,
     });
@@ -36,7 +36,7 @@ describe('Playwright execution profiles', () => {
 
     expect(config.use?.baseURL).toBe('http://127.0.0.1:4179');
     expect(config.webServer).toMatchObject({
-      command: 'npm run build && npm run preview -- --host 127.0.0.1 --port 4179 --strictPort',
+      command: 'VITE_SOUS_CHEF=true npm run build && npm run preview -- --host 127.0.0.1 --port 4179 --strictPort',
       url: 'http://127.0.0.1:4179',
       reuseExistingServer: false,
     });
