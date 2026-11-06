@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_STAPLE_IDS, parseIngredientInput } from '@ikuck/shared/ingredients';
 import { DEFAULT_DIET_PROFILE } from '../domain/dietary';
 import PantryPage from './PantryPage';
+import * as features from '../config/features';
 import { usePantryStore } from '../store/localPantryStore';
 import { useDietProfileStore } from '../store/dietProfileStore';
 import { reportPersistenceMemoryOnly, usePersistenceStatusStore } from '../store/persistenceStatusStore';
@@ -44,6 +45,13 @@ const openDisclosure = async (user: ReturnType<typeof userEvent.setup>, name: st
   const disclosure = summary.closest('details');
   if (disclosure === null) throw new Error(`${name} must be a disclosure`);
   if (!disclosure.hasAttribute('open')) await user.click(summary);
+};
+
+const openPantryInventory = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
+  if (!features.isSousChef()) return;
+  const inventory = screen.getByText('Inventario', { exact: true }).closest('details');
+  expect(inventory).not.toHaveAttribute('open');
+  await openDisclosure(user, 'Inventario');
 };
 
 const seedPantryConflict = async (): Promise<void> => {
@@ -93,6 +101,114 @@ describe('PantryPage', () => {
     });
   });
 
+  it('keeps ingredient entry visible and opens a separate inventory in Sous-Chef', async () => {
+    vi.spyOn(features, 'isSousChef').mockReturnValue(true);
+    seedPantry('pasta');
+    const user = userEvent.setup();
+    renderPantry();
+    expect(screen.getByLabelText('Ingredienti presenti')).toBeVisible();
+    const disclosure = screen.getByText('Inventario', { exact: true }).closest('details');
+    expect(disclosure).not.toHaveAttribute('open');
+    await user.click(screen.getByText('Inventario', { exact: true }));
+    expect(within(screen.getByRole('list', { name: 'La tua dispensa' })).getByText('Pasta')).toBeVisible();
+    vi.restoreAllMocks();
+  });
+
+  it('keeps Sous-Chef entry outside the closed inventory and updates its count after keyboard removal', async () => {
+    vi.spyOn(features, 'isSousChef').mockReturnValue(true);
+    try {
+      const user = userEvent.setup();
+      renderPantry();
+      const entry = screen.getByRole('region', { name: 'Aggiungi ingredienti' });
+      const inventory = screen.getByText('Inventario', { exact: true }).closest('details');
+
+      expect(entry).toContainElement(screen.getByRole('combobox', { name: 'Ingredienti presenti' }));
+      expect(entry).not.toContainElement(inventory);
+      expect(inventory).not.toHaveAttribute('open');
+      expect(inventory?.querySelector('summary')).toHaveTextContent('Dispensa vuota');
+      expect(within(entry).getByText('La tua dispensa è ancora vuota. Inserisci un ingrediente per iniziare.')).toBeVisible();
+
+      await user.type(screen.getByRole('combobox', { name: 'Ingredienti presenti' }), 'pasta, tonno');
+      await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
+      expect(inventory?.querySelector('summary')).toHaveTextContent('2 ingredienti');
+      expect(inventory).not.toHaveAttribute('open');
+
+      const summary = inventory?.querySelector('summary');
+      if (!summary) throw new Error('Inventory summary not found');
+      await user.click(summary);
+      expect(inventory).toHaveAttribute('open');
+      const list = screen.getByRole('list', { name: 'La tua dispensa' });
+      expect(within(list).getByText('Pasta')).toBeVisible();
+      await user.click(within(list).getByRole('button', { name: 'Rimuovi Tonno' }));
+      expect(within(list).queryByText('Tonno')).not.toBeInTheDocument();
+      expect(inventory?.querySelector('summary')).toHaveTextContent('1 ingrediente');
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('keeps persistence retry visible while Sous-Chef inventory is closed', async () => {
+    vi.spyOn(features, 'isSousChef').mockReturnValue(true);
+    try {
+      const retry = vi.fn(async () => undefined);
+      reportPersistenceMemoryOnly('pantry', new Error('IndexedDB unavailable'), retry);
+      renderPantry();
+      const inventory = screen.getByText('Inventario', { exact: true }).closest('details');
+      const alert = screen.getByRole('alert');
+      expect(inventory).not.toHaveAttribute('open');
+      expect(alert).toBeVisible();
+      expect(inventory).not.toContainElement(alert);
+      expect(alert).toHaveTextContent('disponibili solo in memoria');
+      await userEvent.setup().click(within(alert).getByRole('button', { name: 'Riprova' }));
+      expect(retry).toHaveBeenCalledOnce();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('keeps explicit conflict-copy selection visible outside the closed Sous-Chef inventory', async () => {
+    vi.spyOn(features, 'isSousChef').mockReturnValue(true);
+    try {
+      const copies = [
+        { id: 'indexed-db', label: 'Copia IndexedDB', revision: 42, snapshot: { pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: [] } },
+        { id: 'local-storage', label: 'Copia locale', revision: null, snapshot: { pantryItems: [{ id: 'rice', label: 'Riso', known: true }], stapleIds: [] } },
+      ];
+      const conflict = new pantryStorageModule.PantrySnapshotConflictError(
+        'guest', 'concurrent-write', copies[0]!.snapshot, copies[1]!.snapshot, 42, null, copies,
+      );
+      reportPersistenceMemoryOnly('pantry', conflict, vi.fn(async () => undefined));
+      renderPantry();
+      const inventory = screen.getByText('Inventario', { exact: true }).closest('details');
+      const alert = screen.getByRole('alert');
+      expect(inventory).not.toHaveAttribute('open');
+      expect(alert).toBeVisible();
+      expect(inventory).not.toContainElement(alert);
+      const choose = within(alert).getByRole('radiogroup', { name: 'Seleziona la copia da ripristinare' });
+      const recover = within(alert).getByRole('button', { name: 'Usa questa copia' });
+      expect(recover).toBeDisabled();
+      await userEvent.setup().click(within(choose).getByRole('radio', { name: /Copia locale.*Riso/s }));
+      expect(recover).toBeEnabled();
+      expect(within(alert).queryByRole('button', { name: 'Riprova' })).not.toBeInTheDocument();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('leaves the flag-OFF inventory and entry structure unchanged', () => {
+    vi.spyOn(features, 'isSousChef').mockReturnValue(false);
+    try {
+      seedPantry('pasta');
+      renderPantry();
+      const section = screen.getByRole('region', { name: 'Cosa hai in casa?' });
+      expect(section).toContainElement(screen.getByRole('list', { name: 'La tua dispensa' }));
+      expect(section).toContainElement(screen.getByRole('combobox', { name: 'Ingredienti presenti' }));
+      expect(screen.queryByText('Inventario', { exact: true })).not.toBeInTheDocument();
+      expect(within(section).getByRole('link', { name: 'Vai alle ricette' })).toHaveAttribute('href', '/');
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
   it('shows a dedicated loading state while pantry hydration is pending', () => {
     usePantryStore.setState({ hasHydrated: false });
     renderPantry();
@@ -108,10 +224,11 @@ describe('PantryPage', () => {
     await user.type(screen.getByLabelText('Ingredienti presenti'), 'pasta, tonno');
     await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
 
+    await openPantryInventory(user);
     const pantry = screen.getByRole('list', { name: 'La tua dispensa' });
     expect(within(pantry).getByText('Pasta')).toBeVisible();
     expect(within(pantry).getByText('Tonno')).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Vai alle ricette' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'Vai alle ricette' })).toHaveAttribute('href', features.isSousChef() ? '/cucina' : '/');
   });
 
   it('does not expose a keyboard-activatable recipe link while the pantry is empty', () => {
@@ -130,6 +247,7 @@ describe('PantryPage', () => {
     const suggestions = screen.getByRole('listbox', { name: 'Ingredienti suggeriti' });
     expect(within(suggestions).getByRole('option', { name: 'Pomodoro' })).toBeVisible();
     await user.click(within(suggestions).getByRole('option', { name: 'Pomodoro' }));
+    await openPantryInventory(user);
     expect(within(screen.getByRole('list', { name: 'La tua dispensa' })).getByText('Pomodoro')).toBeVisible();
   });
 
@@ -158,6 +276,7 @@ describe('PantryPage', () => {
     const suggestions = screen.getByRole('region', { name: 'Potresti aggiungere' });
     await user.click(within(suggestions).getByRole('button', { name: 'Aggiungi Cipolla' }));
 
+    await openPantryInventory(user);
     expect(within(screen.getByRole('list', { name: 'La tua dispensa' })).getByText('Cipolla')).toBeVisible();
     expect(within(suggestions).queryByRole('button', { name: 'Aggiungi Cipolla' })).not.toBeInTheDocument();
   });
@@ -169,6 +288,7 @@ describe('PantryPage', () => {
     await user.type(screen.getByLabelText('Ingredienti presenti'), 'Tempeh');
     await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
 
+    await openPantryInventory(user);
     expect(screen.getByText('Tempeh')).toBeVisible();
     expect(screen.queryByText('Ingrediente personalizzato')).not.toBeInTheDocument();
   });
@@ -260,6 +380,7 @@ describe('PantryPage', () => {
       });
     });
 
+    await openPantryInventory(user);
     expect(screen.getByText('Account-only ingredient')).toBeVisible();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByRole('radiogroup', { name: 'Seleziona la copia da ripristinare' })).not.toBeInTheDocument();
@@ -418,6 +539,7 @@ describe('PantryPage', () => {
     await user.click(screen.getByRole('button', { name: 'Usa questa copia' }));
 
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    await openPantryInventory(user);
     expect(within(screen.getByRole('list', { name: 'La tua dispensa' })).getByText('Riso')).toBeVisible();
     const archiveSummary = await screen.findByText('Copie archiviate della dispensa', { exact: true });
     expect(archiveSummary).toBeVisible();
@@ -445,6 +567,7 @@ describe('PantryPage', () => {
     await user.click(recover);
 
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    await openPantryInventory(user);
     expect(within(screen.getByRole('list', { name: 'La tua dispensa' })).getByText('Riso')).toBeVisible();
     const archive = await readKeyValue<{ entries: Array<{ selectedCopyId: string }> }>(
       'ikuck:guest:ikuck-pantry-conflict-archive-v1',
@@ -500,6 +623,7 @@ describe('PantryPage', () => {
     await user.click(archivedRice);
     await user.click(restore);
 
+    await openPantryInventory(user);
     await waitFor(() => expect(within(screen.getByRole('list', { name: 'La tua dispensa' })).getByText('Riso')).toBeVisible());
     const updatedArchive = await readKeyValue<{ entries: Array<{
       id: string;
@@ -552,10 +676,12 @@ describe('PantryPage', () => {
     expect(retry).toHaveBeenCalledOnce();
   });
 
-  it('raggruppa gli ingredienti della dispensa per sottogruppi di categoria con etichette italiane', () => {
+  it('raggruppa gli ingredienti della dispensa per sottogruppi di categoria con etichette italiane', async () => {
     seedPantry('pasta, tonno, ceci, pomodoro, salmone, parmigiano, Aceto balsamico, riso');
+    const user = userEvent.setup();
     renderPantry();
 
+    await openPantryInventory(user);
     const pantry = screen.getByRole('list', { name: 'La tua dispensa' });
     const group = (label: string): HTMLElement =>
       within(pantry).getByRole('heading', { name: label }).closest('li')!;
@@ -571,10 +697,12 @@ describe('PantryPage', () => {
     expect(within(pantry).queryByRole('heading', { name: 'Altri ingredienti' })).toBeNull();
   });
 
-  it('mette gli ingredienti sconosciuti nel sottogruppo Altri ingredienti', () => {
+  it('mette gli ingredienti sconosciuti nel sottogruppo Altri ingredienti', async () => {
     seedPantry('pasta, Ingrediente mai visto prima');
+    const user = userEvent.setup();
     renderPantry();
 
+    await openPantryInventory(user);
     const pantry = screen.getByRole('list', { name: 'La tua dispensa' });
     expect(within(pantry).getByRole('heading', { name: 'Pasta e cereali' })).toBeVisible();
     expect(within(pantry).getByText('Pasta')).toBeVisible();
@@ -589,6 +717,7 @@ describe('PantryPage', () => {
     await user.type(screen.getByLabelText('Ingredienti presenti'), 'pasta, tonno');
     await user.click(screen.getByRole('button', { name: 'Aggiungi ingredienti' }));
 
+    await openPantryInventory(user);
     const pantry = screen.getByRole('list', { name: 'La tua dispensa' });
     await user.click(within(pantry).getByRole('button', { name: 'Rimuovi Tonno' }));
 

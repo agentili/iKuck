@@ -27,20 +27,31 @@ describe('HousePage', () => {
   it('offers house creation when the account has no house', () => {
     render(<MemoryRouter><HousePage /></MemoryRouter>);
 
-    expect(screen.getByRole('heading', { name: 'La mia casa' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'La mia casa', level: 1 })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Crea casa' })).toBeInTheDocument();
   });
 
-  it('describes every functional record as shared and keeps identity and AI consent personal', () => {
+  it('explains that guest data stays on this device until explicitly imported', () => {
+    useAuthStore.setState({ user: null, csrfToken: null, expiresAt: null });
     render(<MemoryRouter><HousePage /></MemoryRouter>);
 
-    expect(screen.getByText(/dispensa, la lista della spesa, le attività, le ricette generate, il diario delle cene e le preferenze ricetta/)).toBeInTheDocument();
-    expect(screen.getByText(/unico profilo alimentare e allergeni/)).toBeInTheDocument();
-    expect(screen.getByText(/identità dell’account e il consenso AI restano personali/)).toBeInTheDocument();
-    expect(screen.getByText(/dati funzionali preesistenti vengono importati automaticamente/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'La mia casa', level: 1 })).toBeInTheDocument();
+    expect(screen.getByText(/i dati ospite restano su questo dispositivo/i)).toBeInTheDocument();
+    expect(screen.getByText(/non vengono importati automaticamente/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Accedi o crea un account' })).toHaveAttribute('href', '/profile');
   });
 
-  it('explains full house sharing and automatic import to existing members', () => {
+  it('describes account data and device-only guest data separately before house creation', () => {
+    render(<MemoryRouter><HousePage /></MemoryRouter>);
+
+    expect(screen.getByText(/la Casa condividerà dispensa, spesa, attività, ricette salvate, preferenze alimentari e di ricetta, Piano e Diario/i)).toBeInTheDocument();
+    expect(screen.getByText(/i dati funzionali già salvati nel tuo account verranno trasferiti alla Casa/i)).toBeInTheDocument();
+    expect(screen.getByText(/i dati ospite presenti solo su questo dispositivo non vengono importati automaticamente/i)).toBeInTheDocument();
+    expect(screen.getByText(/identità, il consenso AI e le anteprime non salvate restano personali/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Crea casa' })).toHaveClass('ik-button-primary', 'text-[var(--ik-porcelain)]');
+  });
+
+  it('explains house-shared data and keeps AI consent personal for members', () => {
     useHouseStore.setState({
       state: {
         house: { id: 'house-1', name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' },
@@ -50,9 +61,10 @@ describe('HousePage', () => {
     });
     render(<MemoryRouter><HousePage /></MemoryRouter>);
 
-    expect(screen.getByText(/tutti i membri possono creare, modificare ed eliminare/)).toBeInTheDocument();
-    expect(screen.getByText(/importati automaticamente/)).toBeInTheDocument();
-    expect(screen.getByText(/consenso AI resta personale/)).toBeInTheDocument();
+    expect(screen.getByText(/Dispensa, spesa, attività, ricette salvate, preferenze alimentari e di ricetta, Piano e Diario appartengono alla Casa/i)).toBeInTheDocument();
+    expect(screen.getByText(/tutti i membri, che possono creare, modificare ed eliminare questi contenuti/i)).toBeInTheDocument();
+    expect(screen.getByText(/l’identità e il consenso AI restano personali; le anteprime non salvate non vengono condivise/i)).toBeInTheDocument();
+    expect(screen.getByText('Il tuo ruolo: Membro')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Riprova importazione dati funzionali' })).toBeInTheDocument();
   });
 
@@ -74,6 +86,8 @@ describe('HousePage', () => {
     render(<MemoryRouter><HousePage /></MemoryRouter>);
 
     expect(screen.getByRole('heading', { name: 'Casa' })).toBeInTheDocument();
+    expect(screen.getByText('Il tuo ruolo: Amministratore')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Aggiungi persona' })).toHaveClass('ik-button-primary', 'text-[var(--ik-porcelain)]');
     const email = screen.getByLabelText('Email della persona');
     fireEvent.change(email, { target: { value: ' MEMBER@EXAMPLE.COM ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Aggiungi persona' }));

@@ -32,7 +32,7 @@ describe('PantryLotsPanel', () => {
     const user = userEvent.setup();
     render(<PantryLotsPanel ingredients={ingredients} lots={lots} onAddLot={vi.fn()} onRemoveLot={vi.fn()} onUpdateLot={vi.fn()} />);
 
-    const summary = screen.getByText('Dettagli lotti');
+    const summary = screen.getByText('Dettagli lotti').closest('summary')!;
     const details = summary.closest('details');
 
     expect(details).not.toBeNull();
@@ -43,6 +43,20 @@ describe('PantryLotsPanel', () => {
     await user.click(summary);
 
     expect(details).toHaveAttribute('open');
+  });
+
+  it('keeps the lot disclosure on semantic theme tokens when the pantry has no lots', async () => {
+    const user = userEvent.setup();
+    render(<PantryLotsPanel ingredients={ingredients} lots={[]} onAddLot={vi.fn()} onRemoveLot={vi.fn()} onUpdateLot={vi.fn()} />);
+
+    const summary = screen.getByText('Dettagli lotti').closest('summary')!;
+    const details = summary.closest('details');
+    expect(details).toHaveClass('ik-disclosure');
+    expect(summary).toHaveTextContent('Nessun lotto');
+    await user.click(summary);
+
+    expect(screen.getByText(/Quantità non indicata/)).toBeVisible();
+    expect(screen.getByText('Scadenza non indicata')).toBeVisible();
   });
 
   it('shows aggregated quantities, lot count and expiry status when expanded', async () => {

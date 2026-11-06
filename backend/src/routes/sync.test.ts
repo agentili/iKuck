@@ -27,6 +27,155 @@ const sessionServiceFor = (userId: string) => ({
 }) as unknown as AuthService;
 
 describe('sync routes', () => {
+  it('hides meal plans from legacy readers and returns them only to version-2 readers', async () => {
+    const repository = createMemorySyncRepository();
+    const app = createApp({
+      database: { ping: async () => undefined }, cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository, authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+    });
+    const headers = { cookie: 'ikuck_session=session-token', origin: 'http://127.0.0.1:5173', 'x-csrf-token': 'csrf-token' };
+    const selection = {
+      version: 2, scope: 'account:user-1', date: '2026-09-24', operationId: 'plan-1', deviceId: 'device-1',
+      action: 'manual_set', recipeId: 'recipe-1', clientUpdatedAt: '2026-09-24T12:00:00.000Z',
+    };
+    const command = await app.inject({ method: 'POST', url: '/v1/meal-plan/commands', headers, payload: selection });
+    expect(command.statusCode).toBe(200);
+    const base = { deviceId: 'device-1', cursor: 0, syncScope: 'account:user-1', mutations: [] };
+    const legacy = await app.inject({ method: 'POST', url: '/v1/sync', headers, payload: { ...base, supportedEntityTypes: ['meal_plan_entry'] } });
+    expect(legacy.statusCode).toBe(200);
+    expect(legacy.json().changes).toEqual([]);
+    const capable = await app.inject({ method: 'POST', url: '/v1/sync', headers,
+      payload: { ...base, supportedEntityTypes: ['meal_plan_entry'], mealPlanReadVersion: 2 },
+    });
+    expect(capable.statusCode).toBe(200);
+    expect(capable.json().changes).toMatchObject([{
+      entityType: 'meal_plan_entry', entityId: selection.date,
+      payload: { date: selection.date, kind: 'manual', recipeId: 'recipe-1', serverSequence: expect.any(Number) },
+    }]);
+    await app.close();
+  });
+  it('returns only requested supported entity types', async () => {
+    const repository = createMemorySyncRepository();
+    await repository.applyMutation('user-1', {
+      mutationId: 'cap-hidden', deviceId: 'device-1', entityType: 'staple_preference', entityId: 'salt',
+      operation: 'upsert', payload: { enabled: true }, clientUpdatedAt: '2026-09-24T12:00:00.000Z', syncScope: 'account:user-1',
+    });
+    await repository.applyMutation('user-1', {
+      mutationId: 'cap-visible', deviceId: 'device-1', entityType: 'pantry_item', entityId: 'tomato',
+      operation: 'upsert', payload: { id: 'tomato', label: 'Tomato', known: true }, clientUpdatedAt: '2026-09-24T12:00:00.000Z', syncScope: 'account:user-1',
+    });
+    const app = createApp({
+      database: { ping: async () => undefined }, cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository, authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+    });
+    const response = await app.inject({ method: 'POST', url: '/v1/sync',
+      headers: { cookie: 'ikuck_session=session-token', origin: 'http://127.0.0.1:5173', 'x-csrf-token': 'csrf-token' },
+      payload: { deviceId: 'device-1', cursor: 0, syncScope: 'account:user-1', mutations: [], supportedEntityTypes: ['pantry_item'] },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().changes).toEqual([expect.objectContaining({ entityType: 'pantry_item', entityId: 'tomato' })]);
+    await app.close();
+  });
+  it('keeps legacy House sync scoped when supportedEntityTypes is omitted', async () => {
+    const repository = createMemorySyncRepository({
+      scopeResolver: async (userId) => userId === 'user-1' ? { kind: 'house', id: 'house-1' } : null,
+    });
+    const timestamp = '2026-09-24T12:00:00.000Z';
+    await repository.applyMutation('user-1', {
+      mutationId: 'legacy-house-pantry', deviceId: 'device-1', entityType: 'pantry_item', entityId: 'pasta',
+      operation: 'upsert', payload: { id: 'pasta', label: 'Pasta', known: true }, clientUpdatedAt: timestamp,
+      syncScope: 'house:house-1',
+    });
+    await repository.applyMutation('user-1', {
+      mutationId: 'private-consent', deviceId: 'device-1', entityType: 'ai_consent', entityId: 'profile',
+      operation: 'upsert', payload: { enabled: false, updatedAt: timestamp }, clientUpdatedAt: timestamp,
+      syncScope: 'account:user-1',
+    });
+    const app = createApp({
+      database: { ping: async () => undefined }, cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository, authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+    });
+    try {
+      const response = await app.inject({
+        method: 'POST', url: '/v1/sync',
+        headers: { cookie: 'ikuck_session=session-token', origin: 'http://127.0.0.1:5173', 'x-csrf-token': 'csrf-token' },
+        payload: { deviceId: 'device-1', cursor: 0, syncScope: 'house:house-1', mutations: [] },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().changes).toEqual([
+        expect.objectContaining({ entityType: 'pantry_item', entityId: 'pasta', syncScope: 'house:house-1' }),
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps legacy account sync scoped when supportedEntityTypes is omitted', async () => {
+    const repository = createMemorySyncRepository({
+      scopeResolver: async (userId) => userId === 'user-1' ? { kind: 'house', id: 'house-1' } : null,
+    });
+    const timestamp = '2026-09-24T12:00:00.000Z';
+    await repository.applyMutation('user-1', {
+      mutationId: 'legacy-house-pantry-account-read', deviceId: 'device-1', entityType: 'pantry_item', entityId: 'pasta',
+      operation: 'upsert', payload: { id: 'pasta', label: 'Pasta', known: true }, clientUpdatedAt: timestamp,
+      syncScope: 'house:house-1',
+    });
+    await repository.applyMutation('user-1', {
+      mutationId: 'private-consent-account-read', deviceId: 'device-1', entityType: 'ai_consent', entityId: 'profile',
+      operation: 'upsert', payload: { enabled: false, updatedAt: timestamp }, clientUpdatedAt: timestamp,
+      syncScope: 'account:user-1',
+    });
+    const app = createApp({
+      database: { ping: async () => undefined }, cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository, authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+    });
+    try {
+      const response = await app.inject({
+        method: 'POST', url: '/v1/sync',
+        headers: { cookie: 'ikuck_session=session-token', origin: 'http://127.0.0.1:5173', 'x-csrf-token': 'csrf-token' },
+        payload: { deviceId: 'device-1', cursor: 0, syncScope: 'account:user-1', mutations: [] },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().changes).toEqual([
+        expect.objectContaining({ entityType: 'ai_consent', entityId: 'profile', syncScope: 'account:user-1' }),
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it.each([
+    { scope: 'house:house-1', supportedEntityTypes: ['ai_consent'] },
+    { scope: 'account:user-1', supportedEntityTypes: ['pantry_item'] },
+  ])('rejects explicitly incompatible sync type lists with the stable scope error (%s)', async ({ scope, supportedEntityTypes }) => {
+    const repository = createMemorySyncRepository({
+      scopeResolver: async (userId) => userId === 'user-1' ? { kind: 'house', id: 'house-1' } : null,
+    });
+    const app = createApp({
+      database: { ping: async () => undefined }, cache: { ping: async () => undefined },
+      auth: { service: sessionService, appOrigin: 'http://127.0.0.1:5173', secureCookies: false },
+      sync: { repository, authService: sessionService, appOrigin: 'http://127.0.0.1:5173' },
+    });
+    try {
+      const response = await app.inject({
+        method: 'POST', url: '/v1/sync',
+        headers: { cookie: 'ikuck_session=session-token', origin: 'http://127.0.0.1:5173', 'x-csrf-token': 'csrf-token' },
+        payload: { deviceId: 'device-1', cursor: 0, syncScope: scope, supportedEntityTypes, mutations: [] },
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toEqual({
+        code: 'sync_scope_invalid',
+        message: 'The requested sync scope is not valid for this entity',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('allows a House member to edit another member diary while preserving its author', async () => {
     const repository = createMemorySyncRepository({
       scopeResolver: async () => ({ kind: 'house', id: 'house-1' }),
@@ -182,7 +331,7 @@ describe('sync routes', () => {
       },
     });
 
-    expect(response.statusCode).toBe(400);
+    expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({ code: 'sync_scope_invalid', message: 'The requested sync scope is not valid for this entity' });
     await app.close();
   });
@@ -621,7 +770,7 @@ describe('sync routes', () => {
         origin: 'http://127.0.0.1:5173',
         'x-csrf-token': 'csrf-token',
       },
-      payload: body,
+      payload: body as object,
     });
 
     expect(response.statusCode).toBe(400);

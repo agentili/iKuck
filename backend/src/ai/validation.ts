@@ -41,14 +41,19 @@ export const generatedRecipeSchema = generatedRecipeDraftSchema.extend({
   updatedAt: z.string().datetime({ offset: true }),
 }).strict();
 
-export const aiConsentSchema = z.object({
+const aiConsentObjectSchema = z.object({
   enabled: z.boolean(),
   updatedAt: z.string().datetime({ offset: true }),
   homeProvider: z.enum(['openai', 'gemini']).optional(),
   dinnerProvider: z.enum(['openai', 'gemini']).optional(),
+  chatProvider: z.enum(['openai', 'gemini']).optional(),
+  chatPolicyVersion: z.literal('chef-chat-v1').optional(),
 }).strict();
 
-export const aiConsentSyncSchema = aiConsentSchema.omit({ homeProvider: true, dinnerProvider: true });
+export const aiConsentSchema = aiConsentObjectSchema.refine((value) =>
+  (value.chatProvider === undefined) === (value.chatPolicyVersion === undefined));
+
+export const aiConsentSyncSchema = aiConsentObjectSchema.omit({ homeProvider: true, dinnerProvider: true, chatProvider: true, chatPolicyVersion: true });
 
 export const parseGeneratedRecipeDraft = (value: unknown): GeneratedRecipeDraft | null => {
   const result = generatedRecipeDraftSchema.safeParse(value);

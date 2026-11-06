@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { installOfflineBackend } from './helpers/backendMode';
+import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
+import { goToKitchen, isSousChefBuild, kitchenHeading, openShellProfileMenu } from './helpers/appMode';
 
 test('scope storage property denial does not prevent SPA startup', async ({ page }) => {
   await page.addInitScript(() => {
@@ -9,9 +10,9 @@ test('scope storage property denial does not prevent SPA startup', async ({ page
       get() { throw new DOMException('Storage denied', 'SecurityError'); },
     });
   });
-  await page.route('**/v1/**', (route) => route.fulfill({ status: 200, json: null }));
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await installOfflineBackend(page);
+  await goToKitchen(page);
+  await expect(page.getByRole('heading', { name: kitchenHeading })).toBeVisible();
 });
 
 test('persisted pantry survives reload when localStorage getItem is denied', async ({ page }) => {
@@ -19,8 +20,8 @@ test('persisted pantry survives reload when localStorage getItem is denied', asy
   await page.goto('/pantry');
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await goToKitchen(page);
+  await expect(page.getByRole('heading', { name: kitchenHeading })).toBeVisible();
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
   await page.getByRole('dialog', { name: 'Aggiungi ingredienti' }).getByRole('combobox', { name: 'Ingredienti presenti' }).fill('pomodoro');
   await page.getByRole('dialog', { name: 'Aggiungi ingredienti' }).getByRole('button', { name: 'Aggiungi ingredienti' }).click();
@@ -64,7 +65,7 @@ test('persisted pantry survives reload when localStorage getItem is denied', asy
 
 test('successful IndexedDB pantry write outranks a stale mirror when mirror update and removal fail across reload', async ({ page }) => {
   await installOfflineBackend(page);
-  await page.goto('/');
+  await goToKitchen(page);
   const addItem = async (name: string) => {
     await page.getByRole('button', { name: 'Aggiungi ingredienti' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'Aggiungi ingredienti' });
@@ -133,15 +134,15 @@ test('legacy mirror newer than IndexedDB remains visible when the pending marker
     }));
   });
   await installOfflineBackend(page);
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await goToKitchen(page);
+  await expect(page.getByRole('heading', { name: kitchenHeading })).toBeVisible();
   await expect(page.getByText('Pomodoro', { exact: true })).toBeVisible();
   await expect(page.getByText('Pasta', { exact: true })).toHaveCount(0);
 });
 
 test('new pantry item survives reload when IndexedDB write fails but localStorage mirror succeeds', async ({ page }) => {
   await installOfflineBackend(page);
-  await page.goto('/');
+  await goToKitchen(page);
   const addItem = async (name: string) => {
     await page.getByRole('button', { name: 'Aggiungi ingredienti' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'Aggiungi ingredienti' });
@@ -172,9 +173,9 @@ test('motion storage denial does not prevent SPA startup', async ({ page }) => {
       return getItem.call(this, key);
     };
   });
-  await page.route('**/v1/**', (route) => route.fulfill({ status: 200, json: null }));
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await installOfflineBackend(page);
+  await goToKitchen(page);
+  await expect(page.getByRole('heading', { name: kitchenHeading })).toBeVisible();
   expect(await page.locator('html').getAttribute('data-motion')).toBe('system');
 });
 
@@ -210,8 +211,8 @@ test('verified house member gets a recoverable storage error when purge-marker s
   } });
   const initialSyncResponse = page.waitForResponse((response) => new URL(response.url()).pathname === '/v1/sync'
     && response.request().method() === 'POST');
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await goToKitchen(page);
+  await expect(page.getByRole('heading', { name: kitchenHeading })).toBeVisible();
   await initialSyncResponse;
   await page.evaluate(() => window.sessionStorage.setItem('deny-house-purge-storage', '1'));
   trackFunctionalWrites = true;
@@ -219,7 +220,7 @@ test('verified house member gets a recoverable storage error when purge-marker s
   await expect(page.getByRole('alert').filter({ hasText: /non posso verificare la sicurezza dei dati della casa/i })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Navigazione principale' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Ricarica l’app' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: kitchenHeading })).toHaveCount(0);
   expect(functionalWrites).toEqual([]);
 });
 
@@ -231,7 +232,7 @@ test('motion preference reports when browser storage cannot persist the choice',
       return setItem.call(this, key, value);
     };
   });
-  await page.route('**/v1/**', (route) => route.fulfill({ status: 200, json: { authenticated: false } }));
+  await installOfflineBackend(page);
   await page.goto('/profile');
   const reducedMotion = page.getByRole('checkbox', { name: 'Riduci le animazioni su questo dispositivo' });
   await reducedMotion.check();
@@ -247,20 +248,32 @@ test('session motion choice stays checked after leaving and returning to Profile
       return setItem.call(this, key, value);
     };
   });
-  await page.route('**/v1/**', (route) => route.fulfill({ status: 200, json: { authenticated: false } }));
+  await installOfflineBackend(page);
   await page.goto('/profile');
   const checkbox = page.getByRole('checkbox', { name: 'Riduci le animazioni su questo dispositivo' });
   await checkbox.check();
-  await page.getByRole('link', { name: /Torna alle ricette/ }).click();
-  await page.getByRole('link', { name: 'Profilo' }).click();
+  await page.getByRole('link', { name: isSousChefBuild ? /Torna a Chef/ : /Torna alle ricette/ }).click();
+  await openShellProfileMenu(page);
+  await page.getByRole('link', { name: 'Profilo', exact: true }).click();
   await expect(page.getByRole('checkbox', { name: 'Riduci le animazioni su questo dispositivo' })).toBeChecked();
   await expect(page.getByText('La scelta vale solo finché l’app resta aperta: questo browser non consente di salvarla.', { exact: true })).toBeVisible();
   expect(await page.locator('html').getAttribute('data-motion')).toBe('reduced');
 });
 
 test('quick add is modal, traps keyboard focus, scrolls internally, and preserves the page', async ({ page }) => {
+  const authSessionStatus = new Promise<number | 'failed'>((resolve) => {
+    const isAuthSessionRequest = (url: string): boolean => new URL(url).pathname === '/v1/auth/session';
+    page.on('response', (response) => {
+      if (isAuthSessionRequest(response.url())) resolve(response.status());
+    });
+    page.on('requestfailed', (request) => {
+      if (isAuthSessionRequest(request.url())) resolve('failed');
+    });
+  });
+  await installOfflineBackend(page);
   await page.setViewportSize({ width: 320, height: 700 });
-  await page.goto('/');
+  await goToKitchen(page);
+  expect(await authSessionStatus).toBe(200);
   await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
   const trigger = page.getByRole('button', { name: 'Aggiungi ingredienti' }).first();
   await trigger.click();
@@ -307,11 +320,12 @@ test('quick add is modal, traps keyboard focus, scrolls internally, and preserve
   expect(await reopened.evaluate((element) => element.contains(document.activeElement))).toBe(true);
   await page.keyboard.press('Escape');
   await expect(trigger).toBeFocused();
+  assertOfflineBackendClean(page);
 });
 
 test('recipe result cards show known servings in browser', async ({ page }) => {
-  await page.route('**/v1/**', (route) => route.fulfill({ status: 200, json: null }));
-  await page.goto('/');
+  await installOfflineBackend(page);
+  await goToKitchen(page);
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Aggiungi ingredienti' });
   await dialog.getByRole('combobox', { name: 'Ingredienti presenti' }).fill('pasta, tonno, passata');
@@ -322,14 +336,14 @@ test('recipe result cards show known servings in browser', async ({ page }) => {
 });
 
 test('recipe detail preserves pantry availability for missing ingredients', async ({ page }) => {
-  await page.route('**/v1/**', (route) => route.fulfill({ status: 200, json: null }));
+  await installOfflineBackend(page);
   await page.goto('/recipes/pasta-tonno-pomodoro');
   await expect(page.getByRole('region', { name: 'Disponibilità della ricetta' })).toContainText('Ingredienti mancanti');
   await expect(page.getByRole('region', { name: 'Disponibilità della ricetta' })).toContainText('Da acquistare:');
 });
 
 test('uova al pomodoro photo attribution is readable and axe-clean', async ({ page }) => {
-  await page.route('**/v1/**', (route) => route.fulfill({ status: 200, json: null }));
+  await installOfflineBackend(page);
   await page.goto('/recipes/uova-al-pomodoro');
   const attribution = page.getByText('Foto illustrativa · Alex Bayev · Unsplash');
   await expect(attribution).toBeVisible();

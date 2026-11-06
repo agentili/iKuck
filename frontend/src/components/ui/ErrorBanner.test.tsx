@@ -8,6 +8,6 @@ describe('ErrorBanner', () => {
 
     const banner = screen.getByRole('alert');
     expect(banner).toHaveTextContent('Servizio non raggiungibile: riprova più tardi.');
-    expect(banner).toHaveClass('border-rose-200', 'bg-rose-50', 'text-rose-900');
+    expect(banner).toHaveClass('border-[var(--ik-tomato)]', 'bg-[var(--ik-tomato-soft)]', 'text-[var(--ik-tomato)]');
   });
 });

@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { PantryLot } from '@ikuck/shared/contracts';
 import { planPantryConsumption, type DinnerConsumptionCommand } from '@ikuck/shared/pantryConsumption';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
+import { goToKitchen, isSousChefBuild, openPantryInventory, openShellProfileMenu } from './helpers/appMode';
 
 interface FixtureUser {
   id: string;
@@ -440,6 +441,7 @@ test('shares confirmed dinner recipes with House members while isolating outside
   await expect(page.getByText('Persona aggiunta alla casa.')).toBeVisible();
 
   await page.goto('/pantry');
+  await openPantryInventory(page);
   await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
 
   await page.goto('/dinner-diary');
@@ -482,7 +484,7 @@ test('shares confirmed dinner recipes with House members while isolating outside
   await expect(page.getByText('Non hai ancora registrato una cena.')).toBeVisible();
   await expect.poll(() => syncCalls.some((call) => call.userId === outsider.id && !call.unavailable)).toBe(true);
   expect(syncCalls.filter((call) => call.userId === outsider.id).flatMap((call) => call.returnedEntityIds)).not.toContain(sharedDinnerId);
-  await page.goto('/');
+  await goToKitchen(page);
   await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Partiamo da cosa hai' })).toBeVisible();
   await expect(page.getByText(recipeTitle)).toHaveCount(0);
@@ -621,8 +623,9 @@ test('shares confirmed dinner recipes with House members while isolating outside
   await expect(page.getByLabel('Collega una ricetta già salvata')).toHaveCount(0);
 
   await page.goto('/pantry');
+  await openPantryInventory(page);
   await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
-  await page.goto('/');
+  await goToKitchen(page);
   await page.getByRole('button', { name: 'Trova ricette' }).click();
   await expect(page.getByRole('article', { name: recipeTitle })).toHaveAttribute('data-availability', 'ready');
   await page.getByRole('link', { name: `Apri ${recipeTitle}` }).click();
@@ -638,13 +641,17 @@ test('shares confirmed dinner recipes with House members while isolating outside
   await expect(page.getByRole('article').filter({ hasText: staleResponseText })).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await delayedConsumptionStarted;
-  await page.getByRole('link', { name: 'Profilo', exact: true }).first().click();
+  if (isSousChefBuild) {
+    await openShellProfileMenu(page);
+  } else {
+    await page.getByRole('link', { name: 'Profilo', exact: true }).first().click();
+  }
   await page.getByRole('button', { name: 'Esci' }).click();
   await expect.poll(() => currentUser).toBeNull();
   delayedConsumptionControl.release?.();
   await delayedConsumptionCompleted;
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
-  await page.getByRole('link', { name: 'Diario', exact: true }).click();
+  await page.goto('/dinner-diary');
   await expect(page.getByText('Non hai ancora registrato una cena.')).toBeVisible();
   await expect(page.getByText(dinnerText)).toHaveCount(0);
   await expect(page.getByText(privateText)).toHaveCount(0);

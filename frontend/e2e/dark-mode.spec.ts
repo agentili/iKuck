@@ -1,12 +1,20 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
+import {
+  goToKitchen,
+  isSousChefBuild,
+  kitchenHeading,
+  kitchenPath,
+  landingHeading,
+} from './helpers/appMode';
 
 const themePreferenceKey = 'ikuck-color-theme';
 const firstPaintThemeKey = 'ikuck-e2e-first-paint-theme';
 
 const auditedPages = [
-  { path: '/', heading: 'Cucina viva', name: 'home' },
+  ...(isSousChefBuild ? [{ path: '/', heading: landingHeading, name: 'chef' }] : []),
+  { path: kitchenPath, heading: kitchenHeading, name: 'home' },
   { path: '/shopping-list', heading: 'Lista della spesa', name: 'shopping-list' },
   { path: '/recipes/pasta-tonno-pomodoro', heading: 'Pasta tonno e pomodoro', name: 'recipe-detail' },
   { path: '/profile', heading: 'Accedi al tuo profilo', name: 'profile' },
@@ -16,9 +24,11 @@ const expectTheme = async (page: Page, theme: 'light' | 'dark'): Promise<void> =
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
 };
 
-test.beforeEach(async ({ context, page }) => {
+test.beforeEach(async ({ context, page }, testInfo) => {
   await context.clearCookies();
-  await installOfflineBackend(page);
+  await installOfflineBackend(page, {
+    serviceWorkers: testInfo.tags.includes('@service-worker-offline') ? 'allow' : 'block',
+  });
 });
 
 test.afterEach(async ({ page }) => {
@@ -55,16 +65,18 @@ test('system preference follows dark and light device schemes', async ({ page })
 
 test('header quick toggle switches between light and dark', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' });
-  await page.goto('/');
+  await goToKitchen(page);
   await expectTheme(page, 'light');
 
-  await page.getByRole('button', { name: 'Attiva tema scuro' }).click();
+  const darkToggleName = isSousChefBuild ? 'Tema scuro' : 'Attiva tema scuro';
+  const lightToggleName = isSousChefBuild ? 'Tema chiaro' : 'Attiva tema chiaro';
+  await page.getByRole('button', { name: darkToggleName }).click();
   await expectTheme(page, 'dark');
-  await expect(page.getByRole('button', { name: 'Attiva tema chiaro' })).toBeVisible();
+  await expect(page.getByRole('button', { name: lightToggleName })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Attiva tema chiaro' }).click();
+  await page.getByRole('button', { name: lightToggleName }).click();
   await expectTheme(page, 'light');
-  await expect(page.getByRole('button', { name: 'Attiva tema scuro' })).toBeVisible();
+  await expect(page.getByRole('button', { name: darkToggleName })).toBeVisible();
 });
 
 test('captures desktop screenshots of the four requested dark-theme pages', async ({ page }, testInfo) => {
@@ -74,7 +86,7 @@ test('captures desktop screenshots of the four requested dark-theme pages', asyn
   for (const route of auditedPages) {
     await page.goto(route.path);
     await expectTheme(page, 'dark');
-    await expect(page.getByRole('heading', { name: route.heading })).toBeVisible();
+    await expect(page.locator('main').getByRole('heading', { name: route.heading, exact: true })).toBeVisible();
     const screenshotPath = testInfo.outputPath(`dark-${route.name}.png`);
     await page.screenshot({ path: screenshotPath, fullPage: true });
   }
@@ -92,7 +104,7 @@ for (const theme of ['light', 'dark'] as const) {
     for (const route of auditedPages) {
       await page.goto(route.path);
       await expectTheme(page, theme);
-      await expect(page.getByRole('heading', { name: route.heading })).toBeVisible();
+      await expect(page.locator('main').getByRole('heading', { name: route.heading, exact: true })).toBeVisible();
 
       const results = await new AxeBuilder({ page }).analyze();
       const colorContrastViolations = results.violations.filter((violation) => violation.id === 'color-contrast');
@@ -115,7 +127,9 @@ for (const theme of ['light', 'dark'] as const) {
   });
 }
 
-test('reapplies dark theme from the service-worker cache while offline without a light first frame', async ({ page, context }) => {
+test('reapplies dark theme from the service-worker cache while offline without a light first frame', {
+  tag: '@service-worker-offline',
+}, async ({ page, context }) => {
   await page.addInitScript((key) => {
     requestAnimationFrame(() => {
       const observed = JSON.parse(sessionStorage.getItem(key) ?? '[]') as string[];
@@ -125,16 +139,16 @@ test('reapplies dark theme from the service-worker cache while offline without a
   }, firstPaintThemeKey);
 
   await page.emulateMedia({ colorScheme: 'light' });
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
-  await page.getByRole('button', { name: 'Attiva tema scuro' }).click();
+  await goToKitchen(page);
+  await expect(page.getByRole('heading', { name: kitchenHeading })).toBeVisible();
+  await page.getByRole('button', { name: isSousChefBuild ? 'Tema scuro' : 'Attiva tema scuro' }).click();
   await expectTheme(page, 'dark');
   await page.waitForFunction(() => 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null);
   await page.evaluate((key) => sessionStorage.setItem(key, '[]'), firstPaintThemeKey);
 
   await context.setOffline(true);
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: kitchenHeading })).toBeVisible();
   await expectTheme(page, 'dark');
   await expect.poll(() => page.evaluate((key) => JSON.parse(sessionStorage.getItem(key) ?? '[]') as string[], firstPaintThemeKey))
     .toEqual(['dark']);

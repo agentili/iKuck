@@ -119,17 +119,17 @@ export default function AccountPanel() {
 
   if (user !== null) {
     return (
-      <section aria-label="Account" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+      <section aria-label="Account" className="ik-profile-surface flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4">
         <div className="flex items-center gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-full bg-emerald-700 text-white">
+          <span className="grid h-10 w-10 place-items-center rounded-full bg-[var(--ik-basil)] text-[var(--ik-porcelain)]">
             <UserRound size={19} aria-hidden="true" />
           </span>
           <div>
-            <p className="font-bold text-emerald-950">Connesso</p>
-            <p className="text-sm text-emerald-900">{user.email}</p>
+            <p className="font-bold text-[var(--ik-ink)]">Connesso</p>
+            <p className="text-sm text-[var(--ik-ink-muted)]">{user.email}</p>
           </div>
         </div>
-        <Link to="/profile" className="rounded-xl bg-white px-4 py-2 font-bold text-emerald-900 ring-1 ring-emerald-300 hover:ring-emerald-600">
+        <Link to="/profile" className="rounded-xl bg-[var(--ik-surface)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] ring-1 ring-[var(--ik-border-strong)] hover:ring-[var(--ik-basil)]">
           Apri il profilo
         </Link>
       </section>
@@ -138,49 +138,49 @@ export default function AccountPanel() {
 
   if (mode === 'closed') {
     return (
-      <section aria-label="Account" className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <section aria-label="Account" className="ik-profile-surface flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4">
         <div>
-          <p className="font-bold text-gray-950">Vuoi ritrovare la tua dispensa ovunque?</p>
-          <p className="mt-1 text-sm text-gray-600">I tuoi dati restano su questo dispositivo.</p>
-          {connection === 'offline' && <p className="mt-2 text-sm font-semibold text-amber-800">Sei offline: la dispensa continua a funzionare.</p>}
+          <p className="font-bold text-[var(--ik-ink)]">Vuoi ritrovare la tua dispensa ovunque?</p>
+          <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">I tuoi dati restano su questo dispositivo.</p>
+          {connection === 'offline' && <p className="mt-2 rounded-xl border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] p-3 text-sm font-semibold text-[var(--ik-warn-ink)]">Sei offline: la dispensa continua a funzionare.</p>}
         </div>
         <div className="grid w-full max-w-sm gap-2 sm:w-auto">
-          <button type="button" onClick={() => openMode('login')} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800">
+          <button type="button" onClick={() => openMode('login')} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[var(--ik-basil)] px-4 py-2 font-bold text-[var(--ik-porcelain)] hover:bg-[var(--ik-basil-dark)]">
             <LogIn size={17} aria-hidden="true" />
             Accedi o registrati
           </button>
           <GoogleSignInButton onCredential={(credential) => void handleGoogleCredential(credential)} />
         </div>
-        {error !== null && <p ref={errorSummaryRef} id="account-error" role="alert" tabIndex={-1} className="basis-full rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-900">{error}</p>}
+        {error !== null && <p ref={errorSummaryRef} id="account-error" role="alert" tabIndex={-1} className="basis-full rounded-xl border border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] p-3 text-sm font-semibold text-[var(--ik-tomato)]">{error}</p>}
       </section>
     );
   }
 
   return (
-    <section aria-labelledby="account-title" className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+    <section aria-labelledby="account-title" className="ik-profile-surface rounded-2xl border p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 id="account-title" className="text-xl font-black text-gray-950">Il tuo account</h2>
-          <p className="mt-1 text-sm text-gray-600">La verifica email è necessaria per sincronizzare tra dispositivi.</p>
+          <h2 id="account-title" className="text-xl font-black text-[var(--ik-ink)]">Il tuo account</h2>
+          <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">La verifica email è necessaria per sincronizzare tra dispositivi.</p>
         </div>
-        <button type="button" onClick={() => setMode('closed')} className="text-sm font-semibold text-gray-600 underline underline-offset-2">Chiudi</button>
+        <button type="button" onClick={() => setMode('closed')} className="min-h-11 rounded-xl px-3 text-sm font-semibold text-[var(--ik-ink-muted)] underline underline-offset-2 hover:bg-[var(--ik-mist)]">Chiudi</button>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <button type="button" aria-pressed={mode === 'login'} onClick={() => openMode('login')} className={`rounded-full px-3 py-1.5 text-sm font-bold ${mode === 'login' ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-700'}`}>Accedi</button>
-        <button type="button" aria-pressed={mode === 'register'} onClick={() => openMode('register')} className={`rounded-full px-3 py-1.5 text-sm font-bold ${mode === 'register' ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-700'}`}>Registrati</button>
-        <button type="button" aria-pressed={mode === 'reset'} onClick={() => openMode('reset')} className={`rounded-full px-3 py-1.5 text-sm font-bold ${mode === 'reset' ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-700'}`}>Recupera password</button>
+        <button type="button" aria-pressed={mode === 'login'} onClick={() => openMode('login')} className={`min-h-11 rounded-full border px-4 py-1.5 text-sm font-bold ${mode === 'login' ? 'border-[var(--ik-basil)] bg-[var(--ik-sage)] text-[var(--ik-ink)]' : 'border-[var(--ik-border)] bg-[var(--ik-mist)] text-[var(--ik-ink-muted)]'}`}>Accedi</button>
+        <button type="button" aria-pressed={mode === 'register'} onClick={() => openMode('register')} className={`min-h-11 rounded-full border px-4 py-1.5 text-sm font-bold ${mode === 'register' ? 'border-[var(--ik-basil)] bg-[var(--ik-sage)] text-[var(--ik-ink)]' : 'border-[var(--ik-border)] bg-[var(--ik-mist)] text-[var(--ik-ink-muted)]'}`}>Registrati</button>
+        <button type="button" aria-pressed={mode === 'reset'} onClick={() => openMode('reset')} className={`min-h-11 rounded-full border px-4 py-1.5 text-sm font-bold ${mode === 'reset' ? 'border-[var(--ik-basil)] bg-[var(--ik-sage)] text-[var(--ik-ink)]' : 'border-[var(--ik-border)] bg-[var(--ik-mist)] text-[var(--ik-ink-muted)]'}`}>Recupera password</button>
       </div>
 
-      {message !== null && <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-900">{message}</p>}
-      {error !== null && <p ref={errorSummaryRef} id="account-error" role="alert" tabIndex={-1} className="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-900">{error}</p>}
+      {message !== null && <p role="status" className="mt-4 rounded-xl border border-[var(--ik-border-strong)] bg-[var(--ik-sage)] p-3 text-sm font-semibold text-[var(--ik-ink)]">{message}</p>}
+      {error !== null && <p ref={errorSummaryRef} id="account-error" role="alert" tabIndex={-1} className="mt-4 rounded-xl border border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] p-3 text-sm font-semibold text-[var(--ik-tomato)]">{error}</p>}
 
-      <div className="mt-4 border-b border-gray-200 pb-4">
+      <div className="mt-4 border-b border-[var(--ik-border)] pb-4">
         <GoogleSignInButton onCredential={(credential) => void handleGoogleCredential(credential)} />
       </div>
 
       <form className="mt-4 grid gap-3" onSubmit={handleSubmit}>
-        <label className="grid gap-1 text-sm font-semibold text-gray-800">
+        <label className="grid gap-1 text-sm font-semibold text-[var(--ik-ink)]">
           Email
           <input
             type="email"
@@ -190,11 +190,11 @@ export default function AccountPanel() {
             aria-describedby={error !== null ? 'account-error' : undefined}
             required
             maxLength={254}
-            className="min-h-11 rounded-xl border-2 border-gray-200 bg-gray-50 px-3 text-base outline-none focus:border-gray-900"
+            className="ik-input min-h-11 border-2 bg-[var(--ik-mist)] px-3 text-base outline-none focus:border-[var(--ik-basil)]"
           />
         </label>
         {mode !== 'reset' && (
-          <label className="grid gap-1 text-sm font-semibold text-gray-800">
+          <label className="grid gap-1 text-sm font-semibold text-[var(--ik-ink)]">
             Password
             <input
               type="password"
@@ -205,17 +205,17 @@ export default function AccountPanel() {
               required
               minLength={mode === 'register' ? 12 : undefined}
               maxLength={256}
-              className="min-h-11 rounded-xl border-2 border-gray-200 bg-gray-50 px-3 text-base outline-none focus:border-gray-900"
+              className="ik-input min-h-11 border-2 bg-[var(--ik-mist)] px-3 text-base outline-none focus:border-[var(--ik-basil)]"
             />
           </label>
         )}
-        <button type="submit" aria-label={mode === 'login' ? 'Accedi al profilo' : undefined} disabled={isLoading} className="min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
+        <button type="submit" aria-label={mode === 'login' ? 'Accedi al profilo' : undefined} disabled={isLoading} className="min-h-11 rounded-xl bg-[var(--ik-basil)] px-4 py-2 font-bold text-[var(--ik-porcelain)] hover:bg-[var(--ik-basil-dark)] disabled:cursor-wait disabled:opacity-60">
           {isLoading ? 'Attendi…' : mode === 'login' ? 'Accedi' : mode === 'register' ? 'Crea account' : 'Invia link di recupero'}
         </button>
       </form>
 
       {mode === 'login' && (
-        <button type="button" onClick={handleResend} className="mt-3 text-sm font-semibold text-gray-700 underline underline-offset-2">
+        <button type="button" onClick={handleResend} className="mt-3 min-h-11 rounded-xl px-3 text-sm font-semibold text-[var(--ik-basil-dark)] underline underline-offset-2 hover:bg-[var(--ik-sage)]">
           Invia di nuovo la verifica
         </button>
       )}

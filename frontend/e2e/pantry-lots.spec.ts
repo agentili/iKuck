@@ -142,7 +142,7 @@ test('consumes only mapped dinner ingredients once, rolls back failed persistenc
   const expiredPastaLotId = beforePantry.pantryLots.find((lot) => lot.ingredientId === 'pasta' && lot.expiresAt === '2026-10-01')?.id;
   expect(expiredPastaLotId).toBeDefined();
 
-  await page.getByRole('link', { name: 'Diario', exact: true }).click();
+  await page.goto('/dinner-diary');
   await page.getByLabel('Data della cena').fill('2026-10-05');
   await page.getByLabel(/Porzioni/).fill('2');
   await page.getByLabel('Com’è andata la cena?').fill('Pasta e sale usati per cena.');
@@ -163,7 +163,8 @@ test('consumes only mapped dinner ingredients once, rolls back failed persistenc
   await page.getByLabel('Quantità per porzione di Pasta').fill('80 g');
   await page.evaluate(() => window.sessionStorage.setItem('fail-dinner-consumption-write', 'true'));
   await page.getByRole('button', { name: 'Registra la cena' }).click();
-  await expect(page.getByRole('alert')).toContainText('La dispensa non è stata aggiornata');
+  await expect(page.getByRole('alert').filter({ hasText: 'La dispensa non è stata aggiornata' }))
+    .toContainText('La dispensa non è stata aggiornata');
   const afterFailure = await readGuestState(page);
   expect(afterFailure.pantry).toEqual(beforeCommit.pantry);
   expect(afterFailure.dinners).toHaveLength(0);

@@ -37,13 +37,13 @@ export const DayIndicator = memo(({ onDayChange }: DayIndicatorProps) => {
               : ''
           }`}
           style={{
-            backgroundColor: 'var(--sc-peach-soft)',
-            color: 'var(--sc-terracotta)',
-            borderRadius: 'var(--sc-radius-pill)',
+            backgroundColor: 'var(--ik-sage)',
+            color: 'var(--ik-basil-dark)',
+            borderRadius: 'var(--ik-radius-pill)',
             padding: '10px 18px',
             fontSize: '14px',
             fontWeight: 600,
-            fontFamily: 'DM Sans, system-ui, sans-serif',
+            fontFamily: 'Bricolage Grotesque Variable, system-ui, sans-serif',
             border: 'none',
             cursor: 'pointer',
           }}
@@ -54,7 +54,7 @@ export const DayIndicator = memo(({ onDayChange }: DayIndicatorProps) => {
               width: selectedDay === day.key ? '10px' : '8px',
               height: selectedDay === day.key ? '10px' : '8px',
               borderRadius: '50%',
-              backgroundColor: selectedDay === day.key ? 'var(--sc-terracotta)' : 'var(--sc-ink-faint)',
+              backgroundColor: selectedDay === day.key ? 'var(--ik-basil-dark)' : 'var(--ik-ink-muted)',
               transition: 'all 0.2s',
             }}
           />

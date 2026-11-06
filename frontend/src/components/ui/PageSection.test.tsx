@@ -12,9 +12,10 @@ describe('PageSection', () => {
 
     const section = screen.getByRole('region');
     expect(section).toHaveAttribute('aria-labelledby', 'library-recipes-title');
-    expect(screen.getByText('Dal diario')).toBeInTheDocument();
+    expect(screen.getByText('Dal diario')).toHaveClass('ik-eyebrow');
     expect(screen.getByRole('heading', { name: 'Le tue ricette salvate' })).toHaveAttribute('id', 'library-recipes-title');
-    expect(screen.getByText('Descrizione di prova.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Le tue ricette salvate' })).toHaveClass('text-[var(--ik-ink)]');
+    expect(screen.getByText('Descrizione di prova.')).toHaveClass('text-[var(--ik-ink-muted)]');
     expect(screen.getByText('Contenuto della sezione')).toBeInTheDocument();
   });
 

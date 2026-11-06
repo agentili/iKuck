@@ -63,7 +63,7 @@ export default function RecipeCard({
             onClick={onToggle}
             aria-expanded={isExpanded}
             aria-controls={detailsId}
-            className="shrink-0 rounded-xl p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+            className="max-w-full whitespace-normal rounded-xl p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-900"
           >
             {isExpanded ? 'Nascondi dettagli' : 'Mostra dettagli'}
           </button>

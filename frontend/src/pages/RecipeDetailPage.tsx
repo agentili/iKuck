@@ -24,6 +24,7 @@ import NotFoundPage from './NotFoundPage';
 import RecipeNutritionSummary from '../components/diet/RecipeNutritionSummary';
 import RecipeImage from '../components/suggestions/RecipeImage';
 import PageSection from '../components/ui/PageSection';
+import { isSousChef } from '../config/features';
 
 const ratingLabel = (value: number): string => `${value} ${value === 1 ? 'stella' : 'stelle'}`;
 
@@ -35,6 +36,29 @@ const CATEGORY_LABELS: Record<RecipeCategory, string> = {
   vegetables: 'Verdure',
   diary: 'Dal diario',
 };
+
+const RECIPE_DETAIL_FOCUS_CLASS = [
+  '[&_a:focus-visible]:outline',
+  '[&_a:focus-visible]:outline-2',
+  '[&_a:focus-visible]:outline-offset-2',
+  '[&_a:focus-visible]:outline-[var(--ik-focus)]',
+  '[&_button:focus-visible]:outline',
+  '[&_button:focus-visible]:outline-2',
+  '[&_button:focus-visible]:outline-offset-2',
+  '[&_button:focus-visible]:outline-[var(--ik-focus)]',
+  '[&_input:focus-visible]:outline',
+  '[&_input:focus-visible]:outline-2',
+  '[&_input:focus-visible]:outline-offset-2',
+  '[&_input:focus-visible]:outline-[var(--ik-focus)]',
+  '[&_select:focus-visible]:outline',
+  '[&_select:focus-visible]:outline-2',
+  '[&_select:focus-visible]:outline-offset-2',
+  '[&_select:focus-visible]:outline-[var(--ik-focus)]',
+  '[&_textarea:focus-visible]:outline',
+  '[&_textarea:focus-visible]:outline-2',
+  '[&_textarea:focus-visible]:outline-offset-2',
+  '[&_textarea:focus-visible]:outline-[var(--ik-focus)]',
+].join(' ');
 
 const isRecipeNutrition = (value: unknown): value is RecipeNutrition => {
   if (typeof value !== 'object' || value === null) return false;
@@ -88,6 +112,7 @@ const gramsPerServingFromAmount = (amount: string, servings: number | null): num
 export default function RecipeDetailPage() {
   const { recipeId = '' } = useParams();
   const [searchParams] = useSearchParams();
+  const returnLinkLabel = isSousChef() ? 'Torna a Chef' : 'Torna alle ricette';
   const requestedScope = searchParams.get('scope');
   const activeScope = getActiveDataScope();
   const savedDiaryRecipes = useDinnerDiaryStore((state) => state.recipes);
@@ -135,6 +160,9 @@ export default function RecipeDetailPage() {
       .filter((item) => !item.optional && availableIds.includes(item.ingredientId))
       .filter((item) => getQuantityWarning(item, quantitySummaries.find((summary) => summary.ingredientId === item.ingredientId)))
       .map((item) => item.ingredientId);
+  const availabilityTone = quantityWarnings.length > 0 || missingIngredientIds.length > 0
+    ? 'border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] text-[var(--ik-warn-ink)]'
+    : 'border-[var(--ik-border-strong)] bg-[var(--ik-sage)] text-[var(--ik-ink)]';
 
   useEffect(() => {
     setFavorite(currentPreference?.favorite ?? false);
@@ -273,89 +301,106 @@ export default function RecipeDetailPage() {
   };
 
   return (
-    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-      <Link to="/" className="ik-back-link inline-flex min-h-11 items-center gap-2 rounded-xl px-2 py-2 font-semibold text-emerald-800 hover:bg-emerald-50">
+    <main id="main-content" className={`ik-page mx-auto min-h-screen w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8 ${RECIPE_DETAIL_FOCUS_CLASS}`}>
+      <Link to="/" className="ik-back-link inline-flex min-h-11 items-center gap-2 rounded-[var(--ik-radius-control)] px-2 py-2 font-semibold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-mist)]">
         <ArrowLeft size={18} aria-hidden="true" />
-        Torna alle ricette
+        {returnLinkLabel}
       </Link>
 
-      <header className="ik-recipe-hero mt-6 px-5 py-8 text-white sm:px-9 sm:py-10">
+      <header className="ik-recipe-hero mt-5 overflow-hidden p-4 text-[var(--ik-porcelain)] sm:p-6 lg:p-8">
         <RecipeImage recipeId={recipe.id} recipeTitle={recipe.title} variant="detail" />
-        <p className="mt-5 font-semibold text-amber-300">{CATEGORY_LABELS[recipe.category]}</p>
-        <h1 className="mt-2 max-w-3xl text-4xl font-black leading-tight sm:text-6xl">{recipe.title}</h1>
-        <p className="mt-4 max-w-2xl text-lg leading-relaxed text-gray-300">{recipe.description}</p>
-        <dl className="mt-7 flex flex-wrap gap-3">
-          <div className="flex min-h-11 items-center gap-2 rounded-full bg-white/10 px-4 py-2">
-            <Clock size={18} aria-hidden="true" />
-            <dt className="sr-only">Tempo</dt>
-            <dd>{recipe.durationMinutes === null ? 'Tempo non indicato' : `${recipe.durationMinutes} min`}</dd>
-          </div>
-          <div className="flex min-h-11 items-center gap-2 rounded-full bg-white/10 px-4 py-2">
-            <Users size={18} aria-hidden="true" />
-            <dt className="sr-only">Porzioni</dt>
-            <dd>{recipe.servings === null ? 'Porzioni non indicate' : `${recipe.servings} porzioni`}</dd>
-          </div>
-          <div className="flex min-h-11 items-center gap-2 rounded-full bg-white/10 px-4 py-2">
-            <ChefHat size={18} aria-hidden="true" />
-            <dt className="sr-only">Difficoltà</dt>
-            <dd>{recipe.difficulty === 'easy' ? 'Facile' : recipe.difficulty === 'medium' ? 'Media' : 'Difficoltà non specificata'}</dd>
-          </div>
-        </dl>
+        <div className="max-w-3xl">
+          <p className="font-bold text-[var(--ik-recipe-category)]">{CATEGORY_LABELS[recipe.category]}</p>
+          <h1 className="mt-2 text-4xl font-black leading-tight tracking-tight text-[var(--ik-porcelain)] sm:text-5xl lg:text-6xl">{recipe.title}</h1>
+          <p className="mt-3 max-w-2xl text-base leading-relaxed text-[var(--ik-porcelain)] sm:text-lg">{recipe.description}</p>
+          <dl className="mt-5 grid gap-2 sm:grid-cols-3">
+            <div className="flex min-h-11 items-center gap-2 rounded-[var(--ik-radius-pill)] border border-[var(--ik-border-strong)] bg-[var(--ik-sage)] px-3 py-2 text-sm font-semibold text-[var(--ik-ink)]">
+              <Clock size={18} aria-hidden="true" />
+              <dt className="sr-only">Tempo</dt>
+              <dd>{recipe.durationMinutes === null ? 'Tempo non indicato' : `${recipe.durationMinutes} min`}</dd>
+            </div>
+            <div className="flex min-h-11 items-center gap-2 rounded-[var(--ik-radius-pill)] border border-[var(--ik-border-strong)] bg-[var(--ik-sage)] px-3 py-2 text-sm font-semibold text-[var(--ik-ink)]">
+              <Users size={18} aria-hidden="true" />
+              <dt className="sr-only">Porzioni</dt>
+              <dd>{recipe.servings === null ? 'Porzioni non indicate' : `${recipe.servings} porzioni`}</dd>
+            </div>
+            <div className="flex min-h-11 items-center gap-2 rounded-[var(--ik-radius-pill)] border border-[var(--ik-border-strong)] bg-[var(--ik-sage)] px-3 py-2 text-sm font-semibold text-[var(--ik-ink)]">
+              <ChefHat size={18} aria-hidden="true" />
+              <dt className="sr-only">Difficoltà</dt>
+              <dd>{recipe.difficulty === 'easy' ? 'Facile' : recipe.difficulty === 'medium' ? 'Media' : 'Difficoltà non specificata'}</dd>
+            </div>
+          </dl>
+        </div>
       </header>
 
-      <section aria-label="Disponibilità della ricetta" className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-        <p className="font-bold text-amber-950">{quantityWarnings.length > 0 ? 'Verifica le quantità' : missingIngredientIds.length > 0 ? 'Ingredienti mancanti' : 'Ingredienti disponibili'}</p>
-        {quantityWarnings.length > 0 && <p className="mt-1 text-sm text-amber-950">La quantità potrebbe non bastare per: {quantityWarnings.map((id) => getIngredient(id)?.label ?? id).join(', ')}. Verifica prima di cucinare.</p>}
-        {missingIngredientIds.length > 0 && <p className="mt-1 text-sm text-amber-950">Da acquistare: {missingIngredientIds.map((id) => getIngredient(id)?.label ?? recipe.ingredients.find((item) => item.ingredientId === id)?.name ?? id).join(', ')}.</p>}
-        {missingIngredientIds.length === 0 && quantityWarnings.length === 0 && <p className="mt-1 text-sm text-amber-950">Gli ingredienti risultano presenti in dispensa; verifica le quantità effettive.</p>}
+      <section aria-label="Disponibilità della ricetta" aria-live="polite" className={`mt-5 rounded-[var(--ik-radius-panel)] border p-4 sm:p-5 ${availabilityTone}`}>
+        <p className="text-lg font-bold">{quantityWarnings.length > 0 ? 'Verifica le quantità' : missingIngredientIds.length > 0 ? 'Ingredienti mancanti' : 'Ingredienti disponibili'}</p>
+        {quantityWarnings.length > 0 && <p className="mt-1 text-sm leading-relaxed">La quantità potrebbe non bastare per: {quantityWarnings.map((id) => getIngredient(id)?.label ?? id).join(', ')}. Verifica prima di cucinare.</p>}
+        {missingIngredientIds.length > 0 && <p className="mt-1 text-sm leading-relaxed">Da acquistare: {missingIngredientIds.map((id) => getIngredient(id)?.label ?? recipe.ingredients.find((item) => item.ingredientId === id)?.name ?? id).join(', ')}.</p>}
+        {missingIngredientIds.length === 0 && quantityWarnings.length === 0 && <p className="mt-1 text-sm leading-relaxed">Gli ingredienti risultano presenti in dispensa; verifica le quantità effettive.</p>}
       </section>
 
-      <div className="grid gap-8 py-10 lg:grid-cols-[0.9fr_1.1fr]">
+      <div className="grid gap-4 py-6 sm:gap-6 sm:py-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <PageSection
           title="Ingredienti"
           titleId="ingredients-title"
+          className="bg-[var(--ik-surface)]"
+          actionClassName="min-w-0 w-full sm:w-auto sm:shrink-0"
           action={
-            <button type="button" onClick={addMissingToShoppingList} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800">
-              <ShoppingCart size={17} aria-hidden="true" /> Aggiungi mancanti alla spesa
-            </button>
+            <div className="min-w-0 w-full sm:w-auto">
+              <button type="button" onClick={addMissingToShoppingList} className="ik-button-primary inline-flex min-h-12 w-full items-center justify-center gap-2 px-4 py-2 text-center text-sm font-bold sm:w-auto">
+                <ShoppingCart size={17} aria-hidden="true" /> Aggiungi mancanti alla spesa
+              </button>
+            </div>
           }
         >
           {shoppingMessage !== null && (
-            <div className="mt-3 rounded-[var(--ik-radius-panel)] bg-emerald-50 p-4 text-sm font-semibold text-emerald-900">
+            <div className="mt-3 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-mist)] p-4 text-sm font-semibold text-[var(--ik-ink)]">
               <p role="status">{shoppingMessage}</p>
-              <Link to="/shopping-list" className="mt-2 inline-flex min-h-10 items-center rounded-lg font-bold underline underline-offset-2">Apri la lista della spesa</Link>
+              <Link to="/shopping-list" className="mt-2 inline-flex min-h-11 items-center rounded-[var(--ik-radius-control)] font-bold text-[var(--ik-basil-dark)] underline underline-offset-2">Apri la lista della spesa</Link>
             </div>
           )}
-          <ul className="divide-y divide-gray-200">
-            {recipe.ingredients.map((item) => (
-              <li key={item.ingredientId} className="flex items-start justify-between gap-4 py-4">
-                <span className="font-semibold text-gray-900">{item.name ?? getIngredient(item.ingredientId)?.label ?? item.ingredientId}</span>
-                <span className="text-right text-gray-600">{item.amount}{item.optional ? ' · facoltativo' : ''}</span>
-              </li>
-            ))}
+          <ul className="divide-y divide-[var(--ik-border)]">
+            {recipe.ingredients.map((item) => {
+              const isMissing = missingIngredientIds.includes(item.ingredientId);
+              const quantityNeedsReview = quantityWarnings.includes(item.ingredientId);
+              return (
+                <li key={item.ingredientId} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <span className="min-w-0 font-semibold text-[var(--ik-ink)]">{item.name ?? getIngredient(item.ingredientId)?.label ?? item.ingredientId}</span>
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 sm:justify-end">
+                    <span className="text-sm font-semibold text-[var(--ik-ink-muted)]">{item.amount}{item.optional ? ' · facoltativo' : ''}</span>
+                    {!item.optional && (
+                      <span className={`rounded-[var(--ik-radius-pill)] px-3 py-1 text-xs font-bold ${quantityNeedsReview || isMissing ? 'bg-[var(--ik-yolk-soft)] text-[var(--ik-warn-ink)]' : 'bg-[var(--ik-sage)] text-[var(--ik-basil-dark)]'}`}>
+                        {quantityNeedsReview ? 'Verifica quantità' : isMissing ? 'Da acquistare' : 'In dispensa'}
+                      </span>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </PageSection>
 
-        <PageSection title="Preparazione" titleId="steps-title">
-          <ol className="space-y-4">
+        <PageSection title="Preparazione" titleId="steps-title" className="bg-[var(--ik-surface)]">
+          <ol className="space-y-3">
             {recipe.steps.map((step, index) => (
-              <li key={step} className="grid grid-cols-[2.75rem_1fr] gap-4 rounded-3xl bg-emerald-50 p-5">
-                <span className="grid h-11 w-11 place-items-center rounded-full bg-emerald-700 font-black text-white" aria-hidden="true">{index + 1}</span>
-                <p className="pt-2 leading-relaxed text-gray-800">{step}</p>
+              <li key={step} className="grid grid-cols-[2.75rem_minmax(0,1fr)] gap-3 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-mist)] p-3 sm:gap-4 sm:p-4">
+                <span className="grid h-11 w-11 place-items-center rounded-full bg-[var(--ik-basil)] font-black text-[var(--ik-porcelain)]" aria-hidden="true">{index + 1}</span>
+                <p className="pt-1 leading-relaxed text-[var(--ik-ink)]">{step}</p>
               </li>
             ))}
           </ol>
         </PageSection>
       </div>
 
-      <section aria-labelledby="dinner-confirm-title" className="rounded-[var(--ik-radius-panel)] border border-emerald-200 bg-emerald-50 p-4 sm:p-5">
-        <h2 id="dinner-confirm-title" className="text-2xl font-black text-gray-950">Conferma la cena</h2>
-        <p className="mt-1 text-sm leading-relaxed text-gray-700">
+      <section aria-labelledby="dinner-confirm-title" className="rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4 sm:p-6">
+        <h2 id="dinner-confirm-title" className="text-2xl font-black text-[var(--ik-ink)] sm:text-3xl">Conferma la cena</h2>
+        <p className="mt-1 max-w-2xl text-sm leading-relaxed text-[var(--ik-ink-muted)] sm:text-base">
           Dichiarate cosa avete usato dalla dispensa: solo gli ingredienti selezionati vengono scalati quando confermate.
         </p>
-        <label htmlFor="cooked-servings" className="mt-3 grid max-w-xs gap-2 text-sm font-semibold text-gray-800">
+        <label htmlFor="cooked-servings" className="mt-4 grid max-w-xs gap-2 text-sm font-semibold text-[var(--ik-ink)]">
           Porzioni cucinate
-          <input id="cooked-servings" type="number" min="1" step="1" value={cookedServings} onChange={(event) => setCookedServings(event.target.value)} className="min-h-11 rounded-xl border-2 border-gray-300 bg-white px-3 py-2" />
+          <input id="cooked-servings" type="number" min="1" step="1" value={cookedServings} onChange={(event) => setCookedServings(event.target.value)} className="ik-input min-h-12 w-full border-2 px-3 py-2" />
         </label>
         <DinnerConsumptionSelection
           mode="recipe"
@@ -369,52 +414,52 @@ export default function RecipeDetailPage() {
           confirmedPlan={confirmedPlan}
           confirmedNoIngredientsUsed={confirmedNoIngredientsUsed}
         />
-        <div className="mt-3 flex flex-wrap gap-3">
-          <button type="button" onClick={() => { void confirmDinner(); }} disabled={confirmingDinner} className="min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800 disabled:opacity-60">
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button type="button" onClick={() => { void confirmDinner(); }} disabled={confirmingDinner} className="ik-button-primary min-h-12 w-full px-5 py-2 font-bold sm:w-auto">
             {confirmingDinner ? 'Confermo…' : 'Conferma cena'}
           </button>
         </div>
-        {activityMessage !== null && <p role="status" className="mt-3 text-sm font-semibold text-emerald-800">{activityMessage}</p>}
-        {activityError !== null && <p role="alert" className="mt-3 text-sm font-semibold text-rose-900">{activityError}</p>}
+        {activityMessage !== null && <p role="status" className="mt-3 rounded-[var(--ik-radius-control)] bg-[var(--ik-sage)] p-3 text-sm font-semibold text-[var(--ik-basil-dark)]">{activityMessage}</p>}
+        {activityError !== null && <p role="alert" className="mt-3 rounded-[var(--ik-radius-control)] bg-[var(--ik-tomato-soft)] p-3 text-sm font-semibold text-[var(--ik-tomato)]">{activityError}</p>}
       </section>
 
-      <section aria-labelledby="recipe-actions-title" className="mt-6 rounded-[var(--ik-radius-panel)] border border-amber-200 bg-amber-50 p-4 sm:p-5">
-        <h2 id="recipe-actions-title" className="text-2xl font-black text-gray-950">La tua esperienza</h2>
+      <section aria-labelledby="recipe-actions-title" className="ik-surface--quiet mt-6 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] p-4 sm:p-6">
+        <h2 id="recipe-actions-title" className="text-2xl font-black text-[var(--ik-ink)]">La tua esperienza</h2>
         <div className="mt-3 flex flex-wrap gap-3">
-          <button type="button" aria-pressed={favorite} onClick={() => setFavorite((value) => !value)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border-2 border-amber-300 bg-white px-4 py-2 font-bold text-gray-900 hover:border-amber-500">
+          <button type="button" aria-pressed={favorite} onClick={() => setFavorite((value) => !value)} className="ik-button-secondary inline-flex min-h-12 w-full items-center justify-center gap-2 border-2 bg-[var(--ik-surface)] px-4 py-2 font-bold sm:w-auto">
             <Heart size={18} fill={favorite ? 'currentColor' : 'none'} aria-hidden="true" />
             {favorite ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti'}
           </button>
         </div>
-        <div className="mt-5 grid gap-3 border-t border-amber-200 pt-4">
-          <span className="text-sm font-bold text-gray-800">Valuta questa ricetta</span>
+        <div className="mt-5 grid gap-3 border-t border-[var(--ik-border)] pt-4">
+          <span className="text-sm font-bold text-[var(--ik-ink)]">Valuta questa ricetta</span>
           <div role="group" aria-label="Valutazione" className="flex flex-wrap gap-1">
             {[1, 2, 3, 4, 5].map((value) => (
-              <button key={value} type="button" aria-pressed={rating === value} aria-label={`Valuta ${recipe.title}: ${ratingLabel(value)}`} onClick={() => setRating(value)} className="grid min-h-11 min-w-11 place-items-center rounded-xl text-amber-700 hover:bg-white">
+              <button key={value} type="button" aria-pressed={rating === value} aria-label={`Valuta ${recipe.title}: ${ratingLabel(value)}`} onClick={() => setRating(value)} className="grid min-h-11 min-w-11 place-items-center rounded-[var(--ik-radius-control)] text-[var(--ik-yolk)] hover:bg-[var(--ik-surface)]">
                 <Star size={22} fill={rating !== null && value <= rating ? 'currentColor' : 'none'} aria-hidden="true" />
               </button>
             ))}
           </div>
-          <label htmlFor="private-recipe-note" className="text-sm font-semibold text-gray-800">Nota privata sulla ricetta</label>
-          <textarea id="private-recipe-note" value={privateNote} onChange={(event) => setPrivateNote(event.target.value)} maxLength={500} rows={3} placeholder="Cosa vuoi ricordare?" className="rounded-xl border-2 border-amber-200 bg-white px-3 py-2 outline-none focus:border-amber-500" />
-          <button type="button" onClick={savePreference} className="min-h-11 w-fit rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800">Salva preferenza</button>
-          {preferenceMessage !== null && <p role="status" className="text-sm font-semibold text-emerald-800">{preferenceMessage}</p>}
+          <label htmlFor="private-recipe-note" className="text-sm font-semibold text-[var(--ik-ink)]">Nota privata sulla ricetta</label>
+          <textarea id="private-recipe-note" value={privateNote} onChange={(event) => setPrivateNote(event.target.value)} maxLength={500} rows={3} placeholder="Cosa vuoi ricordare?" className="ik-input min-h-24 resize-y border-2 px-3 py-2" />
+          <button type="button" onClick={savePreference} className="ik-button-primary min-h-12 w-full px-4 py-2 font-bold sm:w-fit">Salva preferenza</button>
+          {preferenceMessage !== null && <p role="status" className="text-sm font-semibold text-[var(--ik-basil-dark)]">{preferenceMessage}</p>}
         </div>
       </section>
 
       {metadata !== undefined && nutrition !== null && (
-        <section aria-labelledby="nutrition-title" className="ik-surface border mt-6 rounded-[var(--ik-radius-panel)] bg-white p-5 sm:p-6">
-          <h2 id="nutrition-title" className="text-2xl font-black text-gray-950">Nutrizione stimata per porzione</h2>
+        <section aria-labelledby="nutrition-title" className="mt-6 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4 sm:p-6">
+          <h2 id="nutrition-title" className="text-2xl font-black text-[var(--ik-ink)]">Nutrizione stimata per porzione</h2>
           <RecipeNutritionSummary nutrition={nutrition} />
-          <p className="mt-3 text-sm font-semibold text-gray-700">
+          <p className="mt-3 text-sm font-semibold text-[var(--ik-ink-muted)]">
             Allergeni dichiarati: {metadata.allergens.length === 0 ? 'nessuno' : metadata.allergens.map((allergen) => ALLERGEN_LABELS[allergen]).join(', ')}
           </p>
           {canRefreshNutrition && (
             <div className="mt-4">
-              <button type="button" onClick={() => { void refreshNutrition(); }} disabled={isRefreshingNutrition} className="min-h-11 rounded-xl bg-gray-950 px-4 py-2 text-sm font-bold text-white hover:bg-gray-800 disabled:cursor-wait disabled:opacity-60">
+              <button type="button" onClick={() => { void refreshNutrition(); }} disabled={isRefreshingNutrition} className="ik-button-primary min-h-12 w-full px-4 py-2 text-sm font-bold disabled:cursor-wait disabled:opacity-60 sm:w-auto">
                 {isRefreshingNutrition ? 'Aggiornamento in corso…' : 'Aggiorna stima USDA'}
               </button>
-              {nutritionMessage !== null && <p role="status" className="mt-2 text-sm font-semibold text-gray-700">{nutritionMessage}</p>}
+              {nutritionMessage !== null && <p role="status" className="mt-2 text-sm font-semibold text-[var(--ik-ink-muted)]">{nutritionMessage}</p>}
             </div>
           )}
         </section>

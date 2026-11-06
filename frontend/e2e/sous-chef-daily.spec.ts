@@ -1,0 +1,30 @@
+import { expect, test } from '@playwright/test';
+import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
+
+test.skip(process.env.VITE_SOUS_CHEF !== 'true', 'Sous-Chef build required');
+
+test('daily recipe is from the real catalog and survives offline reload', async ({ page, context }) => {
+  await installOfflineBackend(page, { serviceWorkers: 'allow' });
+  await page.goto('/');
+  const card = page.getByRole('region', { name: 'Ricetta del giorno' });
+  await expect(card).toBeVisible();
+  const link = card.getByRole('link', { name: /vedi ricetta/i });
+  const href = await link.getAttribute('href');
+  expect(href).toMatch(/^\/recipes\/[a-z][a-z0-9-]+$/);
+  await expect.poll(async () => page.evaluate(() => new Promise<string>((resolve, reject) => {
+    const request = indexedDB.open('ikuck-local-v2');
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const read = db.transaction('keyValue').objectStore('keyValue').get('ikuck:guest:daily-recipes-v1');
+      read.onsuccess = () => { resolve(JSON.stringify(read.result)); db.close(); };
+      read.onerror = () => reject(read.error);
+    };
+  }))).toContain(href!.split('/').pop()!);
+  await page.waitForFunction(() => 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null);
+  await context.setOffline(true);
+  await page.reload();
+  await expect(card.getByRole('link', { name: /vedi ricetta/i })).toHaveAttribute('href', href!);
+  await context.setOffline(false);
+  assertOfflineBackendClean(page);
+});

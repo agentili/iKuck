@@ -36,6 +36,7 @@ describe('shared contracts and account migration', () => {
       'generated_recipe',
       'dinner_entry',
       'saved_recipe',
+      'meal_plan_entry',
     ]);
     expect(PERSONAL_SYNC_ENTITY_TYPES).toEqual(['ai_consent']);
     expect(new Set([...HOUSE_SYNC_ENTITY_TYPES, ...PERSONAL_SYNC_ENTITY_TYPES])).toEqual(new Set(SYNC_ENTITY_TYPES));

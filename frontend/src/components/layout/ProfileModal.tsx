@@ -18,7 +18,20 @@ export const ProfileModal = memo(({ isOpen, onClose }: ProfileModalProps) => {
   const resolvedTheme = useSyncExternalStore(subscribeColorTheme, resolveColorTheme, () => 'light');
   
   const modalRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const toggleTheme = () => saveColorThemePreference(resolvedTheme === 'dark' ? 'light' : 'dark');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    previouslyFocusedRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+
+    return () => {
+      if (previouslyFocusedRef.current?.isConnected) previouslyFocusedRef.current.focus();
+      previouslyFocusedRef.current = null;
+    };
+  }, [isOpen]);
 
   // Close on Escape
   useEffect(() => {
@@ -86,20 +99,20 @@ export const ProfileModal = memo(({ isOpen, onClose }: ProfileModalProps) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+    <div id="profile-modal" className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+      <div className="ik-modal-backdrop absolute inset-0" onClick={onClose} />
       
       <div 
         ref={modalRef}
-        className="absolute top-20 right-4 left-4 md:right-auto md:w-80 bg-[var(--sc-cream)] border border-[var(--sc-peach-soft)] rounded-2xl shadow-[var(--sc-shadow-lift)] animate-slide-down max-h-[80vh] overflow-y-auto"
+        className="ik-modal-surface absolute top-20 right-4 left-4 md:right-auto md:w-80 rounded-2xl animate-slide-down max-h-[80vh] overflow-y-auto"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-[var(--sc-peach-soft)]">
-          <h2 id="profile-modal-title" className="text-lg font-bold text-[var(--sc-ink)]">Profilo</h2>
+        <div className="flex items-center justify-between p-4 border-b border-[var(--ik-border)]">
+          <h2 id="profile-modal-title" className="text-lg font-bold text-[var(--ik-ink)]">Profilo</h2>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-[var(--sc-ink-faint)] hover:bg-[var(--sc-peach-soft)] transition-colors"
+            className="p-2 rounded-xl text-[var(--ik-ink-muted)] hover:bg-[var(--ik-sage)] transition-colors"
             aria-label="Chiudi"
           >
             <X className="w-5 h-5" aria-hidden="true" />
@@ -107,28 +120,28 @@ export const ProfileModal = memo(({ isOpen, onClose }: ProfileModalProps) => {
         </div>
 
         {/* User Info */}
-        <div className="p-4 border-b border-[var(--sc-peach-soft)]">
+        <div className="p-4 border-b border-[var(--ik-border)]">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[var(--sc-terracotta)] to-[var(--sc-honey)] flex items-center justify-center text-[var(--sc-cream)] text-2xl font-bold">
+            <div className="w-16 h-16 rounded-2xl bg-[var(--ik-basil-dark)] flex items-center justify-center text-[var(--ik-porcelain)] text-2xl font-bold">
               {user?.email.charAt(0).toUpperCase() ?? 'O'}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-bold text-[var(--sc-ink)] truncate">{user?.email.split('@')[0] ?? 'Ospite'}</p>
-              <p className="text-sm text-[var(--sc-ink-faint)] truncate">{user?.email ?? 'Dati locali'}</p>
+              <p className="font-bold text-[var(--ik-ink)] truncate">{user?.email.split('@')[0] ?? 'Ospite'}</p>
+              <p className="text-sm text-[var(--ik-ink-muted)] truncate">{user?.email ?? 'Dati locali'}</p>
               <div className="flex items-center gap-2 mt-2">
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                  connection === 'offline' ? 'bg-gray-100 text-gray-700' :
-                  user === null ? 'bg-blue-100 text-blue-700' :
-                  user.emailVerifiedAt.trim() === '' ? 'bg-amber-100 text-amber-700' :
-                  'bg-green-100 text-green-700'
+                  connection === 'offline' ? 'bg-[var(--ik-mist)] text-[var(--ik-ink-muted)]' :
+                  user === null ? 'bg-[var(--ik-sage)] text-[var(--ik-ink)]' :
+                  user.emailVerifiedAt.trim() === '' ? 'bg-[var(--ik-yolk-soft)] text-[var(--ik-warn-ink)]' :
+                  'bg-[var(--ik-sage)] text-[var(--ik-basil-dark)]'
                 }`}>
-                  {connection === 'offline' && <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />}
-                  {connection !== 'offline' && user?.emailVerifiedAt.trim() === '' && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
-                  {connection !== 'offline' && user?.emailVerifiedAt.trim() !== '' && <span className="w-1.5 h-1.5 rounded-full bg-green-400" />}
+                  {connection === 'offline' && <span className="w-1.5 h-1.5 rounded-full bg-[var(--ik-ink-muted)]" />}
+                  {connection !== 'offline' && user?.emailVerifiedAt.trim() === '' && <span className="w-1.5 h-1.5 rounded-full bg-[var(--ik-yolk)]" />}
+                  {connection !== 'offline' && user?.emailVerifiedAt.trim() !== '' && <span className="w-1.5 h-1.5 rounded-full bg-[var(--ik-basil)]" />}
                   {accountStatus}
                 </span>
               </div>
-              <p className="text-xs text-[var(--sc-ink-faint)] mt-1">{scopeLabel}</p>
+              <p className="text-xs text-[var(--ik-ink-muted)] mt-1">{scopeLabel}</p>
             </div>
           </div>
         </div>
@@ -138,7 +151,7 @@ export const ProfileModal = memo(({ isOpen, onClose }: ProfileModalProps) => {
           <Link
             to="/profile"
             onClick={onClose}
-            className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-[var(--sc-ink)] hover:bg-[var(--sc-peach-soft)] transition-colors"
+            className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-[var(--ik-ink)] hover:bg-[var(--ik-sage)] transition-colors"
           >
             <UserRound className="w-5 h-5" aria-hidden="true" />
             <span className="font-medium">Profilo e impostazioni</span>
@@ -147,7 +160,7 @@ export const ProfileModal = memo(({ isOpen, onClose }: ProfileModalProps) => {
           <Link
             to="/house"
             onClick={onClose}
-            className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-[var(--sc-ink)] hover:bg-[var(--sc-peach-soft)] transition-colors"
+            className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-[var(--ik-ink)] hover:bg-[var(--ik-sage)] transition-colors"
           >
             <Home className="w-5 h-5" aria-hidden="true" />
             <span className="font-medium">Casa e condivisione</span>
@@ -156,7 +169,7 @@ export const ProfileModal = memo(({ isOpen, onClose }: ProfileModalProps) => {
           <button
             type="button"
             onClick={toggleTheme}
-            className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-[var(--sc-ink)] hover:bg-[var(--sc-peach-soft)] transition-colors"
+            className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-[var(--ik-ink)] hover:bg-[var(--ik-sage)] transition-colors"
           >
             {resolvedTheme === 'dark' ? <Sun className="w-5 h-5" aria-hidden="true" /> : <Moon className="w-5 h-5" aria-hidden="true" />}
             <span className="font-medium">{resolvedTheme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}</span>
@@ -166,7 +179,7 @@ export const ProfileModal = memo(({ isOpen, onClose }: ProfileModalProps) => {
             <button
               type="button"
               onClick={() => { useAuthStore.getState().logout(); onClose(); }}
-              className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-[var(--sc-terracotta)] hover:bg-[var(--sc-coral-soft)] transition-colors"
+              className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-[var(--ik-tomato)] hover:bg-[var(--ik-tomato-soft)] transition-colors"
             >
               <LogOut className="w-5 h-5" aria-hidden="true" />
               <span className="font-medium">Esci</span>

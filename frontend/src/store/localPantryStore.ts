@@ -310,6 +310,16 @@ export const usePantryStore = create<PantryState>()(
       version: 1,
       storage: createJSONStorage(() => pantryPersistStorage),
       skipHydration: true,
+      merge: (persistedState, currentState) => {
+        if (hydrationScopeInFlight !== null
+          && (hydrationScopeInFlight !== getActiveDataScope()
+            || hydrationGenerationInFlight !== hydrationGeneration)) {
+          // Zustand applies the persisted value before onRehydrateStorage runs; reject stale scope data here.
+          throw new Error('Pantry hydration scope changed before the persisted snapshot could be applied');
+        }
+        if (typeof persistedState !== 'object' || persistedState === null) return currentState;
+        return { ...currentState, ...(persistedState as Partial<PantryState>) };
+      },
       partialize: (state) => {
         const persistedState = { ...state };
         Reflect.deleteProperty(persistedState, 'hasHydrated');

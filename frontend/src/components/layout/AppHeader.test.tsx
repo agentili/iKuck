@@ -36,7 +36,9 @@ describe('AppHeader', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('link', { name: 'Salta al contenuto' })).toHaveAttribute('href', '#main-content');
+    const skipLink = screen.getByRole('link', { name: 'Salta al contenuto' });
+    expect(skipLink).toHaveAttribute('href', '#main-content');
+    expect(skipLink).toHaveClass('bg-[var(--ik-basil-dark)]', 'text-[var(--ik-porcelain)]');
     const navigation = screen.getByRole('navigation', { name: 'Navigazione principale' });
     expect(navigation).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Cucina' })).not.toHaveAttribute('aria-current');
@@ -129,6 +131,24 @@ describe('AppHeader', () => {
     expect(ricetteSvg).not.toBeNull();
     expect(diarioSvg).not.toBeNull();
     expect(ricetteSvg!.innerHTML).not.toBe(diarioSvg!.innerHTML);
+  });
+
+  it('uses semantic palette tokens for the shared navigation surfaces and states', () => {
+    render(<MemoryRouter initialEntries={['/']}><AppHeader /></MemoryRouter>);
+
+    const header = screen.getByRole('banner');
+    const navigation = screen.getByRole('navigation', { name: 'Navigazione principale' });
+    expect(header).toHaveClass('ik-app-header');
+    expect(navigation).toHaveClass('ik-navigation-surface');
+    expect(screen.getByRole('link', { name: 'Cucina' })).toHaveClass(
+      'bg-[var(--ik-sage)]',
+      'text-[var(--ik-basil-dark)]',
+    );
+    expect(screen.getByRole('link', { name: 'Ricette' })).toHaveClass(
+      'text-[var(--ik-ink-muted)]',
+      'hover:bg-[var(--ik-sage)]',
+      'hover:text-[var(--ik-ink)]',
+    );
   });
 
   it('applies the five-column grid and overflow-safe sizing to the navigation list', () => {

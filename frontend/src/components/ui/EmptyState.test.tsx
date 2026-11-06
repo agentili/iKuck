@@ -16,10 +16,10 @@ describe('EmptyState', () => {
       />,
     );
 
-    expect(screen.getByRole('heading', { name: 'Nessuna ricetta trovata' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Nessuna ricetta trovata' })).toHaveClass('text-[var(--ik-ink)]');
     expect(
       screen.getByText('Nessuna ricetta trovata per «xyz». Prova un altro titolo o ingrediente.'),
-    ).toBeInTheDocument();
+    ).toHaveClass('text-[var(--ik-ink-muted)]');
     const link = screen.getByRole('link', { name: 'Trova ricette' });
     expect(link).toHaveAttribute('href', '/');
   });

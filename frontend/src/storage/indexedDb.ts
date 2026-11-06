@@ -4,7 +4,7 @@ import { scopeStorageKey, type SyncScope } from '../sync/scopeContext';
 export type { SyncScope } from '../sync/scopeContext';
 
 export const LOCAL_DATABASE_NAME = 'ikuck-local-v2';
-export const LOCAL_DATABASE_VERSION = 3;
+export const LOCAL_DATABASE_VERSION = 4;
 export const KEY_VALUE_STORE = 'keyValue';
 export const SYNC_QUEUE_STORE = 'syncQueue';
 export const SYNC_META_STORE = 'syncMeta';
@@ -137,6 +137,7 @@ interface LocalDatabaseSchema extends DBSchema {
     indexes: {
       byCreatedAt: number;
       byScope: SyncScope;
+      byScopeOrder: [SyncScope, number];
     };
   };
   syncMeta: {
@@ -175,12 +176,47 @@ export async function openLocalDatabase(): Promise<IDBPDatabase<LocalDatabaseSch
           const queue = database.createObjectStore(SYNC_QUEUE_STORE, { keyPath: 'mutationId' });
           queue.createIndex('byCreatedAt', 'createdAt');
           queue.createIndex('byScope', 'scope');
+          queue.createIndex('byScopeOrder', ['scope', 'localOrder']);
         } else if (oldVersion < 2) {
           const queue = transaction.objectStore(SYNC_QUEUE_STORE);
           if (!queue.indexNames.contains('byScope')) {
             queue.createIndex('byScope', 'scope');
           }
+        }
 
+        const queue = transaction.objectStore(SYNC_QUEUE_STORE);
+        if (!queue.indexNames.contains('byScopeOrder')) {
+          queue.createIndex('byScopeOrder', ['scope', 'localOrder']);
+        }
+        if (oldVersion < 4) {
+          void queue.getAll().then((values) => {
+            const compareText = (left: unknown, right: unknown): number => {
+              const leftText = typeof left === 'string' ? left : '';
+              const rightText = typeof right === 'string' ? right : '';
+              return leftText < rightText ? -1 : leftText > rightText ? 1 : 0;
+            };
+            const timestamp = (value: unknown): number => {
+              if (typeof value === 'number' && Number.isFinite(value)) return value;
+              if (typeof value === 'string') {
+                const parsed = Date.parse(value);
+                if (Number.isFinite(parsed)) return parsed;
+              }
+              return Number.MIN_SAFE_INTEGER;
+            };
+            const planRecords = (values as Array<Record<string, unknown>>)
+              .filter((record) => record.entityType === 'meal_plan_entry' && typeof record.mutationId === 'string')
+              .map((record): Record<string, unknown> => ({ ...record, scope: typeof record.scope === 'string' ? record.scope : 'guest' }))
+              .sort((left, right) => compareText(left.scope, right.scope)
+                || timestamp(left.createdAt) - timestamp(right.createdAt)
+                || compareText(left.mutationId, right.mutationId));
+            const orderByScope = new Map<string, number>();
+            for (const record of planRecords) {
+              const scope = record.scope as string;
+              const localOrder = (orderByScope.get(scope) ?? 0) + 1;
+              orderByScope.set(scope, localOrder);
+              queue.put({ ...record, localOrder });
+            }
+          });
         }
 
         if (!database.objectStoreNames.contains(SYNC_META_STORE)) {
@@ -241,6 +277,97 @@ export async function writeKeyValue<T>(
   await store.put(value, key);
   await transaction.done;
   return true;
+}
+
+export interface AtomicScopedQueueDelete {
+  mutationId: string;
+  scope: SyncScope;
+}
+
+export interface AtomicKeyValueUpdate {
+  key: string;
+  queueScope?: SyncScope;
+  update: (currentValue: unknown | null, queueValues: readonly unknown[]) => unknown | undefined;
+}
+
+export async function atomicUpdateKeyValuesAndQueue(
+  updates: readonly AtomicKeyValueUpdate[],
+  queueWrites: readonly unknown[] = [],
+  queueDeletes: readonly AtomicScopedQueueDelete[] = [],
+  assertWritable?: () => void,
+): Promise<void> {
+  const database = await openLocalDatabase();
+  assertWritable?.();
+  const transaction = database.transaction([KEY_VALUE_STORE, SYNC_QUEUE_STORE], 'readwrite');
+  const values = transaction.objectStore(KEY_VALUE_STORE);
+  const queue = transaction.objectStore(SYNC_QUEUE_STORE);
+  try {
+    for (const item of queueDeletes) {
+      const stored = await queue.get(item.mutationId) as { scope?: unknown } | undefined;
+      assertWritable?.();
+      if (stored?.scope === item.scope) await queue.delete(item.mutationId);
+    }
+    for (const value of queueWrites) {
+      assertWritable?.();
+      if (typeof value === 'object' && value !== null && 'entityType' in value
+        && value.entityType === 'meal_plan_entry' && 'mutationId' in value && typeof value.mutationId === 'string'
+        && 'scope' in value && typeof value.scope === 'string') {
+        const candidate = value as Record<string, unknown>;
+        const mutationId = candidate.mutationId as string;
+        const existing = await queue.get(mutationId) as Record<string, unknown> | undefined;
+        assertWritable?.();
+        let localOrder: number | undefined;
+        if (existing !== undefined) {
+          const stableFields = (record: Record<string, unknown>): Record<string, unknown> => Object.fromEntries(
+            Object.entries(record).filter(([key]) => key !== 'createdAt' && key !== 'localOrder'),
+          );
+          if (existing.entityType !== 'meal_plan_entry' || existing.scope !== candidate.scope
+            || JSON.stringify(stableFields(existing)) !== JSON.stringify(stableFields(candidate))) {
+            throw new Error('L’identificativo dell’operazione del piano è già associato a un comando diverso.');
+          }
+          if (Number.isSafeInteger(existing.localOrder) && (existing.localOrder as number) > 0) {
+            localOrder = existing.localOrder as number;
+          }
+        }
+        if (localOrder === undefined) {
+          const scope = candidate.scope as SyncScope;
+          const queued = await queue.index('byScopeOrder').getAll(
+            IDBKeyRange.bound([scope, 0], [scope, Number.MAX_SAFE_INTEGER]),
+          ) as Array<{ localOrder?: unknown }>;
+          assertWritable?.();
+          const maximum = queued.reduce((max, record) => Number.isSafeInteger(record.localOrder)
+            ? Math.max(max, record.localOrder as number) : max, 0);
+          localOrder = maximum + 1;
+        }
+        await queue.put({ ...candidate, localOrder });
+      } else {
+        await queue.put(value);
+      }
+      assertWritable?.();
+    }
+    for (const change of updates) {
+      const stored = await values.get(change.key);
+      assertWritable?.();
+      const queueValues = change.queueScope === undefined
+        ? []
+        : await queue.index('byScope').getAll(change.queueScope);
+      assertWritable?.();
+      const next = change.update(stored ?? null, queueValues);
+      if (next === undefined) await values.delete(change.key);
+      else await values.put(next, change.key);
+      assertWritable?.();
+    }
+    assertWritable?.();
+    await transaction.done;
+  } catch (error) {
+    try {
+      transaction.abort();
+    } catch {
+      // The transaction may already have completed or aborted.
+    }
+    await transaction.done.catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function updateKeyValue<T>(
@@ -386,19 +513,36 @@ export async function deleteKeyValueIfValue<T>(
   return true;
 }
 
-export async function readQueueValues<T>(scope: SyncScope): Promise<T[]> {
+export async function readQueueValues<T>(scope: SyncScope, assertWritable?: () => void): Promise<T[]> {
   const database = await openLocalDatabase();
+  assertWritable?.();
   const migrationTransaction = database.transaction(SYNC_QUEUE_STORE, 'readwrite');
   const queue = migrationTransaction.objectStore(SYNC_QUEUE_STORE);
-  const values = await queue.getAll() as Array<Record<string, unknown>>;
-  for (const value of values) {
-    if (typeof value.scope !== 'string') {
-      await queue.put({ ...value, scope: 'guest' satisfies SyncScope });
+  try {
+    const values = await queue.getAll() as Array<Record<string, unknown>>;
+    assertWritable?.();
+    for (const value of values) {
+      if (typeof value.scope !== 'string') {
+        assertWritable?.();
+        await queue.put({ ...value, scope: 'guest' satisfies SyncScope });
+        assertWritable?.();
+      }
     }
+    assertWritable?.();
+    await migrationTransaction.done;
+  } catch (error) {
+    try {
+      migrationTransaction.abort();
+    } catch {
+      // The transaction may already have completed or aborted.
+    }
+    await migrationTransaction.done.catch(() => undefined);
+    throw error;
   }
-  await migrationTransaction.done;
 
+  assertWritable?.();
   const scopedValues = await database.getAllFromIndex(SYNC_QUEUE_STORE, 'byScope', scope);
+  assertWritable?.();
   return scopedValues as T[];
 }
 

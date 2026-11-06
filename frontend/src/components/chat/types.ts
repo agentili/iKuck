@@ -12,6 +12,7 @@ export interface BaseMessage {
 export interface TextMessage extends BaseMessage {
   type: 'text';
   content: string;
+  isOptimistic?: boolean;
 }
 
 export interface RecipeData {

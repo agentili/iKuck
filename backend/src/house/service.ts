@@ -1,6 +1,7 @@
-import type { PantryLot, HouseMember, HouseRole, HouseState, SyncMutation } from '@ikuck/shared/contracts';
+import type { PantryLot, HouseMember, HouseRole, HouseState, HouseTimeZoneState, SyncMutation } from '@ikuck/shared/contracts';
 import type { PantryMergeSummary } from '@ikuck/shared/pantryMerge';
 import { AuthServiceError } from '../auth/service.js';
+import { HouseMigrationPendingError } from '../sync/repository.js';
 import type { SyncRepository } from '../sync/repository.js';
 import { HouseMembershipExistsError, type HouseRepository } from './repository.js';
 import { houseNameSchema, houseRoleSchema, memberEmailSchema } from './validation.js';
@@ -8,6 +9,11 @@ import { houseNameSchema, houseRoleSchema, memberEmailSchema } from './validatio
 export interface HouseService {
   createHouse: (userId: string, rawName: string) => Promise<{ state: HouseState; membership: { role: HouseRole; joinedAt: string } }>;
   getState: (userId: string) => Promise<HouseState | null>;
+  getTimeZone: (userId: string) => Promise<HouseTimeZoneState>;
+  initializeTimeZone: (userId: string, rawTimeZone: string) => Promise<HouseTimeZoneState>;
+  updateTimeZone: (userId: string, rawTimeZone: string | null, expectedRevision: string | null) => Promise<
+    { kind: 'updated' | 'conflict'; state: HouseTimeZoneState }
+  >;
   addMember: (adminUserId: string, rawEmail: string) => Promise<HouseMember>;
   changeRole: (adminUserId: string, userId: string, role: HouseRole) => Promise<void>;
   removeMember: (adminUserId: string, userId: string) => Promise<void>;
@@ -26,6 +32,16 @@ interface HouseServiceOptions {
 
 const invalidPayload = (message: string): AuthServiceError => new AuthServiceError('invalid_payload', 400, message);
 
+const canonicalTimeZone = (value: string): string => {
+  try {
+    const canonical = new Intl.DateTimeFormat('en-US', { timeZone: value }).resolvedOptions().timeZone;
+    if (canonical === '') throw new RangeError('Timezone is empty');
+    return canonical;
+  } catch {
+    throw invalidPayload('House timezone is not a supported IANA timezone');
+  }
+};
+
 const requireState = async (repository: HouseRepository, userId: string): Promise<HouseState> => {
   const state = await repository.getStateForUser(userId);
   if (state === null) throw new AuthServiceError('house_membership_required', 403, 'House membership is required');
@@ -43,8 +59,21 @@ const mapAddMemberResult = (result: Awaited<ReturnType<HouseRepository['addExist
 const migrateUserHouseData = async (syncRepository: SyncRepository | undefined, userId: string, houseId: string): Promise<void> => {
   if (syncRepository === undefined) return;
   if (syncRepository.migrateUserSharedDataToHouse !== undefined) {
-    await syncRepository.migrateUserSharedDataToHouse(userId, houseId);
-    return;
+    // Mark the durable retryable pending state before migrating, so reads are
+    // fail-closed and GET /v1/house can resume the idempotent migration. The
+    // mark survives a migration failure; it is cleared only after a full commit.
+    if (syncRepository.setHouseMigrationPending !== undefined) {
+      await syncRepository.setHouseMigrationPending(userId, houseId);
+    }
+    try {
+      await syncRepository.migrateUserSharedDataToHouse(userId, houseId);
+      if (syncRepository.clearHouseMigrationPending !== undefined) {
+        await syncRepository.clearHouseMigrationPending(userId);
+      }
+      return;
+    } catch {
+      throw new HouseMigrationPendingError();
+    }
   }
   if (syncRepository.mergeUserPantryToHouse !== undefined) {
     await syncRepository.mergeUserPantryToHouse(userId, houseId);
@@ -80,6 +109,35 @@ export const createHouseService = ({ repository, syncRepository, clock = () => n
       return repository.getStateForUser(userId);
     }
     return state;
+  },
+
+  getTimeZone: async (userId) => {
+    const result = await repository.getTimeZoneForUser(userId);
+    if (result.kind === 'membership_required') {
+      throw new AuthServiceError('house_membership_required', 403, 'House membership is required');
+    }
+    return result.state;
+  },
+
+  initializeTimeZone: async (userId, rawTimeZone) => {
+    const timeZone = canonicalTimeZone(rawTimeZone);
+    const result = await repository.initializeTimeZoneForUser(userId, timeZone);
+    if (result.kind === 'membership_required') {
+      throw new AuthServiceError('house_membership_required', 403, 'House membership is required');
+    }
+    return result.state;
+  },
+
+  updateTimeZone: async (userId, rawTimeZone, expectedRevision) => {
+    const timeZone = rawTimeZone === null ? null : canonicalTimeZone(rawTimeZone);
+    const result = await repository.updateTimeZoneForUser({ userId, timeZone, expectedRevision });
+    if (result.kind === 'membership_required') {
+      throw new AuthServiceError('house_membership_required', 403, 'House membership is required');
+    }
+    if (result.kind === 'admin_required') {
+      throw new AuthServiceError('house_admin_required', 403, 'House admin permission is required');
+    }
+    return { kind: result.kind, state: result.state };
   },
 
   addMember: async (adminUserId, rawEmail) => {

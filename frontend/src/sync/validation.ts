@@ -180,6 +180,8 @@ const isEntityPayloadValid = (entityType: SyncEntityType, entityId: string, payl
     case 'generated_recipe': return isGeneratedRecipePayload(payload) && isRecord(payload) && payload.id === entityId;
     case 'dinner_entry': return isDinnerEntry(payload) && payload.id === entityId;
     case 'saved_recipe': return isSavedRecipe(payload) && payload.id === entityId;
+    // The client must not accept plan entries before capability and bootstrap support exist.
+    case 'meal_plan_entry': return false;
   }
 };
 

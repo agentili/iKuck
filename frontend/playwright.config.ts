@@ -2,6 +2,9 @@ import { defineConfig, devices, type PlaywrightTestConfig } from '@playwright/te
 
 const defaultLocalPreviewPort = 4173;
 
+// Ensure sous-chef build for tests
+process.env.VITE_SOUS_CHEF = 'true';
+
 export const createPlaywrightConfig = (env: NodeJS.ProcessEnv = process.env): PlaywrightTestConfig => {
   const production = env.E2E_PRODUCTION === 'true';
   const live = env.E2E_LIVE === 'true';
@@ -44,13 +47,16 @@ export const createPlaywrightConfig = (env: NodeJS.ProcessEnv = process.env): Pl
     use: {
       baseURL,
       trace: 'retain-on-failure',
+      env: {
+        VITE_SOUS_CHEF: 'true',
+      },
     },
     globalSetup: live ? './e2e/liveSetup.ts' : undefined,
     projects: live
       ? [{ name: 'live-chromium', testMatch: /live-stack\.spec\.ts/, use: { ...devices['Desktop Chrome'] } }]
       : offlineProjects,
     webServer: useLocalWebServer ? {
-      command: `npm run build && npm run preview -- --host 127.0.0.1 --port ${previewPort} --strictPort`,
+      command: `VITE_SOUS_CHEF=true npm run build && npm run preview -- --host 127.0.0.1 --port ${previewPort} --strictPort`,
       url: localBaseURL,
       reuseExistingServer: false,
     } : undefined,

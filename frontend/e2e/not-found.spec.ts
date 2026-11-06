@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
+import { landingHeading } from './helpers/appMode';
 
 test.beforeEach(async ({ context, page }) => {
   await context.clearCookies();
@@ -23,5 +24,5 @@ test('pagina 404 per percorso inesistente mostra messaggio e link alla home', as
   await link.click();
 
   await expect(page).toHaveURL('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await expect(page.locator('main').getByRole('heading', { name: landingHeading, exact: true })).toBeVisible();
 });

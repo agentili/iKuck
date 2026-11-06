@@ -271,10 +271,10 @@ export default function DinnerConsumptionSelection({
             </ul>
           )}
           {plan.unresolvedIngredients.length > 0 && (
-            <p className="mt-2 text-sm font-semibold text-rose-800">Prima di confermare, chiarisci ogni ingrediente o quantità ambigua.</p>
+            <p className="mt-2 rounded-[var(--ik-radius-control)] border border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] px-3 py-2 text-sm font-semibold text-[var(--ik-tomato)]">Prima di confermare, chiarisci ogni ingrediente o quantità ambigua.</p>
           )}
           {plan.summary.deficitCount > 0 && (
-            <p className="mt-2 text-sm font-semibold text-amber-900">La registrazione userà solo le scorte presenti e mostrerà il deficit effettivo.</p>
+            <p className="mt-2 rounded-[var(--ik-radius-control)] border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] px-3 py-2 text-sm font-semibold text-[var(--ik-warn-ink)]">La registrazione userà solo le scorte presenti e mostrerà il deficit effettivo.</p>
           )}
         </div>
       )}

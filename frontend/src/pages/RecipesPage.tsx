@@ -5,6 +5,7 @@ import { useSyncExternalStore } from 'react';
 import type { GeneratedRecipe } from '@ikuck/shared/contracts';
 import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { ApiClientError } from '../api/apiClient';
+import { isSousChef } from '../config/features';
 import { fetchAiRecipes } from '../ai/aiRecipeApi';
 import { useAuthStore } from '../auth/authStore';
 import { adaptPantryRecipe, adaptGeneratedRecipe, adaptSavedRecipe, searchRecipes } from '../domain/recipeSearch';
@@ -20,6 +21,17 @@ import RecipeCard from '../components/ui/RecipeCard';
 const LIBRARY_GROUP_LABEL = 'Le tue ricette salvate';
 const AI_GROUP_LABEL = 'Le tue ricette AI';
 const SUGGESTED_GROUP_LABEL = 'Ricette suggerite';
+const PAGE_SECTION_CLASS = 'bg-[var(--ik-surface)] [&_h2]:text-[2rem] [&_h2]:leading-[1.12] [&_h2]:tracking-[-0.02em]';
+const PAGE_INTERACTION_FOCUS_CLASS = [
+  '[&_a:focus-visible]:outline',
+  '[&_a:focus-visible]:outline-2',
+  '[&_a:focus-visible]:outline-offset-2',
+  '[&_a:focus-visible]:outline-[var(--ik-focus)]',
+  '[&_button:focus-visible]:outline',
+  '[&_button:focus-visible]:outline-2',
+  '[&_button:focus-visible]:outline-offset-2',
+  '[&_button:focus-visible]:outline-[var(--ik-focus)]',
+].join(' ');
 
 const scopeLabel = (scope: string): string => (
   scope.startsWith('house:') ? 'Casa' : scope === 'guest' ? 'dati locali' : 'personale'
@@ -195,22 +207,45 @@ export default function RecipesPage() {
   }, []);
 
   return (
-    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-6xl px-4 pb-8 pt-5 sm:px-6 sm:pt-8 lg:px-8">
+    <main id="main-content" className={`ik-page ik-recipes-page mx-auto min-h-screen w-full max-w-6xl px-4 pb-8 pt-5 text-[var(--ik-ink)] sm:px-6 sm:pt-8 lg:px-8 ${PAGE_INTERACTION_FOCUS_CLASS}`}>
       <header className="ik-page-intro mb-5 max-w-2xl sm:mb-7">
-        <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">
+        <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em]">
           Ricette · {scopeLabel(activeScope)}
         </p>
-        <h1 className="mt-1 text-4xl font-black leading-[1.04] text-gray-950 sm:text-5xl">Ricette</h1>
-        <p className="mt-3 max-w-xl text-base leading-relaxed text-gray-700">
+        <h1 className="mt-1 text-[clamp(2.5rem,6vw,3.75rem)] font-black leading-[1.04] tracking-[-0.03em] text-[var(--ik-ink)]">Ricette</h1>
+        <p className="mt-3 max-w-xl text-base leading-relaxed text-[var(--ik-ink-muted)]">
           Le tue ricette salvate, quelle generate con l’AI e il catalogo della casa.
         </p>
+        {isSousChef() && (
+          <nav aria-label="Altre sezioni di Ricette" className="mt-4 flex flex-wrap gap-2">
+            <Link
+              to="/discover"
+              className="inline-flex min-h-11 items-center rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-porcelain)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:border-[var(--ik-basil)] hover:bg-[var(--ik-mist)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]"
+            >
+              Cerca ricette
+            </Link>
+            <Link
+              to="/saved"
+              className="inline-flex min-h-11 items-center rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-porcelain)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:border-[var(--ik-basil)] hover:bg-[var(--ik-mist)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]"
+            >
+              Ricette salvate
+            </Link>
+            {/* Keep the diary reachable without taking a primary navigation slot. */}
+            <Link
+              to="/dinner-diary"
+              className="inline-flex min-h-11 items-center rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-porcelain)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:border-[var(--ik-basil)] hover:bg-[var(--ik-mist)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]"
+            >
+              Diario delle cene
+            </Link>
+          </nav>
+        )}
       </header>
 
       <div className="ik-kitchen-layout ik-kitchen-layout--two-columns mt-4">
         <div className="ik-kitchen-column min-w-0">
-        <section aria-label="Ricerca tra le ricette" className="rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] p-4 sm:p-5 mb-6">
+        <section aria-label="Ricerca tra le ricette" className="mb-6 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4 sm:p-5">
           <div className="min-w-0 flex-1">
-            <label className="sr-only">Cerca ricette</label>
+            <label htmlFor="recipe-search" className="sr-only">Cerca ricette</label>
             <input
               id="recipe-search"
               type="search"
@@ -218,9 +253,9 @@ export default function RecipesPage() {
               placeholder="Cerca per titolo o ingrediente…"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              className="block min-h-11 w-full rounded-xl border-2 border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-emerald-700 focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-emerald-700 sm:text-base"
+              className="ik-input block min-h-12 w-full border-2 px-4 py-2 text-[var(--ik-ink)] placeholder:text-[var(--ik-ink-muted)] focus:border-[var(--ik-basil)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)] sm:text-base"
             />
-            <p className="mt-2 text-xs text-gray-600">
+            <p className="mt-2 text-sm text-[var(--ik-ink-muted)]">
               Filtra live per titolo o ingrediente; nessun dato lascia il dispositivo.
             </p>
           </div>
@@ -232,6 +267,7 @@ export default function RecipesPage() {
           eyebrow="Dal diario"
           title={LIBRARY_GROUP_LABEL}
           titleId="library-recipes-title"
+          className={PAGE_SECTION_CLASS}
           description="Le ricette che hai salvato dal Diario, disponibili anche offline."
           action={
             libraryLoading && (
@@ -271,6 +307,7 @@ export default function RecipesPage() {
           eyebrow="Generate con l’AI"
           title={AI_GROUP_LABEL}
           titleId="ai-recipes-title"
+          className={PAGE_SECTION_CLASS}
           action={
             savedLoading && (
               <p role="status" className="text-sm font-semibold text-emerald-900">
@@ -326,6 +363,7 @@ export default function RecipesPage() {
           eyebrow="Catalogo della casa"
           title={SUGGESTED_GROUP_LABEL}
           titleId="suggested-recipes-title"
+          className={PAGE_SECTION_CLASS}
           description="Ricette offline, sempre disponibili."
         >
           {isEmptySearch && (

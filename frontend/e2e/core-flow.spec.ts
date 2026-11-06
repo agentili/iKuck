@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
+import {
+  goToKitchen,
+  isSousChefBuild,
+  kitchenHeading,
+  landingHeading,
+  openPantryInventory,
+} from './helpers/appMode';
 
 const waitForDietProfilePersistence = async (page: Page): Promise<void> => {
   await page.waitForFunction(() => new Promise<boolean>((resolve) => {
@@ -72,9 +79,15 @@ const waitForActivityPersistence = async (page: Page): Promise<void> => {
   }));
 };
 
-test.beforeEach(async ({ context, page }) => {
+test.beforeEach(async ({ context, page }, testInfo) => {
   await context.clearCookies();
-  await installOfflineBackend(page);
+  const serviceWorkerScenarios = new Set([
+    'verified local recipe imagery is labelled and remains available offline with an honest fallback',
+    'manifest is available and the application works offline after first load',
+  ]);
+  await installOfflineBackend(page, {
+    serviceWorkers: serviceWorkerScenarios.has(testInfo.titlePath.at(-1) ?? '') ? 'allow' : 'block',
+  });
   await page.route('**/v1/house', (route) => route.fulfill({ status: 200, json: null }));
 });
 
@@ -90,19 +103,21 @@ const resetPantry = async (page: Page): Promise<void> => {
 };
 
 const openHomeRecipes = async (page: Page): Promise<void> => {
+  await openPantryInventory(page);
   await page.getByRole('link', { name: 'Vai alle ricette' }).click();
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: kitchenHeading })).toBeVisible();
 };
 
 const openPantry = async (page: Page): Promise<void> => {
   await page.getByRole('link', { name: 'Dispensa', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
+  await openPantryInventory(page);
 };
 
 test('Home quick add uses the shared pantry, dismisses suggestions before the dialog, and survives reload', async ({ page }) => {
   await resetPantry(page);
-  await page.getByRole('link', { name: 'Cucina' }).click();
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await goToKitchen(page);
+  await expect(page.getByRole('heading', { name: kitchenHeading })).toBeVisible();
 
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
   const dialog = page.getByRole('dialog', { name: 'Aggiungi ingredienti' });
@@ -131,6 +146,7 @@ test('user adds pantry items, requests recipes and opens one', async ({ page }) 
 
   await page.getByLabel('Ingredienti presenti').fill('pasta, tonno, passata');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await openPantryInventory(page);
   await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
   await openHomeRecipes(page);
   await page.getByRole('button', { name: 'Trova ricette' }).click();
@@ -146,6 +162,7 @@ test('verified local recipe imagery is labelled and remains available offline wi
   await resetPantry(page);
   await page.getByLabel('Ingredienti presenti').fill('uova, passata, aglio');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await openPantryInventory(page);
   await page.getByRole('link', { name: 'Vai alle ricette' }).click();
   await page.getByRole('button', { name: 'Trova ricette' }).click();
   const photoAlt = /foto illustrativa, non una riproduzione esatta/i;
@@ -168,6 +185,7 @@ test('pantry survives reload and extended mode names one missing ingredient', as
   await page.getByLabel('Ingredienti presenti').fill('pasta, uova, pancetta');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
   await page.reload();
+  await openPantryInventory(page);
   await expect(page.getByText('Pancetta', { exact: true })).toBeVisible();
   await openHomeRecipes(page);
   await page.getByLabel('Anche con 1 ingrediente in più').check();
@@ -180,7 +198,11 @@ test('the core flow works at 320px using only the keyboard', async ({ page }) =>
   await resetPantry(page);
 
   await expect(page.getByLabel('Ingredienti presenti')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Profilo' })).toBeVisible();
+  if (isSousChefBuild) {
+    await expect(page.getByRole('button', { name: 'Profilo', exact: true })).toBeVisible();
+  } else {
+    await expect(page.getByRole('link', { name: 'Profilo' })).toBeVisible();
+  }
   for (let step = 0; step < 12; step += 1) {
     if (await page.getByLabel('Ingredienti presenti').evaluate((element) => element === document.activeElement)) break;
     await page.keyboard.press('Tab');
@@ -188,6 +210,11 @@ test('the core flow works at 320px using only the keyboard', async ({ page }) =>
   await expect(page.getByLabel('Ingredienti presenti')).toBeFocused();
   await page.keyboard.type('pasta, tonno, passata');
   await page.keyboard.press('Enter');
+  if (isSousChefBuild) {
+    const inventorySummary = page.locator('details').filter({ hasText: 'Inventario' }).locator('summary');
+    await inventorySummary.focus();
+    await page.keyboard.press('Enter');
+  }
   await expect(page.getByText('Passata di pomodoro', { exact: true })).toBeVisible();
 
   const recipesLink = page.getByRole('link', { name: 'Vai alle ricette' });
@@ -198,7 +225,7 @@ test('the core flow works at 320px using only the keyboard', async ({ page }) =>
   await expect(recipesLink).toBeFocused();
   await page.keyboard.press('Enter');
 
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: kitchenHeading })).toBeVisible();
   const searchButton = page.getByRole('button', { name: 'Trova ricette' });
   for (let step = 0; step < 60; step += 1) {
     if (await searchButton.evaluate((element) => element === document.activeElement)) break;
@@ -216,7 +243,7 @@ test('the core flow works at 320px using only the keyboard', async ({ page }) =>
 
 test('keeps recipe search above the mobile navigation before optional content', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
+  await goToKitchen(page);
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
 
@@ -255,6 +282,7 @@ test('suggested ingredients can be added without typing', async ({ page }) => {
   const suggestions = page.getByRole('region', { name: 'Potresti aggiungere' });
   await expect(suggestions.getByRole('button', { name: 'Aggiungi Cipolla' })).toBeVisible();
   await suggestions.getByRole('button', { name: 'Aggiungi Cipolla' }).click();
+  await openPantryInventory(page);
 
   await expect(page.getByRole('list', { name: 'La tua dispensa' }).getByText('Cipolla')).toBeVisible();
   await expect(suggestions.getByRole('button', { name: 'Aggiungi Cipolla' })).toHaveCount(0);
@@ -299,6 +327,7 @@ test('local suggestions refresh after pantry and diet changes', async ({ page })
 
   await openPantry(page);
   await page.reload();
+  await openPantryInventory(page);
   await expect(page.getByRole('list', { name: 'La tua dispensa' }).getByText('Pasta', { exact: true })).toBeVisible();
   await expect(page.getByText('Tonno', { exact: true })).toBeVisible();
 });
@@ -420,9 +449,10 @@ test('activity records cooking, preferences and private notes offline', async ({
   await resetPantry(page);
   await page.getByLabel('Ingredienti presenti').fill('pasta, tonno, passata');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await openPantryInventory(page);
   await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await goToKitchen(page);
+  await expect(page.getByRole('heading', { name: kitchenHeading })).toBeVisible();
   await page.getByRole('button', { name: 'Trova ricette' }).click();
   await expect(page.getByText('Pasta tonno e pomodoro')).toBeVisible();
   await page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' }).click();
@@ -470,7 +500,9 @@ test('manifest is available and the application works offline after first load',
   expect(manifest.id).toBe('/');
   expect(manifest.start_url).toBe('/');
   expect(manifest.shortcuts.map((shortcut: { url: string }) => shortcut.url)).toEqual(
-    expect.arrayContaining(['/pantry', '/shopping-list', '/activity']),
+    isSousChefBuild
+      ? ['/cucina', '/plan', '/recipes', '/pantry', '/shopping-list']
+      : ['/pantry', '/shopping-list', '/activity'],
   );
   expect(manifest.icons).toEqual(expect.arrayContaining([
     expect.objectContaining({ sizes: '192x192', purpose: 'any' }),
@@ -482,7 +514,7 @@ test('manifest is available and the application works offline after first load',
   await page.waitForFunction(() => 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null);
   await context.setOffline(true);
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await expect(page.locator('main').getByRole('heading', { name: landingHeading, exact: true })).toBeVisible();
   await context.setOffline(false);
 });
 
@@ -585,14 +617,15 @@ test('verified users can consent to private AI recipes without changing pantry l
   await page.getByLabel('Quantità del lotto').fill('500');
   await page.getByLabel('Unità di misura').selectOption('g');
   await page.getByRole('button', { name: 'Salva dettagli' }).click();
+  await openPantryInventory(page);
 
   const pantry = page.getByRole('list', { name: 'La tua dispensa' });
   const lots = page.getByRole('list', { name: 'Lotti di Ceci' });
   const pantryBefore = await pantry.innerText();
   const lotsBefore = await lots.innerText();
 
-  await page.getByRole('link', { name: 'Cucina' }).click();
-  await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+  await goToKitchen(page);
+  await expect(page.getByRole('heading', { name: kitchenHeading })).toBeVisible();
   const aiPanel = page.getByRole('region', { name: 'Ricette AI private' });
   const aiConsentDisclosure = aiPanel.locator('details[data-ai-consent]');
   const consent = aiPanel.getByRole('checkbox', { name: /acconsento all’invio a .*ingredienti della dispensa/i });
@@ -630,7 +663,7 @@ test('verified users can consent to private AI recipes without changing pantry l
   expect(await page.getByRole('list', { name: 'La tua dispensa' }).innerText()).toBe(pantryBefore);
   expect(await page.getByRole('list', { name: 'Lotti di Ceci' }).innerText()).toBe(lotsBefore);
 
-  await page.getByRole('link', { name: 'Cucina' }).click();
+  await goToKitchen(page);
   await page.reload();
   await expect(page.getByRole('region', { name: 'Ricette AI private' }).getByRole('heading', { name: 'Ceci croccanti al pomodoro' })).toBeVisible();
   const reloadedAiPanel = page.getByRole('region', { name: 'Ricette AI private' });

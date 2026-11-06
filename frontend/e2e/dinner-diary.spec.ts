@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
+import { goToKitchen, isSousChefBuild, openShellProfileMenu } from './helpers/appMode';
 
 const verifiedSession = {
   authenticated: true,
@@ -216,12 +217,17 @@ test('records a dinner, edits and confirms an AI draft, then finds it in recipe 
   await clearLocalDatabase(page);
   await page.reload();
   await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
-  await expect.poll(() => page.getByText('Account verificato').evaluateAll((items) => items.some((item) => item.getClientRects().length > 0))).toBe(true);
+  if (isSousChefBuild) {
+    await openShellProfileMenu(page);
+    await expect(page.getByText('Verificato · Personale', { exact: true })).toBeVisible();
+    await openShellProfileMenu(page);
+  } else {
+    await expect.poll(() => page.getByText('Account verificato').evaluateAll((items) => items.some((item) => item.getClientRects().length > 0))).toBe(true);
+  }
   await page.getByLabel('Ingredienti presenti').fill('pasta, zucchine');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
 
-  await page.getByRole('link', { name: 'Diario', exact: true }).click();
-  await page.getByRole('link', { name: 'Cene', exact: true }).click();
+  await page.goto('/dinner-diary');
   await expect(page.getByRole('heading', { name: 'Diario delle cene' })).toBeVisible();
   const consentDisclosure = page.getByRole('region', { name: 'Consenso per ricostruire ricette' }).locator('details');
   const globalConsent = page.getByRole('checkbox', { name: /OpenAI.*ingredienti della dispensa.*profilo alimentare/i });
@@ -256,7 +262,7 @@ test('records a dinner, edits and confirms an AI draft, then finds it in recipe 
   await expect(page.getByText('1 ricetta collegata')).toBeVisible();
   expect(confirmationBody).toMatchObject({ draft: { title: 'Pasta e zucchine della cena' } });
 
-  await page.getByRole('link', { name: 'Cucina', exact: true }).first().click();
+  await goToKitchen(page);
   await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
   await page.getByRole('button', { name: 'Trova ricette' }).click();
   await expect(page.getByRole('article', { name: 'Pasta e zucchine della cena' })).toHaveAttribute('data-availability', 'ready');

@@ -33,21 +33,21 @@ export default function LocalRecipeCard({ suggestion, missingIngredientInShoppin
   const titleId = `recipe-title-${suggestion.recipe.id}`;
 
   return (
-    <article aria-labelledby={titleId} data-availability={availability} className={missingLabel ? 'ik-recipe-card flex flex-col rounded-3xl border-2 border-amber-200 bg-white p-5' : 'ik-recipe-card flex flex-col rounded-3xl border-2 border-emerald-200 bg-white p-5'}>
+    <article aria-labelledby={titleId} data-availability={availability} className={missingLabel ? 'ik-recipe-card flex flex-col rounded-[var(--ik-radius-panel)] border-2 border-[var(--ik-accent-border)] bg-[var(--ik-surface)] p-5' : 'ik-recipe-card flex flex-col rounded-[var(--ik-radius-panel)] border-2 border-[var(--ik-border-strong)] bg-[var(--ik-surface)] p-5'}>
       <RecipeImage recipeId={suggestion.recipe.id} recipeTitle={suggestion.recipe.title} />
-      <p className={missingLabel ? 'mb-4 flex items-center gap-2 font-semibold text-red-700' : 'mb-4 font-semibold text-emerald-700'}>
+      <p className={missingLabel ? 'mb-4 flex items-center gap-2 font-semibold text-[var(--ik-warn-ink)]' : 'mb-4 font-semibold text-[var(--ik-basil-dark)]'}>
         {missingLabel ? <ShoppingBasket size={18} aria-hidden="true" /> : null}
         {missingLabel ? `Ti manca solo: ${missingLabel}` : suggestion.quantityWarnings.length > 0 ? 'Verifica le quantità' : 'Hai tutto'}
       </p>
-      <h3 id={titleId} className="text-xl font-bold leading-tight text-gray-950">{suggestion.recipe.title}</h3>
-      <p className="mt-2 flex-1 leading-relaxed text-gray-600">{suggestion.recipe.description}</p>
+      <h3 id={titleId} className="text-xl font-bold leading-tight text-[var(--ik-ink)]">{suggestion.recipe.title}</h3>
+      <p className="mt-2 flex-1 leading-relaxed text-[var(--ik-ink-muted)]">{suggestion.recipe.description}</p>
       {metadata !== undefined && <RecipeNutritionSummary nutrition={metadata.nutrition} />}
       {suggestion.quantityWarnings.length > 0 && (
-        <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
+        <p className="mt-3 rounded-xl bg-[var(--ik-yolk-soft)] px-3 py-2 text-sm font-semibold text-[var(--ik-warn-ink)]">
           La quantità potrebbe non bastare per: {suggestion.quantityWarnings.map((id) => getIngredient(id)?.label ?? id).join(', ')}.
         </p>
       )}
-      <dl className="mt-5 flex items-center gap-4 text-sm text-gray-600">
+      <dl className="mt-5 flex items-center gap-4 text-sm text-[var(--ik-ink-muted)]">
         <div className="flex items-center gap-1.5">
           <dt className="sr-only">Tempo</dt>
           <Clock size={17} aria-hidden="true" />
@@ -66,17 +66,17 @@ export default function LocalRecipeCard({ suggestion, missingIngredientInShoppin
       <div className="mt-5 flex flex-wrap gap-2">
         {missingLabel && onAddMissingIngredient !== undefined && (
           missingIngredientInShoppingList ? (
-            <Link to="/shopping-list" aria-label="Apri lista della spesa" className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-amber-200 px-4 py-2 font-bold text-amber-950 hover:bg-amber-300">
+            <Link to="/shopping-list" aria-label="Apri lista della spesa" className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-[var(--ik-yolk-soft)] px-4 py-2 font-bold text-[var(--ik-on-yolk)] hover:bg-[var(--ik-yolk-hover)]">
               Già nella lista · Apri lista
             </Link>
           ) : (
-            <button type="button" onClick={() => onAddMissingIngredient(suggestion)} aria-label={`Aggiungi ${missingLabel} alla lista della spesa`} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-amber-400 px-4 py-2 font-bold text-gray-950 hover:bg-amber-300">
+            <button type="button" onClick={() => onAddMissingIngredient(suggestion)} aria-label={`Aggiungi ${missingLabel} alla lista della spesa`} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[var(--ik-yolk)] px-4 py-2 font-bold text-[var(--ik-on-yolk)] hover:bg-[var(--ik-yolk-hover)]">
               <ShoppingBasket size={18} aria-hidden="true" />
               Aggiungi alla lista
             </button>
           )
         )}
-        <Link to={detailHref} aria-label={`Apri ${suggestion.recipe.title}`} className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border-2 border-gray-900 px-4 py-2 font-bold text-gray-900 hover:bg-gray-900 hover:text-white">
+        <Link to={detailHref} aria-label={`Apri ${suggestion.recipe.title}`} className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border-2 border-[var(--ik-border-strong)] px-4 py-2 font-bold text-[var(--ik-ink)] hover:border-[var(--ik-ink)] hover:bg-[var(--ik-ink)] hover:text-[var(--ik-porcelain)]">
           Apri ricetta
         </Link>
       </div>

@@ -47,6 +47,7 @@ const renderSelectedList = async (items: Array<{
 describe('Bring integration panel', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
+    document.documentElement.dataset.theme = 'light';
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
     useAuthStore.setState({
       user: { id: 'user-a', email: 'a@example.com', emailVerifiedAt: '2026-10-01T00:00:00.000Z' },
@@ -246,6 +247,11 @@ describe('Bring integration panel', () => {
     expect(await screen.findByText('Modifica confermata su Bring!.')).toBeVisible();
     expect(screen.getByLabelText('Cosa aggiungere a Bring!')).toHaveValue('');
     expect(screen.getByLabelText('Specifica Bring!')).toHaveValue('');
+    expect(screen.getByText('Modifica confermata su Bring!.').closest('[role="status"]')).toHaveClass(
+      'border-[var(--ik-basil)]',
+      'bg-[var(--ik-sage)]',
+      'text-[var(--ik-basil-dark)]',
+    );
   });
 
   it('shows update success only after the server returns the changed specification', async () => {
@@ -606,5 +612,65 @@ describe('Bring integration panel', () => {
 
     expect(dispatchCount).toBe(1);
     expect(mocks.write).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['light', 'dark'] as const)('uses theme-aware surfaces and responsive controls in the %s theme', async (theme) => {
+    document.documentElement.dataset.theme = theme;
+    render(<BringIntegration userId="user-a" csrfToken="synthetic-csrf" />);
+
+    const panel = screen.getByRole('region', { name: 'Lista Bring!' });
+    expect(panel).toHaveClass('bg-[var(--ik-surface)]', 'text-[var(--ik-ink)]');
+    expect(panel).not.toHaveClass('bg-white');
+
+    const connectionForm = await screen.findByRole('group', { name: 'Collega Bring!' });
+    expect(connectionForm).toHaveClass('bg-[var(--ik-mist)]', 'sm:grid-cols-2');
+
+    const email = screen.getByLabelText('Email Bring!');
+    expect(email).toHaveClass('ik-input', 'min-h-11', 'focus-visible:border-[var(--ik-basil)]');
+    expect(screen.getByRole('button', { name: 'Collega Bring!' })).toHaveClass('min-h-11');
+  });
+
+  it.each(['light', 'dark'] as const)('separates offline and request errors with readable surfaces in the %s theme', async (theme) => {
+    document.documentElement.dataset.theme = theme;
+    mocks.status.mockResolvedValue({ enabled: true, connected: true, connectionId });
+    mocks.lists.mockRejectedValue(new ApiClientError(503, 'rate_limited', 'synthetic request limit'));
+    render(<BringIntegration userId="user-a" csrfToken="synthetic-csrf" />);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveClass(
+      'border-[var(--ik-tomato)]',
+      'bg-[var(--ik-tomato-soft)]',
+      'text-[var(--ik-tomato)]',
+    );
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await act(async () => {
+      window.dispatchEvent(new Event('offline'));
+    });
+
+    const offlineNotice = screen.getByRole('status', { name: 'Connessione offline' });
+    expect(offlineNotice).toHaveClass(
+      'border-[var(--ik-accent-border)]',
+      'bg-[var(--ik-yolk-soft)]',
+      'text-[var(--ik-warn-ink)]',
+    );
+    expect(screen.getByRole('button', { name: 'Aggiorna collegamento e liste' })).toBeDisabled();
+  });
+
+  it.each(['light', 'dark'] as const)('uses a theme-aware list surface and full-size actions in the %s theme', async (theme) => {
+    document.documentElement.dataset.theme = theme;
+    await renderSelectedList([{
+      name: 'Pane', label: 'Pane', specification: '1 kg', state: 'purchase', mutable: true,
+    }]);
+
+    const row = screen.getByRole('listitem');
+    expect(screen.getByRole('status', { name: 'Stato collegamento Bring!' })).toHaveClass(
+      'border-[var(--ik-basil)]',
+      'bg-[var(--ik-sage)]',
+      'text-[var(--ik-basil-dark)]',
+    );
+    expect(row).toHaveClass('bg-[var(--ik-surface)]', 'text-[var(--ik-ink)]');
+    expect(within(row).getByRole('button', { name: 'Segna Pane acquistato su Bring!' })).toHaveClass('min-h-11', 'w-full');
+    expect(within(row).getByText('Modifica specifica di Pane')).toHaveClass('min-h-11');
   });
 });

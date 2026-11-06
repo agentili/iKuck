@@ -9,6 +9,7 @@ import { useActivityStore } from '../store/activityStore';
 import { useAuthStore } from '../auth/authStore';
 import { useDinnerDiaryStore } from '../store/dinnerDiaryStore';
 import { getActiveDataScope, setActiveDataScope, setPersonalDataScope } from '../sync/scopeContext';
+import * as features from '../config/features';
 import { deleteLocalDatabase } from '../storage/indexedDb';
 import { readCookEvents } from '../storage/activityStorage';
 import { readDinnerEntries } from '../storage/dinnerDiaryStorage';
@@ -159,6 +160,32 @@ describe('RecipeDetailPage integration', () => {
     expect(experience.compareDocumentPosition(nutrition) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('uses semantic surfaces and a shared focus treatment throughout the recipe detail', () => {
+    renderRoute('/recipes/pasta-tonno-pomodoro');
+
+    const page = screen.getByRole('main');
+    const hero = screen.getByRole('heading', { name: 'Pasta tonno e pomodoro' }).closest('header');
+    const availability = screen.getByRole('region', { name: 'Disponibilità della ricetta' });
+    const contentRegions = [
+      screen.getByRole('region', { name: 'Ingredienti' }),
+      screen.getByRole('region', { name: 'Preparazione' }),
+      screen.getByRole('region', { name: 'Conferma la cena' }),
+      screen.getByRole('region', { name: 'Nutrizione stimata per porzione' }),
+    ];
+    const preferences = screen.getByRole('region', { name: 'La tua esperienza' });
+
+    expect(hero).toHaveClass('text-[var(--ik-porcelain)]');
+    expect(screen.getByText('Pesce')).toHaveClass('text-[var(--ik-recipe-category)]');
+    expect(availability).toHaveClass('bg-[var(--ik-yolk-soft)]', 'text-[var(--ik-warn-ink)]');
+    expect(screen.getAllByText('Da acquistare')).not.toHaveLength(0);
+    contentRegions.forEach((region) => {
+      expect(region).toHaveClass('bg-[var(--ik-surface)]', 'border-[var(--ik-border)]');
+    });
+    expect(preferences).toHaveClass('ik-surface--quiet');
+    expect(page).toHaveClass('[&_button:focus-visible]:outline-[var(--ik-focus)]');
+    expect(page).toHaveClass('[&_input:focus-visible]:outline-[var(--ik-focus)]');
+  });
+
   it('uses the singular label for one rated star', () => {
     renderRoute('/recipes/pasta-tonno-pomodoro');
 
@@ -169,7 +196,23 @@ describe('RecipeDetailPage integration', () => {
     renderRoute('/recipes/not-real');
 
     expect(screen.getByRole('heading', { name: 'Ricetta non trovata' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Torna alle ricette' })).toHaveAttribute('href', '/recipes');
+  });
+
+  it('labels the return destination as Chef when Sous Chef owns the root route', () => {
+    const sousChefFlag = vi.spyOn(features, 'isSousChef').mockReturnValue(true);
+    renderRoute('/recipes/pollo-al-limone');
+
+    expect(screen.getByRole('link', { name: 'Torna a Chef' })).toHaveAttribute('href', '/');
+    sousChefFlag.mockRestore();
+  });
+
+  it('keeps the legacy recipes label when Sous Chef is disabled', () => {
+    const sousChefFlag = vi.spyOn(features, 'isSousChef').mockReturnValue(false);
+    renderRoute('/recipes/pollo-al-limone');
+
     expect(screen.getByRole('link', { name: 'Torna alle ricette' })).toHaveAttribute('href', '/');
+    sousChefFlag.mockRestore();
   });
 
   it('adds only missing non-optional ingredients to the shopping list', async () => {

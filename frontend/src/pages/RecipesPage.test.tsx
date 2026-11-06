@@ -16,6 +16,11 @@ vi.mock('../ai/aiRecipeApi', () => ({
   fetchAiRecipes: vi.fn(),
 }));
 
+const sousChefFlag = vi.hoisted(() => ({ enabled: true }));
+vi.mock('../config/features', () => ({
+  isSousChef: () => sousChefFlag.enabled,
+}));
+
 // The diary store is only needed by the page to hydrate RecipeDetailPage data:
 // keep the real store (and its scope subscriptions) out of these render tests.
 vi.mock('../store/dinnerDiaryStore', () => ({
@@ -160,11 +165,59 @@ const setVerifiedSession = (): void => {
 beforeEach((): void => {
   vi.mocked(fetchAiRecipes).mockReset();
   vi.mocked(hydrateDinnerDiaryStore).mockClear();
+  sousChefFlag.enabled = true;
   useAuthStore.setState({ user: null, csrfToken: null, expiresAt: null });
   setActiveDataScope('guest');
 });
 
 describe('RecipesPage', () => {
+  it('espone Ricerca, Salvate e Diario in una navigazione secondaria con destinazioni reali', () => {
+    renderPage();
+
+    const navigation = screen.getByRole('navigation', { name: 'Altre sezioni di Ricette' });
+    expect(navigation).toHaveAccessibleName('Altre sezioni di Ricette');
+    expect(within(navigation).getByRole('link', { name: 'Cerca ricette' })).toHaveAttribute('href', '/discover');
+    expect(within(navigation).getByRole('link', { name: 'Ricette salvate' })).toHaveAttribute('href', '/saved');
+    expect(within(navigation).getByRole('link', { name: 'Diario delle cene' })).toHaveAttribute('href', '/dinner-diary');
+  });
+
+  it('rende i tre accessi secondari raggiungibili in ordine da tastiera', async () => {
+    renderPage();
+
+    const navigation = screen.getByRole('navigation', { name: 'Altre sezioni di Ricette' });
+    const links = within(navigation).getAllByRole('link');
+    const userEvents = userEvent.setup();
+
+    await userEvents.tab();
+    expect(links[0]).toHaveFocus();
+    await userEvents.tab();
+    expect(links[1]).toHaveFocus();
+    await userEvents.tab();
+    expect(links[2]).toHaveFocus();
+  });
+
+  it('usa le superfici e l’indicatore di focus semantici per ricerca e navigazione', () => {
+    renderPage();
+
+    const navigation = screen.getByRole('navigation', { name: 'Altre sezioni di Ricette' });
+    const search = screen.getByRole('searchbox', { name: 'Cerca ricette' });
+    const searchRegion = screen.getByRole('region', { name: 'Ricerca tra le ricette' });
+
+    expect(searchRegion).toHaveClass('bg-[var(--ik-surface)]');
+    expect(search).toHaveClass('ik-input');
+    expect(search).toHaveClass('focus-visible:outline-[var(--ik-focus)]');
+    expect(navigation.querySelector('a')).toHaveClass('focus-visible:outline-[var(--ik-focus)]');
+    expect(screen.getByRole('main')).toHaveClass('ik-recipes-page');
+  });
+
+  it('mantiene la navigazione secondaria dietro il flag Sous Chef', () => {
+    sousChefFlag.enabled = false;
+
+    renderPage();
+
+    expect(screen.queryByRole('navigation', { name: 'Altre sezioni di Ricette' })).not.toBeInTheDocument();
+  });
+
   it('renderizza i tre gruppi con le badge di fonte per una sessione verificata', async () => {
     setVerifiedSession();
     vi.mocked(fetchAiRecipes).mockResolvedValue([orataRecipe]);

@@ -1,6 +1,7 @@
 import { ChefHat } from 'lucide-react';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { isSousChef } from '../config/features';
+import { Link, useNavigate } from 'react-router-dom';
 import DietFiltersPanel from '../components/diet/DietFiltersPanel';
 import IngredientChip from '../components/pantry/IngredientChip';
 import IngredientInput from '../components/pantry/IngredientInput';
@@ -105,7 +106,22 @@ const pantryCopySummary = (copy: PantrySnapshotConflictCopy): string => {
   return `${itemLabels.length} ${itemLabels.length === 1 ? 'ingrediente' : 'ingredienti'}${itemLabels.length > 0 ? `: ${itemLabels.join(', ')}` : ''}; ${lotCount} ${lotCount === 1 ? 'lotto' : 'lotti'}; ${stapleSummary}`;
 };
 
+function InventoryDisclosure({ children, count }: { children: ReactNode; count: number }) {
+  return (
+    <details className="ik-disclosure mb-6 max-w-3xl min-w-0 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4 sm:p-5">
+      <summary className="flex min-h-11 flex-wrap gap-2 font-bold">
+        <span>Inventario</span>
+        <span className="text-sm font-semibold text-[var(--ik-ink-muted)]">
+          {count === 0 ? 'Dispensa vuota' : `${count} ${count === 1 ? 'ingrediente' : 'ingredienti'}`}
+        </span>
+      </summary>
+      <div className="min-w-0 border-t border-[var(--ik-border)] pt-4">{children}</div>
+    </details>
+  );
+}
+
 export default function PantryPage() {
+  const sousChef = isSousChef();
   const activeScope = useSyncExternalStore(
     (listener) => subscribeActiveDataScope(() => listener()),
     getActiveDataScope,
@@ -145,6 +161,16 @@ export default function PantryPage() {
   } | null>(null);
   const [archiveRecoveryError, setArchiveRecoveryError] = useState<{ scope: SyncScope; message: string } | null>(null);
   const visibleArchiveRecoveryError = archiveRecoveryError?.scope === activeScope ? archiveRecoveryError.message : null;
+
+  const navigate = useNavigate();
+
+  // T02: leaving the pantry must work on direct entry too, where the document
+  // history has nothing to pop: fall back to the shell home instead of a dead back.
+  const handleBack = (): void => {
+    const historyState = window.history.state as { idx?: number } | null;
+    if ((historyState?.idx ?? 0) > 0) navigate(-1);
+    else navigate('/');
+  };
 
   useEffect(() => {
     void hydratePantryStore();
@@ -227,7 +253,9 @@ export default function PantryPage() {
   if (!hasHydrated) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
-        <p role="status" className="rounded-2xl border border-gray-200 bg-white px-5 py-4 font-semibold text-gray-700">
+        <p role="status" className={sousChef
+          ? 'rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] px-5 py-4 font-semibold text-[var(--ik-ink)]'
+          : 'rounded-2xl border border-gray-200 bg-white px-5 py-4 font-semibold text-gray-700'}>
           Caricamento della tua dispensa…
         </p>
       </main>
@@ -292,16 +320,70 @@ export default function PantryPage() {
     }
   };
 
+  const inventory = pantryItems.length > 0 ? (
+    <>
+      <ul aria-label="La tua dispensa" className="space-y-3">
+        {groupedPantryItems.map((group) => (
+          <li key={group.key} className="space-y-1">
+            <h3 className={sousChef
+              ? 'text-sm font-bold text-[var(--ik-basil-dark)]'
+              : 'text-sm font-bold uppercase tracking-[0.14em] text-emerald-800'}>
+              {group.label}
+            </h3>
+            <ul className="space-y-2">
+              {group.items.map((item) => (
+                <IngredientChip key={item.id} item={item} onRemove={removeIngredient} />
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+      <Link
+        to={sousChef ? '/cucina' : '/'}
+        className="ik-button-primary flex min-h-12 w-full min-w-0 flex-col items-center justify-center gap-1 px-2 py-1 text-center text-sm font-bold leading-snug sm:inline-flex sm:w-auto sm:flex-row sm:gap-2 sm:px-4 sm:py-3 sm:text-base"
+      >
+        <ChefHat size={19} aria-hidden="true" />
+        <span className="block w-full">Vai alle ricette</span>
+      </Link>
+    </>
+  ) : (
+    <>
+      <EmptyState text="La tua dispensa è ancora vuota. Inserisci un ingrediente per iniziare." />
+      <span
+        aria-disabled="true"
+        className="ik-button-primary pointer-events-none inline-flex min-h-12 w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-1 text-center text-base font-bold leading-tight opacity-45 sm:w-auto sm:flex-row sm:gap-2 sm:py-3"
+      >
+        <ChefHat size={19} aria-hidden="true" />
+        Vai alle ricette
+      </span>
+    </>
+  );
+
   return (
     <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-6xl px-4 pb-8 pt-5 sm:px-6 sm:pt-8 lg:px-8">
       <header className="ik-page-intro mb-5 max-w-2xl sm:mb-7">
-        <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Organizza la tua cucina</p>
-        <h1 className="mt-1 text-4xl font-black leading-[1.04] text-gray-950 sm:text-6xl">La tua dispensa</h1>
-        <p className="mt-3 max-w-xl text-base leading-relaxed text-gray-700 sm:text-lg">Tieni qui ingredienti, lotti, scadenze e preferenze: le ricette useranno sempre questi dati.</p>
+        <button
+          type="button"
+          onClick={handleBack}
+          className={`ik-back-link -ml-2 mb-3 inline-flex min-h-11 items-center rounded-xl px-2 font-semibold underline underline-offset-2 ${sousChef ? 'text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)]' : 'text-emerald-800 hover:bg-emerald-50'}`}
+        >
+          ← Indietro
+        </button>
+        {!sousChef && <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Organizza la tua cucina</p>}
+        <h1 className={sousChef
+          ? 'text-3xl font-extrabold leading-tight text-[var(--ik-ink)] sm:text-4xl'
+          : 'mt-1 text-4xl font-black leading-[1.04] text-gray-950 sm:text-6xl'}>La tua dispensa</h1>
+        <p className={sousChef
+          ? 'mt-2 max-w-xl text-base leading-relaxed text-[var(--ik-ink-muted)]'
+          : 'mt-3 max-w-xl text-base leading-relaxed text-gray-700 sm:text-lg'}>
+          {sousChef ? 'Aggiungi quello che hai in casa. Puoi consultare l’inventario quando vuoi.' : 'Tieni qui ingredienti, lotti, scadenze e preferenze: le ricette useranno sempre questi dati.'}
+        </p>
       </header>
 
       {persistenceIssue !== undefined && (
-        <div role="alert" className="mb-5 max-w-3xl rounded-2xl border-2 border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
+        <div role="alert" className={sousChef
+          ? 'mb-5 max-w-3xl rounded-[var(--ik-radius-panel)] border-2 border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] px-4 py-3 text-[var(--ik-ink)]'
+          : 'mb-5 max-w-3xl rounded-2xl border-2 border-amber-200 bg-amber-50 px-4 py-3 text-amber-950'}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p>
               {malformedPantryConflict
@@ -318,19 +400,21 @@ export default function PantryPage() {
               {!pantryConflict && ' Puoi riprovare quando vuoi.'}
             </p>
             {pantryConflict && conflictCopies.length > 0 ? (
-              <div className="w-full space-y-3 border-t border-amber-300 pt-3">
+              <div className={`w-full space-y-3 border-t pt-3 ${sousChef ? 'border-[var(--ik-border-strong)]' : 'border-amber-300'}`}>
                 <fieldset role="radiogroup" aria-label="Seleziona la copia da ripristinare" className="grid gap-2 sm:grid-cols-2">
                   <legend className="mb-2 font-bold">Scegli quale copia diventerà attiva</legend>
                   {conflictCopies.map((copy) => {
                     return (
-                      <label key={copy.id} className="flex min-h-12 cursor-pointer items-start gap-3 rounded-xl border-2 border-amber-300 bg-white p-3">
+                      <label key={copy.id} className={`flex min-h-12 cursor-pointer items-start gap-3 rounded-xl border-2 p-3 ${sousChef
+                        ? 'border-[var(--ik-border-strong)] bg-[var(--ik-surface)]'
+                        : 'border-amber-300 bg-white'}`}>
                         <input
                           type="radio"
                           name="pantry-conflict-copy"
                           value={copy.id}
                           checked={selectedConflictCopyId === copy.id}
                           onChange={() => setSelectedConflictCopy({ scope: activeScope, copyId: copy.id })}
-                          className="mt-1 h-5 w-5 accent-emerald-700"
+                          className={sousChef ? 'mt-1 h-5 w-5 accent-[var(--ik-basil)]' : 'mt-1 h-5 w-5 accent-emerald-700'}
                         />
                         <span className="min-w-0">
                           <span className="block font-bold">{copy.label}</span>
@@ -348,76 +432,50 @@ export default function PantryPage() {
                   type="button"
                   onClick={() => void handlePantryConflictRecovery()}
                   disabled={!selectedConflictCopyId}
-                  className="min-h-11 rounded-xl border-2 border-amber-800 bg-white px-4 py-2 font-bold text-amber-950 enabled:hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  className={`min-h-11 rounded-xl border-2 px-4 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-50 ${sousChef
+                    ? 'border-[var(--ik-tomato)] bg-[var(--ik-surface)] text-[var(--ik-ink)] enabled:hover:bg-[var(--ik-sage)]'
+                    : 'border-amber-800 bg-white text-amber-950 enabled:hover:bg-amber-100'}`}
                 >
                   Usa questa copia
                 </button>
               </div>
             ) : !pantryConflict ? (
-              <button type="button" onClick={() => void retryPersistence(persistenceIssue.domain)} className="min-h-10 rounded-xl border-2 border-amber-700 px-3 py-1.5 font-bold text-amber-900 hover:bg-amber-100">Riprova</button>
+              <button type="button" onClick={() => void retryPersistence(persistenceIssue.domain)} className={sousChef
+                ? 'min-h-11 rounded-xl border-2 border-[var(--ik-tomato)] bg-[var(--ik-surface)] px-3 py-1.5 font-bold text-[var(--ik-ink)] hover:bg-[var(--ik-sage)]'
+                : 'min-h-10 rounded-xl border-2 border-amber-700 px-3 py-1.5 font-bold text-amber-900 hover:bg-amber-100'}>Riprova</button>
             ) : null}
           </div>
         </div>
       )}
 
-      {house !== null && <CandidatesInbox houseId={house.id} />}
+      {house !== null && !isSousChef() && <CandidatesInbox houseId={house.id} />}
 
       <PageSection
-        eyebrow="Ingredienti presenti"
-        title="Cosa hai in casa?"
+        eyebrow={sousChef ? undefined : 'Ingredienti presenti'}
+        title={sousChef ? 'Aggiungi ingredienti' : 'Cosa hai in casa?'}
         titleId="pantry-items-title"
-        description="Puoi aggiungere più ingredienti insieme: useremo solo quelli per proporti le ricette."
-        action={
+        description={sousChef ? 'Scrivi un ingrediente o più nomi separati da virgole.' : 'Puoi aggiungere più ingredienti insieme: useremo solo quelli per proporti le ricette.'}
+        action={!sousChef && (
           <span className="rounded-full bg-sage px-3 py-1.5 text-sm font-bold text-ink">
             {pantryItems.length === 0 ? 'Dispensa vuota' : `${pantryItems.length} ${pantryItems.length === 1 ? 'ingrediente' : 'ingredienti'}`}
           </span>
-        }
-        className="border-emerald-200 shadow-sm sm:space-y-5"
+        )}
+        className={sousChef ? 'max-w-3xl bg-[var(--ik-sage)] sm:space-y-5' : 'border-emerald-200 shadow-sm sm:space-y-5'}
       >
-        <div className="ik-kitchen-layout ik-kitchen-layout--two-columns min-w-0">
+        <div className={sousChef ? 'min-w-0' : 'ik-kitchen-layout ik-kitchen-layout--two-columns min-w-0'}>
           <div className="ik-kitchen-column min-w-0">
             <IngredientInput onAdd={handleAdd} />
           </div>
-          <div className="ik-kitchen-column min-w-0">
-            {pantryItems.length > 0 ? (
-              <>
-                <ul aria-label="La tua dispensa" className="space-y-3">
-                  {groupedPantryItems.map((group) => (
-                    <li key={group.key} className="space-y-1">
-                      <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">
-                        {group.label}
-                      </h3>
-                      <ul className="space-y-2">
-                        {group.items.map((item) => (
-                          <IngredientChip key={item.id} item={item} onRemove={removeIngredient} />
-                        ))}
-                      </ul>
-                    </li>
-                  ))}
-                </ul>
-                <Link
-                  to="/"
-                  className="ik-button-primary inline-flex min-h-12 w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-1 text-center text-base font-bold leading-tight sm:w-auto sm:flex-row sm:gap-2 sm:py-3"
-                >
-                  <ChefHat size={19} aria-hidden="true" />
-                  Vai alle ricette
-                </Link>
-              </>
-            ) : (
-              <>
-                <EmptyState text="La tua dispensa è ancora vuota. Inserisci un ingrediente per iniziare." />
-                <span
-                  aria-disabled="true"
-                  className="ik-button-primary pointer-events-none inline-flex min-h-12 w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-1 text-center text-base font-bold leading-tight opacity-45 sm:w-auto sm:flex-row sm:gap-2 sm:py-3"
-                >
-                  <ChefHat size={19} aria-hidden="true" />
-                  Vai alle ricette
-                </span>
-              </>
-            )}
-          </div>
+          {sousChef && pantryItems.length === 0 && (
+            <p className="mt-3 text-sm text-[var(--ik-ink-muted)]">La tua dispensa è ancora vuota. Inserisci un ingrediente per iniziare.</p>
+          )}
+          {!sousChef && <div className="ik-kitchen-column min-w-0">{inventory}</div>}
         </div>
       </PageSection>
+
+      {sousChef && <InventoryDisclosure count={pantryItems.length}>{inventory}</InventoryDisclosure>}
+
+      {house !== null && isSousChef() && <CandidatesInbox houseId={house.id} hideWhenEmpty />}
 
       {!pantryConflict && archivedConflicts.length > 0 && (
         <details className="ik-disclosure mt-4 rounded-3xl border-2 border-amber-200 bg-amber-50/60 p-4 sm:p-5">
@@ -472,9 +530,9 @@ export default function PantryPage() {
       )}
 
       <details className="ik-disclosure ik-disclosure--ideas mt-7 rounded-3xl border-2 border-emerald-100 bg-emerald-50/50 p-4 sm:p-5">
-        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3">
+        <summary className={`flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 ${sousChef ? 'flex-wrap' : ''}`}>
           <span className="font-black text-gray-950">Idee per ampliare la dispensa</span>
-          <span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-emerald-900">Facoltativo</span>
+          <span className={`rounded-full bg-white px-3 py-1 text-sm font-semibold text-emerald-900 ${sousChef ? 'whitespace-nowrap' : ''}`}>Facoltativo</span>
         </summary>
         <div className="border-t border-emerald-100 pt-4">
           <IngredientSuggestions

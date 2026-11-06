@@ -1,7 +1,7 @@
 import type { DietProfilePayload, GeneratedRecipeDraft as SharedGeneratedRecipeDraft } from '@ikuck/shared/contracts';
 import type { DiaryRecipeDraft } from '@ikuck/shared/dinnerDiary';
 
-export type ProviderName = 'email' | 'nutrition' | 'recipes' | 'dinner_reconstruction';
+export type ProviderName = 'email' | 'nutrition' | 'recipes' | 'dinner_reconstruction' | 'chef_chat';
 
 export class ProviderUnavailableError extends Error {
   readonly code = 'provider_unavailable' as const;

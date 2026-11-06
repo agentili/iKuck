@@ -56,6 +56,15 @@ beforeEach(async () => {
 afterEach(async () => waitForPendingDinnerDiaryWrites());
 
 describe('DinnerRecipePanel', () => {
+  it('uses theme tokens for the recipe surface and primary action', () => {
+    renderPanel();
+
+    const section = screen.getByRole('region', { name: `Ricette della cena del ${entryValue.date}` });
+    expect(section).toHaveClass('border-[var(--ik-border)]');
+    expect(section).toHaveClass('bg-[var(--ik-surface)]');
+    expect(screen.getByRole('button', { name: 'Prepara bozze ricetta' })).toHaveClass('ik-button-primary');
+  });
+
   it('keeps generated recipes as editable drafts until explicit confirmation', async () => {
     const user = userEvent.setup();
     const drafts = [makeDraft('draft-1', 'Pasta con zucchine'), makeDraft('draft-2', 'Insalata')];

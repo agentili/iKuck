@@ -93,18 +93,16 @@ export default function AppInstallPrompt({ onDismiss }: AppInstallPromptProps = 
 
   return (
     <aside
-      className={`app-overlay fixed inset-x-4 z-50 flex flex-wrap items-center justify-between gap-4 rounded-2xl border-2 ${
-        ios
-          ? 'border-blue-200 bg-blue-50'
-          : 'border-emerald-200 bg-white'
-      } p-4 shadow-xl sm:mx-auto sm:max-w-2xl`}
+      className={`app-overlay fixed inset-x-4 z-50 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-2xl border-2 border-[var(--ik-border)] ${
+        ios ? 'bg-[var(--ik-mist)]' : 'bg-[var(--ik-surface)]'
+      } px-3 py-2 shadow-xl sm:mx-auto sm:max-w-2xl sm:gap-4 sm:p-4`}
       aria-label={ios ? 'Usa iKuck come app' : 'Installa l’applicazione iKuck'}
     >
       <div className="min-w-0 flex-1">
-        <p className="font-bold text-gray-950" role="status">
+        <p className="font-bold text-[var(--ik-ink)]" role="status">
           {ios ? 'Usa iKuck come app' : 'Installa iKuck'}
         </p>
-        <p className="mt-1 text-sm text-gray-700">
+        <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">
           {ios
             ? 'Su iPhone o iPad tocca Condividi e poi “Aggiungi a Schermata Home” per usare iKuck come un’app.'
             : 'Aggiungi iKuck alla schermata home per aprirla con un tocco e usarla anche offline.'}
@@ -116,7 +114,7 @@ export default function AppInstallPrompt({ onDismiss }: AppInstallPromptProps = 
             type="button"
             onClick={handleInstall}
             disabled={installing}
-            className="min-h-10 rounded-xl bg-emerald-700 px-3 py-2 font-bold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60"
+            className="min-h-11 rounded-xl bg-[var(--ik-basil-dark)] px-3 py-2 font-bold text-[var(--ik-porcelain)] hover:bg-[var(--ik-basil)] disabled:cursor-wait disabled:opacity-60"
           >
             {installing ? 'Sto installando…' : (
             <>
@@ -129,7 +127,7 @@ export default function AppInstallPrompt({ onDismiss }: AppInstallPromptProps = 
         <button
           type="button"
           onClick={markDismissed}
-          className="min-h-10 rounded-xl border-2 border-gray-300 px-3 py-2 font-bold text-gray-800 hover:border-gray-900 disabled:opacity-60"
+          className="min-h-11 rounded-xl border-2 border-[var(--ik-border)] px-3 py-2 font-bold text-[var(--ik-ink)] hover:border-[var(--ik-border-strong)] disabled:opacity-60"
         >
           {ios ? 'Ok, l’ho fatto' : 'Più tardi'}
         </button>

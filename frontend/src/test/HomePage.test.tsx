@@ -3,6 +3,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
+import type { PantryLot } from '@ikuck/shared/contracts';
 import { DEFAULT_STAPLE_IDS, parseIngredientInput } from '@ikuck/shared/ingredients';
 import { DEFAULT_DIET_PROFILE } from '../domain/dietary';
 import HomePage from '../pages/HomePage';
@@ -99,6 +100,28 @@ describe('HomePage recipe search', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Nessun ingrediente ancora aggiunto');
   });
 
+  it('announces local hydration and withholds recipe controls until the stores are ready', () => {
+    usePantryStore.setState({ hasHydrated: false });
+    useDinnerDiaryStore.setState({ hasHydrated: false });
+    renderHome();
+
+    expect(screen.getByRole('status')).toHaveTextContent('Caricamento delle tue ricette');
+    expect(screen.queryByRole('button', { name: 'Trova ricette' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Risultati delle ricette' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the live results inside the named recipe-results region before search', () => {
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>,
+    );
+    const resultsRegion = screen.getByRole('region', { name: 'Risultati delle ricette' });
+
+    expect(resultsRegion.querySelector('[aria-live="polite"]')).not.toBeNull();
+    expect(screen.queryByRole('region', { name: '' })).not.toBeInTheDocument();
+  });
+
   it('adds ingredients from Home through the shared pantry store', async () => {
     const user = userEvent.setup();
     renderHome();
@@ -127,6 +150,38 @@ describe('HomePage recipe search', () => {
     expect(screen.getByText('Hai tutto')).toBeVisible();
     expect(within(screen.getByRole('article', { name: 'Pasta tonno e pomodoro' })).getByText('2 porzioni')).toBeVisible();
     expect(screen.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' })).toHaveAttribute('href', '/recipes/pasta-tonno-pomodoro');
+  });
+
+  it('shows a quantity warning without removing an otherwise ready recipe', async () => {
+    const user = userEvent.setup();
+    const pastaLot: PantryLot = {
+      id: 'home-pasta-lot', ingredientId: 'pasta', label: 'Pasta', known: true,
+      quantity: 100, unit: 'g', expiresAt: null,
+      createdAt: '2026-09-13T10:00:00.000Z', updatedAt: '2026-09-13T10:00:00.000Z',
+    };
+    seedPantry('pasta, tonno, passata');
+    usePantryStore.setState({ pantryLots: [pastaLot] });
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
+
+    const recipe = screen.getByRole('article', { name: 'Pasta tonno e pomodoro' });
+    expect(recipe).toHaveAttribute('data-availability', 'ready');
+    expect(within(recipe).getByText('Verifica le quantità')).toBeVisible();
+    expect(within(recipe).getByText('La quantità potrebbe non bastare per: Pasta.')).toBeVisible();
+  });
+
+  it('offers the one-missing search after an empty result and then links to pantry management', async () => {
+    const user = userEvent.setup();
+    seedPantry('ingrediente impossibile');
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
+    expect(screen.getByRole('heading', { name: 'Nessuna ricetta pronta con questi ingredienti' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Prova con 1 ingrediente in più' }));
+
+    expect(screen.getByLabelText('Anche con 1 ingrediente in più')).toBeChecked();
+    expect(screen.getByRole('link', { name: 'Gestisci la dispensa' })).toHaveAttribute('href', '/pantry');
   });
 
   it('includes a confirmed diary recipe in Trova ricette and opens its scoped detail', async () => {
@@ -327,6 +382,7 @@ describe('HomePage recipe search', () => {
       <MemoryRouter>
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/cucina" element={<HomePage />} />
           <Route path="/pantry" element={<PantryPage />} />
         </Routes>
       </MemoryRouter>,

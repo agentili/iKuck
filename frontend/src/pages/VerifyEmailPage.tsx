@@ -36,28 +36,33 @@ export default function VerifyEmailPage() {
   };
 
   return (
-    <main id="main-content" className="mx-auto flex min-h-screen w-full max-w-xl items-center px-4 py-8 sm:px-6">
-      <section className="w-full rounded-3xl border-2 border-gray-200 bg-white p-6 text-center shadow-sm sm:p-8">
+    <main id="main-content" className="ik-page mx-auto flex min-h-screen w-full max-w-2xl !max-w-2xl items-center justify-center px-4 py-8 text-[var(--ik-ink)] sm:px-6 sm:py-10">
+      <section
+        aria-labelledby={state === 'loading' ? undefined : 'verify-email-title'}
+        aria-label={state === 'loading' ? 'Verifica email' : undefined}
+        className="ik-surface ik-profile-surface w-full border-2 p-6 sm:p-9"
+      >
+        <p className="ik-eyebrow">Account · Sicurezza</p>
         {state === 'ready' && (
           <>
-            <h1 className="text-3xl font-black text-gray-950">Conferma la tua email</h1>
-            <p className="mt-3 text-gray-600">Conferma il tuo indirizzo per attivare l’account iKuck.</p>
-            <button type="button" onClick={() => { void confirmEmail(); }} className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800">Conferma email</button>
+            <h1 id="verify-email-title" className="mt-2 text-[clamp(2rem,7vw,3.25rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Conferma la tua email</h1>
+            <p className="mt-3 text-base leading-relaxed text-[var(--ik-ink-muted)]">Conferma il tuo indirizzo per attivare l’account iKuck.</p>
+            <button type="button" onClick={() => { void confirmEmail(); }} className="ik-button-primary mt-6 inline-flex min-h-12 w-full items-center justify-center px-4 py-3 font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)] sm:w-auto">Conferma email</button>
           </>
         )}
-        {state === 'loading' && <p role="status" className="font-semibold text-gray-700">Verifica in corso…</p>}
+        {state === 'loading' && <p role="status" className="mt-2 font-semibold text-[var(--ik-ink-muted)]">Verifica in corso…</p>}
         {state === 'success' && (
           <>
-            <h1 className="text-3xl font-black text-gray-950">Email verificata</h1>
-            <p className="mt-3 text-gray-600">Il tuo account iKuck è pronto per la sincronizzazione.</p>
-            <Link to="/profile" className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800">Vai al tuo profilo</Link>
+            <h1 id="verify-email-title" className="mt-2 text-[clamp(2rem,7vw,3.25rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Email verificata</h1>
+            <p role="status" aria-live="polite" className="mt-3 text-base leading-relaxed text-[var(--ik-ink-muted)]">Il tuo account iKuck è pronto per la sincronizzazione.</p>
+            <Link to="/profile" className="ik-button-primary mt-6 inline-flex min-h-12 w-full items-center justify-center px-4 py-3 text-center font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)] sm:w-auto">Vai al tuo profilo</Link>
           </>
         )}
         {state === 'error' && (
           <>
-            <h1 className="text-3xl font-black text-gray-950">Link non valido</h1>
-            <p className="mt-3 text-gray-600">{INVALID_LINK_MESSAGE}</p>
-            <Link to="/" className="mt-6 inline-flex min-h-11 items-center rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900">Torna alle ricette</Link>
+            <h1 id="verify-email-title" className="mt-2 text-[clamp(2rem,7vw,3.25rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Link non valido</h1>
+            <p className="mt-3 rounded-[var(--ik-radius-control)] border border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] p-3 font-semibold text-[var(--ik-tomato)]" role="alert">{INVALID_LINK_MESSAGE}</p>
+            <Link to="/recipes" className="ik-button-secondary mt-6 inline-flex min-h-12 w-full items-center justify-center border-2 bg-[var(--ik-surface)] px-4 py-3 text-center font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)] sm:w-auto">Torna alle ricette</Link>
           </>
         )}
       </section>

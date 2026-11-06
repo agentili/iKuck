@@ -1,0 +1,4939 @@
+{
+  "files": [
+    {
+      "hash": "8855d32b2648e1d920655c6d4d2fc08b13e0da54fae3b81a7cc251a3d2b7f2c7",
+      "path": ".dockerignore",
+      "size": 117,
+      "status": "tracked"
+    },
+    {
+      "hash": "648aeabeab129aea3e6d5025225970f62e1cd2d7828013f30426e11c0c6c6586",
+      "path": ".github/workflows/ci.yml",
+      "size": 2714,
+      "status": "tracked"
+    },
+    {
+      "hash": "faecd1039ccfc903606352f67e536d62067d131e7fe16fa1d83a07957f4dcce0",
+      "path": ".github/workflows/deploy.yml",
+      "size": 2926,
+      "status": "tracked"
+    },
+    {
+      "hash": "dde1ecad6fa1e4033c739aa99808a1176528a83fa9b75ed19a1434d3f6b27d13",
+      "path": ".gitignore",
+      "size": 188,
+      "status": "tracked"
+    },
+    {
+      "hash": "6db2b02135d6fbace1badf7101234818816a8551a99db5edb2988611b9476062",
+      "path": ".worktree-audit-7119df23a6a6.json",
+      "size": 167351,
+      "status": "untracked"
+    },
+    {
+      "hash": "a461b90f877ef26d497bde32febcc1fe6754fa0095c98aa4fbaf84edc60ca3a1",
+      "path": "AGENTS.md",
+      "size": 5648,
+      "status": "tracked"
+    },
+    {
+      "hash": "6d2b3317c542e605e9052500558aef63c7bf656cc78ee4f30aba0a41b7c2efd1",
+      "path": "DESIGN.md",
+      "size": 11796,
+      "status": "tracked"
+    },
+    {
+      "hash": "72cfe8d2ec8819801c499502b8b6c6e765fa42bbb7458700d4b8c556cb46ea73",
+      "path": "README.md",
+      "size": 14247,
+      "status": "tracked"
+    },
+    {
+      "hash": "b723e600e463dbc3f40bb91f2b3703032ac28c7b4ac8e94efeb7bdde055cd4cb",
+      "path": "TEST_STRATEGY_BRING_TO_PANTRY.md",
+      "size": 13406,
+      "status": "tracked"
+    },
+    {
+      "hash": "a1c8145277ab17216e94efccab1d2909ee406d36a848b1c41f2fd6f5b23e6db4",
+      "path": "TODO.md",
+      "size": 879,
+      "status": "tracked"
+    },
+    {
+      "hash": "bc719b52335c6c893be531186bb19526baa6bec42932bb475a11ca228c368c8b",
+      "path": "backend/.dockerignore",
+      "size": 32,
+      "status": "tracked"
+    },
+    {
+      "hash": null,
+      "path": "backend/.env.example",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": "be57a55f57792686412fc0dedeeb3b66cf3a7ed9b723f10b67d90ef0f7f890ef",
+      "path": "backend/Dockerfile",
+      "size": 813,
+      "status": "tracked"
+    },
+    {
+      "hash": "d9c4ae6d7c07be56fb564aa56a079afd6c851784a66210f0b4a15f98f6393493",
+      "path": "backend/drizzle.config.ts",
+      "size": 274,
+      "status": "tracked"
+    },
+    {
+      "hash": "2fd5a029bc0449c19fb52a9677d0687278ae3d6c26a6182084e14485f08232d4",
+      "path": "backend/eslint.config.mjs",
+      "size": 222,
+      "status": "tracked"
+    },
+    {
+      "hash": "9ab794ff4ecba9cd3fe1eddbe298a1f649a4d1e04324c69192c3cb4972fd4853",
+      "path": "backend/package-lock.json",
+      "size": 200940,
+      "status": "tracked"
+    },
+    {
+      "hash": "5524d93190c4dcd16b4dce6d6115ae1b38dc051b77ab8ff7dbbff120a2e2d2d7",
+      "path": "backend/package.json",
+      "size": 1409,
+      "status": "tracked"
+    },
+    {
+      "hash": "7e9dce3d7501f4008f633aea6ac82b1e1fc220dbf34781724d0ae5e1b0b2f185",
+      "path": "backend/src/activity/validation.ts",
+      "size": 2087,
+      "status": "tracked"
+    },
+    {
+      "hash": "dd4b5e38aad0155fa82dbdafecb68a75518a4116428624d1962c2e742998bf09",
+      "path": "backend/src/ai/chefChatFencedRedis.ts",
+      "size": 5990,
+      "status": "untracked"
+    },
+    {
+      "hash": "f4b7385afedee35053697a66bddc7d6138bd74e0610cd7621acfdc3dcde289f9",
+      "path": "backend/src/ai/chefChatQuota.md",
+      "size": 4347,
+      "status": "untracked"
+    },
+    {
+      "hash": "a9617774083b62df5b320aa31f13d781d6dbb7e9297825a87d20368dbeb217f1",
+      "path": "backend/src/ai/chefChatQuota.test.ts",
+      "size": 5749,
+      "status": "untracked"
+    },
+    {
+      "hash": "dd9fb379f72ff9a5a7cc863ba78bddf536c6daa42ff6de53ab10511388df8fe9",
+      "path": "backend/src/ai/chefChatQuota.ts",
+      "size": 3764,
+      "status": "untracked"
+    },
+    {
+      "hash": "129be2166a10a09fac8f6e88cefa581b018c416672b3cb520842e0385df5919e",
+      "path": "backend/src/ai/chefChatQuotaStore.ts",
+      "size": 4806,
+      "status": "untracked"
+    },
+    {
+      "hash": "179995fb7a2dd4bacfb6642593dd2e15e9b05b3564b83b371328192181ff29cf",
+      "path": "backend/src/ai/chefChatRedis.ts",
+      "size": 2540,
+      "status": "untracked"
+    },
+    {
+      "hash": "b4326bb8e58027e17a3c175f698dfc640417f9bc99e3670c710c01c29e65c24a",
+      "path": "backend/src/ai/chefChatValidation.test.ts",
+      "size": 1434,
+      "status": "untracked"
+    },
+    {
+      "hash": "9ea539cf82f46def06dbe3edc73693a5e0a344c8e6b36dba7fa840c1228046de",
+      "path": "backend/src/ai/chefChatValidation.ts",
+      "size": 976,
+      "status": "untracked"
+    },
+    {
+      "hash": "4f9c0ecb6bd1d3666ffeb51bc68a860573995edccfdd8f8be8204d57a58f4681",
+      "path": "backend/src/ai/chefConsent.test.ts",
+      "size": 739,
+      "status": "untracked"
+    },
+    {
+      "hash": "f69da721d22f41921a3e972eb6fc6390a8cec7adcecc7073a5bc0167ce7b8c1b",
+      "path": "backend/src/ai/rateLimit.test.ts",
+      "size": 2853,
+      "status": "tracked"
+    },
+    {
+      "hash": "a2f797e8bab66dd93b506d0f0745d7b6eed855c4db463d3d26d613b3021560d5",
+      "path": "backend/src/ai/rateLimit.ts",
+      "size": 2737,
+      "status": "tracked"
+    },
+    {
+      "hash": "21652b703fa1fb5bbf70c82b8e1e755096c4f8e9739514fb53d1c428fd228d2d",
+      "path": "backend/src/ai/recipeNovelty.test.ts",
+      "size": 3121,
+      "status": "tracked"
+    },
+    {
+      "hash": "21c598eb20cc6599a30b364dc07c64bb291facc5683207f493b47a48ef93a479",
+      "path": "backend/src/ai/recipeNovelty.ts",
+      "size": 6503,
+      "status": "tracked"
+    },
+    {
+      "hash": "da72def0ec6f5fe193dfcfcd8d9495d5d21dc767bd9e589983cd76f8541780c8",
+      "path": "backend/src/ai/validation.test.ts",
+      "size": 1746,
+      "status": "tracked"
+    },
+    {
+      "hash": "fb94f023617e75416ddc29e9f55870d601269f19738ba0869ff738d067bacd38",
+      "path": "backend/src/ai/validation.ts",
+      "size": 2838,
+      "status": "tracked"
+    },
+    {
+      "hash": "be84f677c87876b1b73de672b377ce0ec63713b1e3765b9064ae0aece672a4ff",
+      "path": "backend/src/app.ts",
+      "size": 9948,
+      "status": "tracked"
+    },
+    {
+      "hash": "6e54b3e04fbf86afb559047622f91b887763fc374622f31491ca08435b496fc2",
+      "path": "backend/src/auth/crypto.test.ts",
+      "size": 527,
+      "status": "tracked"
+    },
+    {
+      "hash": "a9c1bd6d7c8d809fb30878c86795083ea78fb42ff1c0d3fcb2cac0da80bda6ed",
+      "path": "backend/src/auth/crypto.ts",
+      "size": 374,
+      "status": "tracked"
+    },
+    {
+      "hash": "91eafed889163fa6760fa0b75123e6d7cf79199a359fd83bad4e7a792a7e0344",
+      "path": "backend/src/auth/google.test.ts",
+      "size": 3075,
+      "status": "tracked"
+    },
+    {
+      "hash": "bc1c08f65594c04ec06aacb320fbd7c75f861f3d60b775cf1ca627cbb24a3705",
+      "path": "backend/src/auth/google.ts",
+      "size": 2523,
+      "status": "tracked"
+    },
+    {
+      "hash": "8a58e0ce07b24022e83d4ff58e077cd6f353c68a577b502ca861a1dd461c5af5",
+      "path": "backend/src/auth/rateLimit.test.ts",
+      "size": 6185,
+      "status": "tracked"
+    },
+    {
+      "hash": "e6a4ce07aef4bfc05eaa5fe1a29cc787c6d9453350bb1c359bf43c3153f8f1a5",
+      "path": "backend/src/auth/rateLimit.ts",
+      "size": 3160,
+      "status": "tracked"
+    },
+    {
+      "hash": "d72bff00cf91af73f264a44d7416ca7e2c88077f2229adf76f8956d3876d7539",
+      "path": "backend/src/auth/repository.test.ts",
+      "size": 3862,
+      "status": "tracked"
+    },
+    {
+      "hash": "dac61863b2300620f4da8ee6376de5d2e68a0d8a795e9f18066b0e8d49812987",
+      "path": "backend/src/auth/repository.ts",
+      "size": 7437,
+      "status": "tracked"
+    },
+    {
+      "hash": "9ad632d24d753ca29ec851b5683384253e9e8fcca3280da27c4c2a1400241bce",
+      "path": "backend/src/auth/service.test.ts",
+      "size": 8753,
+      "status": "tracked"
+    },
+    {
+      "hash": "b0b1ccf7c420c95d625f1f383b1bc5705d4c852bf8fffb568779272cbbb61e79",
+      "path": "backend/src/auth/service.ts",
+      "size": 13377,
+      "status": "tracked"
+    },
+    {
+      "hash": null,
+      "path": "backend/src/auth/tokens.test.ts",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": null,
+      "path": "backend/src/auth/tokens.ts",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": "154f5fb86df0b465f731b401f64dcd29c72c2edf822b31f820210c041667bced",
+      "path": "backend/src/bring/contracts.test.ts",
+      "size": 2683,
+      "status": "tracked"
+    },
+    {
+      "hash": "ea1cf6b4912a2652e8e8ebd91edf1c746fe0dd8663d38a7cf548df39e30beb97",
+      "path": "backend/src/bring/deploymentConfig.test.ts",
+      "size": 2535,
+      "status": "tracked"
+    },
+    {
+      "hash": "4ba4189317965b95b74e49b2175b6307a394302fb66dcada163e8b0af895fb82",
+      "path": "backend/src/bring/errors.ts",
+      "size": 157,
+      "status": "tracked"
+    },
+    {
+      "hash": "9d1379f55b2040a782225e86df98af727c645b2ef3b9a3e31062809b5e2461dd",
+      "path": "backend/src/bring/foodFilter.test.ts",
+      "size": 809,
+      "status": "tracked"
+    },
+    {
+      "hash": "bcfd25bb207f957e3a5411f7621e86730577f500a0d06d85374e3f35ade9ef50",
+      "path": "backend/src/bring/foodFilter.ts",
+      "size": 774,
+      "status": "tracked"
+    },
+    {
+      "hash": "93016c75c5f61d5c38bd5c9b6b5ec0f76551c43030edff4e16a8aa77cc35d733",
+      "path": "backend/src/bring/gateway.test.ts",
+      "size": 9718,
+      "status": "tracked"
+    },
+    {
+      "hash": "8f745a77cbe142b161c5c50809e34a90cabc7213370be043f5f558e412a2c6a1",
+      "path": "backend/src/bring/gateway.ts",
+      "size": 4755,
+      "status": "tracked"
+    },
+    {
+      "hash": "50285b11b5eac15f925b8e64ee13f9a3a846022e52ae7b36de62aa82bdd1d425",
+      "path": "backend/src/bring/recently.test.ts",
+      "size": 1521,
+      "status": "tracked"
+    },
+    {
+      "hash": "cdcdc5c8b7bdc9f68a04cbf98381e710cefcbbe1456baab239eb305f6d68aeca",
+      "path": "backend/src/bring/recently.ts",
+      "size": 962,
+      "status": "tracked"
+    },
+    {
+      "hash": "db3ec38069c602442c9a7551cd69a06486501c814577592b1428ba814b0c8e76",
+      "path": "backend/src/bring/repository.test.ts",
+      "size": 4189,
+      "status": "tracked"
+    },
+    {
+      "hash": "68324b52d7f3a52fa7f28d1dfcf63f233b216fab410254767332d22f50ce0fd2",
+      "path": "backend/src/bring/repository.ts",
+      "size": 4592,
+      "status": "tracked"
+    },
+    {
+      "hash": "b54638876a78fcd0707d65405b667012e714f55dc4a0f345d160d11e520d880e",
+      "path": "backend/src/bring/sdkCompatibility.test.ts",
+      "size": 3502,
+      "status": "tracked"
+    },
+    {
+      "hash": "ca6a131c7fdc90608e4b47d931fa32fe09c55362c41050b8b3f58df895f71f52",
+      "path": "backend/src/bring/service.test.ts",
+      "size": 41924,
+      "status": "tracked"
+    },
+    {
+      "hash": "6eb257ed308bf8cc49e9a7a6b15e4f6e2ce1db6777e0718dd89bb29cc5aad0d4",
+      "path": "backend/src/bring/service.ts",
+      "size": 15654,
+      "status": "tracked"
+    },
+    {
+      "hash": "baac555880e670a5847d5bb06c0c3b5b4c373bc0258216779fad7b5e59e4c8f5",
+      "path": "backend/src/bring/sessionCipher.test.ts",
+      "size": 1428,
+      "status": "tracked"
+    },
+    {
+      "hash": "449ef1b417d9ebfd1fc6f4ceb900a0a513447a3a9743ad8bc2fea6b7b5c30b88",
+      "path": "backend/src/bring/sessionCipher.ts",
+      "size": 1755,
+      "status": "tracked"
+    },
+    {
+      "hash": "34267771dc22c4ddcce55c05cc860a662c30a55cff36472cbcba300ab8f6dd59",
+      "path": "backend/src/cache/client.test.ts",
+      "size": 6490,
+      "status": "tracked"
+    },
+    {
+      "hash": "2b7d09583bbf658e62073fda92097f1251298c75a5081c771a55609a433e99ee",
+      "path": "backend/src/cache/client.ts",
+      "size": 6390,
+      "status": "tracked"
+    },
+    {
+      "hash": "1decb2e1fcbcf5d1f4776e3352d7e0d50c2f9d0f3ef6c26922fab99be4f3a36c",
+      "path": "backend/src/config.test.ts",
+      "size": 10678,
+      "status": "tracked"
+    },
+    {
+      "hash": "3652ff1dbbf22841ee0c77645aa21bbb1a403c5cb57ab5c37cb08d335e2181f7",
+      "path": "backend/src/config.ts",
+      "size": 7361,
+      "status": "tracked"
+    },
+    {
+      "hash": "ebf797a0f1f6d2affe947238ecf33b16eee49f2efd84f6e3d227c31116ee66de",
+      "path": "backend/src/contracts/contracts.test.ts",
+      "size": 5919,
+      "status": "tracked"
+    },
+    {
+      "hash": "d7c92a37d43e79a6caadb4f8773fa7b4aa4028b433a06b9cfe1d2649fdb1cf81",
+      "path": "backend/src/db/candidates-schema.test.ts",
+      "size": 1971,
+      "status": "tracked"
+    },
+    {
+      "hash": "769f94f895146af6b58eaa2d21ebfa7ae59406093681490623469d162270fd71",
+      "path": "backend/src/db/cleanupBringCandidates.ts",
+      "size": 951,
+      "status": "tracked"
+    },
+    {
+      "hash": "1b059ddefa2c982d92f42b4f3a261d651875fb0c5247868c361aa3da60393897",
+      "path": "backend/src/db/cleanupExpiredAuth.test.ts",
+      "size": 1419,
+      "status": "tracked"
+    },
+    {
+      "hash": "265122de0bb7ac94948c0ece0812c3276e05601f136fa1ccdcf53c9998594cf5",
+      "path": "backend/src/db/cleanupExpiredAuth.ts",
+      "size": 3495,
+      "status": "tracked"
+    },
+    {
+      "hash": "cc32d267674c777b41de5a1551deceafc59b94224484e49efa3f3966ef82dc09",
+      "path": "backend/src/db/client.test.ts",
+      "size": 3301,
+      "status": "tracked"
+    },
+    {
+      "hash": "bed013b41dc435a9f44db2eaa9cd50bfeae3352c7a83f6d35c44556cfd3e5bce",
+      "path": "backend/src/db/client.ts",
+      "size": 4134,
+      "status": "tracked"
+    },
+    {
+      "hash": "ac3af4c184b17e980c546f436a0c22be114a24c0c40ba091798844b5d7c5cc70",
+      "path": "backend/src/db/house-schema.test.ts",
+      "size": 1190,
+      "status": "tracked"
+    },
+    {
+      "hash": "620f1814fb2515870708096874391dc109e83db73b4a56f5bcad72811bbc2c96",
+      "path": "backend/src/db/migrate.ts",
+      "size": 587,
+      "status": "tracked"
+    },
+    {
+      "hash": "bf47c5687004aab99584b200c346465146ab6551084a4ce06e9aba1afb152dfb",
+      "path": "backend/src/db/migrations/0000_service_metadata.sql",
+      "size": 174,
+      "status": "tracked"
+    },
+    {
+      "hash": "41261bd786086eb1dab8058ebe3fd3dd88dd0c9bdb231d7e66b8b435a61b9ff3",
+      "path": "backend/src/db/migrations/0001_accounts_and_sync.sql",
+      "size": 3545,
+      "status": "tracked"
+    },
+    {
+      "hash": "e76d3a600621e7f22f951f0088965a18efd3ee250d8ed6298fc50eb179970920",
+      "path": "backend/src/db/migrations/0002_sync_device_id.sql",
+      "size": 170,
+      "status": "tracked"
+    },
+    {
+      "hash": "c13b3cc2a3ce86c17c29cc3961deb2e1202885933907f57a234e9f5ba4708069",
+      "path": "backend/src/db/migrations/0003_google_identities.sql",
+      "size": 756,
+      "status": "tracked"
+    },
+    {
+      "hash": "818b20902b409b028d52e72b8a9efaa2f71aeefb2f2ff91b945db2c8ad803b0c",
+      "path": "backend/src/db/migrations/0004_houses_and_scoped_sync.sql",
+      "size": 3052,
+      "status": "tracked"
+    },
+    {
+      "hash": "65e89421f250baf297f25fa1840af856b414d243193c08b6ea6c03b5481db04f",
+      "path": "backend/src/db/migrations/0005_house_content_account_deletion.sql",
+      "size": 1358,
+      "status": "tracked"
+    },
+    {
+      "hash": "9b46d8d0d6f194e0672c4712cdeeca2eb79e760f1d87a8d39eb0726c3179dbbc",
+      "path": "backend/src/db/migrations/0006_s2s_service_grants.sql",
+      "size": 1538,
+      "status": "tracked"
+    },
+    {
+      "hash": "60f535b9406dd07497f21ad8f8b6b523eb63d81cfddf26d96da3c88ecf04004b",
+      "path": "backend/src/db/migrations/0007_s2s_admin_demotion_revocation.sql",
+      "size": 687,
+      "status": "tracked"
+    },
+    {
+      "hash": "fd34a353e6b6d8182806db9577df98dd6846ae4ea5168bed2b95277161fcfb35",
+      "path": "backend/src/db/migrations/0008_bring_connections.sql",
+      "size": 255,
+      "status": "tracked"
+    },
+    {
+      "hash": "6c25449b3d1d8eb7fd8e1ca7321f81fc4e77da0f5389540bf0e1f7b5a3d178da",
+      "path": "backend/src/db/migrations/0009_dinner_consumption_receipts.sql",
+      "size": 1038,
+      "status": "tracked"
+    },
+    {
+      "hash": "b224a4b1aaadd68091983843e908917a1b31a980868183f48a29530f5df467b3",
+      "path": "backend/src/db/migrations/0010_pantry_candidates.sql",
+      "size": 1084,
+      "status": "tracked"
+    },
+    {
+      "hash": "57384a1a6ad3936e3ab817aec5be4eb37f86cea12fb3611a9488797e2f556203",
+      "path": "backend/src/db/migrations/0011_chef_chat_quota.sql",
+      "size": 844,
+      "status": "untracked"
+    },
+    {
+      "hash": "4071186475b54b4650c585f42de75edc3dae1d717836b72c1560b4e02801cb39",
+      "path": "backend/src/db/migrations/0012_tearful_lord_tyger.sql",
+      "size": 5526,
+      "status": "untracked"
+    },
+    {
+      "hash": "c943bcf5c8ed55fde08765dcb16ff7dcda111ccfd2d6393309cf5aef1ee6ffd1",
+      "path": "backend/src/db/migrations/0013_meal_plan_import_provenance.sql",
+      "size": 1441,
+      "status": "untracked"
+    },
+    {
+      "hash": "9d23d53029e6baaca3da41d015b2fa0202c8bf23e6eb9e80cd46f018227f15fe",
+      "path": "backend/src/db/migrations/0014_meal_plan_migration_conflicts.sql",
+      "size": 2427,
+      "status": "untracked"
+    },
+    {
+      "hash": "7bed17272cef74de22e23e2d9c3e4a82af9c8c679a7b778eb78a3f6bfca844cd",
+      "path": "backend/src/db/migrations/0015_dusty_vertigo.sql",
+      "size": 1634,
+      "status": "untracked"
+    },
+    {
+      "hash": "4a8c001891096414b853c8c0278a6fea9d978c22c4cb9d538a015c6b4ac1b6ea",
+      "path": "backend/src/db/migrations/0016_house_migration_pending.sql",
+      "size": 672,
+      "status": "untracked"
+    },
+    {
+      "hash": "7fe28d2a846e32d6d86dfc5e433eb6aba1bdafe2f179ca462ea27efdcbfd3151",
+      "path": "backend/src/db/migrations/meta/0010_snapshot.json",
+      "size": 46167,
+      "status": "tracked"
+    },
+    {
+      "hash": "77e1af4679ac0f4c22e4517bf7d7c444a45a01d405c79618da96ef4631ee2383",
+      "path": "backend/src/db/migrations/meta/0011_snapshot.json",
+      "size": 49422,
+      "status": "untracked"
+    },
+    {
+      "hash": "5b46398d9c0239d9d07ca46c96d984ae88c26c144c7080a5ef68df35010be1e3",
+      "path": "backend/src/db/migrations/meta/0012_snapshot.json",
+      "size": 60629,
+      "status": "untracked"
+    },
+    {
+      "hash": "9a2faa5751eb06a1b2def6bf0c6984815ce2345be1f7da7340ef23859073b6bd",
+      "path": "backend/src/db/migrations/meta/0013_snapshot.json",
+      "size": 63525,
+      "status": "untracked"
+    },
+    {
+      "hash": "9ae43a9732fc9c5ea931e609a34134d93526adde271425368216a70015b48231",
+      "path": "backend/src/db/migrations/meta/0014_snapshot.json",
+      "size": 70518,
+      "status": "untracked"
+    },
+    {
+      "hash": "4a5a96676469bf877e7abbede74f6a4930777c92f10de09e651fa7b8617a9a79",
+      "path": "backend/src/db/migrations/meta/0015_snapshot.json",
+      "size": 75651,
+      "status": "untracked"
+    },
+    {
+      "hash": "2d5ada692eb48a44621ab3d59f86f91cd7afad1001bf87f812ac17e488ea08ee",
+      "path": "backend/src/db/migrations/meta/0016_snapshot.json",
+      "size": 77885,
+      "status": "untracked"
+    },
+    {
+      "hash": "4e03967ef9cecd50e3e7e5bb2984d2976b2de23d349fa7faaf70b2fe7821e589",
+      "path": "backend/src/db/migrations/meta/_journal.json",
+      "size": 2599,
+      "status": "tracked"
+    },
+    {
+      "hash": "265c6124722c668aada129baae3fa95b49718f6566de71252fec6ee944534d08",
+      "path": "backend/src/db/schema.test.ts",
+      "size": 2446,
+      "status": "tracked"
+    },
+    {
+      "hash": "c7578fb6ec6cd57b79f1a10b35ab487f7bcb7d487b5ff06846259c12ae757a40",
+      "path": "backend/src/db/schema.ts",
+      "size": 22702,
+      "status": "tracked"
+    },
+    {
+      "hash": "bd428649fc24a94a728f6373a964ae6ed0a6b0d6b8f01b06ad67e0ca8fd56658",
+      "path": "backend/src/deployment-contract.test.ts",
+      "size": 4418,
+      "status": "tracked"
+    },
+    {
+      "hash": "268753bbfc1266f03414cb11f6d6249b35cf26e2fa84157b0dc186f3ec290951",
+      "path": "backend/src/diary/contracts.test.ts",
+      "size": 3060,
+      "status": "tracked"
+    },
+    {
+      "hash": "b1bd6b6747bf479f7c5be094cad6f7cc120ea988d735fedec90dd6e1b7acc2c7",
+      "path": "backend/src/diet/validation.ts",
+      "size": 1618,
+      "status": "tracked"
+    },
+    {
+      "hash": "e3b901fdf5e494a34d24ce6f365c3ee52bff2063e627a16d97620080ee2efe3b",
+      "path": "backend/src/house/repository.ts",
+      "size": 27963,
+      "status": "tracked"
+    },
+    {
+      "hash": "315ec5e0680b4c07dcee90999706c1f93a83e08836ae9bca4ea0690a17b02ad2",
+      "path": "backend/src/house/service.test.ts",
+      "size": 11316,
+      "status": "tracked"
+    },
+    {
+      "hash": "46c8a976cc67be0ce65e63a514bb30cd7879ed90a3a6cda331a81daf56351942",
+      "path": "backend/src/house/service.ts",
+      "size": 12256,
+      "status": "tracked"
+    },
+    {
+      "hash": "ed102e6b10df25f7cb64539ae81c92b9f78d3fe6101ade513d0bdc1fac47d1db",
+      "path": "backend/src/house/validation.test.ts",
+      "size": 753,
+      "status": "tracked"
+    },
+    {
+      "hash": "62c9c4195d4ae04839fd4e54baf3a8a554b31c27e97ff667dc10fdd5a6679187",
+      "path": "backend/src/house/validation.ts",
+      "size": 320,
+      "status": "tracked"
+    },
+    {
+      "hash": "b0df48662fa92288c9a19b936153beb43b63bdb36b4c204b6da34bc673faaa94",
+      "path": "backend/src/integration/auth-sync.integration.test.ts",
+      "size": 125479,
+      "status": "tracked"
+    },
+    {
+      "hash": "9a8c566bda999d738b07ef5c1b71b69f79426eed051a480e34c9d62b341dcd21",
+      "path": "backend/src/integration/bring.integration.test.ts",
+      "size": 32997,
+      "status": "tracked"
+    },
+    {
+      "hash": "b9593e5cad0265e046c39ec500eb8c6907822f886778bc79a9070a6149fc3216",
+      "path": "backend/src/integration/chef-chat-deletion-fence.integration.test.ts",
+      "size": 1264,
+      "status": "untracked"
+    },
+    {
+      "hash": "4cf46712a3f15961010358c9c7adc9c149c05666c225799bacdbe98da1dd2556",
+      "path": "backend/src/integration/chef-chat-fencing.integration.test.ts",
+      "size": 2628,
+      "status": "untracked"
+    },
+    {
+      "hash": "9850759b9828938c905412fab67fe313039136b66765686295a1c73cc87c333a",
+      "path": "backend/src/integration/chef-chat-quota.integration.test.ts",
+      "size": 13769,
+      "status": "untracked"
+    },
+    {
+      "hash": "00890094954ed7a878a6e8210f05031dfce33a461482f78feeca8212ffeca117",
+      "path": "backend/src/integration/chef-chat-redis.integration.test.ts",
+      "size": 3882,
+      "status": "untracked"
+    },
+    {
+      "hash": "3eb4a3f61702fd3aada21a6e100e94387dd54d40001d0c4e293dfa9d0b0ff72a",
+      "path": "backend/src/integration/dinner-consumption.integration.test.ts",
+      "size": 28649,
+      "status": "tracked"
+    },
+    {
+      "hash": "017fad0a6335bc5621686ea143bc9f1754cb096b43e3f1a02d2d4983ac897bba",
+      "path": "backend/src/integration/meal-plan-capabilities.integration.test.ts",
+      "size": 2401,
+      "status": "untracked"
+    },
+    {
+      "hash": "b35c5182a08f9994610fcdbf93350ca7c75eb633e1bd9184016726fe137b3024",
+      "path": "backend/src/integration/meal-plan-concurrency.integration.test.ts",
+      "size": 9238,
+      "status": "untracked"
+    },
+    {
+      "hash": "0f3c0372a9daabe1597fb160d72a15de42828ccd891d09cdfc0e0d8fefd3c7d0",
+      "path": "backend/src/integration/meal-plan-household.integration.test.ts",
+      "size": 6148,
+      "status": "untracked"
+    },
+    {
+      "hash": "3f51c1bb1dc0e5f1e858c69d7c91a58c98060fa027cfce25229f91a0236d982a",
+      "path": "backend/src/integration/meal-plan-import.integration.test.ts",
+      "size": 41260,
+      "status": "untracked"
+    },
+    {
+      "hash": "f309928bfbc69ff183651d35a918fd5e0e4c4709905078ad68a6155b4a196281",
+      "path": "backend/src/integration/meal-plan-isolation.integration.test.ts",
+      "size": 1780,
+      "status": "untracked"
+    },
+    {
+      "hash": "1d2af33a5da2df62e48522e60bacc5afe5cbbe81c4ae85c3f6b3cbe730534629",
+      "path": "backend/src/integration/meal-plan-legacy-quarantine.integration.test.ts",
+      "size": 15516,
+      "status": "untracked"
+    },
+    {
+      "hash": "ebcd9af7bf20d26c5f5e715b4e4dbb7e19fd8b3c54338654cc0b03da33d63a49",
+      "path": "backend/src/integration/meal-plan-migration-pending.integration.test.ts",
+      "size": 16680,
+      "status": "untracked"
+    },
+    {
+      "hash": "0ff7a3cb745b60cea3a0323a85380f14bc0531cfdc0735ab063347730e5f05ad",
+      "path": "backend/src/integration/meal-plan-recovery-fence.integration.test.ts",
+      "size": 19668,
+      "status": "untracked"
+    },
+    {
+      "hash": "2d79f51737704ba92aeb27e6491e334b319e92c48eb858ae2456bca487f814d7",
+      "path": "backend/src/integration/migration-serialization.test.ts",
+      "size": 220,
+      "status": "tracked"
+    },
+    {
+      "hash": "316aabe87b44383eeb5bfd3ba277e4159c01d915c93319f2ec57ae8c06fe9e47",
+      "path": "backend/src/integration/s2s-rateLimit.integration.test.ts",
+      "size": 7018,
+      "status": "tracked"
+    },
+    {
+      "hash": "b97986ca213a4041bed4b9f7b9e0a632d367c05807ad0d99a7875c8fd9a52ad1",
+      "path": "backend/src/integration/s2s-repository.integration.test.ts",
+      "size": 44385,
+      "status": "tracked"
+    },
+    {
+      "hash": "85890c85df6901064fbffa5704aa8bdc3e2ea2d48bf28fefebde2902be0a7865",
+      "path": "backend/src/mealPlan/stateMachine.ts",
+      "size": 2288,
+      "status": "untracked"
+    },
+    {
+      "hash": "a74f34068de49d0e617f11195067c9bdbbe0cc1aadb3ad7eab13a704002a1f70",
+      "path": "backend/src/mealPlan/validation.ts",
+      "size": 4215,
+      "status": "untracked"
+    },
+    {
+      "hash": "042a09344473447535020220e77f0d8315cc16aaa23beffe2b2b489cafc1d388",
+      "path": "backend/src/nutrition/recipeNutrition.test.ts",
+      "size": 2699,
+      "status": "tracked"
+    },
+    {
+      "hash": "82f42919f4e927c5aff9cd5fa23764cba891642c41cb4a5c547853101af1d495",
+      "path": "backend/src/nutrition/recipeNutrition.ts",
+      "size": 2002,
+      "status": "tracked"
+    },
+    {
+      "hash": "0c1c405b4b5aac10b9a5482d3e6082f35cad165707988c4203a56bb405c860de",
+      "path": "backend/src/pantry/candidatesRepository.test.ts",
+      "size": 28831,
+      "status": "tracked"
+    },
+    {
+      "hash": "2018cfad5e7a609f260fa1f33d298a0c0b75213fcb9216548a607841cab2187a",
+      "path": "backend/src/pantry/candidatesRepository.ts",
+      "size": 17321,
+      "status": "tracked"
+    },
+    {
+      "hash": "5eed610ec2c54fb717d8159acffc44def2e85f3a62cca2b0b567e4e4f0c0e8d6",
+      "path": "backend/src/pantry/candidatesService.test.ts",
+      "size": 3118,
+      "status": "tracked"
+    },
+    {
+      "hash": "1fa70190a3e788c5fc2d40d1df19f116ed63951251b4758b438e1c167a04550a",
+      "path": "backend/src/pantry/candidatesService.ts",
+      "size": 1749,
+      "status": "tracked"
+    },
+    {
+      "hash": "37d518225e7587837c1400a18837d320e5a72ff20eb08ba2146f264ce822a371",
+      "path": "backend/src/pantry/consumption.test.ts",
+      "size": 2116,
+      "status": "tracked"
+    },
+    {
+      "hash": "1ff0bec097cc2b676c13711416eedf2e37b62ce8500a693ed1ac036129bceda6",
+      "path": "backend/src/pantry/consumptionService.test.ts",
+      "size": 3016,
+      "status": "tracked"
+    },
+    {
+      "hash": "1d2303c0ee5e7dc6649cdc13ef40ef65fc2985440d1b30322be2d9c0826bf257",
+      "path": "backend/src/pantry/consumptionService.ts",
+      "size": 4480,
+      "status": "tracked"
+    },
+    {
+      "hash": "66e5dd47a64a079a1bebd674fdeaecb2dc184671ac5f7374b920bfb3404f169f",
+      "path": "backend/src/pantry/validation.ts",
+      "size": 2196,
+      "status": "tracked"
+    },
+    {
+      "hash": "350c742c3b8c5ec6cc79db3a483591fcfb69cb78458bc0bdff0161cd649ad303",
+      "path": "backend/src/platform-adapters.test.ts",
+      "size": 2750,
+      "status": "tracked"
+    },
+    {
+      "hash": "cc88dde1ad6c323ff2cfe1a612f6f329aa3a6ba07046917fb9ae03eb432825bb",
+      "path": "backend/src/platform.ts",
+      "size": 158,
+      "status": "tracked"
+    },
+    {
+      "hash": "e976490a09c845be83367513a580a711014dcee465a6d92f17d473ea78668b6c",
+      "path": "backend/src/profile/repository.ts",
+      "size": 6426,
+      "status": "tracked"
+    },
+    {
+      "hash": "017d0781b84027a01333d3e39d008b1d206f083036b57f14d4a968228cb1921e",
+      "path": "backend/src/providers/chefChat-transport.md",
+      "size": 2974,
+      "status": "untracked"
+    },
+    {
+      "hash": "772011ed26bcf20d372191963e4495afd3734d32436817c82d85d375b6cd468f",
+      "path": "backend/src/providers/chefChat.test.ts",
+      "size": 8399,
+      "status": "untracked"
+    },
+    {
+      "hash": "b1c4449d4767652494138c91d578f1b4351ed80b31dd57c8a8837c33aa051219",
+      "path": "backend/src/providers/chefChat.ts",
+      "size": 6243,
+      "status": "untracked"
+    },
+    {
+      "hash": "69430de21832de632dab4c57909b51e5626ae7d9baa5bb64c6e12cb4a792459f",
+      "path": "backend/src/providers/chefChatTracking.test.ts",
+      "size": 4447,
+      "status": "untracked"
+    },
+    {
+      "hash": "52478f84f7344c4cd0365a6c0fa5656f860ebbd19e3f4af5286428cedc553f21",
+      "path": "backend/src/providers/dinnerReconstructionShared.ts",
+      "size": 4590,
+      "status": "tracked"
+    },
+    {
+      "hash": "bc929464cd74b182f7ebd51eaca8824ad6e98133e11a91c42d4feda4fb9fd43e",
+      "path": "backend/src/providers/factory.test.ts",
+      "size": 8585,
+      "status": "tracked"
+    },
+    {
+      "hash": "a2b259f8136f011904a95eb87a10f254a3a73a551014137e9442085246ba94a0",
+      "path": "backend/src/providers/factory.ts",
+      "size": 4196,
+      "status": "tracked"
+    },
+    {
+      "hash": "3d4488402da63e3668a067ec345e3e183ff2dbf0bb57918f7fa8bf0c1db357a2",
+      "path": "backend/src/providers/fetchWithTimeout.test.ts",
+      "size": 2296,
+      "status": "tracked"
+    },
+    {
+      "hash": "dbf918794e7e250c1a0c404da5381e912b0753e90f8d7025a2611cc6cc8380f8",
+      "path": "backend/src/providers/fetchWithTimeout.ts",
+      "size": 6154,
+      "status": "tracked"
+    },
+    {
+      "hash": "5a267eaac0447492b97a7d3c1d7aaa457b0bf257178ccb6f687be69a4d98415b",
+      "path": "backend/src/providers/geminiDinnerReconstruction.test.ts",
+      "size": 11329,
+      "status": "tracked"
+    },
+    {
+      "hash": "51a4394fd30f149fc847bd9428cb8dc8a47acd53735f6fdf60df3aa6e97f73cc",
+      "path": "backend/src/providers/geminiDinnerReconstruction.ts",
+      "size": 5750,
+      "status": "tracked"
+    },
+    {
+      "hash": "23032f80fdc739854436d8f03af36889e3a4cf18d4741a1d200a6379befa9dd0",
+      "path": "backend/src/providers/geminiRecipes.test.ts",
+      "size": 4408,
+      "status": "tracked"
+    },
+    {
+      "hash": "5e478a10d9a5a3cd2a156faf8b9b4787f16ae918700b77e315f526d8e6d26a2e",
+      "path": "backend/src/providers/geminiRecipes.ts",
+      "size": 4505,
+      "status": "tracked"
+    },
+    {
+      "hash": "4e0e316a8d45bf93016e7fbeacd9bf5e373fba52a676b893fd8d7a59b0ddc3bb",
+      "path": "backend/src/providers/openaiDinnerReconstruction.test.ts",
+      "size": 7495,
+      "status": "tracked"
+    },
+    {
+      "hash": "90cec5d045bba8a53150166fe02449306980d08883925a8dfd4fa1095f325007",
+      "path": "backend/src/providers/openaiDinnerReconstruction.ts",
+      "size": 6749,
+      "status": "tracked"
+    },
+    {
+      "hash": "1fdf69049ae086ba43c57b44215471ac003ecd2bac07fe8700700e5cf1d8282a",
+      "path": "backend/src/providers/openaiRecipes.test.ts",
+      "size": 5516,
+      "status": "tracked"
+    },
+    {
+      "hash": "41d90abac273e764566b4c9116ca8a3338d4d4c391c7552ac12c363ee8529bd5",
+      "path": "backend/src/providers/openaiRecipes.ts",
+      "size": 4674,
+      "status": "tracked"
+    },
+    {
+      "hash": "987551426bc894635a2ba85c2a9fd61468fd5cfa4cff0e39932d325daeddb7b7",
+      "path": "backend/src/providers/recipePrompt.ts",
+      "size": 1118,
+      "status": "tracked"
+    },
+    {
+      "hash": "2364f4a0b93848bc16f0ff1f9f7f0fa66a29bb0190daefdff4185809a1153a39",
+      "path": "backend/src/providers/smtp.test.ts",
+      "size": 4301,
+      "status": "tracked"
+    },
+    {
+      "hash": "389eee765259c3217bbc04ea02a5adf9b8a93f9d8830dc0bae95060cd086c749",
+      "path": "backend/src/providers/smtp.ts",
+      "size": 2217,
+      "status": "tracked"
+    },
+    {
+      "hash": "1901e5f0bf0adc435775d773bbee387950978ccc14efcbdbe6b4cf6712caf543",
+      "path": "backend/src/providers/types.ts",
+      "size": 2667,
+      "status": "tracked"
+    },
+    {
+      "hash": "b62651812c0a3ac3641ae224282eaa8a29a1c6e0337eeb519d0b91ff6b0c4c42",
+      "path": "backend/src/providers/unavailable.ts",
+      "size": 1119,
+      "status": "tracked"
+    },
+    {
+      "hash": "eca36c1a984b3672ee4b4fb6afe8bca85c7e3d1249b6f9a39e01780ee44227f8",
+      "path": "backend/src/providers/usda.test.ts",
+      "size": 3247,
+      "status": "tracked"
+    },
+    {
+      "hash": "4255347b0f853c3febc94d211ee881651d31ad432ecd411be266c402028e6870",
+      "path": "backend/src/providers/usda.ts",
+      "size": 4182,
+      "status": "tracked"
+    },
+    {
+      "hash": "16a1f23ea316fc5a3d01e91f70b004382652f6655f86d2de657849ea254282df",
+      "path": "backend/src/routes/activity.test.ts",
+      "size": 5311,
+      "status": "tracked"
+    },
+    {
+      "hash": "3431a9755dd2b35f388787ecc05f2ed56015b5fb59deaa4470c12d6596ed281b",
+      "path": "backend/src/routes/activity.ts",
+      "size": 4047,
+      "status": "tracked"
+    },
+    {
+      "hash": "4812e7b64242d30600f37c68ea79da7962eb2525a0a87e8420458951aeff4f3e",
+      "path": "backend/src/routes/aiDinnerReconstruction.test.ts",
+      "size": 13152,
+      "status": "tracked"
+    },
+    {
+      "hash": "dd5f52b2b820b8e16f3b6f4002a650d478d547959c78caefbc45a837effb94d7",
+      "path": "backend/src/routes/aiRecipes.test.ts",
+      "size": 42679,
+      "status": "tracked"
+    },
+    {
+      "hash": "e9b46a590c354100f9276811934badf4f8b12b4487fa54154fc95209c80be15b",
+      "path": "backend/src/routes/aiRecipes.ts",
+      "size": 17867,
+      "status": "tracked"
+    },
+    {
+      "hash": "5c1b4ea9ba80ad3bd36519eaf3b3da31b1c1fd6927f0c5ee412d73cc53b9103c",
+      "path": "backend/src/routes/auth.test.ts",
+      "size": 9460,
+      "status": "tracked"
+    },
+    {
+      "hash": "d4dabc0fb0815ae60ce4d8ff18baebd0c87b76bef2818021be5ccff55a480477",
+      "path": "backend/src/routes/auth.ts",
+      "size": 8967,
+      "status": "tracked"
+    },
+    {
+      "hash": "00287dc3d8b1570f9f8f836e51e1d953179191b8e5e7bc8fc0e72919fa05a445",
+      "path": "backend/src/routes/bring.test.ts",
+      "size": 23678,
+      "status": "tracked"
+    },
+    {
+      "hash": "e2d60953c754d9a29147dc752bc9588dd6564b101f9d0da50c567a17a1ff9341",
+      "path": "backend/src/routes/bring.ts",
+      "size": 5585,
+      "status": "tracked"
+    },
+    {
+      "hash": "8d6a7b2573d7777f2b34216507f5808e93fa94e70e1c87da9569bd4d872aacaa",
+      "path": "backend/src/routes/chefChat.test.ts",
+      "size": 9933,
+      "status": "untracked"
+    },
+    {
+      "hash": "21c4ea7366d865162be7b7d6c2655477d47d41e27640b24beb01749681fdb6e3",
+      "path": "backend/src/routes/chefChat.ts",
+      "size": 4265,
+      "status": "untracked"
+    },
+    {
+      "hash": "0a7108037bfc8cd311a1a4f09fd71048c580873aaacc3a4412dffce932cab89f",
+      "path": "backend/src/routes/dietProfile.test.ts",
+      "size": 4202,
+      "status": "tracked"
+    },
+    {
+      "hash": "1cd39ed7a488fb984691c92df3233287a5e592096fe37ab33972635c16e5d0b6",
+      "path": "backend/src/routes/dietProfile.ts",
+      "size": 2640,
+      "status": "tracked"
+    },
+    {
+      "hash": "6a274a79de862ba8272003338c5f40543663b020cb5f1612e9599aac7c59fd56",
+      "path": "backend/src/routes/dinnerConsumption.test.ts",
+      "size": 6174,
+      "status": "tracked"
+    },
+    {
+      "hash": "efaa26fa29e0c3fbdbbf5a053049190e8652b178e2bcd097b5a46bdadde21c92",
+      "path": "backend/src/routes/dinnerConsumption.ts",
+      "size": 3608,
+      "status": "tracked"
+    },
+    {
+      "hash": "e6630fe90972d4dd80ce6f93a9ad51286265738b99285e8d3a2dba5839cb9609",
+      "path": "backend/src/routes/dinnerDiaryRecipes.test.ts",
+      "size": 18079,
+      "status": "tracked"
+    },
+    {
+      "hash": "abe33d9b68f898f023e508b54e5dc7c9a7bc874cf44511efc80862272fe13207",
+      "path": "backend/src/routes/dinnerDiaryRecipes.ts",
+      "size": 10104,
+      "status": "tracked"
+    },
+    {
+      "hash": "c7ca5c01b37e909b99c6db540259ef6d96fe039cf183746340b763a1fbda28ce",
+      "path": "backend/src/routes/health.test.ts",
+      "size": 1298,
+      "status": "tracked"
+    },
+    {
+      "hash": "42da88e0fe55e107ea5832addf72e372e127573c028423e22ee57329ac64d1c4",
+      "path": "backend/src/routes/health.ts",
+      "size": 643,
+      "status": "tracked"
+    },
+    {
+      "hash": "5cda94c8c5a6e09274666275efe9979cb6b394c2bac8e8b22eb8006f1afc1d33",
+      "path": "backend/src/routes/house.test.ts",
+      "size": 16256,
+      "status": "tracked"
+    },
+    {
+      "hash": "a89c589d33b894fbda54699628e948b133a5a5272ffe9e161037598d00fb5e83",
+      "path": "backend/src/routes/house.ts",
+      "size": 7473,
+      "status": "tracked"
+    },
+    {
+      "hash": "0e6f06b3fca3917f0492e2cf1e6c3c328101debd8ebafba662072727f46dd4bd",
+      "path": "backend/src/routes/houseMigrationPending.tdd.test.ts",
+      "size": 8976,
+      "status": "untracked"
+    },
+    {
+      "hash": "bbb0b9f13f11f894bc93609c576fb0d7b6bcc43313d742ab1b22155fe7683092",
+      "path": "backend/src/routes/mealPlan.ts",
+      "size": 7396,
+      "status": "untracked"
+    },
+    {
+      "hash": "fb084bd0f732ab6cfdebb1a38450573b19eec2cfb4cb861620b0fdc13d572ed6",
+      "path": "backend/src/routes/mealPlanCommands.tdd.test.ts",
+      "size": 10586,
+      "status": "untracked"
+    },
+    {
+      "hash": "57b79e95b8283a4c9674a50202989726f13146be5e7c2db81e8a1a3eef402aeb",
+      "path": "backend/src/routes/mealPlanImport.tdd.test.ts",
+      "size": 25203,
+      "status": "untracked"
+    },
+    {
+      "hash": "959ab723c09b17367fe8b24bc674d8ccee7b66e0c0e23d81639ecd79a539d31c",
+      "path": "backend/src/routes/mealPlanMigrationQuarantine.tdd.test.ts",
+      "size": 12471,
+      "status": "untracked"
+    },
+    {
+      "hash": "b1a7c601b8bf6c85a8283e3f1966c4b50878874dc9e09758903a3cb7d2a28a70",
+      "path": "backend/src/routes/mealPlanRace.tdd.test.ts",
+      "size": 10236,
+      "status": "untracked"
+    },
+    {
+      "hash": "6888a72c360dd624427a81fd68606bb802ef578d8a57487c92412e6bbb86522b",
+      "path": "backend/src/routes/mealPlanSharing.tdd.test.ts",
+      "size": 6477,
+      "status": "untracked"
+    },
+    {
+      "hash": "124745ee4a191aec008a91dc7a67217661bfcc2da14e1eed38baa4d465407601",
+      "path": "backend/src/routes/mealPlanTimezone.tdd.test.ts",
+      "size": 2344,
+      "status": "untracked"
+    },
+    {
+      "hash": "6b1d6ee1b155da0d98022c97874c5415e2259d24b0ccf3b0d014b17ddf21c6dc",
+      "path": "backend/src/routes/mealPlanTimezoneSecurity.tdd.test.ts",
+      "size": 4699,
+      "status": "untracked"
+    },
+    {
+      "hash": "77a825af9c4d01e46bc0351409c518a553cc0ad7c10b20cb8c168fec84c1d44d",
+      "path": "backend/src/routes/pantryCandidates.test.ts",
+      "size": 6050,
+      "status": "tracked"
+    },
+    {
+      "hash": "7ff9f54a25070a28575b5ba7c004dee59e4c0cf65592f1b9d4ab26d4d24b2671",
+      "path": "backend/src/routes/pantryCandidates.ts",
+      "size": 2463,
+      "status": "tracked"
+    },
+    {
+      "hash": "8d67f66680b0a1c5e1e55ceeb406d916f9b36183b6101ef3db6da35b48d1b3fe",
+      "path": "backend/src/routes/pantryLots.test.ts",
+      "size": 3702,
+      "status": "tracked"
+    },
+    {
+      "hash": "abaf9461364177b7eb27ee2acebee1dbb6ed277f51ddeafd9786b523728c448a",
+      "path": "backend/src/routes/pantryLots.ts",
+      "size": 4567,
+      "status": "tracked"
+    },
+    {
+      "hash": "c97ae1562b0ee3664cfaa47e7ea5a78c5427c7d76aac3b68bad4e29fc99690df",
+      "path": "backend/src/routes/profile.test.ts",
+      "size": 3083,
+      "status": "tracked"
+    },
+    {
+      "hash": "1967e07a5fbd3ab11552fba2b2262d2798042ab3a60f70dbd118e6bb50521a92",
+      "path": "backend/src/routes/profile.ts",
+      "size": 2023,
+      "status": "tracked"
+    },
+    {
+      "hash": "6c1169f62502f230ccf77a48785d7c7b143c0e065dbee690a95f8970448eefa1",
+      "path": "backend/src/routes/recipeNutrition.test.ts",
+      "size": 3503,
+      "status": "tracked"
+    },
+    {
+      "hash": "55d9b1ecaba43050036a4d75af6c57ec1ac785264df2c4166c231f2df5eda87a",
+      "path": "backend/src/routes/recipeNutrition.ts",
+      "size": 1752,
+      "status": "tracked"
+    },
+    {
+      "hash": "065a37733efb8c2930389ffbf728181df71cd885dea9f91aa416a77900b09f86",
+      "path": "backend/src/routes/recipePreferences.test.ts",
+      "size": 4822,
+      "status": "tracked"
+    },
+    {
+      "hash": "5a457e37a45c4b51ccee2fde16a106cbc02f7d95cb11d9f4b03585bf6e9fd4a5",
+      "path": "backend/src/routes/recipePreferences.ts",
+      "size": 4261,
+      "status": "tracked"
+    },
+    {
+      "hash": "19b527703dd2670b753495aabc678bb8d745792fd8e3dd8a87d6f40629d67c18",
+      "path": "backend/src/routes/s2sDinnerContext.test.ts",
+      "size": 27811,
+      "status": "tracked"
+    },
+    {
+      "hash": "2f58739d27e8d67efb87ec36d359ee7fe7f2a23bc59c9391066b5528d50747d2",
+      "path": "backend/src/routes/s2sDinnerContext.ts",
+      "size": 3519,
+      "status": "tracked"
+    },
+    {
+      "hash": "c7fd68da70c9185c206444ace6ebfd44f0e8944436f4904d5a8089ea84900c9f",
+      "path": "backend/src/routes/shoppingList.test.ts",
+      "size": 5014,
+      "status": "tracked"
+    },
+    {
+      "hash": "cc3bfb4114ea1e9a25cbf19264bcb54b4567e127547f7cc3192806acefe1f684",
+      "path": "backend/src/routes/shoppingList.ts",
+      "size": 4194,
+      "status": "tracked"
+    },
+    {
+      "hash": "5747870d45c77add27e265fc6fa37090022edc0241073cafcce581e548e90622",
+      "path": "backend/src/routes/sync.test.ts",
+      "size": 30471,
+      "status": "tracked"
+    },
+    {
+      "hash": "eff55575d9a6ef3d62138be2d7c65ef36dd08d1229292e3646e896c23dc33c54",
+      "path": "backend/src/routes/sync.ts",
+      "size": 4299,
+      "status": "tracked"
+    },
+    {
+      "hash": "d6d69f6898e5d2a45f434506e5b6765c77e2203a562ada5b191d7d1609679cd5",
+      "path": "backend/src/s2s/README.md",
+      "size": 2671,
+      "status": "tracked"
+    },
+    {
+      "hash": "e6dc99f70c89539833b49c61b937364f1f997a26df0f842273d56e53d0ce2b75",
+      "path": "backend/src/s2s/adminCli.test.ts",
+      "size": 15049,
+      "status": "tracked"
+    },
+    {
+      "hash": "eae3be686450fb57c9f332b5412554a6c6ab6ef3df25e98f63589035be4df2c4",
+      "path": "backend/src/s2s/adminCli.ts",
+      "size": 12168,
+      "status": "tracked"
+    },
+    {
+      "hash": "914afa360b620381d3345f56c8c9bc1f309a782e17ae1de603802ff95b588918",
+      "path": "backend/src/s2s/constants.ts",
+      "size": 70,
+      "status": "tracked"
+    },
+    {
+      "hash": "ea2963f9deae239ff88759a4ccbb61c454133a1252930350aa767aa60a095a7f",
+      "path": "backend/src/s2s/dinnerContext.test.ts",
+      "size": 5749,
+      "status": "tracked"
+    },
+    {
+      "hash": "76543d4624f6f3cbe90f2329842958fb487a46d9cf3289f861d42299ce159ce7",
+      "path": "backend/src/s2s/dinnerContext.ts",
+      "size": 10289,
+      "status": "tracked"
+    },
+    {
+      "hash": "1a4e73eb566543dc824b54b28cf55fedf471734f4a1a85550cc40d3ab0fa8bb9",
+      "path": "backend/src/s2s/rateLimit.test.ts",
+      "size": 3062,
+      "status": "tracked"
+    },
+    {
+      "hash": "c0a4e2473e464f60b6c2d1021672c9792c0a470a82ca9a50086dc49c4f5a2ff6",
+      "path": "backend/src/s2s/rateLimit.ts",
+      "size": 1723,
+      "status": "tracked"
+    },
+    {
+      "hash": "84f4e9878bfa303ee47cbff86aec2a5e183d5f94a449e66fca9bbfb38a14dcf5",
+      "path": "backend/src/s2s/repository.test.ts",
+      "size": 24470,
+      "status": "tracked"
+    },
+    {
+      "hash": "bdca5519068eba76c6c0bf218950c0c5e339baccd94d49d27a4af0e9b93b69c9",
+      "path": "backend/src/s2s/repository.ts",
+      "size": 24002,
+      "status": "tracked"
+    },
+    {
+      "hash": "69dac62ea6a719b9c079797325991b5add8cce864a87f530fbaf7dd90073d0ff",
+      "path": "backend/src/s2s/runtimePackaging.test.ts",
+      "size": 952,
+      "status": "tracked"
+    },
+    {
+      "hash": "75149ce0fc795ae9fb5dcfbf005acd870bcd6c12300989e657e95a97ddecc283",
+      "path": "backend/src/server.ts",
+      "size": 8492,
+      "status": "tracked"
+    },
+    {
+      "hash": "8ab08e8e1aa23bc01f81b17c5320993f3937b294eb4f9a997d764b2e47015366",
+      "path": "backend/src/serverLogging.test.ts",
+      "size": 4362,
+      "status": "tracked"
+    },
+    {
+      "hash": "45e23a45cbc73b55089e19e8820e19866521b36ebb8ae5cbf8e2639c219af17e",
+      "path": "backend/src/serverLogging.ts",
+      "size": 1187,
+      "status": "tracked"
+    },
+    {
+      "hash": "9bd5e5f0c1b5dd123a80662be2d8e56f347aef28869c3587d1ddec7738bfa03f",
+      "path": "backend/src/serverShutdown.test.ts",
+      "size": 2672,
+      "status": "tracked"
+    },
+    {
+      "hash": "bc77bc692274682f4d38edc78cb5ccc56c60bf6a7924ac4111a8124adb399d54",
+      "path": "backend/src/serverShutdown.ts",
+      "size": 1156,
+      "status": "tracked"
+    },
+    {
+      "hash": "7fc53ae54d65007a1739779dfca92dea6880e050daa87f45387ceaabdd586328",
+      "path": "backend/src/shared-runtime-import.test.ts",
+      "size": 715,
+      "status": "tracked"
+    },
+    {
+      "hash": "e147e963eb712a3d725d80f217a6a3cdd79a514829ff2f471cdb730e9f745d9b",
+      "path": "backend/src/shopping/validation.ts",
+      "size": 2287,
+      "status": "tracked"
+    },
+    {
+      "hash": "7882011523119a880347e74a70f6ac942d0951d8ffce7efcb6d75bbacd232fab",
+      "path": "backend/src/shopping/writer.ts",
+      "size": 1014,
+      "status": "tracked"
+    },
+    {
+      "hash": "1560e33281e17217195142d7715abd35b6bf1445e863fbf4388d57cd11c82cd3",
+      "path": "backend/src/sync/capabilities.test.ts",
+      "size": 1213,
+      "status": "untracked"
+    },
+    {
+      "hash": "37631e78b35b21ce82d617cb733abd3bc16c0f16eb15f09e2550a484893c1555",
+      "path": "backend/src/sync/dispatchCapacity.test.ts",
+      "size": 2434,
+      "status": "tracked"
+    },
+    {
+      "hash": "345bef436b3e2cd8dc94f40b151b887e3da27b2c427e31cdb730a86b5c140d0e",
+      "path": "backend/src/sync/dispatchCapacity.ts",
+      "size": 3782,
+      "status": "tracked"
+    },
+    {
+      "hash": "9e53701c51133a5a5a18f9447f395bca0f739ad374539dbbd9c140f374d358c4",
+      "path": "backend/src/sync/mealPlanImportReceipt.test.ts",
+      "size": 6568,
+      "status": "untracked"
+    },
+    {
+      "hash": "64522e415ddb6e5d09528fca24fda8ab91801d382ec0ae8913ee74b53266a0ec",
+      "path": "backend/src/sync/mealPlanMigrationQuarantine.test.ts",
+      "size": 8700,
+      "status": "untracked"
+    },
+    {
+      "hash": "63f31384b731fc103943cbc0a1ee21653a5c5a79b06e87c8e15e19c6f9f891db",
+      "path": "backend/src/sync/mealPlanRecoveryFence.test.ts",
+      "size": 16606,
+      "status": "untracked"
+    },
+    {
+      "hash": "566b20404132a26303b0f19822c2f9edbc8c987549f6ba9379d0a431dd30e4bb",
+      "path": "backend/src/sync/mealPlanValidation.test.ts",
+      "size": 1670,
+      "status": "untracked"
+    },
+    {
+      "hash": "e20bdc5d00bdb9878ab89fb1f0e7779cb23fe7e323a2e065a5e919e193289322",
+      "path": "backend/src/sync/repository.test.ts",
+      "size": 68587,
+      "status": "tracked"
+    },
+    {
+      "hash": "e0f71e83b71f60b1c7aee612bba5d1390802463cb63ed1b10c4fa75d8780a7fd",
+      "path": "backend/src/sync/repository.ts",
+      "size": 204512,
+      "status": "tracked"
+    },
+    {
+      "hash": "082bf31219ebcd3d926e62085abb60c687e6d6f8d9e2623215e86f7c5394b6c8",
+      "path": "backend/src/sync/validation.test.ts",
+      "size": 2783,
+      "status": "tracked"
+    },
+    {
+      "hash": "8a4ca623e933977ac785aed7d1ae6f436cb5f68db9ae9fb64c122ef9947f0012",
+      "path": "backend/src/sync/validation.ts",
+      "size": 7145,
+      "status": "tracked"
+    },
+    {
+      "hash": "1bf4e0914a725c4eff148df7c9ba05b1326063a603bfa02be962c9a1835936ed",
+      "path": "backend/tsconfig.bring-tests.json",
+      "size": 318,
+      "status": "tracked"
+    },
+    {
+      "hash": "5ebea4ef2320c3f91ba90d02052a5b55ab37d3ced2bd299499a7040838bf7932",
+      "path": "backend/tsconfig.json",
+      "size": 374,
+      "status": "tracked"
+    },
+    {
+      "hash": "ea81d90961c2f6895fc8f85cdaa1f9ef71ab8df110329995fbb34ba8a84969c6",
+      "path": "backend/vitest.config.ts",
+      "size": 184,
+      "status": "tracked"
+    },
+    {
+      "hash": "a09cd0e14a628aa9605f8438c76cd77cd27eb2f9034d56c0eea7df7c90f0f127",
+      "path": "compose.dev.yml",
+      "size": 1535,
+      "status": "tracked"
+    },
+    {
+      "hash": null,
+      "path": "deploy/.env.example",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": null,
+      "path": "deploy/.env.standalone.example",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": "1e6c11a643c6f6a8101e0af8f271bce9285e3742500844a94903288d472c2d6a",
+      "path": "deploy/Caddy.Dockerfile",
+      "size": 786,
+      "status": "tracked"
+    },
+    {
+      "hash": "6a02fbd529b8d41e307fc9b483bf83f3cd23baf9f986c3b4e1111d61d8de5119",
+      "path": "deploy/Caddyfile",
+      "size": 1116,
+      "status": "tracked"
+    },
+    {
+      "hash": "e1726779ed68f968c2865dc7f5fdf2f6d0537934ea22cc93a2fa36ce33aa8e5e",
+      "path": "deploy/backup-postgres.sh",
+      "size": 2448,
+      "status": "tracked"
+    },
+    {
+      "hash": "081877c95a82933282ab588b848ad472cbe072e8d8e114634030b86f054d0a27",
+      "path": "deploy/backup-postgres.test.sh",
+      "size": 1411,
+      "status": "tracked"
+    },
+    {
+      "hash": "52888549029fec0d230c508a546a3aec622e333a69b6bb0ae7bb8d19f7c2319c",
+      "path": "deploy/container-hardening.test.ps1",
+      "size": 1490,
+      "status": "tracked"
+    },
+    {
+      "hash": "45eccc14d34048b2905c8db69d103e9ad21c30763a57d80e576b9ad960d4e296",
+      "path": "deploy/docker-compose.integration.yml",
+      "size": 614,
+      "status": "tracked"
+    },
+    {
+      "hash": "bca6d60466dab4e627fcfad6fb8ef55c37150548fe7e7de4301d160e3be723f6",
+      "path": "deploy/docker-compose.production.yml",
+      "size": 3726,
+      "status": "tracked"
+    },
+    {
+      "hash": "995389659254065f7545456708c360bd0392e80e5a044721b1293a1934e302df",
+      "path": "deploy/docker-compose.standalone.yml",
+      "size": 3801,
+      "status": "tracked"
+    },
+    {
+      "hash": "728d5305be73c69d70ced16b82063c6c0c626b3654f3a09796f9dc4f5abc112a",
+      "path": "deploy/restore-postgres.sh",
+      "size": 4358,
+      "status": "tracked"
+    },
+    {
+      "hash": "90fff86bd2459207a5920c409e081e5ff404e8e5f5011721a5b11766e0550bb4",
+      "path": "deploy/restore-postgres.test.sh",
+      "size": 1294,
+      "status": "tracked"
+    },
+    {
+      "hash": "e2901016547746f4073f83157539d7370a0556a4524c2c109c24c4e7907d14b3",
+      "path": "deploy/security-headers.test.ps1",
+      "size": 2825,
+      "status": "tracked"
+    },
+    {
+      "hash": "2268a29db9daad2c208226b14c4a2d4055d8b18d6c6db87808eac0d0d9df0d36",
+      "path": "design/ux-ui-proposal/evidence/screenshots/cucina-viva-1440.png",
+      "size": 62758,
+      "status": "tracked"
+    },
+    {
+      "hash": "a951bfb1268bd73826048c0357ae83faf8f4b91aec4066b13b586efe4a184773",
+      "path": "design/ux-ui-proposal/evidence/screenshots/cucina-viva-320-zoom200.png",
+      "size": 101458,
+      "status": "tracked"
+    },
+    {
+      "hash": "0edbd683b849ac4b4b8fbff6ab8320f074c79a0d99ea1c44c0ccab226420428a",
+      "path": "design/ux-ui-proposal/evidence/screenshots/cucina-viva-390-dialog.png",
+      "size": 60755,
+      "status": "tracked"
+    },
+    {
+      "hash": "871d88f0a65c431c3e39cfdb8252c45627b6c3b13a6c5a5f75ab8f5251a21f58",
+      "path": "design/ux-ui-proposal/evidence/screenshots/cucina-viva-390-empty.png",
+      "size": 55293,
+      "status": "tracked"
+    },
+    {
+      "hash": "1c5d71a7eb56ef7221c40cc509e78b35a291ad3041d147ba9a5fb54c872584ed",
+      "path": "design/ux-ui-proposal/evidence/screenshots/cucina-viva-390-populated.png",
+      "size": 49254,
+      "status": "tracked"
+    },
+    {
+      "hash": "1e2e4a74fdcdc427eed0b641308981a0b46a68a0bb1d34c9e1ae5da1fb513a6d",
+      "path": "design/ux-ui-proposal/evidence/screenshots/cucina-viva-768.png",
+      "size": 60738,
+      "status": "tracked"
+    },
+    {
+      "hash": "78c16e1ee7e5f86bbbd6ac8668046f42b3df3f3eb2e48491e9ffe95b4669a857",
+      "path": "design/ux-ui-proposal/evidence/screenshots/responsive-geometry.json",
+      "size": 1491,
+      "status": "tracked"
+    },
+    {
+      "hash": null,
+      "path": "design-tokens.json",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": "18c9b42bb4695375ccd02fe91a90e0362f69923218527f32aa10dfcb370b0f4d",
+      "path": "docs/adr-003-audit-report.md",
+      "size": 8583,
+      "status": "tracked"
+    },
+    {
+      "hash": "0ed63b953b61106d078c4ad97cd40d6963cb5e3954c6b70c345b91f59a9246f5",
+      "path": "docs/adr-003-bring-to-pantry-candidates.md",
+      "size": 7319,
+      "status": "tracked"
+    },
+    {
+      "hash": "ba2165fc67636ac4096e41e4a584258bfa8ed591eb7a0fe7d7d4e9335c80ea09",
+      "path": "docs/adr-003-compliance-matrix.md",
+      "size": 6547,
+      "status": "tracked"
+    },
+    {
+      "hash": "30b7efdbb0c9d79dac361c5b0e3ba1d93be2eb88e9fe453f3bf09caf5613ada5",
+      "path": "docs/adr-004-dark-mode.md",
+      "size": 6388,
+      "status": "tracked"
+    },
+    {
+      "hash": "a6b23435e21d1a559c1b62562b5fcc99530fdad1131472485b04d2120435bf45",
+      "path": "docs/audits/2026-09-14-repository-audit.md",
+      "size": 14138,
+      "status": "tracked"
+    },
+    {
+      "hash": "559986555fc595f04fb5d2447807191954b901798998017860fc7ecbb0d4495c",
+      "path": "docs/bring-integration.md",
+      "size": 5195,
+      "status": "tracked"
+    },
+    {
+      "hash": "b0a5e4e11d6043c64e87321032ab572cfdd7bcde3ad1f957a625a6b5fa8bf56a",
+      "path": "docs/bring-to-pantry-code-inventory.md",
+      "size": 13020,
+      "status": "tracked"
+    },
+    {
+      "hash": "e882487b02da3a172ed26b5ca7f87a2e586f9116ecccfe284260ccbc17b0222c",
+      "path": "docs/evidence/restructure/activity-1280-dark-after.png",
+      "size": 39159,
+      "status": "tracked"
+    },
+    {
+      "hash": "c92a7cf7c565ad4d2066d772fc19ccc1140965c12c7a99c4eaeeba86e675774e",
+      "path": "docs/evidence/restructure/activity-1280-dark-before.png",
+      "size": 42178,
+      "status": "tracked"
+    },
+    {
+      "hash": "3191fa044125cf409970577f7eb33f2d92041e1ad282bda2601a6ab6243ade81",
+      "path": "docs/evidence/restructure/activity-1280-light-after.png",
+      "size": 39273,
+      "status": "tracked"
+    },
+    {
+      "hash": "f00bd187a343b267aa20a6f2c72b83defa223fc54fa7729aa16d71b0a7b1b303",
+      "path": "docs/evidence/restructure/activity-1280-light-before.png",
+      "size": 41951,
+      "status": "tracked"
+    },
+    {
+      "hash": "a44a4273e1a2c243fda97e1848bfd2fe0181722646574a4c9997b154df828496",
+      "path": "docs/evidence/restructure/activity-320-dark-after.png",
+      "size": 27236,
+      "status": "tracked"
+    },
+    {
+      "hash": "46549be884e762b789da94914c04fcead52bb705dcc93fb4df89fcde6dd86bb7",
+      "path": "docs/evidence/restructure/activity-320-dark-before.png",
+      "size": 28412,
+      "status": "tracked"
+    },
+    {
+      "hash": "9484bc16dda5534c1edc710c72ba11b3cca1778171df3e8be94c55e4c0b6ad4b",
+      "path": "docs/evidence/restructure/activity-320-light-after.png",
+      "size": 26961,
+      "status": "tracked"
+    },
+    {
+      "hash": "dc5642b94716656b46ac4f263dd5f577d22fb50f076403c44b7a818f5cd9ffa2",
+      "path": "docs/evidence/restructure/activity-320-light-before.png",
+      "size": 27914,
+      "status": "tracked"
+    },
+    {
+      "hash": "db5de40ffe1a25864b24d02070233a7491545756c930f16849ac2d9a87fa9d6d",
+      "path": "docs/evidence/restructure/activity-390-dark-after.png",
+      "size": 29699,
+      "status": "tracked"
+    },
+    {
+      "hash": "838275369441396aed6cd674da93b4a2499bab94a082275f5f6a3332797575b5",
+      "path": "docs/evidence/restructure/activity-390-dark-before.png",
+      "size": 30738,
+      "status": "tracked"
+    },
+    {
+      "hash": "57998151b95aac08fe03a554721568104ee3034ed189c215e66d0aa5dbcdf854",
+      "path": "docs/evidence/restructure/activity-390-light-after.png",
+      "size": 29399,
+      "status": "tracked"
+    },
+    {
+      "hash": "466c1fab1a0aee1899dcb70ba5a732d11cc45770e12f3128802d0ceb04ecdf04",
+      "path": "docs/evidence/restructure/activity-390-light-before.png",
+      "size": 30132,
+      "status": "tracked"
+    },
+    {
+      "hash": "e47d515e85e374883f6f66b07aace7870781843c12325646743422172b0a1890",
+      "path": "docs/evidence/restructure/activity-768-dark-after.png",
+      "size": 37662,
+      "status": "tracked"
+    },
+    {
+      "hash": "5c7d23a037f8b04e8329d0d930150d4d004a44a8a2610c355acc16a57cf2e715",
+      "path": "docs/evidence/restructure/activity-768-dark-before.png",
+      "size": 40448,
+      "status": "tracked"
+    },
+    {
+      "hash": "f83c48c26ef01dfd709f225e38f1321a2ef53e3b59d03656691d145392565176",
+      "path": "docs/evidence/restructure/activity-768-light-after.png",
+      "size": 37759,
+      "status": "tracked"
+    },
+    {
+      "hash": "7b5cffe469100333d3ce150566f79e6c032d7245242c7d99dd3bcfa7296821a5",
+      "path": "docs/evidence/restructure/activity-768-light-before.png",
+      "size": 40333,
+      "status": "tracked"
+    },
+    {
+      "hash": "5ef67b84b4a44d1361cbbcb44ca1d7e6ee0d8efa26313fb4b3cb34c73ab831c3",
+      "path": "docs/evidence/restructure/after/activity-1280-light-after.png",
+      "size": 39030,
+      "status": "tracked"
+    },
+    {
+      "hash": "9721042f02e4c22db87f67db7ccc6ec4b3c75ae19b09d46005671e531d0c4049",
+      "path": "docs/evidence/restructure/after/activity-390-light-after.png",
+      "size": 29050,
+      "status": "tracked"
+    },
+    {
+      "hash": "63eb253359ac0bb61abc7751b1f3dbfad6003af836c70428813c9953dce786d3",
+      "path": "docs/evidence/restructure/after/dinner-diary-1280-light-after.png",
+      "size": 111120,
+      "status": "tracked"
+    },
+    {
+      "hash": "3f0a1c7b57421fc6bf8fa13bcc8988bbaa9922b9ab8a596454c97c49b7421df4",
+      "path": "docs/evidence/restructure/after/dinner-diary-390-light-after.png",
+      "size": 93519,
+      "status": "tracked"
+    },
+    {
+      "hash": "b1a711f136aecd457487a6d35ea1b22416d0d8c60c683342e97a8dcbda44dfce",
+      "path": "docs/evidence/restructure/after/house-1280-light-after.png",
+      "size": 33216,
+      "status": "tracked"
+    },
+    {
+      "hash": "22c29b91fb3f2569783536c87e2c9d6d448e3ad77396e6dab10aa1e341d9a5d2",
+      "path": "docs/evidence/restructure/after/house-390-light-after.png",
+      "size": 23100,
+      "status": "tracked"
+    },
+    {
+      "hash": "62c6d362f50ce760f754585c52d914f4fc10021261a2d4382dc14d3775dfebec",
+      "path": "docs/evidence/restructure/after/profile-1280-light-after.png",
+      "size": 83521,
+      "status": "tracked"
+    },
+    {
+      "hash": "430afb974eb33f5abe8777ad2a3061eb20d7676f4370609881d9a4bc9de968b1",
+      "path": "docs/evidence/restructure/after/profile-390-light-after.png",
+      "size": 71155,
+      "status": "tracked"
+    },
+    {
+      "hash": "29eb1789f795f02d8368fd3bd3aa64ea3895e56599d32db050494acb686da5b8",
+      "path": "docs/evidence/restructure/after-pantry-1280x900.png",
+      "size": 84827,
+      "status": "tracked"
+    },
+    {
+      "hash": "ffce257db34f42c87ce4561b4e3ff8783df65acd8fa05eb4e775f7120d2ee1d0",
+      "path": "docs/evidence/restructure/after-pantry-390x844.png",
+      "size": 64395,
+      "status": "tracked"
+    },
+    {
+      "hash": "311017f49ef3b02d878fde5bb56ea0826f6cb864e754c260d1f0395299c8b0c4",
+      "path": "docs/evidence/restructure/after-recipe-detail-desktop-1280.jpeg",
+      "size": 35113,
+      "status": "tracked"
+    },
+    {
+      "hash": "2597226218d924683cf60af62d44abca587f626e243ebe071a4f95e3ecf2b67b",
+      "path": "docs/evidence/restructure/after-recipe-detail-desktop-1280.png",
+      "size": 277267,
+      "status": "tracked"
+    },
+    {
+      "hash": "82057d38208ad71460dceeaefe50d853a721edbffd82c57ff2479c05a0cd7460",
+      "path": "docs/evidence/restructure/after-recipe-detail-mobile-390.jpeg",
+      "size": 21348,
+      "status": "tracked"
+    },
+    {
+      "hash": "094aa6a8bf0c8971598c6fca9faa178dfb5ba9ce2b8a7525927cad06c69570ca",
+      "path": "docs/evidence/restructure/after-recipe-detail-mobile-390.png",
+      "size": 259286,
+      "status": "tracked"
+    },
+    {
+      "hash": "dfbe1f5177853949a3c928d4d82bd696a89d9441c8abbac89eb798168cf2a673",
+      "path": "docs/evidence/restructure/after-recipes-library-desktop-1280.jpeg",
+      "size": 50418,
+      "status": "tracked"
+    },
+    {
+      "hash": "3bf2db6b16e1a62a4e444278a6946aafcf8bdf7555c4eb88f03b58c00ab72e9d",
+      "path": "docs/evidence/restructure/after-recipes-library-desktop-1280.png",
+      "size": 329827,
+      "status": "tracked"
+    },
+    {
+      "hash": "cac857ae652d9165383dd14903397a9752096ff735ad9853cf8202777af2b4ab",
+      "path": "docs/evidence/restructure/after-recipes-library-mobile-390.jpeg",
+      "size": 28371,
+      "status": "tracked"
+    },
+    {
+      "hash": "7308e8fb12a3eae2a4372162a0a622ddc06439df1e2b157ff01620bea42f0b9d",
+      "path": "docs/evidence/restructure/after-recipes-library-mobile-390.png",
+      "size": 305527,
+      "status": "tracked"
+    },
+    {
+      "hash": "654bdd31aaae4d72ca4daa0157832bbab274075c3e7a767f96d8c47daadc78ac",
+      "path": "docs/evidence/restructure/after-shopping-list-1280x900.png",
+      "size": 62375,
+      "status": "tracked"
+    },
+    {
+      "hash": "6b178f3524e006871e34382b883bde97c9f1793158cb933e3d1ff2d4dee80a25",
+      "path": "docs/evidence/restructure/after-shopping-list-390x844.png",
+      "size": 49993,
+      "status": "tracked"
+    },
+    {
+      "hash": "2a7f006fb37cf0068e40cd6d46768a4d0be4fa42906c2cfe556d7030d87eab03",
+      "path": "docs/evidence/restructure/before/activity-1280-light-before.png",
+      "size": 42491,
+      "status": "tracked"
+    },
+    {
+      "hash": "33d1d387db1b5f8a7c9dde695b4757493248f3d3e8e06495a7decf6b2f7ee2bf",
+      "path": "docs/evidence/restructure/before/activity-390-light-before.png",
+      "size": 30885,
+      "status": "tracked"
+    },
+    {
+      "hash": "b02cbe384803bbb3b741fc38782824d9ffe2c61af59710fa3fb0717de4caa3f0",
+      "path": "docs/evidence/restructure/before/dinner-diary-1280-light-before.png",
+      "size": 110729,
+      "status": "tracked"
+    },
+    {
+      "hash": "7bb9fb28505e7fc108a21e1dfe39dcbbb676f91a3023a0baed84f89e7b65c657",
+      "path": "docs/evidence/restructure/before/dinner-diary-390-light-before.png",
+      "size": 93154,
+      "status": "tracked"
+    },
+    {
+      "hash": "d99f564f1b7d1f4f368ffd94ab8690bff482962e6b296a4b2075aa371df49cee",
+      "path": "docs/evidence/restructure/before/house-1280-light-before.png",
+      "size": 33558,
+      "status": "tracked"
+    },
+    {
+      "hash": "e39fac6206cf053b3d43174d7a27f977bfa444f530e17c5e06f0f9d2afab1fea",
+      "path": "docs/evidence/restructure/before/house-390-light-before.png",
+      "size": 23302,
+      "status": "tracked"
+    },
+    {
+      "hash": "771c583c123d504c2a16cd146df5e86d60502dc53ac7c27da3d880fa3cec2171",
+      "path": "docs/evidence/restructure/before/profile-1280-light-before.png",
+      "size": 86509,
+      "status": "tracked"
+    },
+    {
+      "hash": "206d7aeda9614d8e1360ea7b725e06c40a3386e458ae1dd3d872d89cf4c3c02f",
+      "path": "docs/evidence/restructure/before/profile-390-light-before.png",
+      "size": 68462,
+      "status": "tracked"
+    },
+    {
+      "hash": "1eaa16de6f347e73dccc5fda1c59fbfe69343d2f84b823e5345723861bba7759",
+      "path": "docs/evidence/restructure/before-pantry-1280x900.png",
+      "size": 88261,
+      "status": "tracked"
+    },
+    {
+      "hash": "8a653814348400f13f8ca4c2e4158786a56c671dfa247764fb9859f9a837c6b7",
+      "path": "docs/evidence/restructure/before-pantry-390x844.png",
+      "size": 67171,
+      "status": "tracked"
+    },
+    {
+      "hash": "311017f49ef3b02d878fde5bb56ea0826f6cb864e754c260d1f0395299c8b0c4",
+      "path": "docs/evidence/restructure/before-recipe-detail-desktop-1280.jpeg",
+      "size": 35113,
+      "status": "tracked"
+    },
+    {
+      "hash": "1ef9c3af27843a35a5af428c79bf848cad489946dda5611e54812b58e13cb6c9",
+      "path": "docs/evidence/restructure/before-recipe-detail-desktop-1280.png",
+      "size": 276764,
+      "status": "tracked"
+    },
+    {
+      "hash": "82057d38208ad71460dceeaefe50d853a721edbffd82c57ff2479c05a0cd7460",
+      "path": "docs/evidence/restructure/before-recipe-detail-mobile-390.jpeg",
+      "size": 21348,
+      "status": "tracked"
+    },
+    {
+      "hash": "9ebd1669d3893474b1b8d0ec58218c07eb49eceed41eae785222badd707c2975",
+      "path": "docs/evidence/restructure/before-recipe-detail-mobile-390.png",
+      "size": 258201,
+      "status": "tracked"
+    },
+    {
+      "hash": "dfbe1f5177853949a3c928d4d82bd696a89d9441c8abbac89eb798168cf2a673",
+      "path": "docs/evidence/restructure/before-recipes-library-desktop-1280.jpeg",
+      "size": 50418,
+      "status": "tracked"
+    },
+    {
+      "hash": "374546b2136ad1ba3dcdf2b9ff2b4ce6a86cc592860577eefbc8f01faf979355",
+      "path": "docs/evidence/restructure/before-recipes-library-desktop-1280.png",
+      "size": 338023,
+      "status": "tracked"
+    },
+    {
+      "hash": "cac857ae652d9165383dd14903397a9752096ff735ad9853cf8202777af2b4ab",
+      "path": "docs/evidence/restructure/before-recipes-library-mobile-390.jpeg",
+      "size": 28371,
+      "status": "tracked"
+    },
+    {
+      "hash": "91bd4f447349ab532421b995c92cf92f6540d3cd6c2988aa9f077274a2927dda",
+      "path": "docs/evidence/restructure/before-recipes-library-mobile-390.png",
+      "size": 305318,
+      "status": "tracked"
+    },
+    {
+      "hash": "654bdd31aaae4d72ca4daa0157832bbab274075c3e7a767f96d8c47daadc78ac",
+      "path": "docs/evidence/restructure/before-shopping-list-1280x900.png",
+      "size": 62375,
+      "status": "tracked"
+    },
+    {
+      "hash": "3a9db7ad87b22fee8a275b9cea22bd6dbb7f3d19fdeef3c1d14dce7dfa80ee16",
+      "path": "docs/evidence/restructure/before-shopping-list-390x844.png",
+      "size": 49856,
+      "status": "tracked"
+    },
+    {
+      "hash": "eb283d7fabc431396bcfa6b296f98b23981af481f31332e24388e4882f908b89",
+      "path": "docs/evidence/restructure/dinner-diary-1280-dark-after.png",
+      "size": 109966,
+      "status": "tracked"
+    },
+    {
+      "hash": "a47565213fb6c6998cb6cc2fd200fffb2654b335d39e5b1c013156345454ef56",
+      "path": "docs/evidence/restructure/dinner-diary-1280-dark-before.png",
+      "size": 109060,
+      "status": "tracked"
+    },
+    {
+      "hash": "1d7c423ee1df9694be3eaca57a3b4a0ec7ccb7a1b0cc22786cd63c03d5692c20",
+      "path": "docs/evidence/restructure/dinner-diary-1280-light-after.png",
+      "size": 110960,
+      "status": "tracked"
+    },
+    {
+      "hash": "4e65ff5f60c88e67d98600dfe5285deb1007f3b0d6063fbb98d5c6b7d6ce2e84",
+      "path": "docs/evidence/restructure/dinner-diary-1280-light-before.png",
+      "size": 109374,
+      "status": "tracked"
+    },
+    {
+      "hash": "8906cd74bb72ddbe611a4001e9430d4ad7a30a7761de5047f6b57bd4e1cb1eb0",
+      "path": "docs/evidence/restructure/dinner-diary-320-dark-after.png",
+      "size": 92366,
+      "status": "tracked"
+    },
+    {
+      "hash": "d41d5e95d59dfafee822c7e2f0260e7105eeee76291584291fdb6c6e95151775",
+      "path": "docs/evidence/restructure/dinner-diary-320-dark-before.png",
+      "size": 91740,
+      "status": "tracked"
+    },
+    {
+      "hash": "c83f473075d49009af5eecbd0d195c84c8a363175f9b08fb4750adfcf397c222",
+      "path": "docs/evidence/restructure/dinner-diary-320-light-after.png",
+      "size": 92842,
+      "status": "tracked"
+    },
+    {
+      "hash": "7353fe9fdd85e484e6f124dc28f1f21db191736f42cd7075bdab3a5fb04ea536",
+      "path": "docs/evidence/restructure/dinner-diary-320-light-before.png",
+      "size": 91217,
+      "status": "tracked"
+    },
+    {
+      "hash": "28240d7726698d99b64c9adeedb68e35b577004550c103e77978c4e1f9ba55b0",
+      "path": "docs/evidence/restructure/dinner-diary-390-dark-after.png",
+      "size": 93051,
+      "status": "tracked"
+    },
+    {
+      "hash": "5c391e6f68085f0daf0ed1182dc6e2243a28398ffeed85e575e10fe004402a68",
+      "path": "docs/evidence/restructure/dinner-diary-390-dark-before.png",
+      "size": 92193,
+      "status": "tracked"
+    },
+    {
+      "hash": "b212541b50bc5b3188f0d9e75fb137871bb5e5f1a3bd179d7c1206be5cd02964",
+      "path": "docs/evidence/restructure/dinner-diary-390-light-after.png",
+      "size": 93392,
+      "status": "tracked"
+    },
+    {
+      "hash": "b529eb22d146541fd9b3e0263d20b85f6bc0a6f6e3c9df2fd73c7b0d25aa5901",
+      "path": "docs/evidence/restructure/dinner-diary-390-light-before.png",
+      "size": 91970,
+      "status": "tracked"
+    },
+    {
+      "hash": "cda1a197d688c1d9a3c9c3607b5c9b7e5b7cd451fbbf867dcfeffdfa775612e0",
+      "path": "docs/evidence/restructure/dinner-diary-768-dark-after.png",
+      "size": 110424,
+      "status": "tracked"
+    },
+    {
+      "hash": "0880c723f0709ce1445b5def13ad0e127dc4d681233a92c14a54ee49a9d9e2ba",
+      "path": "docs/evidence/restructure/dinner-diary-768-dark-before.png",
+      "size": 107205,
+      "status": "tracked"
+    },
+    {
+      "hash": "f987556d17c847b3857ba816b4a5d3c6592d2c05e2dcb9e0952e387d37fcbf11",
+      "path": "docs/evidence/restructure/dinner-diary-768-light-after.png",
+      "size": 111392,
+      "status": "tracked"
+    },
+    {
+      "hash": "a9794b51342a7f27def19c42144501a8b84eef22859266a469c316f9757da694",
+      "path": "docs/evidence/restructure/dinner-diary-768-light-before.png",
+      "size": 107833,
+      "status": "tracked"
+    },
+    {
+      "hash": "743808edc7deb6b8328397afca801a7e20720b90432834471f82fef65744802d",
+      "path": "docs/evidence/restructure/home-1280-dark-after.png",
+      "size": 68137,
+      "status": "tracked"
+    },
+    {
+      "hash": "beadabd3286e99bec3fac9550f6676dda85e9f9ac033f82dfcb35d6954eb6896",
+      "path": "docs/evidence/restructure/home-1280-dark-before.png",
+      "size": 73163,
+      "status": "tracked"
+    },
+    {
+      "hash": "57eb56925bdddb86741d0b40db0fb4a9c1cba8723cc3d4681aff857809ce903b",
+      "path": "docs/evidence/restructure/home-1280-light-after.png",
+      "size": 67819,
+      "status": "tracked"
+    },
+    {
+      "hash": "318eb72056e1c315803cf3ea291663fe3e478ca15f078d686d7c78c0c2ce6901",
+      "path": "docs/evidence/restructure/home-1280-light-before.png",
+      "size": 72845,
+      "status": "tracked"
+    },
+    {
+      "hash": "8eef8aa55fb8f820d6e4f1d163bb3081e3d12a06f606479b777f82bf725d591d",
+      "path": "docs/evidence/restructure/home-320-dark-after.png",
+      "size": 53631,
+      "status": "tracked"
+    },
+    {
+      "hash": "eecc56c1706dba01204ca00d693875cba6f2c19d3dc3085ed39a82c91a1a07e2",
+      "path": "docs/evidence/restructure/home-320-dark-before.png",
+      "size": 52769,
+      "status": "tracked"
+    },
+    {
+      "hash": "f26c46324a38b4b6b992d1a6192b99337f7554906d02e0edf6b52e20bdc2dcac",
+      "path": "docs/evidence/restructure/home-320-light-after.png",
+      "size": 52424,
+      "status": "tracked"
+    },
+    {
+      "hash": "9db65b16de25be1e9d735f263b452eea7f2b992251cc3419f909ed342c99df78",
+      "path": "docs/evidence/restructure/home-320-light-before.png",
+      "size": 51650,
+      "status": "tracked"
+    },
+    {
+      "hash": "6cfc567722d4f0bd524644c24348ef263f5a1a536a0501adbc6568f48ac603d4",
+      "path": "docs/evidence/restructure/home-390-dark-after.png",
+      "size": 56144,
+      "status": "tracked"
+    },
+    {
+      "hash": "c29912bc3562d02975fb15ee6ea01cf94bdf503b7d75386598c1a1ed4c960d14",
+      "path": "docs/evidence/restructure/home-390-dark-before.png",
+      "size": 55224,
+      "status": "tracked"
+    },
+    {
+      "hash": "871d88f0a65c431c3e39cfdb8252c45627b6c3b13a6c5a5f75ab8f5251a21f58",
+      "path": "docs/evidence/restructure/home-390-light-after.png",
+      "size": 55293,
+      "status": "tracked"
+    },
+    {
+      "hash": "d13b77e84595b72b627ac1dd18d5f85ff1c4d476c7ff6e1f9eb8ede422c802c2",
+      "path": "docs/evidence/restructure/home-390-light-before.png",
+      "size": 54420,
+      "status": "tracked"
+    },
+    {
+      "hash": "6e430a074fea0f9d4c566541790035efb9e0e4fe2b477a99f5851e236ada2af4",
+      "path": "docs/evidence/restructure/home-768-dark-after.png",
+      "size": 69921,
+      "status": "tracked"
+    },
+    {
+      "hash": "3da6383f61692d7bdb80045da9207ebe26a6c39014ccd5c054b8c4fce2aab997",
+      "path": "docs/evidence/restructure/home-768-dark-before.png",
+      "size": 68339,
+      "status": "tracked"
+    },
+    {
+      "hash": "d7a56d3f1c22c7591a87581f673a66e4e4b5425c04b18fc7761c5bdabe90875b",
+      "path": "docs/evidence/restructure/home-768-light-after.png",
+      "size": 69607,
+      "status": "tracked"
+    },
+    {
+      "hash": "eeefc4c9899e45782aa96c1275bc930da5da212c33d38487fa446ef882518929",
+      "path": "docs/evidence/restructure/home-768-light-before.png",
+      "size": 68019,
+      "status": "tracked"
+    },
+    {
+      "hash": "6d632ae41feace72e059794f7475ab8de8f5cec8ab24af98fc716803c2e5eba7",
+      "path": "docs/evidence/restructure/house-1280-dark-after.png",
+      "size": 54186,
+      "status": "tracked"
+    },
+    {
+      "hash": "f7eb59d56e4f9850151f2b831123d4e24aa87c5251d754722c3d7074004278c7",
+      "path": "docs/evidence/restructure/house-1280-dark-before.png",
+      "size": 57489,
+      "status": "tracked"
+    },
+    {
+      "hash": "b378ce0222d8b9d4cd39c3e8cd3f60db0b06f190a7e1addc44c58e89bb9a7674",
+      "path": "docs/evidence/restructure/house-1280-light-after.png",
+      "size": 54273,
+      "status": "tracked"
+    },
+    {
+      "hash": "1619056192694c27b95afe1cf9267e3ac28ea196cd0fa685f6e8684d9e9bbb4d",
+      "path": "docs/evidence/restructure/house-1280-light-before.png",
+      "size": 57141,
+      "status": "tracked"
+    },
+    {
+      "hash": "e65886467c84282e644a6d2c659cba96a22b32770a2193e3c7dbbf8f7c775d4d",
+      "path": "docs/evidence/restructure/house-320-dark-after.png",
+      "size": 41491,
+      "status": "tracked"
+    },
+    {
+      "hash": "28cfbc052d7190d26e88d86df2c3c511bf294eb6bdfb6b01df8f6a1b15c37bc0",
+      "path": "docs/evidence/restructure/house-320-dark-before.png",
+      "size": 43841,
+      "status": "tracked"
+    },
+    {
+      "hash": "b344264fa51dab9941c9503182484a5ab78ccc60d05bfe701b76009bb2267453",
+      "path": "docs/evidence/restructure/house-320-light-after.png",
+      "size": 40720,
+      "status": "tracked"
+    },
+    {
+      "hash": "d4e3abc2adb68d6545980f40cf7c6db7a47999fefe09e752647166d1752101b6",
+      "path": "docs/evidence/restructure/house-320-light-before.png",
+      "size": 41564,
+      "status": "tracked"
+    },
+    {
+      "hash": "5679d5a16057f8d8e22281d5a5d169a8d9f5b804a6e5a538555331002afd78f0",
+      "path": "docs/evidence/restructure/house-390-dark-after.png",
+      "size": 42624,
+      "status": "tracked"
+    },
+    {
+      "hash": "aadfd0b05b517e9884892500eb446da70a4f9a79736dc1aadd583790c263a604",
+      "path": "docs/evidence/restructure/house-390-dark-before.png",
+      "size": 43116,
+      "status": "tracked"
+    },
+    {
+      "hash": "45652a2d833d59f26f2f1d65a007d5f3432154b795a50c469c49dea5adf2bce6",
+      "path": "docs/evidence/restructure/house-390-light-after.png",
+      "size": 42249,
+      "status": "tracked"
+    },
+    {
+      "hash": "5c2cd019f7204a0abc4e5b5ce679b2efee468dd2886a380a429b93f6ce17fe99",
+      "path": "docs/evidence/restructure/house-390-light-before.png",
+      "size": 42050,
+      "status": "tracked"
+    },
+    {
+      "hash": "8213c24a7251229382d022638d557113ec033f5843b3453bcbc22474bddb5c9f",
+      "path": "docs/evidence/restructure/house-768-dark-after.png",
+      "size": 60766,
+      "status": "tracked"
+    },
+    {
+      "hash": "75b7e298fd2380245612a2c971653a6e562c4903cb226f06d330816639f2cfc8",
+      "path": "docs/evidence/restructure/house-768-dark-before.png",
+      "size": 60476,
+      "status": "tracked"
+    },
+    {
+      "hash": "ffe7c0f96151397fa1a26b58a52e49ee07aa5918f187de5847ef03efe8e6086e",
+      "path": "docs/evidence/restructure/house-768-light-after.png",
+      "size": 60736,
+      "status": "tracked"
+    },
+    {
+      "hash": "9e838f4ea176ea040fa4ef7074d02ba2055e7c8e99d3f7deb4155b5ba52f0dc4",
+      "path": "docs/evidence/restructure/house-768-light-before.png",
+      "size": 60079,
+      "status": "tracked"
+    },
+    {
+      "hash": "2a272f26690b9cb9ee5f6d8ba4fe68cca5a58cdf2de89be84cf7d2b654d50eed",
+      "path": "docs/evidence/restructure/not-found-1280-dark-after.png",
+      "size": 39356,
+      "status": "tracked"
+    },
+    {
+      "hash": "d116049ac32cdd9bcb96d123417e4203702b99b5c0257489eb598d435d3cb2c6",
+      "path": "docs/evidence/restructure/not-found-1280-dark-before.png",
+      "size": 37906,
+      "status": "tracked"
+    },
+    {
+      "hash": "e292cb0a0ccac827381612f6273b9f532c557d136361b7507401e4bae52b6b4a",
+      "path": "docs/evidence/restructure/not-found-1280-light-after.png",
+      "size": 39608,
+      "status": "tracked"
+    },
+    {
+      "hash": "3fe2d8ab4c083d0ebc5ce190b242b1a6e1c62ec2e6ee5ed013b3a00d61344ba4",
+      "path": "docs/evidence/restructure/not-found-1280-light-before.png",
+      "size": 38095,
+      "status": "tracked"
+    },
+    {
+      "hash": "613621dfaacacf73a2bd3bf99488f80406752d5436aee184dadcf02563e9b8f9",
+      "path": "docs/evidence/restructure/not-found-320-dark-after.png",
+      "size": 27841,
+      "status": "tracked"
+    },
+    {
+      "hash": "a454cfbca14df84fc1b6bf1e95a74755b41ca2e561c150b8c055559ccb218c97",
+      "path": "docs/evidence/restructure/not-found-320-dark-before.png",
+      "size": 27249,
+      "status": "tracked"
+    },
+    {
+      "hash": "476a4d4e51dbe34e41d6d848c5a05f352d11ff4ce3745e665ec05c266dd7b0e5",
+      "path": "docs/evidence/restructure/not-found-320-light-after.png",
+      "size": 27590,
+      "status": "tracked"
+    },
+    {
+      "hash": "8d8619c54e3d9207b9cb1306c3be9e2a2d3b3482a1404dab66b53c7a9e8ff679",
+      "path": "docs/evidence/restructure/not-found-320-light-before.png",
+      "size": 26971,
+      "status": "tracked"
+    },
+    {
+      "hash": "a9da63bbdd4873f1769726780371cee74b7272c8f64f2c98e67ad1f55b1eb0eb",
+      "path": "docs/evidence/restructure/not-found-390-dark-after.png",
+      "size": 30345,
+      "status": "tracked"
+    },
+    {
+      "hash": "8f09f88b761fcc008b705a59677091c137452cc821486ff11c67619754bacc90",
+      "path": "docs/evidence/restructure/not-found-390-dark-before.png",
+      "size": 29549,
+      "status": "tracked"
+    },
+    {
+      "hash": "2d4968cecbef27435af6ae57c0ce1f9f43341af760f6f96774ee1a2f88202548",
+      "path": "docs/evidence/restructure/not-found-390-light-after.png",
+      "size": 30052,
+      "status": "tracked"
+    },
+    {
+      "hash": "155895c7bd7c3d44e3b6a93be7420c2f7775a9a687ec19fa0b08bf309c99ac99",
+      "path": "docs/evidence/restructure/not-found-390-light-before.png",
+      "size": 29284,
+      "status": "tracked"
+    },
+    {
+      "hash": "cd22c57bb6fc282807cbf75f6bb5bdb570b5e9986e9526d9cb9d048d635dc6ab",
+      "path": "docs/evidence/restructure/not-found-768-dark-after.png",
+      "size": 38862,
+      "status": "tracked"
+    },
+    {
+      "hash": "256aa2d9e6a34fdcc34a781cec006509a628cbe58b8dbfff0d7950be01a85c06",
+      "path": "docs/evidence/restructure/not-found-768-dark-before.png",
+      "size": 37426,
+      "status": "tracked"
+    },
+    {
+      "hash": "4993c09784d938ed550e085268b4388337aa02efe0eb57db0860b0d3f7e7aa2c",
+      "path": "docs/evidence/restructure/not-found-768-light-after.png",
+      "size": 39053,
+      "status": "tracked"
+    },
+    {
+      "hash": "51e0351bb8f0dd910cb32ca1500be9915cf37cc89f2f90006c98223f12746048",
+      "path": "docs/evidence/restructure/not-found-768-light-before.png",
+      "size": 37582,
+      "status": "tracked"
+    },
+    {
+      "hash": "5efc65cfe446440289e2f31bb5281f4fa70dd757791751328ee6c1246f3c0615",
+      "path": "docs/evidence/restructure/pantry-1280-dark-after.png",
+      "size": 83896,
+      "status": "tracked"
+    },
+    {
+      "hash": "0e5990f52ba7ba42cceb08a551d8e60b620c9f65b1543ad5e3d2e5b3b8590a25",
+      "path": "docs/evidence/restructure/pantry-1280-dark-before.png",
+      "size": 87015,
+      "status": "tracked"
+    },
+    {
+      "hash": "0e901fc1d3da315ffcaadc9079c1345789fe5bdfe77399b3bc347ddbdfe8856c",
+      "path": "docs/evidence/restructure/pantry-1280-light-after.png",
+      "size": 84171,
+      "status": "tracked"
+    },
+    {
+      "hash": "b72853111f4a068b1f20f383fa9f29890a0199563efc7be2650157b8983c4fc5",
+      "path": "docs/evidence/restructure/pantry-1280-light-before.png",
+      "size": 86967,
+      "status": "tracked"
+    },
+    {
+      "hash": "b7360904820acffd2bb2399475bf9f5abe03b3e3e05158d9f68726bf896768b8",
+      "path": "docs/evidence/restructure/pantry-320-dark-after.png",
+      "size": 69365,
+      "status": "tracked"
+    },
+    {
+      "hash": "5cf257536e8711d6a9cecec657c0a16e49fec1fa429accf418c1cec258ffe095",
+      "path": "docs/evidence/restructure/pantry-320-dark-before.png",
+      "size": 71649,
+      "status": "tracked"
+    },
+    {
+      "hash": "2b9f498c79b0088127081ba58fd3ec2a3f56452b95a485c49dabde5a83eb8d96",
+      "path": "docs/evidence/restructure/pantry-320-light-after.png",
+      "size": 68584,
+      "status": "tracked"
+    },
+    {
+      "hash": "508f8581e387a8965f2b7b7a2a61f61fe45c72fa4365adaf34c84c7514432f9c",
+      "path": "docs/evidence/restructure/pantry-320-light-before.png",
+      "size": 70630,
+      "status": "tracked"
+    },
+    {
+      "hash": "45f46c028e9ec141f6c1e2400268375ee3ad5ba379428d81d79cc8a4337072ab",
+      "path": "docs/evidence/restructure/pantry-390-dark-after.png",
+      "size": 63991,
+      "status": "tracked"
+    },
+    {
+      "hash": "97a9df7a709c82f1e3f53acd735504b0da46cdc4befb368a9b034a388ab2a3e8",
+      "path": "docs/evidence/restructure/pantry-390-dark-before.png",
+      "size": 66957,
+      "status": "tracked"
+    },
+    {
+      "hash": "a90b8ad1de5439b852c7345cb875c278c27397541e0bfe72e46450e44d3f0883",
+      "path": "docs/evidence/restructure/pantry-390-light-after.png",
+      "size": 63885,
+      "status": "tracked"
+    },
+    {
+      "hash": "51b2478020f501a4782d4831825b54c52f59bf87961103d7703b877f8fca3e06",
+      "path": "docs/evidence/restructure/pantry-390-light-before.png",
+      "size": 66529,
+      "status": "tracked"
+    },
+    {
+      "hash": "2f0646eb171d95142aae5a93b30bfce0ff9de0b426b43de1110fc853a17515f0",
+      "path": "docs/evidence/restructure/pantry-768-dark-after.png",
+      "size": 84933,
+      "status": "tracked"
+    },
+    {
+      "hash": "892e943badd4f1e15f12c03897dc2937ffb41455d71c673190995839f16358b4",
+      "path": "docs/evidence/restructure/pantry-768-dark-before.png",
+      "size": 89351,
+      "status": "tracked"
+    },
+    {
+      "hash": "740eb0b8cd59a9d399ca133e20970037f5ead02d10461f8890548329e15392ce",
+      "path": "docs/evidence/restructure/pantry-768-light-after.png",
+      "size": 85313,
+      "status": "tracked"
+    },
+    {
+      "hash": "3fc295fafc1c3aef2b65b0f103b79565edd80f728f0675c12e1ee5168b1da34b",
+      "path": "docs/evidence/restructure/pantry-768-light-before.png",
+      "size": 89424,
+      "status": "tracked"
+    },
+    {
+      "hash": "2659be75d8d2609b08729a8f65689988a9ac0bdda218d38e7d7bf9805ff73094",
+      "path": "docs/evidence/restructure/profile-1280-dark-after.png",
+      "size": 156211,
+      "status": "tracked"
+    },
+    {
+      "hash": "57389b7e206666a7b3acfddf9944fbfec4c09f7a7cdd2ffdeee7ee54c3636bb5",
+      "path": "docs/evidence/restructure/profile-1280-dark-before.png",
+      "size": 172145,
+      "status": "tracked"
+    },
+    {
+      "hash": "7a0cd5c232f380936142c3ab2e0e962d724d64db76b91cc854e81ea59adf369c",
+      "path": "docs/evidence/restructure/profile-1280-light-after.png",
+      "size": 155963,
+      "status": "tracked"
+    },
+    {
+      "hash": "4430b3c1baf7cccac69a55392bef1bf760376771eba98666c0244db9a4a1b10f",
+      "path": "docs/evidence/restructure/profile-1280-light-before.png",
+      "size": 170902,
+      "status": "tracked"
+    },
+    {
+      "hash": "17373a5f134e4b4201a8ce8eac7ad43f6f66aed6c7ddd8f98e77c8cbb965659c",
+      "path": "docs/evidence/restructure/profile-320-dark-after.png",
+      "size": 143725,
+      "status": "tracked"
+    },
+    {
+      "hash": "fcc269657df32da90c4cda0fac62976ae98bac55bf04ea30f1c652118b9082dc",
+      "path": "docs/evidence/restructure/profile-320-dark-before.png",
+      "size": 150220,
+      "status": "tracked"
+    },
+    {
+      "hash": "b88f94e783a3c15bab7d0ee405500d539c7487ec21cfb6b4c78b4b60c54bc5c6",
+      "path": "docs/evidence/restructure/profile-320-light-after.png",
+      "size": 141943,
+      "status": "tracked"
+    },
+    {
+      "hash": "cb156f5c9ef980cf314b2726d8c68c3791d678a7d34e5a066ff85164879a942a",
+      "path": "docs/evidence/restructure/profile-320-light-before.png",
+      "size": 146733,
+      "status": "tracked"
+    },
+    {
+      "hash": "be0b071620e2640cf27d7b05d662b487067388b7f297e805ee1ee8f9953272ff",
+      "path": "docs/evidence/restructure/profile-390-dark-after.png",
+      "size": 141750,
+      "status": "tracked"
+    },
+    {
+      "hash": "9bb32b281f4f0196fb231b56e31b5bb5eebebea14567ff5c3d570a5994addb69",
+      "path": "docs/evidence/restructure/profile-390-dark-before.png",
+      "size": 143083,
+      "status": "tracked"
+    },
+    {
+      "hash": "f80d5787a7dc697a8e20a475c3c0fe48026187546fd8352e4eb29025586b1e80",
+      "path": "docs/evidence/restructure/profile-390-light-after.png",
+      "size": 140594,
+      "status": "tracked"
+    },
+    {
+      "hash": "feca716b80b3e347d7505ecadcae43ce4d22adea6c875e234684d51b61f2c6de",
+      "path": "docs/evidence/restructure/profile-390-light-before.png",
+      "size": 141100,
+      "status": "tracked"
+    },
+    {
+      "hash": "667d16bff7f5d6d23092620c22fc3a010e1f9cba01018654195ffdfc6b830ce6",
+      "path": "docs/evidence/restructure/profile-768-dark-after.png",
+      "size": 175645,
+      "status": "tracked"
+    },
+    {
+      "hash": "ca9316891fc5c8f6659dabda1a9531cc3f8e8c9d83244aecec44dfef52efc86f",
+      "path": "docs/evidence/restructure/profile-768-dark-before.png",
+      "size": 182487,
+      "status": "tracked"
+    },
+    {
+      "hash": "84c511057dfb0f5c3671be047461574923aa38d4aff24a115b9999337da82409",
+      "path": "docs/evidence/restructure/profile-768-light-after.png",
+      "size": 175737,
+      "status": "tracked"
+    },
+    {
+      "hash": "9eb524070d7a09d8ad9d0355f054295458250603966b2a4664c85279e43282f3",
+      "path": "docs/evidence/restructure/profile-768-light-before.png",
+      "size": 181649,
+      "status": "tracked"
+    },
+    {
+      "hash": "78bac7e200f1007226ccc82bb883b0648acf9625244aeb19e0ba80f42941c21f",
+      "path": "docs/evidence/restructure/recipe-detail-1280-dark-after.png",
+      "size": 278542,
+      "status": "tracked"
+    },
+    {
+      "hash": "fb5712feb0577fa0922e506c91f5b0f6d3b917caf6db95d3f3c590926607a9b4",
+      "path": "docs/evidence/restructure/recipe-detail-1280-dark-before.png",
+      "size": 282751,
+      "status": "tracked"
+    },
+    {
+      "hash": "1ef9c3af27843a35a5af428c79bf848cad489946dda5611e54812b58e13cb6c9",
+      "path": "docs/evidence/restructure/recipe-detail-1280-light-after.png",
+      "size": 276764,
+      "status": "tracked"
+    },
+    {
+      "hash": "b719d9cfaa038146deea55bab74ca20e538ad437a7431265a08c64f37c8f6392",
+      "path": "docs/evidence/restructure/recipe-detail-1280-light-before.png",
+      "size": 280040,
+      "status": "tracked"
+    },
+    {
+      "hash": "cc02a40d7e2f5af40b448a2c2cec1ab9a22f308f961c874ddef05276436056f4",
+      "path": "docs/evidence/restructure/recipe-detail-320-dark-after.png",
+      "size": 260087,
+      "status": "tracked"
+    },
+    {
+      "hash": "b51d594395551aafc330e1e4c4af0362d3daf6ac4dc62aa73d493b9a09d336dd",
+      "path": "docs/evidence/restructure/recipe-detail-320-dark-before.png",
+      "size": 260020,
+      "status": "tracked"
+    },
+    {
+      "hash": "c467144e3a141835d43a7b674b1488af1eddcf67455d707256f088587ff26c12",
+      "path": "docs/evidence/restructure/recipe-detail-320-light-after.png",
+      "size": 257136,
+      "status": "tracked"
+    },
+    {
+      "hash": "15ee541126dc7f88ae6662bfe103ed1a7e55148b4f1094d9d1e68779ddec034f",
+      "path": "docs/evidence/restructure/recipe-detail-320-light-before.png",
+      "size": 256190,
+      "status": "tracked"
+    },
+    {
+      "hash": "a287a4e8b69598503cc1d27e9b4e491db3ab9382c21fa1051846dc9a4703dd25",
+      "path": "docs/evidence/restructure/recipe-detail-390-dark-after.png",
+      "size": 260949,
+      "status": "tracked"
+    },
+    {
+      "hash": "1399a23b8ed5492364439c1e9b9e2a152d2557db455b02eb7f090fee8926270b",
+      "path": "docs/evidence/restructure/recipe-detail-390-dark-before.png",
+      "size": 261329,
+      "status": "tracked"
+    },
+    {
+      "hash": "9ebd1669d3893474b1b8d0ec58218c07eb49eceed41eae785222badd707c2975",
+      "path": "docs/evidence/restructure/recipe-detail-390-light-after.png",
+      "size": 258201,
+      "status": "tracked"
+    },
+    {
+      "hash": "44008184e5a741c67b537ec33919fa3ff60c05eb99260f0f77d483b9b10d977d",
+      "path": "docs/evidence/restructure/recipe-detail-390-light-before.png",
+      "size": 258118,
+      "status": "tracked"
+    },
+    {
+      "hash": "dd0efc4c10ecdc9ea155eb16e86b00c0960317f9dbb11bdbb761b1b621634cdf",
+      "path": "docs/evidence/restructure/recipe-detail-768-dark-after.png",
+      "size": 284880,
+      "status": "tracked"
+    },
+    {
+      "hash": "ad626ce854882393ef5d5530e366395559b9b86854d56e041e72ad2a95840b01",
+      "path": "docs/evidence/restructure/recipe-detail-768-dark-before.png",
+      "size": 282717,
+      "status": "tracked"
+    },
+    {
+      "hash": "b3ee9f1202138f0fba49bf2ea4972eda54edf5a6e0e4b2ef0e5b630feb8b12a8",
+      "path": "docs/evidence/restructure/recipe-detail-768-light-after.png",
+      "size": 282643,
+      "status": "tracked"
+    },
+    {
+      "hash": "4e847f217faf860e3c6868d6eafffb2a2a0a87344092eec03f851352c1f157d7",
+      "path": "docs/evidence/restructure/recipe-detail-768-light-before.png",
+      "size": 279935,
+      "status": "tracked"
+    },
+    {
+      "hash": "abbe2f48ba45175491244998e54ffe2a01c0c814256dd035bb10968b00afa0c8",
+      "path": "docs/evidence/restructure/recipes-library-1280-dark-after.png",
+      "size": 347460,
+      "status": "tracked"
+    },
+    {
+      "hash": "ce82258cb817a6b09f81b996a779aa3772cafef7a625e9a69fff500a8419bf1b",
+      "path": "docs/evidence/restructure/recipes-library-1280-light-after.png",
+      "size": 339611,
+      "status": "tracked"
+    },
+    {
+      "hash": "1976df4ae77131801ec566bba728961738c90ca97cfbb2588d8c8673d38ef719",
+      "path": "docs/evidence/restructure/recipes-library-320-dark-after.png",
+      "size": 312579,
+      "status": "tracked"
+    },
+    {
+      "hash": "22e8f8c9d45527b7c7733614c76afd19c42a11130fe8d7f7cba9735dfb6bde91",
+      "path": "docs/evidence/restructure/recipes-library-320-light-after.png",
+      "size": 303708,
+      "status": "tracked"
+    },
+    {
+      "hash": "c68709d8e3f5e87e8ec96615b7d0f578299c6916da4a1c0686cad3c89c30ba6c",
+      "path": "docs/evidence/restructure/recipes-library-390-dark-after.png",
+      "size": 317038,
+      "status": "tracked"
+    },
+    {
+      "hash": "57b42d0dba774d4797ffaea84f3a6ccd27e336bbcaa23dd814645f0e3d5ca1bd",
+      "path": "docs/evidence/restructure/recipes-library-390-light-after.png",
+      "size": 306980,
+      "status": "tracked"
+    },
+    {
+      "hash": "f52a5a0cdfc3bbac6f9b63912f0eb9615f4c623aebe6a4e698c3d263a1b0e7ca",
+      "path": "docs/evidence/restructure/recipes-library-768-dark-after.png",
+      "size": 337828,
+      "status": "tracked"
+    },
+    {
+      "hash": "81b55e4bbf09eb86933618b8736a8e15877e1afe143fd2f21091974485d79536",
+      "path": "docs/evidence/restructure/recipes-library-768-light-after.png",
+      "size": 329570,
+      "status": "tracked"
+    },
+    {
+      "hash": "28f9627332a1e670c5d85cdfb2beb4f26dfea66cf41099206653f3a7511fa0f0",
+      "path": "docs/evidence/restructure/report.md",
+      "size": 4882,
+      "status": "tracked"
+    },
+    {
+      "hash": "630224f886f33fde672f29dd4271daefc3fc58c71dd13372f04afb3b983ae7fb",
+      "path": "docs/evidence/restructure/shopping-list-1280-dark-after.png",
+      "size": 62321,
+      "status": "tracked"
+    },
+    {
+      "hash": "375154d9d4c09d1e489b87dda072014fae1aa9fe9ef3a1697e71a79b6beb851b",
+      "path": "docs/evidence/restructure/shopping-list-1280-dark-before.png",
+      "size": 62187,
+      "status": "tracked"
+    },
+    {
+      "hash": "654bdd31aaae4d72ca4daa0157832bbab274075c3e7a767f96d8c47daadc78ac",
+      "path": "docs/evidence/restructure/shopping-list-1280-light-after.png",
+      "size": 62375,
+      "status": "tracked"
+    },
+    {
+      "hash": "121711d7a7b7c0c317925cb4d11cd26f4b0975be0a81ec358967bcbf26dd6755",
+      "path": "docs/evidence/restructure/shopping-list-1280-light-before.png",
+      "size": 62491,
+      "status": "tracked"
+    },
+    {
+      "hash": "9b5e40876864ca9de3ded34da3a8d50ed67e3220f8048f85dc5ae93cc3e7741b",
+      "path": "docs/evidence/restructure/shopping-list-320-dark-after.png",
+      "size": 49333,
+      "status": "tracked"
+    },
+    {
+      "hash": "e1c308e3fc8e0c28d3f25bcb37ff6c62f011394fbdc0a276ae9fd1d383038528",
+      "path": "docs/evidence/restructure/shopping-list-320-dark-before.png",
+      "size": 48336,
+      "status": "tracked"
+    },
+    {
+      "hash": "a310d5fc5a51668566cce09f0094fd97eef2e0dafcf95af93e9c896fbc1e3d81",
+      "path": "docs/evidence/restructure/shopping-list-320-light-after.png",
+      "size": 48653,
+      "status": "tracked"
+    },
+    {
+      "hash": "9567fb8eea06e64227af4dba6367c71c6d9df13ecb35153a302db46bc72d1c73",
+      "path": "docs/evidence/restructure/shopping-list-320-light-before.png",
+      "size": 47661,
+      "status": "tracked"
+    },
+    {
+      "hash": "b107d283d70ecb3bbfe6c8f4a34621f4d09f5392c8dd33725bedd56de3a23c80",
+      "path": "docs/evidence/restructure/shopping-list-390-dark-after.png",
+      "size": 50601,
+      "status": "tracked"
+    },
+    {
+      "hash": "074d1911d1a90af7f3061d3cf1533f5afc3c551e825172ec29f5eb7101d4a482",
+      "path": "docs/evidence/restructure/shopping-list-390-dark-before.png",
+      "size": 49838,
+      "status": "tracked"
+    },
+    {
+      "hash": "6b178f3524e006871e34382b883bde97c9f1793158cb933e3d1ff2d4dee80a25",
+      "path": "docs/evidence/restructure/shopping-list-390-light-after.png",
+      "size": 49993,
+      "status": "tracked"
+    },
+    {
+      "hash": "b5f90407490ad49b2954d75b5bb29eeebb63d2409f46f8ff558f0951b526b6c4",
+      "path": "docs/evidence/restructure/shopping-list-390-light-before.png",
+      "size": 49217,
+      "status": "tracked"
+    },
+    {
+      "hash": "a1b94d74cbe855df7d5b431b1255763a78c4423c444c38610f958f63f0d93a96",
+      "path": "docs/evidence/restructure/shopping-list-768-dark-after.png",
+      "size": 62181,
+      "status": "tracked"
+    },
+    {
+      "hash": "b867f31fc54e176aaea79b24434dd378af7c11137aa9db177e363c591d98c813",
+      "path": "docs/evidence/restructure/shopping-list-768-dark-before.png",
+      "size": 60672,
+      "status": "tracked"
+    },
+    {
+      "hash": "aae6e207794c72e3e216175bfa1b464f45010c45a08e47a24201238686fa7e70",
+      "path": "docs/evidence/restructure/shopping-list-768-light-after.png",
+      "size": 62572,
+      "status": "tracked"
+    },
+    {
+      "hash": "a3258d47af7f6d1c1b8084b121276c8f887a94dccbcbb83c402db53bd80e3b1d",
+      "path": "docs/evidence/restructure/shopping-list-768-light-before.png",
+      "size": 60962,
+      "status": "tracked"
+    },
+    {
+      "hash": "e7befbbb72ef4a4303ec04f942f4b7feeb8e3f958ff51ce89a50742a95edc48b",
+      "path": "docs/frontend-rewrite-prompt.md",
+      "size": 16171,
+      "status": "tracked"
+    },
+    {
+      "hash": "a043f9267e00e0b7761380fb28812ac1cc8b6a6246c0e943c2e0107269253481",
+      "path": "docs/git-release-policy.md",
+      "size": 1451,
+      "status": "tracked"
+    },
+    {
+      "hash": "4ca973e86cf1ad91a027e4ae960191ebb3196a70743e79d1b9c22834a73d51ab",
+      "path": "docs/plans/2026-10-23-frontend-restructure/llm-choice-pantry-list-grouped.md",
+      "size": 816,
+      "status": "tracked"
+    },
+    {
+      "hash": "a33e221b46d34c60baf9ec4a56b36f3cd6a7bc26766b4205d5be8de2115adf43",
+      "path": "docs/plans/2026-10-23-frontend-restructure/llm-choice-shopping-list-redesign.md",
+      "size": 1237,
+      "status": "tracked"
+    },
+    {
+      "hash": "4cb222ed19e5b875333511f267f59e6457bf9eacf098c1b69d8780aca7ddcbb9",
+      "path": "docs/plans/2026-10-23-frontend-restructure/plan-pantry-list-grouped.md",
+      "size": 2648,
+      "status": "tracked"
+    },
+    {
+      "hash": "9cb24f296c8eb427c212bd978468df9c97b0ab1635aa24cdefd4cb5c90d5e226",
+      "path": "docs/plans/2026-10-23-frontend-restructure/plan-shopping-list-redesign.md",
+      "size": 2275,
+      "status": "tracked"
+    },
+    {
+      "hash": "bc03210aff62232b4005fd3942e3743fd0799abf03811ad73d368c4c0a2e5fc1",
+      "path": "docs/plans/2026-10-23-frontend-restructure/understanding-pantry-list-grouped.md",
+      "size": 2632,
+      "status": "tracked"
+    },
+    {
+      "hash": "918ff681fcd823127b62b6e238be91f42dcdd52fb2fdc18ce6830d410903264a",
+      "path": "docs/plans/2026-10-23-frontend-restructure/understanding-shopping-list-redesign.md",
+      "size": 2319,
+      "status": "tracked"
+    },
+    {
+      "hash": "262b03c3b52ac338034ae037e88a24d1a41dc211160b43990a4a206270d1eb50",
+      "path": "docs/production-readiness.md",
+      "size": 14382,
+      "status": "tracked"
+    },
+    {
+      "hash": "1fccd65daf380b16f9e1dfd685a682939c6a204dcf2ff52ead40f02e06753ba3",
+      "path": "docs/release-procedure.md",
+      "size": 6484,
+      "status": "tracked"
+    },
+    {
+      "hash": "2957d34616ebe59b0545b22e4c6d9aab0429f2678c9a31395f633fd98e464082",
+      "path": "docs/shared-households.md",
+      "size": 4125,
+      "status": "tracked"
+    },
+    {
+      "hash": "6a77f50640f72fcfeb3244eb71f265562bba79ab62c803947d29b25ac64d82bc",
+      "path": "docs/standalone-mini-pc.md",
+      "size": 5245,
+      "status": "tracked"
+    },
+    {
+      "hash": "7c59f0ed0766d5c9a37ca3065638db0cb915432fe566947b91664c3b77293b22",
+      "path": "docs/superpowers/plans/2026-09-11-local-first-pantry-recipes.md",
+      "size": 67827,
+      "status": "tracked"
+    },
+    {
+      "hash": "42163e235a23342a17dea73d14bc9518d45fec6e7e33e893f9a59e56dde676ce",
+      "path": "docs/superpowers/plans/2026-09-12-account-sync-client.md",
+      "size": 17015,
+      "status": "tracked"
+    },
+    {
+      "hash": "c77b462f32871ec415a802b9cb7f2332fe6e09dd29d30d49ff4978ee8a973b4f",
+      "path": "docs/superpowers/plans/2026-09-12-accounts-and-sync.md",
+      "size": 26944,
+      "status": "tracked"
+    },
+    {
+      "hash": "fa66d445a308d1f7f3b59a1dd13a874d2ec29bf33810b4b7c9df9e7496a75b60",
+      "path": "docs/superpowers/plans/2026-09-12-remote-platform.md",
+      "size": 16821,
+      "status": "tracked"
+    },
+    {
+      "hash": "7d54511ad4159d5c4090b9db67efca14fc7aab793dd08424fddc49a3ded5a3c3",
+      "path": "docs/superpowers/plans/2026-09-13-activity-favorites-ratings.md",
+      "size": 13096,
+      "status": "tracked"
+    },
+    {
+      "hash": "1550d1646c5880b01085d220ac44337fb34dee74d2e8bd5af7de5c45a64337de",
+      "path": "docs/superpowers/plans/2026-09-13-ai-recipes.md",
+      "size": 14252,
+      "status": "tracked"
+    },
+    {
+      "hash": "e00fecadb4a332d5e36d71c6af9012abf8b4d0a66a27cf5246813015255970b3",
+      "path": "docs/superpowers/plans/2026-09-13-automatic-suggestions.md",
+      "size": 11802,
+      "status": "tracked"
+    },
+    {
+      "hash": "cbef278a154392488eba2d4383ca41a131b0b09b92db9a427eb567bb03140580",
+      "path": "docs/superpowers/plans/2026-09-13-diet-allergens-nutrition.md",
+      "size": 24009,
+      "status": "tracked"
+    },
+    {
+      "hash": "fb9ef451b09ee6a8bfc2920a643d68e27cc9b45f5c1f62991daf8f4b5d911be8",
+      "path": "docs/superpowers/plans/2026-09-13-pantry-lots-and-expiry.md",
+      "size": 16322,
+      "status": "tracked"
+    },
+    {
+      "hash": "344e253c716ffd145b2254e90bca9fdc38a161746f10983758c8730963cf6092",
+      "path": "docs/superpowers/plans/2026-09-13-production-readiness-and-provider-smoke.md",
+      "size": 25987,
+      "status": "tracked"
+    },
+    {
+      "hash": "0a78d5eee5befa905c2ae9c4a98919cb8ba45407d570ee4ef697e9baefa4227f",
+      "path": "docs/superpowers/plans/2026-09-13-shopping-list.md",
+      "size": 14371,
+      "status": "tracked"
+    },
+    {
+      "hash": "167a0958d6d322e62f834c3021b73211236f5887b61bbe5530f0804fa5e8ff01",
+      "path": "docs/superpowers/plans/2026-09-14-api-provider-resilience.md",
+      "size": 5420,
+      "status": "tracked"
+    },
+    {
+      "hash": "bcfb565f435ccb6684a6f84c8e86545ffb9f167d6d537c5a6f1f785c6cfe3b42",
+      "path": "docs/superpowers/plans/2026-09-14-auth-security-and-integrity.md",
+      "size": 6815,
+      "status": "tracked"
+    },
+    {
+      "hash": "7110b0685c6ade9add84587acfcb7651e7083def3dff1bdefeb37c832cb7fac4",
+      "path": "docs/superpowers/plans/2026-09-14-dependencies-ci-and-docs.md",
+      "size": 5315,
+      "status": "tracked"
+    },
+    {
+      "hash": "308128a782eaeeb5f38bbbb492f273cdeb7efefd568d850f08b1de2d325c313b",
+      "path": "docs/superpowers/plans/2026-09-14-deployment-and-recovery-hardening.md",
+      "size": 6208,
+      "status": "tracked"
+    },
+    {
+      "hash": "5e247cceff316dc43673ed6bdedba5467c7d1abbe5c4ff365b448389b977bcf1",
+      "path": "docs/superpowers/plans/2026-09-14-home-navigation-and-ux.md",
+      "size": 8294,
+      "status": "tracked"
+    },
+    {
+      "hash": "ada1f0d69907d845c6a886b42a5fc3bfe742b56cefbc882109d9408a0518a8fd",
+      "path": "docs/superpowers/plans/2026-09-14-pwa-accessibility-and-frontend-tests.md",
+      "size": 4300,
+      "status": "tracked"
+    },
+    {
+      "hash": "734bf47ced5e83998c6d5247ccf3e14e5c14877ece527e133052cfac0fa8af74",
+      "path": "docs/superpowers/plans/2026-09-14-remediation-index.md",
+      "size": 5966,
+      "status": "tracked"
+    },
+    {
+      "hash": "2ef6e1e24280bbdb19c3b41fae15e7df5bc0533d0083ed98570064a96d594141",
+      "path": "docs/superpowers/plans/2026-09-14-sync-and-account-isolation.md",
+      "size": 7555,
+      "status": "tracked"
+    },
+    {
+      "hash": "db990907c56259cd193fe42b055b3a2cbc60b0d6b15e9156cabfc72adaae989f",
+      "path": "docs/superpowers/plans/2026-10-20-cd-docker-images-rollback.md",
+      "size": 10494,
+      "status": "tracked"
+    },
+    {
+      "hash": "96e0795b5f9bd1dfc37f646fe9a9cd5ff3747e1c6db10397a373bd18d8bdc943",
+      "path": "docs/superpowers/plans/2026-10-20-cicd-github-actions.md",
+      "size": 4563,
+      "status": "tracked"
+    },
+    {
+      "hash": "39f5aec4cf44577a5e7b7facbe41d801be18259ac0663192d02cd73a20fb698d",
+      "path": "docs/superpowers/specs/2026-09-11-local-first-pantry-recipes-design.md",
+      "size": 14170,
+      "status": "tracked"
+    },
+    {
+      "hash": "69a283b828a5b76579818d14adbc126628a9e81b1ed2c668d6e560d22d2d6d36",
+      "path": "docs/superpowers/specs/2026-09-12-synchronized-ikuck-design.md",
+      "size": 3229,
+      "status": "tracked"
+    },
+    {
+      "hash": "334f81b91da9481fe3de43b3581f7696ef586a468bb82fa6aac3dbbe6ab63c42",
+      "path": "docs/tech-spec-dark-mode.md",
+      "size": 11409,
+      "status": "tracked"
+    },
+    {
+      "hash": null,
+      "path": "frontend/.env.example",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": "ba44e979cc5b978a61531999f04bac87d8ecec614d5d973280360b0f7f3dd614",
+      "path": "frontend/.eslintrc.cjs",
+      "size": 689,
+      "status": "tracked"
+    },
+    {
+      "hash": "1fa54ed31cd18af646ecf8cd2f2b15451491818e86e413c873d03b3ea3724fa4",
+      "path": "frontend/e2e/accessibility.spec.ts",
+      "size": 18717,
+      "status": "tracked"
+    },
+    {
+      "hash": "038b45d165925c91a931056819929e60739c366b9b2a9ce9684764a1c0e4552f",
+      "path": "frontend/e2e/account-sync.spec.ts",
+      "size": 18274,
+      "status": "tracked"
+    },
+    {
+      "hash": "ccf20990ae58af10e9d4eabb7cbf7e4d7e76c961d62ce36e18530923eb7e9a3f",
+      "path": "frontend/e2e/backend-mode.spec.ts",
+      "size": 6335,
+      "status": "untracked"
+    },
+    {
+      "hash": "cdcbe9fea9c77a7debe4b735f0135efc2a01e18817b926913d76da0dbd89db34",
+      "path": "frontend/e2e/bring.spec.ts",
+      "size": 40051,
+      "status": "tracked"
+    },
+    {
+      "hash": "78260178b6eec4396680329ed74f5a2ac1d48c5e3c7a5c2648816c7bb33cffd5",
+      "path": "frontend/e2e/core-flow.spec.ts",
+      "size": 34011,
+      "status": "tracked"
+    },
+    {
+      "hash": "10dc572a858d80047fbc56e476781d3be5243f1366c45a33c765cf19ddc03f74",
+      "path": "frontend/e2e/dark-mode.spec.ts",
+      "size": 7057,
+      "status": "tracked"
+    },
+    {
+      "hash": "6fcf0eebb334893075402a35d0ea2d6f80a603745c47a294bff811cb22e09ee2",
+      "path": "frontend/e2e/dinner-diary-house.spec.ts",
+      "size": 36383,
+      "status": "tracked"
+    },
+    {
+      "hash": "476851fcddaa1bec83a48128b689e4b750fcbeaeb6e91deae2d848fd4cb7bbe5",
+      "path": "frontend/e2e/dinner-diary.spec.ts",
+      "size": 14802,
+      "status": "tracked"
+    },
+    {
+      "hash": "5691b304249b6d022774466f491286047f3d09d89364408f8ee0e1a0f7fa76cb",
+      "path": "frontend/e2e/helpers/appMode.ts",
+      "size": 1239,
+      "status": "untracked"
+    },
+    {
+      "hash": "fa275fa89deb5a24ca4282b5a5c9dd9497bd63b4e29370e0a15adab2a404e63d",
+      "path": "frontend/e2e/helpers/backendMode.ts",
+      "size": 5040,
+      "status": "tracked"
+    },
+    {
+      "hash": "eb8ecb54bc1bf8133d9c8ddda7ebbe02576d8f5ff71c030da701cd0932316a98",
+      "path": "frontend/e2e/helpers/mealPlanLiveServer.mjs",
+      "size": 16118,
+      "status": "untracked"
+    },
+    {
+      "hash": "57be381e20a791a5c2303db183755ff5b6d6ae7c1b3675f67d4c128669e4b5e2",
+      "path": "frontend/e2e/helpers/mealPlanLiveServer.test.mjs",
+      "size": 9547,
+      "status": "untracked"
+    },
+    {
+      "hash": "b74b95392700ded32d9315fb2ab3a7f303eb697d80c20c9766163ad038e0e489",
+      "path": "frontend/e2e/helpers/monkey.ts",
+      "size": 5657,
+      "status": "tracked"
+    },
+    {
+      "hash": "3cfd590b26265a455eaca72264874cfdefc2737c9513861d541f5ba3e676631d",
+      "path": "frontend/e2e/live-stack.spec.ts",
+      "size": 2591,
+      "status": "tracked"
+    },
+    {
+      "hash": "2661271098ee9be01ff7882005e959e222fac25987614a93f43f7c99583dad12",
+      "path": "frontend/e2e/liveSetup.ts",
+      "size": 1038,
+      "status": "tracked"
+    },
+    {
+      "hash": "512c147808ba232a9ab48f2c84e948a8e27ce2f1d43cffeee4ab2982cab916bc",
+      "path": "frontend/e2e/meal-plan-live-stack.spec.ts",
+      "size": 24169,
+      "status": "untracked"
+    },
+    {
+      "hash": "c1b09214950b182acb706ad5cec33a6b0e38151d370e9a40d03bc775b7d2ae35",
+      "path": "frontend/e2e/monkey.spec.ts",
+      "size": 679,
+      "status": "tracked"
+    },
+    {
+      "hash": "dafb55ab06c6e30ec42d30f1bb1fce72bb4c6794340638d3a1ac49710cac1f6e",
+      "path": "frontend/e2e/not-found.spec.ts",
+      "size": 1028,
+      "status": "tracked"
+    },
+    {
+      "hash": "a06920d252e1440c3d335bcc7c5d24e8ad87c28e1f77205ac0ddb5209cfa7de3",
+      "path": "frontend/e2e/pantry-candidates.spec.ts",
+      "size": 2526,
+      "status": "tracked"
+    },
+    {
+      "hash": "40ffb3d6fb098b883ccaaa1ad6e0d0b6850c69ad58abba96012c666ba3ecaa93",
+      "path": "frontend/e2e/pantry-lots.spec.ts",
+      "size": 11621,
+      "status": "tracked"
+    },
+    {
+      "hash": null,
+      "path": "frontend/e2e/password-reset.spec.ts",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": "453ab3b84b0d31e90e13e5f4d2553cdd8f9ab8c25c2f0473a103f6d3bcf368ea",
+      "path": "frontend/e2e/production-smoke.spec.ts",
+      "size": 3802,
+      "status": "tracked"
+    },
+    {
+      "hash": "16d0afca5c1372ef1f698ef9fd4f34dc76f43e749516fcd96cb6ca1784c82ea6",
+      "path": "frontend/e2e/pwa-update.spec.ts",
+      "size": 9129,
+      "status": "tracked"
+    },
+    {
+      "hash": "594b5b4ad8a1da84891bcee2b22f9f5ead844ff49ab4531f3a2411dbf18a1395",
+      "path": "frontend/e2e/recipe-library.spec.ts",
+      "size": 10337,
+      "status": "tracked"
+    },
+    {
+      "hash": "352cbe4480cc98b320cb7e12769a03f053ab458d7941378a1a393310626ed2ee",
+      "path": "frontend/e2e/review-regressions.spec.ts",
+      "size": 18815,
+      "status": "tracked"
+    },
+    {
+      "hash": "17ce2046712a783d31440cf0e48e97bcc9b1d11f6a656d05516475f0851fbfd5",
+      "path": "frontend/e2e/run-live-e2e.mjs",
+      "size": 434,
+      "status": "tracked"
+    },
+    {
+      "hash": "1b4c0c8a9b4b5ee8a294c93d21b3d82be5d315cc5acaa0c6e12ac9a3a9f68e5b",
+      "path": "frontend/e2e/sous-chef-axe.spec.ts",
+      "size": 2066,
+      "status": "untracked"
+    },
+    {
+      "hash": "aa0f98200e991d1011ab935ed1e47cf80f5ddc1ea3d17a0ca69259bba7e2fd86",
+      "path": "frontend/e2e/sous-chef-daily.spec.ts",
+      "size": 1588,
+      "status": "untracked"
+    },
+    {
+      "hash": "8fd601b2eb4dd71c6fb1f65a8d491c8f4575674f79ba9a244a594746c7a8bb65",
+      "path": "frontend/e2e/sous-chef-integrated.spec.ts",
+      "size": 1850,
+      "status": "untracked"
+    },
+    {
+      "hash": "d7cdd2e1e8263af4cd8003afc3bae8c581323c59ed8fb084ce51d50da5d78437",
+      "path": "frontend/e2e/sous-chef-pantry.spec.ts",
+      "size": 2504,
+      "status": "untracked"
+    },
+    {
+      "hash": "0162ca281400e9ab2a959775dd1963ada98ba438a0c31a11723708676a2adcf2",
+      "path": "frontend/e2e/sous-chef-plan.spec.ts",
+      "size": 22511,
+      "status": "untracked"
+    },
+    {
+      "hash": "8e810ec08a5f02664bcaf3c69db3770875954a04c358d9aa7a6715bcd930f618",
+      "path": "frontend/e2e/sous-chef-sentinel.spec.ts",
+      "size": 13799,
+      "status": "untracked"
+    },
+    {
+      "hash": "6bfb0e57100058374b6a4eb14cf4c52d57bf04d09d9cb737d55662e82396b75b",
+      "path": "frontend/e2e/sous-chef-shell.spec.ts",
+      "size": 15369,
+      "status": "untracked"
+    },
+    {
+      "hash": "1bb52f6d97a96768845e1d2672caf579ebb182a8abc39c67c6942d9f411e876a",
+      "path": "frontend/e2e/ux-responsive.spec.ts",
+      "size": 5960,
+      "status": "tracked"
+    },
+    {
+      "hash": "271ee23b8717ebd7e895ac6cc99b5a65d580124047fe721e998a81f4b74f4c1d",
+      "path": "frontend/e2e/verify-email.spec.ts",
+      "size": 3128,
+      "status": "tracked"
+    },
+    {
+      "hash": "c01adbe7233e2682f28b9c88568fc21e06a3238cb922acbcf40c1e66476de41e",
+      "path": "frontend/index.html",
+      "size": 1045,
+      "status": "tracked"
+    },
+    {
+      "hash": "cd726c58694b06341bb82b687b605f50aa3bc8ccbbab46bfb7ca1ba2ed2e957b",
+      "path": "frontend/package-lock.json",
+      "size": 360509,
+      "status": "tracked"
+    },
+    {
+      "hash": "4c0c79ba3c0e76fa71c5683eb8b96e5c3729b01932bbe23be1af0a501818ab25",
+      "path": "frontend/package.json",
+      "size": 2066,
+      "status": "tracked"
+    },
+    {
+      "hash": "4482d8c44283a733e813a0870d8f4337956a3f81f1f00ab9493fcc70b7ae64bc",
+      "path": "frontend/playwright.config.test.ts",
+      "size": 2564,
+      "status": "tracked"
+    },
+    {
+      "hash": "59982d812d539d78288f4a476a505973f1d367a40b20b71f634473f6a422d68a",
+      "path": "frontend/playwright.config.ts",
+      "size": 2870,
+      "status": "tracked"
+    },
+    {
+      "hash": "37ae05eaad92a6bb611f7b079fc0215672861eb050205e7263baf1d0d2fc2e96",
+      "path": "frontend/playwright.meal-plan-live.config.ts",
+      "size": 1029,
+      "status": "untracked"
+    },
+    {
+      "hash": "190c877db466995bf1482f4a16abd06e04a89ede3119341e2a86ff96e1737b27",
+      "path": "frontend/postcss.config.js",
+      "size": 80,
+      "status": "tracked"
+    },
+    {
+      "hash": "aeb5b8b6ff3fc3c9493d193eef75ec4d8185d877fada5b53405421dd9c79efb8",
+      "path": "frontend/public/icons/icon-192x192.png",
+      "size": 17362,
+      "status": "tracked"
+    },
+    {
+      "hash": "278af86eb7322a9a1f8fd2bf7daea8ab7ed2ae6297e2127538ae485c0830e9e6",
+      "path": "frontend/public/icons/icon-512x512.png",
+      "size": 93733,
+      "status": "tracked"
+    },
+    {
+      "hash": "bb835a385e293a26be7fd770b467c9b17a93b462b2c28a261eb78e6924b8b3ea",
+      "path": "frontend/public/icons/icon.svg",
+      "size": 918,
+      "status": "tracked"
+    },
+    {
+      "hash": "fc77e1c54544738c6f3f842f37c9f54688350b79573ca5be6cfca5ffa4cce9aa",
+      "path": "frontend/public/icons/maskable-icon-192x192.png",
+      "size": 10515,
+      "status": "tracked"
+    },
+    {
+      "hash": "e59792868f880c3debd01e677afc963e5018424bee122091ff59b2058f902e1f",
+      "path": "frontend/public/icons/maskable-icon-512x512.png",
+      "size": 55203,
+      "status": "tracked"
+    },
+    {
+      "hash": "9286157a61a2409e0cd7cad9733f9308beb2206bd63da05572de6e1d55fffbd9",
+      "path": "frontend/public/icons/maskable-icon.svg",
+      "size": 916,
+      "status": "tracked"
+    },
+    {
+      "hash": "bae033d77613845359a18423516a62e9e0959db43b8eec6a9c58fc4ebafc0cb9",
+      "path": "frontend/public/recipe-images/uova-al-pomodoro.webp",
+      "size": 68048,
+      "status": "tracked"
+    },
+    {
+      "hash": "b2d67792a5458c843e756e4e0d8a1ba127395c44cd7a0514d61b2066cd40dee7",
+      "path": "frontend/src/App.test.tsx",
+      "size": 18974,
+      "status": "tracked"
+    },
+    {
+      "hash": "30133609843a555822445f257df992370309df520ab220747e445d1f95b73133",
+      "path": "frontend/src/App.tsx",
+      "size": 14071,
+      "status": "tracked"
+    },
+    {
+      "hash": "522310eb6b3372443ff9b2aab8ff63981e18fd1b772469ec651321735794168b",
+      "path": "frontend/src/AppRoot.tsx",
+      "size": 1887,
+      "status": "tracked"
+    },
+    {
+      "hash": "e83435aa2b8713446b61eaf1a0542a88404f1b6a190e4992a122850f6b70861a",
+      "path": "frontend/src/ai/aiRecipeApi.test.ts",
+      "size": 6288,
+      "status": "tracked"
+    },
+    {
+      "hash": "6281519c1a37410a298973af907f76c59a4de9ae5a2437b09660a1cfe25457a5",
+      "path": "frontend/src/ai/aiRecipeApi.ts",
+      "size": 5399,
+      "status": "tracked"
+    },
+    {
+      "hash": "7db426ae2cf66a4bba572d01a863ceadc68d60a307f2a26c2390cbbd4cddfc89",
+      "path": "frontend/src/ai/aiRecipeHistory.test.ts",
+      "size": 2764,
+      "status": "tracked"
+    },
+    {
+      "hash": "f89de1a82035878f12b38ff777cb5aa6ee745b147778aab5d28aa75592c565d5",
+      "path": "frontend/src/ai/aiRecipeHistory.ts",
+      "size": 8948,
+      "status": "tracked"
+    },
+    {
+      "hash": "d09c36ad26b39b671b256023e90ddd6a96631eeae0f23aface77bd69f514f1f9",
+      "path": "frontend/src/api/apiClient.test.ts",
+      "size": 2012,
+      "status": "tracked"
+    },
+    {
+      "hash": "caec1a2f01ad5093ff1dd032672812a58c04bb7a748dbec6ed96a52b9a1e6490",
+      "path": "frontend/src/api/apiClient.ts",
+      "size": 2283,
+      "status": "tracked"
+    },
+    {
+      "hash": "d9469fa842d808f7eea0e8fbadee247da27c9a3c566769d862c5d740aaf5ad7f",
+      "path": "frontend/src/auth/authStore.test.ts",
+      "size": 4703,
+      "status": "tracked"
+    },
+    {
+      "hash": "84fb5b6a32e350221886f3007c7242cdd297f55d276bfaaa8c197d34997198af",
+      "path": "frontend/src/auth/authStore.ts",
+      "size": 6070,
+      "status": "tracked"
+    },
+    {
+      "hash": "51da891bb83b6f5a288b255c07129a5ddc1aad250212cfd98c2b6ad117bb9174",
+      "path": "frontend/src/bring/bringApi.test.ts",
+      "size": 4671,
+      "status": "tracked"
+    },
+    {
+      "hash": "66835e21020ba1ee9ef02c0ec309867e0b226b90d4fba16c8384864b3da58cb9",
+      "path": "frontend/src/bring/bringApi.ts",
+      "size": 1260,
+      "status": "tracked"
+    },
+    {
+      "hash": "0df989a2f6b474b78496ef57e2c8c9b6885ab9a65eb2f9b1c5a2a98979af97bd",
+      "path": "frontend/src/components/account/AccountPanel.test.tsx",
+      "size": 5472,
+      "status": "tracked"
+    },
+    {
+      "hash": "60eb0817581a254b3012d89e80d7cec38c490b7ee1700dd08999e69a7e36278d",
+      "path": "frontend/src/components/account/AccountPanel.tsx",
+      "size": 10353,
+      "status": "tracked"
+    },
+    {
+      "hash": "024ac6ce1d496544fd359ddd6841b649823705313eafb428869070938e56dcb6",
+      "path": "frontend/src/components/account/GoogleSignInButton.test.tsx",
+      "size": 568,
+      "status": "tracked"
+    },
+    {
+      "hash": "dc748266641c3c6377b56f4934fa83160b98c9d831e220a533b9a2cd22029cba",
+      "path": "frontend/src/components/account/GoogleSignInButton.tsx",
+      "size": 2767,
+      "status": "tracked"
+    },
+    {
+      "hash": "9ba75aeb8a3ba0133022d2851bb028900bdccc4b1a5ddff2c86649b2df5c4a9b",
+      "path": "frontend/src/components/activity/ActivityPanel.test.tsx",
+      "size": 2278,
+      "status": "tracked"
+    },
+    {
+      "hash": "94026319861a0bb01ef4717547c4598f5f46196007035a0218ea4b691356f400",
+      "path": "frontend/src/components/activity/ActivityPanel.tsx",
+      "size": 5111,
+      "status": "tracked"
+    },
+    {
+      "hash": "8c13e1caa8151a7505a8362efa2de50ecd00493b3483ad30d6bb580ca4fbf858",
+      "path": "frontend/src/components/ai/AiRecipePanel.test.tsx",
+      "size": 36267,
+      "status": "tracked"
+    },
+    {
+      "hash": "679d3a46e0d57dab4b3ed296af2cc41af4e3f6c71def00c328b8316756785e99",
+      "path": "frontend/src/components/ai/AiRecipePanel.tsx",
+      "size": 22858,
+      "status": "tracked"
+    },
+    {
+      "hash": "9287ec3e416602764dac021b9e5e94d0d6d8c6f9cd888fc826ea8f7c26481868",
+      "path": "frontend/src/components/chat/ChatView.test.tsx",
+      "size": 965,
+      "status": "untracked"
+    },
+    {
+      "hash": "1101f133280dac3c9fe2b2d5bf44143e47c091cfe41c6d92c841f9a958eb82da",
+      "path": "frontend/src/components/chat/ChatView.tsx",
+      "size": 1867,
+      "status": "tracked"
+    },
+    {
+      "hash": "821287c01f426370de553a19b59a06808bc85473fecc7df8d13ecb4489eb9dd3",
+      "path": "frontend/src/components/chat/DailyRecipeCard.tsx",
+      "size": 3970,
+      "status": "untracked"
+    },
+    {
+      "hash": "b32fdc26b57ea9d864541427810494115f6df6812b774dd183cc59cd92ba9a39",
+      "path": "frontend/src/components/chat/DayIndicator.tsx",
+      "size": 2273,
+      "status": "tracked"
+    },
+    {
+      "hash": "5d2ce201c1fabfa52bf0cd32cea32a71a1cb5b9118b5d4b840420d68aa0d5594",
+      "path": "frontend/src/components/chat/InputBar.tsx",
+      "size": 3765,
+      "status": "tracked"
+    },
+    {
+      "hash": "fc2ed69c7b9767dec25f5d828a2562d3d22a434df49787d326d77ba79bdc69d1",
+      "path": "frontend/src/components/chat/MessageBubble.tsx",
+      "size": 13612,
+      "status": "tracked"
+    },
+    {
+      "hash": "813292bba45e522484b78fee036a323968913572879633550de41d70d0ecf226",
+      "path": "frontend/src/components/chat/MessageList.tsx",
+      "size": 1739,
+      "status": "tracked"
+    },
+    {
+      "hash": "15754e055e636d4ac5b15467903fbbfc476056a0f83516ed28d32363d53c2538",
+      "path": "frontend/src/components/chat/QuickReplies.tsx",
+      "size": 1435,
+      "status": "tracked"
+    },
+    {
+      "hash": "86cd940ce97b39a975a4a1b989eda4e32528f519aa303c120890be34dabcc46b",
+      "path": "frontend/src/components/chat/chatStore.ts",
+      "size": 16008,
+      "status": "tracked"
+    },
+    {
+      "hash": "f061e35e4231f5befc167b38ed0484bc642b3fed875784685fb43a6ef2ff0974",
+      "path": "frontend/src/components/chat/index.ts",
+      "size": 386,
+      "status": "tracked"
+    },
+    {
+      "hash": "a42475d11df3f9d58738694a5c7716ab09b0cf10a4ce886138be504bb7190271",
+      "path": "frontend/src/components/chat/types.ts",
+      "size": 1631,
+      "status": "tracked"
+    },
+    {
+      "hash": "320ca0b7d8a72bd4deb3b14bd45371da45eb7e5bb969c741d8a121e96103f0ea",
+      "path": "frontend/src/components/diet/DietFiltersPanel.test.tsx",
+      "size": 2899,
+      "status": "tracked"
+    },
+    {
+      "hash": "68b2bbfd9aaa9ac64e761d4f864a0f94ce89bea7dc4efda74fe773359b2c2d8c",
+      "path": "frontend/src/components/diet/DietFiltersPanel.tsx",
+      "size": 5477,
+      "status": "tracked"
+    },
+    {
+      "hash": "42336afb933a35cb510e55200ec74b62359685d5c05f32636c258bee1a0365a1",
+      "path": "frontend/src/components/diet/RecipeNutritionSummary.test.tsx",
+      "size": 828,
+      "status": "tracked"
+    },
+    {
+      "hash": "21a34c23e37631eee603efc4028e0ee31ef1e87924c6fb9651b79ec5c23857b9",
+      "path": "frontend/src/components/diet/RecipeNutritionSummary.tsx",
+      "size": 1433,
+      "status": "tracked"
+    },
+    {
+      "hash": "d671964b97a783be7b5d32c810dfe7159c39599119650b01cb2f72c50ea64c8b",
+      "path": "frontend/src/components/diet/nutrientLabels.test.ts",
+      "size": 538,
+      "status": "tracked"
+    },
+    {
+      "hash": "54b23321ca31405e0ea7c338f328ccb285ee43999a2439d579f79f9ca63d9130",
+      "path": "frontend/src/components/diet/nutrientLabels.ts",
+      "size": 664,
+      "status": "tracked"
+    },
+    {
+      "hash": "19ad247da8b63f9fcd2f8a7c585ad6e36467bfb9cac254265beae1d7710cc22f",
+      "path": "frontend/src/components/dinnerDiary/DinnerConsumptionSelection.test.tsx",
+      "size": 2180,
+      "status": "tracked"
+    },
+    {
+      "hash": "b844cf828302bfd102bbad712023577f204ea57287d26f1dd0e10d59a78d1891",
+      "path": "frontend/src/components/dinnerDiary/DinnerConsumptionSelection.tsx",
+      "size": 14887,
+      "status": "tracked"
+    },
+    {
+      "hash": "b22761673b3d055b9e2d36641fb5ce9568ea7f66f2f2b5f6bdf160d73df9b756",
+      "path": "frontend/src/components/dinnerDiary/DinnerRecipePanel.test.tsx",
+      "size": 10378,
+      "status": "tracked"
+    },
+    {
+      "hash": "a170bd1dbe9b8aa988be44407b7fea989cb1a3b6f30a40e6e4c91de363653c60",
+      "path": "frontend/src/components/dinnerDiary/DinnerRecipePanel.tsx",
+      "size": 18043,
+      "status": "tracked"
+    },
+    {
+      "hash": "4eb5c4425773b1f3bb9de1e76a1615b790f1af2dfc772da2ce2fb333cc9e016d",
+      "path": "frontend/src/components/feedback/AppInstallPrompt.test.tsx",
+      "size": 4303,
+      "status": "tracked"
+    },
+    {
+      "hash": "d81e023dd70e4faacc8d849713f520b2608a066af859be7c364822a20e4a1adb",
+      "path": "frontend/src/components/feedback/AppInstallPrompt.tsx",
+      "size": 4581,
+      "status": "tracked"
+    },
+    {
+      "hash": "5bd6b35cdb0f8acb1517442a74c18fe42e78e3f11a682db155df8d18cc211e0b",
+      "path": "frontend/src/components/feedback/AppUpdatePrompt.test.tsx",
+      "size": 2130,
+      "status": "tracked"
+    },
+    {
+      "hash": "5bef06c9dfc96113967a9b0172f36cc75e43155a23e7655040ca9d8db51b19be",
+      "path": "frontend/src/components/feedback/AppUpdatePrompt.tsx",
+      "size": 2006,
+      "status": "tracked"
+    },
+    {
+      "hash": "e1a9011f7890a7c8ff63997044c2a0052699c8f3e8a61b8f9af5d73647344492",
+      "path": "frontend/src/components/feedback/PantryMergeNotice.test.tsx",
+      "size": 1506,
+      "status": "tracked"
+    },
+    {
+      "hash": "c01e3feba028693ffd165ea2d9847acef18c25bd19a1c03e1243769ee31ce968",
+      "path": "frontend/src/components/feedback/PantryMergeNotice.tsx",
+      "size": 2385,
+      "status": "tracked"
+    },
+    {
+      "hash": "b22d0714c72cf38563d4dfb6d98d529a48f8d657ab808ac4f0c6c181a01bd417",
+      "path": "frontend/src/components/feedback/UndoToast.test.tsx",
+      "size": 1114,
+      "status": "tracked"
+    },
+    {
+      "hash": "a74ab25e343a6a9280f3ebf204dffd3ed62fc54b307c64eb8f0c9803d4c833a2",
+      "path": "frontend/src/components/feedback/UndoToast.tsx",
+      "size": 857,
+      "status": "tracked"
+    },
+    {
+      "hash": "db900abe4335faa0fff85d2f5d344e37429ba4c011491e8483c67a87c8cba92f",
+      "path": "frontend/src/components/layout/AppHeader.test.tsx",
+      "size": 6921,
+      "status": "tracked"
+    },
+    {
+      "hash": "f509aa5ee0d71eeb6c1b88aea117d4142acdb2b7cfeca579a0959b0805fa50ef",
+      "path": "frontend/src/components/layout/AppHeader.tsx",
+      "size": 7284,
+      "status": "tracked"
+    },
+    {
+      "hash": "84a545082955c220dadb81785de5c0c7f9173350075d11583e844be699e22f71",
+      "path": "frontend/src/components/layout/BottomNav.test.tsx",
+      "size": 2480,
+      "status": "untracked"
+    },
+    {
+      "hash": "5dcea9f8d8c8337f894101401518bc5065dd668388443e499888124160070240",
+      "path": "frontend/src/components/layout/BottomNav.tsx",
+      "size": 2549,
+      "status": "tracked"
+    },
+    {
+      "hash": "60431867b38b60da4e5497a9058dff864fb8e86d62c480081baa1eb1daee7940",
+      "path": "frontend/src/components/layout/DiaryNavigation.tsx",
+      "size": 858,
+      "status": "tracked"
+    },
+    {
+      "hash": "ba5344f1c5437e9c5ddf46f0a870e581498d135df298415c98063ce4fffe9770",
+      "path": "frontend/src/components/layout/ProfileModal.tsx",
+      "size": 8250,
+      "status": "tracked"
+    },
+    {
+      "hash": "2c3da97041be242f38ba6224610f0647d589e63916456e4ea80090d980cfa8ae",
+      "path": "frontend/src/components/layout/SimplifiedHeader.tsx",
+      "size": 7380,
+      "status": "tracked"
+    },
+    {
+      "hash": "4af5350170b4f04ff0bf34477b429eac19828190ec319b46686248b617ddd3ca",
+      "path": "frontend/src/components/pantry/CandidatesInbox.test.tsx",
+      "size": 9286,
+      "status": "tracked"
+    },
+    {
+      "hash": "a1c91b3314fe8543039516cf9e602552d1ae04d84a1877517697ab0cc5367732",
+      "path": "frontend/src/components/pantry/CandidatesInbox.tsx",
+      "size": 12349,
+      "status": "tracked"
+    },
+    {
+      "hash": "b47f4e410c7b0f38eb1df96529751c1accbe0acf9074fa113cba84931fba8425",
+      "path": "frontend/src/components/pantry/IngredientChip.tsx",
+      "size": 815,
+      "status": "tracked"
+    },
+    {
+      "hash": "2fcba0243cc317187beeba4835e4441f8c8a90d6bf55a4cde74a675d6553f915",
+      "path": "frontend/src/components/pantry/IngredientInput.test.tsx",
+      "size": 1983,
+      "status": "tracked"
+    },
+    {
+      "hash": "87ba0db022590664676eeb6f5eeb363d78f9be0d2f48fb97178078d59ba87a97",
+      "path": "frontend/src/components/pantry/IngredientInput.tsx",
+      "size": 5556,
+      "status": "tracked"
+    },
+    {
+      "hash": "3012a58a951af86b62efd0970b65bdf5c67c65d5c72c770c11a6fc0041451512",
+      "path": "frontend/src/components/pantry/IngredientSuggestions.test.tsx",
+      "size": 1996,
+      "status": "tracked"
+    },
+    {
+      "hash": "3162dd5181e61467b81338ba81acc4e854d8440e410186337ead8986b24b543b",
+      "path": "frontend/src/components/pantry/IngredientSuggestions.tsx",
+      "size": 3229,
+      "status": "tracked"
+    },
+    {
+      "hash": "4a3c42cd0e7ad6daa862a3e52280eb838fc81dbdd10866eebd8df9e5ff1bbd9c",
+      "path": "frontend/src/components/pantry/PantryLotEditor.test.tsx",
+      "size": 1719,
+      "status": "tracked"
+    },
+    {
+      "hash": "c74aad0c1775b4f0285c84d7b06660fc5d05d3fe04ea3e0e9ae05592e2582fdd",
+      "path": "frontend/src/components/pantry/PantryLotEditor.tsx",
+      "size": 4839,
+      "status": "tracked"
+    },
+    {
+      "hash": "9f699cba0783566e62056c82378ca6492635a66ab46e7491adcdd1896dbdc2c7",
+      "path": "frontend/src/components/pantry/PantryLotsPanel.test.tsx",
+      "size": 3981,
+      "status": "tracked"
+    },
+    {
+      "hash": "bca42e60e881f5f840bdbd602a125e9be4ec5ee16310837a1f68f6756131ba42",
+      "path": "frontend/src/components/pantry/PantryLotsPanel.tsx",
+      "size": 8474,
+      "status": "tracked"
+    },
+    {
+      "hash": "7874874e855062c96a5a9f6709949dfc165be4edf915b98c944eec8bee294747",
+      "path": "frontend/src/components/pantry/QuickAddIngredientsDialog.test.tsx",
+      "size": 2314,
+      "status": "tracked"
+    },
+    {
+      "hash": "0396e004ac36325a7dc623db995a5b8cab41c06efaba42cc38bd1573d5bc76fb",
+      "path": "frontend/src/components/pantry/QuickAddIngredientsDialog.tsx",
+      "size": 3916,
+      "status": "tracked"
+    },
+    {
+      "hash": "53672950feb9589060e871ad385b5d9bc71cb31f15da62f54d8a1b8453220791",
+      "path": "frontend/src/components/pantry/StaplesPanel.tsx",
+      "size": 1213,
+      "status": "tracked"
+    },
+    {
+      "hash": "59b0d1ac27fc08615547fe9d0c4cb55d2c9fe84748509d5418c9015fdf0da886",
+      "path": "frontend/src/components/recipe/RecipeDetailModal.tsx",
+      "size": 17025,
+      "status": "tracked"
+    },
+    {
+      "hash": "af528b37695907e2f03ebb721829bfe59515b59f87c3b3493add4bb12e6c9ac1",
+      "path": "frontend/src/components/recipe/index.ts",
+      "size": 56,
+      "status": "tracked"
+    },
+    {
+      "hash": "68786fe2fc4c10782fa2816fa1ab57157dfb52a944dfada693e5b6b35ebda8ef",
+      "path": "frontend/src/components/shopping/BringIntegration.test.tsx",
+      "size": 26195,
+      "status": "tracked"
+    },
+    {
+      "hash": "6a34cc7935c2bc5011b8a62986d5dc42ddab03379168c162cef41d0c1d328713",
+      "path": "frontend/src/components/shopping/BringIntegration.tsx",
+      "size": 19796,
+      "status": "tracked"
+    },
+    {
+      "hash": "4b439d0e5532388e87e8a3d2f5b643cc1ef386bcee18f0792500d637dba2eaf8",
+      "path": "frontend/src/components/shopping/ShoppingListPanel.test.tsx",
+      "size": 14210,
+      "status": "tracked"
+    },
+    {
+      "hash": "af5d3e9e802648cedc0b032f071f45d032c38b89b9c9e9867a81e49639e93d32",
+      "path": "frontend/src/components/shopping/ShoppingListPanel.tsx",
+      "size": 21673,
+      "status": "tracked"
+    },
+    {
+      "hash": "8de02a511cf0141787631b615928a60a15c6435e548baef0506f36835bd17d30",
+      "path": "frontend/src/components/suggestions/LocalRecipeCard.tsx",
+      "size": 5054,
+      "status": "tracked"
+    },
+    {
+      "hash": "4f2b071ef17be4c27b643be30d5ec848c96659d312f356b16a0560ce963cccfe",
+      "path": "frontend/src/components/suggestions/RecipeImage.test.tsx",
+      "size": 1268,
+      "status": "tracked"
+    },
+    {
+      "hash": "f63c5ef0ba46714847b8863b7dd762c33fda091bd70cb5929506f028fc9e8bf1",
+      "path": "frontend/src/components/suggestions/RecipeImage.tsx",
+      "size": 1321,
+      "status": "tracked"
+    },
+    {
+      "hash": "f93ae7e72cdd402add76e7d01be0b4c3bb6c5c45e8fa3cfae16d04e2274e0d84",
+      "path": "frontend/src/components/suggestions/SuggestionControls.tsx",
+      "size": 1297,
+      "status": "tracked"
+    },
+    {
+      "hash": "649bf34853247c5c1e2782ef6b6ed8230b9db8ff4ae8f39625bd760f5d1a0a54",
+      "path": "frontend/src/components/ui/EmptyState.test.tsx",
+      "size": 1583,
+      "status": "tracked"
+    },
+    {
+      "hash": "e5f22c4316e3a797f5ca310ed0cc1378c47b1114debde4ab5ddec07063ff5138",
+      "path": "frontend/src/components/ui/EmptyState.tsx",
+      "size": 927,
+      "status": "tracked"
+    },
+    {
+      "hash": "41eeaf96ade2ba488de7dea39fb066afe3c43213c296eb84ec67d1b7d969bff5",
+      "path": "frontend/src/components/ui/ErrorBanner.test.tsx",
+      "size": 560,
+      "status": "tracked"
+    },
+    {
+      "hash": "899005d7d48726ce195482d9018e45b3ca486a30c63cc47541991482e4668596",
+      "path": "frontend/src/components/ui/ErrorBanner.tsx",
+      "size": 315,
+      "status": "tracked"
+    },
+    {
+      "hash": "fd2f0672cc2060ba7223685eda321cf05f8fe5783ae03c862458f75cc4cd057a",
+      "path": "frontend/src/components/ui/PageSection.test.tsx",
+      "size": 1644,
+      "status": "tracked"
+    },
+    {
+      "hash": "bc5f6e8f1bd569b5c86cf6bfffc2a3f0f467049fc32cfc4c87fd3b914e3d0d01",
+      "path": "frontend/src/components/ui/PageSection.tsx",
+      "size": 1498,
+      "status": "tracked"
+    },
+    {
+      "hash": "904a79d82d4ec62da3bfce62b054fdbc6eb7bfe9c275389b0a727838d8f9c37c",
+      "path": "frontend/src/components/ui/RecipeCard.test.tsx",
+      "size": 4404,
+      "status": "tracked"
+    },
+    {
+      "hash": "5c055aff5c95199bfae616ffae0ce2473c963e53e091b444ebdb7e8c4696271f",
+      "path": "frontend/src/components/ui/RecipeCard.tsx",
+      "size": 4046,
+      "status": "tracked"
+    },
+    {
+      "hash": "847d25554d794fcd2bc0b9d8f538d71f74aff1450f800789dc5e2e01e378f45f",
+      "path": "frontend/src/config/features.ts",
+      "size": 1252,
+      "status": "tracked"
+    },
+    {
+      "hash": "25a5f3ab3538d796b5df823f8c5ab79e36ecec2ec51a073a2846ee48e4cc846e",
+      "path": "frontend/src/diary/dinnerDiaryApi.test.ts",
+      "size": 3503,
+      "status": "tracked"
+    },
+    {
+      "hash": "81c9836a208bf411d02d5159038bfecd74c0aa01a9222b1e6f30e2417c58fd13",
+      "path": "frontend/src/diary/dinnerDiaryApi.ts",
+      "size": 2799,
+      "status": "tracked"
+    },
+    {
+      "hash": "301bc45940ff38829ab6aa0dab3d2fd67d8f0474e24f38b3735031c1bb3eac4a",
+      "path": "frontend/src/domain/__tests__/activity.test.ts",
+      "size": 2179,
+      "status": "tracked"
+    },
+    {
+      "hash": "c0d7d6c4cb53b43c830cb549f07a737bcc7cd7ae5fca12d7c0965cfa0e29661c",
+      "path": "frontend/src/domain/__tests__/dailyRecipe.test.ts",
+      "size": 4164,
+      "status": "untracked"
+    },
+    {
+      "hash": "76e29b613822262805720c130f9080dcfeb946886276e44e0f0ac39fce27f4e4",
+      "path": "frontend/src/domain/__tests__/diaryRecipes.test.ts",
+      "size": 2702,
+      "status": "tracked"
+    },
+    {
+      "hash": "409637f686ebe26d94a0e1cc71ac7f6f31942d47bd25945684c8f9c3ed0ea78c",
+      "path": "frontend/src/domain/__tests__/dietary.test.ts",
+      "size": 4237,
+      "status": "tracked"
+    },
+    {
+      "hash": "ca07e2f2b7379808cc93d2caa6d8bf89a78da28ee8730cbf694f222ef2925557",
+      "path": "frontend/src/domain/__tests__/ingredients.test.ts",
+      "size": 2592,
+      "status": "tracked"
+    },
+    {
+      "hash": "2de84315ac9dd8af780a63a0dc9276145ecc0e15a4ec064361d523c1f16d4dd6",
+      "path": "frontend/src/domain/__tests__/pantryConsumption.test.ts",
+      "size": 9241,
+      "status": "tracked"
+    },
+    {
+      "hash": "834c7d7700d61b1b56b94f0340aefaae9e1cce0a376a2415709eb03b051d7c85",
+      "path": "frontend/src/domain/__tests__/pantryLots.test.ts",
+      "size": 3981,
+      "status": "tracked"
+    },
+    {
+      "hash": "1fb530348c073067e81e6e7c63907ea6a2dc74409557ca8f6533de25143bd7ca",
+      "path": "frontend/src/domain/__tests__/quantityWarnings.test.ts",
+      "size": 2133,
+      "status": "tracked"
+    },
+    {
+      "hash": "cf7a32ff6e271da41fc403fff6d1310e7ce78c14ebd84aab242ffddd6845b54b",
+      "path": "frontend/src/domain/__tests__/recipeMetadata.test.ts",
+      "size": 1259,
+      "status": "tracked"
+    },
+    {
+      "hash": "96105c43baf4604ec310ad33caff6a514b058a27356b46d32122e98f9439d282",
+      "path": "frontend/src/domain/__tests__/recipes.test.ts",
+      "size": 1717,
+      "status": "tracked"
+    },
+    {
+      "hash": "0dedcf1beb02e1ef52a73a8ac55a483b31d1c9b23941a3505a5b0301d448f2c3",
+      "path": "frontend/src/domain/__tests__/shoppingList.test.ts",
+      "size": 2219,
+      "status": "tracked"
+    },
+    {
+      "hash": "a86b55be60fe581abb5b22e375477c4c6ba40df9801d28da67bb2cbdabc6f278",
+      "path": "frontend/src/domain/__tests__/suggestions.test.ts",
+      "size": 9767,
+      "status": "tracked"
+    },
+    {
+      "hash": "a53f5c08d245fd730736c6da48da0362f66145bb9feb432eb2fb92a88941cede",
+      "path": "frontend/src/domain/activity.ts",
+      "size": 3628,
+      "status": "tracked"
+    },
+    {
+      "hash": "237448d38165df783d3b7a783def3689727a450d7c45387c5b1eb8dc1bb039b7",
+      "path": "frontend/src/domain/colorTheme.test.ts",
+      "size": 6308,
+      "status": "tracked"
+    },
+    {
+      "hash": "b1d1578385bae4608a92733612d08e5f315eb7d30c145dcf8936063c1dc7708a",
+      "path": "frontend/src/domain/colorTheme.ts",
+      "size": 3470,
+      "status": "tracked"
+    },
+    {
+      "hash": "151d006ae8be97fb8c5b930f8d70f248fc6e2a1bae35baf961300a1795083954",
+      "path": "frontend/src/domain/colorTokenGuard.test.ts",
+      "size": 2648,
+      "status": "tracked"
+    },
+    {
+      "hash": "246cfedf49d96ec9a305285c685bd875570bd2fad10caca8a44c19eae4075c25",
+      "path": "frontend/src/domain/dailyRecipe.ts",
+      "size": 1639,
+      "status": "untracked"
+    },
+    {
+      "hash": "ea9648cf000bac584c58c90c15c8006c861239d1d7d0a865595a8bffc54fc78b",
+      "path": "frontend/src/domain/diaryRecipes.ts",
+      "size": 1776,
+      "status": "tracked"
+    },
+    {
+      "hash": "0789e1c9d8b387341e73687e285dccbaa70b35dc9dd845e34d5597872d84f8d4",
+      "path": "frontend/src/domain/dietary.ts",
+      "size": 6075,
+      "status": "tracked"
+    },
+    {
+      "hash": "d77f88caadce472bb1237d6dafa50c051434a77659c49c3a58bbe60ca8b18dac",
+      "path": "frontend/src/domain/motionPreference.test.ts",
+      "size": 2347,
+      "status": "tracked"
+    },
+    {
+      "hash": "9336d6f8f28746c029f9f325469ca796bd581fa93f7010b80d36a19f6ab7fc06",
+      "path": "frontend/src/domain/motionPreference.ts",
+      "size": 1397,
+      "status": "tracked"
+    },
+    {
+      "hash": "943d1d1cd62b2653afeba6fd18d4ea503179557c33e9f98a6f7e94a29fe8c41f",
+      "path": "frontend/src/domain/pantryLots.ts",
+      "size": 4628,
+      "status": "tracked"
+    },
+    {
+      "hash": "1cc37a13a3617fabdeefcab7af00d3a2cc862d06e06fc26c4364739ce902e27a",
+      "path": "frontend/src/domain/pantryMerge.test.ts",
+      "size": 3896,
+      "status": "tracked"
+    },
+    {
+      "hash": "79d6d01047398d4c28192f0376156e93ae44efa1904fd7c1d95a6814e0af88c5",
+      "path": "frontend/src/domain/recipeImages.ts",
+      "size": 840,
+      "status": "tracked"
+    },
+    {
+      "hash": "519b2e620003a92c42eb5b5ed274743e798827624dde1eff903a5b9e09b0ad90",
+      "path": "frontend/src/domain/recipeMetadata.ts",
+      "size": 2791,
+      "status": "tracked"
+    },
+    {
+      "hash": "a6353f84841f085ebeddb9bbf1cb5b81e6282db4f5b5c8419967bc6c2b3d1114",
+      "path": "frontend/src/domain/recipeSearch.test.ts",
+      "size": 8790,
+      "status": "tracked"
+    },
+    {
+      "hash": "acbd13cd38f1325272c737c7068567970d2ea44b7364ed7289a96c284313b60f",
+      "path": "frontend/src/domain/recipeSearch.ts",
+      "size": 2790,
+      "status": "tracked"
+    },
+    {
+      "hash": "37bab5a397bfc9841d7143e1d6dda73b5f7341de9ff9f5f6a8a07ecfbb4f056b",
+      "path": "frontend/src/domain/recipes.ts",
+      "size": 18209,
+      "status": "tracked"
+    },
+    {
+      "hash": "bd00caee5aad13bc5ab04cbbec8a2cd21746d67b5be20c95ccc98ca8fdf9f0c8",
+      "path": "frontend/src/domain/shoppingList.ts",
+      "size": 3916,
+      "status": "tracked"
+    },
+    {
+      "hash": "bed08d1c53ef054fa0ada710c7cbfdd328e19af79963d1edacf4d47c1735700e",
+      "path": "frontend/src/domain/suggestions.ts",
+      "size": 6033,
+      "status": "tracked"
+    },
+    {
+      "hash": "6050c16eb256b4c9aa69dd3f7ec05a00f8e2cc151d895b55536c5f595154f88e",
+      "path": "frontend/src/domain/types.ts",
+      "size": 1334,
+      "status": "tracked"
+    },
+    {
+      "hash": "ba9b97b8f9fcfaa8640020b03af1f829beedb0b8efc6d2553790348455a13992",
+      "path": "frontend/src/house/houseApi.test.ts",
+      "size": 2821,
+      "status": "tracked"
+    },
+    {
+      "hash": "2c58da57b337206cf8262cb4f2b3995fcc77e80525e20a94a9ce43a1272ccfa3",
+      "path": "frontend/src/house/houseApi.ts",
+      "size": 2116,
+      "status": "tracked"
+    },
+    {
+      "hash": "a04839299c618209db058032044c9aecea7ac80191c11b830643a35b20b83df3",
+      "path": "frontend/src/house/houseStore.test.ts",
+      "size": 1871,
+      "status": "tracked"
+    },
+    {
+      "hash": "6cae5a7338080864628e6c322701db6c03651f01e6642018b00d4c752e151ed2",
+      "path": "frontend/src/house/houseStore.ts",
+      "size": 2756,
+      "status": "tracked"
+    },
+    {
+      "hash": "c6189678ad26ef646dabadc6eb99d8dc8034b1f28004218b776df9cc1bab502c",
+      "path": "frontend/src/index.css",
+      "size": 19675,
+      "status": "tracked"
+    },
+    {
+      "hash": "1adf088998e68b5516ab44896916f87610391cda1982f70092de000701dd9d00",
+      "path": "frontend/src/main.tsx",
+      "size": 392,
+      "status": "tracked"
+    },
+    {
+      "hash": "d2be28c51e399c72767e2c8f6e37ad5c280fc9f9a270faad1d82d190ed6a436a",
+      "path": "frontend/src/mealPlan/api.test.ts",
+      "size": 5196,
+      "status": "untracked"
+    },
+    {
+      "hash": "061cfdabaf1d30aa86571a1b06cd93afa73d5f98b180c192c17e26c28a94e492",
+      "path": "frontend/src/mealPlan/api.ts",
+      "size": 5226,
+      "status": "untracked"
+    },
+    {
+      "hash": "19430643789cffcbe219d88a769f30bf46477126caf1d5574637d544a6a852e5",
+      "path": "frontend/src/mealPlan/bootstrapFencing.tdd.test.ts",
+      "size": 5718,
+      "status": "untracked"
+    },
+    {
+      "hash": "4cf0c9f24dd8d065f39b292245a8d41320fa896cc7316206531c750b5159fefb",
+      "path": "frontend/src/mealPlan/dates.test.ts",
+      "size": 1874,
+      "status": "untracked"
+    },
+    {
+      "hash": "cb81c68d1a281843ba59f76a5a41c8e20834fe30f37886fa7dc4a8af492154f0",
+      "path": "frontend/src/mealPlan/dates.ts",
+      "size": 2995,
+      "status": "untracked"
+    },
+    {
+      "hash": "0d5b321dde07017713aa8e5866137c10505a0fad63fada6f0142a5f1583d36d4",
+      "path": "frontend/src/mealPlan/guardAtomicity.tdd.test.ts",
+      "size": 4062,
+      "status": "untracked"
+    },
+    {
+      "hash": "c6aaf9cc7f2b5be6c643cb3ae18e3b44e3aeac33d641c72cb20e2a6b5a01feed",
+      "path": "frontend/src/mealPlan/importLifecycle.tdd.test.ts",
+      "size": 10317,
+      "status": "untracked"
+    },
+    {
+      "hash": "f5e9a5bc0418e209d2d430029d50dc6f2a2a201b3aa962541c9c69b5486be8e0",
+      "path": "frontend/src/mealPlan/index.ts",
+      "size": 309,
+      "status": "untracked"
+    },
+    {
+      "hash": "74ce44c566af096cd7b45c7854ccbd949388da206dca2cc777b32f0d7166d92b",
+      "path": "frontend/src/mealPlan/recipes.test.ts",
+      "size": 1960,
+      "status": "untracked"
+    },
+    {
+      "hash": "0fbcde00832e7b216220462f1634a097c1b7278f1ca54db4ce98068b0d534276",
+      "path": "frontend/src/mealPlan/recipes.ts",
+      "size": 1619,
+      "status": "untracked"
+    },
+    {
+      "hash": "a5d3001a2e38e48f78ffe62d37ccb45db6ea2f1b254cdb9300091c69ea56d0b4",
+      "path": "frontend/src/mealPlan/reconciliation.ts",
+      "size": 5472,
+      "status": "untracked"
+    },
+    {
+      "hash": "5b90a22cbdaba43a4c63049448bf04352e0921754d80eff27b9b6f6e01b4414a",
+      "path": "frontend/src/mealPlan/service.test.ts",
+      "size": 16477,
+      "status": "untracked"
+    },
+    {
+      "hash": "0cc3f1c8b21e0b4f287d52596c153ae9e9fb4455db73620b8aacaaea09916b2b",
+      "path": "frontend/src/mealPlan/service.ts",
+      "size": 16136,
+      "status": "untracked"
+    },
+    {
+      "hash": "4d4f84c36a971aaf7e07c36acc755a76644880090183cb532816347fc1839b63",
+      "path": "frontend/src/mealPlan/storage.test.ts",
+      "size": 21104,
+      "status": "untracked"
+    },
+    {
+      "hash": "fdee6a218290c032d1fba6093f6dd2ff46f24a11ee4d7e43d66279ef618b7ee3",
+      "path": "frontend/src/mealPlan/storage.ts",
+      "size": 35159,
+      "status": "untracked"
+    },
+    {
+      "hash": "4614833bfac15b6680e4fbcc15728f0e95ec36cfcb98bc8277b386f9c32bda7a",
+      "path": "frontend/src/mealPlan/validation.test.ts",
+      "size": 1757,
+      "status": "untracked"
+    },
+    {
+      "hash": "876f4b0e451874bbe7ea5bc678f9831dd0b12c7c9a6a06ddca9710ed36795c70",
+      "path": "frontend/src/mealPlan/validation.ts",
+      "size": 8602,
+      "status": "untracked"
+    },
+    {
+      "hash": "014aed2f0f855b606f799deada2b7fdca79c3a11db5569020a0316830a228a9b",
+      "path": "frontend/src/pages/ActivityPage.test.tsx",
+      "size": 3511,
+      "status": "tracked"
+    },
+    {
+      "hash": "22441bcef6851c2f2b112e2672329939c139d3a152c7212fb3202155938b8f38",
+      "path": "frontend/src/pages/ActivityPage.tsx",
+      "size": 1457,
+      "status": "tracked"
+    },
+    {
+      "hash": "868e2b5c2c73f8ff9984c9c5c3308916e6c58afd8693fa11a04e37b082458330",
+      "path": "frontend/src/pages/ChatPage.tsx",
+      "size": 119,
+      "status": "tracked"
+    },
+    {
+      "hash": "45920ab6c7ce1f828823ea8086162cdbd2f01b8cd925731ff5325d03bac5110f",
+      "path": "frontend/src/pages/DinnerDiaryPage.test.tsx",
+      "size": 33135,
+      "status": "tracked"
+    },
+    {
+      "hash": "aa915eddcb8adc1208a092fbed8f74f8d0b6c2c0de33ca7dd9e2a6f0849672c4",
+      "path": "frontend/src/pages/DinnerDiaryPage.tsx",
+      "size": 31743,
+      "status": "tracked"
+    },
+    {
+      "hash": "14b4eb9d36700f3c0830ff1ff5b7e23a1c6920b3350a9d022af6f6015cf866be",
+      "path": "frontend/src/pages/DiscoverPage.tsx",
+      "size": 17516,
+      "status": "tracked"
+    },
+    {
+      "hash": "efeba695e1c9854f3c78a655b100998ea9786b2f200119d85595fbdbeccaf3ea",
+      "path": "frontend/src/pages/ForgotPasswordPage.tsx",
+      "size": 3679,
+      "status": "tracked"
+    },
+    {
+      "hash": "cd56ffa7550f261dedeca2aa67d9fc156420797fb821ad4c97a0491781fca86b",
+      "path": "frontend/src/pages/HomePage.tsx",
+      "size": 19045,
+      "status": "tracked"
+    },
+    {
+      "hash": "b7d9274c544ca19150031149f87ba34d4820f825eb73fa5f57463ab2400a1f90",
+      "path": "frontend/src/pages/HousePage.test.tsx",
+      "size": 4301,
+      "status": "tracked"
+    },
+    {
+      "hash": "73011bfbef0c376fe7fd35a7cb3aadeac5927578eb2eed290a6b5a740177506d",
+      "path": "frontend/src/pages/HousePage.tsx",
+      "size": 10698,
+      "status": "tracked"
+    },
+    {
+      "hash": "97865d6e2c6f2d790bb7e583d881c1f416e78a6b2be8d618af16d118f990b10d",
+      "path": "frontend/src/pages/NotFoundPage.test.tsx",
+      "size": 1100,
+      "status": "tracked"
+    },
+    {
+      "hash": "5f3e386f950a786d653fb3ec8bc7137d7d9f1f980cd38c87a5b7fbc8cb00188c",
+      "path": "frontend/src/pages/NotFoundPage.tsx",
+      "size": 1288,
+      "status": "tracked"
+    },
+    {
+      "hash": "f59d9cebf7cb4aafb3be953e3264fc8088043dd9587aaf6afa97ce4dd3adc0db",
+      "path": "frontend/src/pages/PantryPage.test.tsx",
+      "size": 28722,
+      "status": "tracked"
+    },
+    {
+      "hash": "7345e2105955cb08f2523d32e936ab3af4d1db9722bb92a2f14e9b81ebcd2282",
+      "path": "frontend/src/pages/PantryPage.tsx",
+      "size": 26519,
+      "status": "tracked"
+    },
+    {
+      "hash": "ac3b8d7c2dcb753cb9247d6e060fe187072c4ec7ae638078ba0952f84d105981",
+      "path": "frontend/src/pages/PlanDates.tdd.test.tsx",
+      "size": 3835,
+      "status": "untracked"
+    },
+    {
+      "hash": "38d063872f92747f392163fc58819684077cf16fb943202d2b8500fb7a8df23a",
+      "path": "frontend/src/pages/PlanPage.recipes.tdd.test.tsx",
+      "size": 2877,
+      "status": "untracked"
+    },
+    {
+      "hash": "18ddba0d3242caf8f64782b58341135054c740c4f54de9a5a983f97832e7446d",
+      "path": "frontend/src/pages/PlanPage.shared.test.tsx",
+      "size": 30363,
+      "status": "untracked"
+    },
+    {
+      "hash": "e34a320f0445118e55c2537307e9c6e4795c6bfecbdfa42eef39a3b962c9c066",
+      "path": "frontend/src/pages/PlanPage.test.tsx",
+      "size": 1378,
+      "status": "untracked"
+    },
+    {
+      "hash": "7f6531f663993be5d73b3b017d7945b202c8ab7a8a8340bc05fdaa30b806332b",
+      "path": "frontend/src/pages/PlanPage.tsx",
+      "size": 36498,
+      "status": "untracked"
+    },
+    {
+      "hash": "d48e5c686c71bbf84ee553db051c9a821956fe063c5c6eea6533ba1834764d88",
+      "path": "frontend/src/pages/ProfilePage.test.tsx",
+      "size": 19392,
+      "status": "tracked"
+    },
+    {
+      "hash": "334f306e5cccfacb01dbf1cd5da0d32ab3048f5aa18d8b4845bb0a803c4c0e9e",
+      "path": "frontend/src/pages/ProfilePage.tsx",
+      "size": 23391,
+      "status": "tracked"
+    },
+    {
+      "hash": "37e5f0adb32b6b2dbb6a266908ae3cfa7b304f83bc6f8c05aa29cd70ef3d0630",
+      "path": "frontend/src/pages/RecipeDetailPage.test.tsx",
+      "size": 15722,
+      "status": "tracked"
+    },
+    {
+      "hash": "e02f913a609365d0b56ea00dc18ace98835750e97ffa9204293c39cb029ada73",
+      "path": "frontend/src/pages/RecipeDetailPage.tsx",
+      "size": 24265,
+      "status": "tracked"
+    },
+    {
+      "hash": "42776469932df77b18b7f2fd6a7adcfee92e531b1fed03ce4ef8bc82b194d8e6",
+      "path": "frontend/src/pages/RecipesPage.test.tsx",
+      "size": 19474,
+      "status": "tracked"
+    },
+    {
+      "hash": "c7d7be8632aeaeff223e41a7257f1a64874e4d3b89776c5e6de98b7fab7bc3b5",
+      "path": "frontend/src/pages/RecipesPage.tsx",
+      "size": 15255,
+      "status": "tracked"
+    },
+    {
+      "hash": "85bc7f2c90208f54836b9c19e3031f0d7f37269106625119196fc9bed2d3ae91",
+      "path": "frontend/src/pages/ResetPasswordPage.test.tsx",
+      "size": 2914,
+      "status": "tracked"
+    },
+    {
+      "hash": "9b2495cc7b1fe7fa1eef09560312ee0090209f092eeb1a4bfddf2f3e8cada9b9",
+      "path": "frontend/src/pages/ResetPasswordPage.tsx",
+      "size": 4391,
+      "status": "tracked"
+    },
+    {
+      "hash": "4d123fa8a39236ff73a5ecb30d122ecc41b6832eaac5e1e10e9057340318702c",
+      "path": "frontend/src/pages/SavedPage.tsx",
+      "size": 15918,
+      "status": "tracked"
+    },
+    {
+      "hash": "d544d92194b4fc19a1255380fb4bf2d26e1899e485db8c9deccbbf858844a07c",
+      "path": "frontend/src/pages/ShoppingListPage.test.tsx",
+      "size": 10988,
+      "status": "tracked"
+    },
+    {
+      "hash": "5f6a6d999ba64cbab9e3629804cb44a649d3e0d5a1c19facb56e3dfd20326415",
+      "path": "frontend/src/pages/ShoppingListPage.tsx",
+      "size": 5807,
+      "status": "tracked"
+    },
+    {
+      "hash": "b4453784ace880c2a5149cb786f6e9796721a40d75af70987b943a4031dd4c46",
+      "path": "frontend/src/pages/VerifyEmailPage.test.tsx",
+      "size": 2410,
+      "status": "tracked"
+    },
+    {
+      "hash": "7dd100b7eab6159f06e6ec8f15e890bdfa14f6b942d63896a3783294f1612196",
+      "path": "frontend/src/pages/VerifyEmailPage.tsx",
+      "size": 2909,
+      "status": "tracked"
+    },
+    {
+      "hash": "b7ee455bcac8500ed68b26850c9705f1c10b3cdece8ad159947af2c008666ea4",
+      "path": "frontend/src/pantry/pantryCandidatesApi.test.ts",
+      "size": 3334,
+      "status": "tracked"
+    },
+    {
+      "hash": "ccd29c12d482fb346dd3c13d15c05fb19adfdf012fe4bb118f9b353e482c2d88",
+      "path": "frontend/src/pantry/pantryCandidatesApi.ts",
+      "size": 1264,
+      "status": "tracked"
+    },
+    {
+      "hash": "d28a79b061b17fd0248c285230bdad196ee672c7927476051ba943ac7ed22ba1",
+      "path": "frontend/src/pwa-register.d.ts",
+      "size": 317,
+      "status": "tracked"
+    },
+    {
+      "hash": "e63a6b4fbcfde3fdb3ace00c8114ff97fe4f1f3b7a333f673484e3bdba5a2274",
+      "path": "frontend/src/storage/activityStorage.test.ts",
+      "size": 1763,
+      "status": "tracked"
+    },
+    {
+      "hash": "4b914a2734ac150af8785a706b6899659375d9bacf0b69e4c3fd84b1b91a0e5c",
+      "path": "frontend/src/storage/activityStorage.ts",
+      "size": 5183,
+      "status": "tracked"
+    },
+    {
+      "hash": "82511c1ea75b84bc7a7ff7318cfb1c345f9c4cb1c52c1b8dff2084d35bc98f98",
+      "path": "frontend/src/storage/customIngredientsStorage.ts",
+      "size": 1253,
+      "status": "tracked"
+    },
+    {
+      "hash": "878ce06302117ac28f078b3601e8916590e06442053830bbb951e9ac9fc35cc8",
+      "path": "frontend/src/storage/dailyRecipeStorage.test.ts",
+      "size": 3205,
+      "status": "untracked"
+    },
+    {
+      "hash": "6eb19ec80e26cfd4a172d5b58f2e05dc3c4599c41220d328d7d61cf4e88741e8",
+      "path": "frontend/src/storage/dailyRecipeStorage.ts",
+      "size": 1886,
+      "status": "untracked"
+    },
+    {
+      "hash": "88c31c878395177ee156204ba74fda05b9b88e66c47c9f834752e5cca9ca92e6",
+      "path": "frontend/src/storage/dietProfileStorage.test.ts",
+      "size": 1419,
+      "status": "tracked"
+    },
+    {
+      "hash": "86be27d1d49db945fad06ce630052a9de9fac584d8f05d89f8d3b6de96a4e879",
+      "path": "frontend/src/storage/dietProfileStorage.ts",
+      "size": 3381,
+      "status": "tracked"
+    },
+    {
+      "hash": "701b01adef34fb5d80cde0fd5fe93f75e3c2dcb9b91aa3376c80be5fc59c22f6",
+      "path": "frontend/src/storage/dinnerConsumptionStorage.test.ts",
+      "size": 31359,
+      "status": "tracked"
+    },
+    {
+      "hash": "ed31ada24a66b9b94c65b38e59598946b689b3f82df15f91467ddce7a74cb720",
+      "path": "frontend/src/storage/dinnerConsumptionStorage.ts",
+      "size": 34662,
+      "status": "tracked"
+    },
+    {
+      "hash": "232f3d1d5845b7af646c356877c9e241ea75e06fba49ba5da9d5cfd88273a3c6",
+      "path": "frontend/src/storage/dinnerDiaryStorage.test.ts",
+      "size": 3577,
+      "status": "tracked"
+    },
+    {
+      "hash": "86f53e0f2ca7db463b4f4135eea823256597aebc5c53c1511912e35d8c86eaa5",
+      "path": "frontend/src/storage/dinnerDiaryStorage.ts",
+      "size": 6226,
+      "status": "tracked"
+    },
+    {
+      "hash": "80e30822b34f57743ff1183a58269e489368a866117f294547679945f9dfd603",
+      "path": "frontend/src/storage/indexedDb.test.ts",
+      "size": 5220,
+      "status": "tracked"
+    },
+    {
+      "hash": "a23602ef64504cb200d25836be94f03dc164d4b4066edf26a91cb7abafe697a7",
+      "path": "frontend/src/storage/indexedDb.ts",
+      "size": 25523,
+      "status": "tracked"
+    },
+    {
+      "hash": "a3a8d38aded59b5614ab7f2721b71c989700a196ff24b8cea0f2a64162f9cd37",
+      "path": "frontend/src/storage/pantryStorage.test.ts",
+      "size": 204100,
+      "status": "tracked"
+    },
+    {
+      "hash": "5ce6815d7d8d54e5e7d69dd25c1016c56bc65c7dfea1d0b955080cb49ae4c529",
+      "path": "frontend/src/storage/pantryStorage.ts",
+      "size": 83193,
+      "status": "tracked"
+    },
+    {
+      "hash": "da53c5289c9ce82b6916270dc920a954a235251b90ac108c28ee1cf649220504",
+      "path": "frontend/src/storage/scopedStorageWriteFence.test.ts",
+      "size": 11057,
+      "status": "tracked"
+    },
+    {
+      "hash": "1a214a931cb65250495c5ec8494d2965d819d74ce1b7170bc2a31d8431a79e75",
+      "path": "frontend/src/storage/shoppingListStorage.test.ts",
+      "size": 1256,
+      "status": "tracked"
+    },
+    {
+      "hash": "42ede762a6426f0609ea2aeee14b1c0306072fd4af7ed20a64d145d6737e5041",
+      "path": "frontend/src/storage/shoppingListStorage.ts",
+      "size": 3030,
+      "status": "tracked"
+    },
+    {
+      "hash": "1a3b68d4aa65c683fe39c780de97835a8d4d595611189d7f3144ff187a1227f0",
+      "path": "frontend/src/store/__tests__/activityStore.test.ts",
+      "size": 15484,
+      "status": "tracked"
+    },
+    {
+      "hash": "c75f1fad07d81fe6529374be3bf2afc6ff1fa76a28abeb90e8b2436010a88c23",
+      "path": "frontend/src/store/__tests__/dietProfileStore.test.ts",
+      "size": 7417,
+      "status": "tracked"
+    },
+    {
+      "hash": "e2db41ef268a65dd2f14a2d218448cddbdf50ec498e4d38b3cbb490c491b5dbe",
+      "path": "frontend/src/store/__tests__/pantryStore.test.ts",
+      "size": 16771,
+      "status": "tracked"
+    },
+    {
+      "hash": "6572493073c5080490b107aa9cce8d267f2990203abe7a595a85571e817454b0",
+      "path": "frontend/src/store/__tests__/persistenceStatusStore.test.ts",
+      "size": 1815,
+      "status": "tracked"
+    },
+    {
+      "hash": "98ea85cf2d8dd8964c91f3417bc83db8bdbdba0e8222e2819470fbd78e81337a",
+      "path": "frontend/src/store/__tests__/shoppingListStore.test.ts",
+      "size": 10197,
+      "status": "tracked"
+    },
+    {
+      "hash": "98e26c523ac302b57f8ae74152a23d917a5d8cba8a6e33e3cd41715281b57116",
+      "path": "frontend/src/store/activityStore.ts",
+      "size": 11517,
+      "status": "tracked"
+    },
+    {
+      "hash": "be5190d912ec700ab8608c0f9192a191c05163dd05dd85b3fd38d8d3f1d631ef",
+      "path": "frontend/src/store/dietProfileStore.ts",
+      "size": 4326,
+      "status": "tracked"
+    },
+    {
+      "hash": "91b34dcae46672e77419ca888c6e5b4c6b182bf68b32155d13351ecc34eab9a6",
+      "path": "frontend/src/store/dinnerConsumption.test.ts",
+      "size": 5398,
+      "status": "tracked"
+    },
+    {
+      "hash": "650f22ef29e50d027a808c18d8e535334ca412a8f21f8cc788030d05f06fb0b2",
+      "path": "frontend/src/store/dinnerConsumption.ts",
+      "size": 2144,
+      "status": "tracked"
+    },
+    {
+      "hash": "35fd0e0729c9f092e2a2a11c8b830ab8c79f0219f1d791a133795ba28108c259",
+      "path": "frontend/src/store/dinnerDiaryStore.test.ts",
+      "size": 34363,
+      "status": "tracked"
+    },
+    {
+      "hash": "82c64ed0226983b4ad047a481cadb8e92eef5a1a97e8572f2d02fa2c91049c62",
+      "path": "frontend/src/store/dinnerDiaryStore.ts",
+      "size": 16826,
+      "status": "tracked"
+    },
+    {
+      "hash": "e9036956e127551205cb3ce8b4750f35ab98113310a287419f75a5216ed66681",
+      "path": "frontend/src/store/localPantryStore.ts",
+      "size": 19133,
+      "status": "tracked"
+    },
+    {
+      "hash": "c22ef10e7039451feb7ce9ac1de30730db2cefb74ac7073e3dae89176f213825",
+      "path": "frontend/src/store/pantryCandidatesBadgeStore.test.ts",
+      "size": 2322,
+      "status": "tracked"
+    },
+    {
+      "hash": "dffc220c25dc9bdd1b3b27d1c3117e2375bc74f51c45d8d7fe359a4f9d9be20f",
+      "path": "frontend/src/store/pantryCandidatesBadgeStore.ts",
+      "size": 1000,
+      "status": "tracked"
+    },
+    {
+      "hash": "db7f7f787529c19169781e154c889fbf05f3ff485d4ddd83eb4c0d020b6acb8c",
+      "path": "frontend/src/store/pantryMergeNoticeStore.test.ts",
+      "size": 1148,
+      "status": "tracked"
+    },
+    {
+      "hash": "fe1f6fd9ee906ff5f09d1527da0bf518f5a481dbfa508235d0fbb679a8c7df01",
+      "path": "frontend/src/store/pantryMergeNoticeStore.ts",
+      "size": 609,
+      "status": "tracked"
+    },
+    {
+      "hash": "3f0dd59a871bdb875ee7d498fbe98408613ddfd97694ea1d964a29ae73e0781c",
+      "path": "frontend/src/store/persistenceStatusStore.ts",
+      "size": 4358,
+      "status": "tracked"
+    },
+    {
+      "hash": "9bbdac7ff04d7f7d4b7fb530b268417c91b48fa160b1e100d1df0815e2d84544",
+      "path": "frontend/src/store/shoppingListStore.ts",
+      "size": 8342,
+      "status": "tracked"
+    },
+    {
+      "hash": "dd45833539e30571f85cfeb28835ebda8efc359da36b9c007403877cbc599439",
+      "path": "frontend/src/sync/accountMealPlanMigration.test.ts",
+      "size": 18169,
+      "status": "untracked"
+    },
+    {
+      "hash": "a1a62363ce7bdfdb7da8f64662c8587a2444b4eddb7261375aa57b43f9f66e91",
+      "path": "frontend/src/sync/scopeContext.test.ts",
+      "size": 1958,
+      "status": "tracked"
+    },
+    {
+      "hash": "c3c5132b25c6c3fac98f1ca419e80d7e673c1b11f61272a19a370dd979841b59",
+      "path": "frontend/src/sync/scopeContext.ts",
+      "size": 2913,
+      "status": "tracked"
+    },
+    {
+      "hash": "3b6e23225f15f474a29a7d70f5a3e222fffb57a0e69483a37e474d190aff8421",
+      "path": "frontend/src/sync/scopeWriteFence.ts",
+      "size": 4785,
+      "status": "tracked"
+    },
+    {
+      "hash": "077562e27d84591e740fa1844c2fa2b2ca6b3dab7e5f94e244a2eee3b66cce0c",
+      "path": "frontend/src/sync/syncQueue.test.ts",
+      "size": 114426,
+      "status": "tracked"
+    },
+    {
+      "hash": "4ccced384eacb3b3fb1f472e8f2fd53a14c44f91fbd565e6dc7a14cc72f60724",
+      "path": "frontend/src/sync/syncQueue.ts",
+      "size": 55513,
+      "status": "tracked"
+    },
+    {
+      "hash": "1bc27cf1a4ebf03cc59829f58d92eb524094fe0eb80ad041eefdda9cafbf647b",
+      "path": "frontend/src/sync/validation.mealPlanDisabled.test.ts",
+      "size": 624,
+      "status": "untracked"
+    },
+    {
+      "hash": "689b120ea0f2e352a7653daaea09a0f6b9b6c56ccedbc8a1a2570b8829a03345",
+      "path": "frontend/src/sync/validation.ts",
+      "size": 10645,
+      "status": "tracked"
+    },
+    {
+      "hash": "28c3b898b0ee6ae0d53af93aa6754b1e1bf31e7cc85542a97efb03bed40f8e54",
+      "path": "frontend/src/test/HomePage.test.tsx",
+      "size": 18452,
+      "status": "tracked"
+    },
+    {
+      "hash": "ce390ac8f78ca049a8373fe514ecdee7f90e16a57b2374dadb8d3e43cb45447e",
+      "path": "frontend/src/test/setup.ts",
+      "size": 1637,
+      "status": "tracked"
+    },
+    {
+      "hash": "63b4cfdabd0e75966368c8f9d9cad2a161a093d2c77f71bb601400fa1c46c2e9",
+      "path": "frontend/src/version.ts",
+      "size": 136,
+      "status": "tracked"
+    },
+    {
+      "hash": "007341e73b28b5f655f0136cdb3688c1188869479adb63afc87e1a0792eb5de3",
+      "path": "frontend/src/versioning.test.ts",
+      "size": 514,
+      "status": "tracked"
+    },
+    {
+      "hash": "5902132cee8ba6f9a50a68bcd10c81ec7e19e6ba4eeff586906a2e838b7145f8",
+      "path": "frontend/src/versioning.ts",
+      "size": 277,
+      "status": "tracked"
+    },
+    {
+      "hash": "061ae5351c8bb7aa3c368572cbf936073e54dec6f97bafbcfb1b56c0e9c13f6d",
+      "path": "frontend/tailwind.config.js",
+      "size": 3761,
+      "status": "tracked"
+    },
+    {
+      "hash": "fab56da1cfc1debbbb46f521964809bfcee5576481702dbad9b4539a73c71264",
+      "path": "frontend/tsconfig.json",
+      "size": 717,
+      "status": "tracked"
+    },
+    {
+      "hash": "c40d0614fda5b8a746a1ba2e3be8e2370140c0167851ac77881cd53bb5647cdd",
+      "path": "frontend/tsconfig.node.json",
+      "size": 184,
+      "status": "tracked"
+    },
+    {
+      "hash": "995cf81b94bea0a6161c88b63cb57ef6274a9e0b35d75004860c1d31908e3be3",
+      "path": "frontend/vite.config.ts",
+      "size": 4436,
+      "status": "tracked"
+    },
+    {
+      "hash": "cd4f75367e6d7f8ebbe4e48d23259a65c67cfc98d2c110b1cd4c69016410518f",
+      "path": "iRicetto_plan.md",
+      "size": 40843,
+      "status": "tracked"
+    },
+    {
+      "hash": "733af595198135cd1e04523b348f338e08ae63b2a90b3550fcfafe58829b30ed",
+      "path": "package.json",
+      "size": 159,
+      "status": "tracked"
+    },
+    {
+      "hash": "5d33ef3f528175d6ec12093cd27f1a37ff88c49576830652c1854bacecc9c961",
+      "path": "scripts/smoke-test.sh",
+      "size": 1183,
+      "status": "tracked"
+    },
+    {
+      "hash": "5df701c3b9d42ebbcd252df35885325356c6b85af471c05baf4291bb1973fcaf",
+      "path": "scripts/validate-production-config.ps1",
+      "size": 6067,
+      "status": "tracked"
+    },
+    {
+      "hash": "60c62e8d6a4f9e3fbbc28bbd939452f37c323a539a6461bbad5d4c05c5f834a1",
+      "path": "scripts/validate-production-config.test.ps1",
+      "size": 3105,
+      "status": "tracked"
+    },
+    {
+      "hash": "42237991cef1d9f2dac94393576f26b1f79f35c42ed2ab69838a7d5cd9b3ccb0",
+      "path": "scripts/verify-backup-restore.ps1",
+      "size": 7670,
+      "status": "tracked"
+    },
+    {
+      "hash": "5df4e4899acf635501f759e064cb484baf54c38cbb76bf65a10bb2fc60e257d1",
+      "path": "scripts/verify-repository.ps1",
+      "size": 2866,
+      "status": "tracked"
+    },
+    {
+      "hash": "320a4fb0d5a180ea49560254e6c0bdc24c3e446cde50272c951efc99d07ea023",
+      "path": "scripts/verify-repository.test.ps1",
+      "size": 3148,
+      "status": "tracked"
+    },
+    {
+      "hash": "3f9d9917161e0dec81c6c3b0896443a66385e509d63b1661966971d5cfc7961e",
+      "path": "shared/package.json",
+      "size": 984,
+      "status": "tracked"
+    },
+    {
+      "hash": "71e2cd51166cc178a4747796c9b989e73f7172bbd80083a2e11dfb40a642fa12",
+      "path": "shared/src/bring.ts",
+      "size": 1188,
+      "status": "tracked"
+    },
+    {
+      "hash": "5eba70f48147d6aa0549012dae9d576ccab25f6d16b513dabe64c6975cc5f949",
+      "path": "shared/src/contracts.ts",
+      "size": 5828,
+      "status": "tracked"
+    },
+    {
+      "hash": "b9657cd5fae9d83937dfeb385cc8a59602465c46ed504ce6276163b380ee0aea",
+      "path": "shared/src/dinnerDiary.ts",
+      "size": 6535,
+      "status": "tracked"
+    },
+    {
+      "hash": "0826e4bef96ed26c5340ff3101b24072d9625bfbd4959a25e97766a06bc693a6",
+      "path": "shared/src/ingredients.ts",
+      "size": 13351,
+      "status": "tracked"
+    },
+    {
+      "hash": "22113ea4e73bd78560305a550fa7a9c84cb86b3321aaee06203446bcbe8fec8d",
+      "path": "shared/src/limits.ts",
+      "size": 1368,
+      "status": "tracked"
+    },
+    {
+      "hash": "4a74a3a842381fae5e497deacd0cca6b700686a4afc232e3d65bc4fae2609b84",
+      "path": "shared/src/pantryConsumption.ts",
+      "size": 12125,
+      "status": "tracked"
+    },
+    {
+      "hash": "a970ef88b28bf1f04ba5509aa2944210e2d570fd271309d512c41631462abcf0",
+      "path": "shared/src/pantryMerge.ts",
+      "size": 6536,
+      "status": "tracked"
+    },
+    {
+      "hash": "940bdd2b3488e376c56c0d9a6f4df81cef6b67db20127047649adc08d02a792e",
+      "path": "shared/sync-fixtures/invalid.json",
+      "size": 5099,
+      "status": "tracked"
+    },
+    {
+      "hash": "6d9cc9dd44b39f228ebd5e8f10250bcb61e0a572e649c4cfa2a8fb0c94b2f964",
+      "path": "shared/sync-fixtures/valid.json",
+      "size": 5422,
+      "status": "tracked"
+    },
+    {
+      "hash": null,
+      "path": "test-results/.last-run.json",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": null,
+      "path": "test-results/frontend-e2e-recipe-librar-078db--ingredienti-e-procedimento/error-context.md",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": null,
+      "path": "test-results/frontend-e2e-recipe-librar-0df41-ppo-salvate-con-CTA-accesso/error-context.md",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": null,
+      "path": "test-results/frontend-e2e-recipe-librar-18529-eto-nessun-overflow-a-320px/error-context.md",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": null,
+      "path": "test-results/frontend-e2e-recipe-librar-27d30-ata-in-titolo-o-ingredienti/error-context.md",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": null,
+      "path": "test-results/frontend-e2e-recipe-librar-83641-u-recipes-in-modalit\u00e0-light/error-context.md",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": null,
+      "path": "test-results/frontend-e2e-recipe-librar-8b9b9-ate-in-errore-non-bloccante/error-context.md",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": null,
+      "path": "test-results/frontend-e2e-recipe-librar-a8c5a--card-apre-recipes-recipeId/error-context.md",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": null,
+      "path": "test-results/frontend-e2e-recipe-librar-c7c87-oto-con-CTA-\u00abTrova-ricette\u00bb/error-context.md",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": null,
+      "path": "test-results/frontend-e2e-recipe-librar-e0419-su-recipes-in-modalit\u00e0-dark/error-context.md",
+      "size": null,
+      "status": "excluded_sensitive"
+    },
+    {
+      "hash": "a0716e48623a7c75a037f42443984817b2f4ba491e23ca5e7be0fa35a515ea92",
+      "path": "worktree_audit.py",
+      "size": 7854,
+      "status": "untracked"
+    }
+  ],
+  "git": {
+    "branch": "feat/souschef-integrazione",
+    "head": "7119df23a6a6d7b9a979b759f5cc03bc9cace037",
+    "head_short": "7119df23a6a6"
+  },
+  "manifest_digest": "b9373c550c073b1a76b0808761a30d4cb34ae9973c9eac1621e242ed13579519",
+  "sensitive_excluded_count": 18,
+  "sensitive_excluded_paths": [
+    "backend/.env.example",
+    "backend/src/auth/tokens.test.ts",
+    "backend/src/auth/tokens.ts",
+    "deploy/.env.example",
+    "deploy/.env.standalone.example",
+    "design-tokens.json",
+    "frontend/.env.example",
+    "frontend/e2e/password-reset.spec.ts",
+    "test-results/.last-run.json",
+    "test-results/frontend-e2e-recipe-librar-078db--ingredienti-e-procedimento/error-context.md",
+    "test-results/frontend-e2e-recipe-librar-0df41-ppo-salvate-con-CTA-accesso/error-context.md",
+    "test-results/frontend-e2e-recipe-librar-18529-eto-nessun-overflow-a-320px/error-context.md",
+    "test-results/frontend-e2e-recipe-librar-27d30-ata-in-titolo-o-ingredienti/error-context.md",
+    "test-results/frontend-e2e-recipe-librar-83641-u-recipes-in-modalit\u00e0-light/error-context.md",
+    "test-results/frontend-e2e-recipe-librar-8b9b9-ate-in-errore-non-bloccante/error-context.md",
+    "test-results/frontend-e2e-recipe-librar-a8c5a--card-apre-recipes-recipeId/error-context.md",
+    "test-results/frontend-e2e-recipe-librar-c7c87-oto-con-CTA-\u00abTrova-ricette\u00bb/error-context.md",
+    "test-results/frontend-e2e-recipe-librar-e0419-su-recipes-in-modalit\u00e0-dark/error-context.md"
+  ]
+}

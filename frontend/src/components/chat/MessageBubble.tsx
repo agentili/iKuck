@@ -17,10 +17,10 @@ const Tag = ({ children, variant = 'default' }: { children: React.ReactNode; var
   <span
     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
       variant === 'ready'
-        ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+        ? 'bg-[var(--ik-sage)] text-[var(--ik-basil-dark)]'
         : variant === 'missing'
-        ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'
-        : 'bg-[var(--sc-peach-soft)] text-[var(--sc-terracotta)] dark:bg-[var(--sc-peach-soft)] dark:text-[var(--sc-terracotta)]'
+        ? 'bg-[var(--ik-yolk-soft)] text-[var(--ik-warn-ink)]'
+        : 'bg-[var(--ik-sage)] text-[var(--ik-basil-dark)]'
     }`}
   >
     {children}
@@ -30,25 +30,22 @@ const Tag = ({ children, variant = 'default' }: { children: React.ReactNode; var
 const AssistantBubble = memo(({ message }: { message: TextMessage }) => (
   <div
     className="chat-bubble-assistant max-w-[85%] animate-slide-up"
-    role="status"
-    aria-live="polite"
-    aria-atomic="true"
     style={{
-      backgroundColor: 'var(--sc-cream)',
-      color: 'var(--sc-ink)',
-      borderRadius: 'var(--sc-radius-bubble)',
+      backgroundColor: 'var(--ik-porcelain)',
+      color: 'var(--ik-ink)',
+      borderRadius: 'var(--ik-radius-panel)',
       borderBottomLeftRadius: '6px',
       padding: '14px 18px',
-      border: '1px solid var(--sc-peach-soft)',
-      boxShadow: 'var(--sc-shadow-soft)',
+      border: '1px solid var(--ik-sage)',
+      boxShadow: 'var(--ik-shadow-card)',
     }}
   >
-    <p className="whitespace-pre-wrap text-[var(--sc-ink)] leading-relaxed" style={{ fontFamily: 'DM Sans, system-ui, sans-serif', fontSize: '0.9375rem', lineHeight: 1.5 }}>
+    <p className="whitespace-pre-wrap text-[var(--ik-ink)] leading-relaxed" style={{ fontFamily: 'Bricolage Grotesque Variable, system-ui, sans-serif', fontSize: '0.9375rem', lineHeight: 1.5 }}>
       {message.content}
     </p>
-    <p className="mt-2 text-[var(--sc-ink-faint)] text-xs text-right" style={{ fontFamily: 'DM Sans, system-ui, sans-serif' }}>
+    <time dateTime={message.timestamp.toISOString()} className="mt-2 block text-[var(--ik-ink-muted)] text-xs text-right" style={{ fontFamily: 'Bricolage Grotesque Variable, system-ui, sans-serif' }}>
       {formatTime(message.timestamp)}
-    </p>
+    </time>
   </div>
 ));
 
@@ -56,19 +53,20 @@ const UserBubble = memo(({ message }: { message: TextMessage }) => (
   <div
     className="chat-bubble-user max-w-[85%] ml-auto animate-slide-up"
     style={{
-      backgroundColor: 'var(--sc-terracotta)',
-      color: 'var(--sc-cream)',
-      borderRadius: 'var(--sc-radius-bubble)',
+      backgroundColor: 'var(--ik-basil-dark)',
+      color: 'var(--ik-porcelain)',
+      borderRadius: 'var(--ik-radius-panel)',
       borderBottomRightRadius: '6px',
       padding: '14px 18px',
+      opacity: message.isOptimistic ? 0.7 : 1,
     }}
   >
-    <p className="whitespace-pre-wrap text-[var(--sc-cream)] leading-relaxed" style={{ fontFamily: 'DM Sans, system-ui, sans-serif', fontSize: '0.9375rem', lineHeight: 1.5 }}>
+    <p className="whitespace-pre-wrap text-[var(--ik-porcelain)] leading-relaxed" style={{ fontFamily: 'Bricolage Grotesque Variable, system-ui, sans-serif', fontSize: '0.9375rem', lineHeight: 1.5 }}>
       {message.content}
     </p>
-    <p className="mt-2 text-[var(--sc-cream)]/70 text-xs text-right" style={{ fontFamily: 'DM Sans, system-ui, sans-serif' }}>
+    <time dateTime={message.timestamp.toISOString()} className="mt-2 block text-[var(--ik-porcelain)]/70 text-xs text-right" style={{ fontFamily: 'Bricolage Grotesque Variable, system-ui, sans-serif' }}>
       {formatTime(message.timestamp)}
-    </p>
+    </time>
   </div>
 ));
 
@@ -80,17 +78,20 @@ const RecipeBubble = memo(({ message, onStartCooking, onSaveRecipe, onViewRecipe
       role="article"
       aria-label={`Ricetta: ${recipe.title}`}
       style={{
-        backgroundColor: 'var(--sc-cream)',
-        borderRadius: 'var(--sc-radius-feature)',
-        border: '1px solid var(--sc-peach-soft)',
-        boxShadow: 'var(--sc-shadow-card)',
+        backgroundColor: 'var(--ik-porcelain)',
+        borderRadius: 'var(--ik-radius-feature)',
+        border: '1px solid var(--ik-sage)',
+        boxShadow: 'var(--ik-shadow-card)',
         overflow: 'hidden',
       }}
       onClick={() => onViewRecipe?.(recipe)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onViewRecipe?.(recipe); }}}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onViewRecipe?.(recipe); }
+      }}
       tabIndex={0}
     >
-      <div className="relative aspect-[16/9] overflow-hidden" style={{ backgroundColor: 'var(--sc-peach-soft)' }}>
+      <div className="relative aspect-[16/9] overflow-hidden" style={{ backgroundColor: 'var(--ik-sage)' }}>
         <img
           src={recipe.image}
           alt={recipe.title}
@@ -113,30 +114,30 @@ const RecipeBubble = memo(({ message, onStartCooking, onSaveRecipe, onViewRecipe
           </span>
         </div>
       </div>
-      <div className="p-5" style={{ fontFamily: 'DM Sans, system-ui, sans-serif' }}>
+      <div className="p-5" style={{ fontFamily: 'Bricolage Grotesque Variable, system-ui, sans-serif' }}>
         <div className="flex flex-wrap gap-1.5 mb-3">
           {recipe.tags.map((tag) => (
             <Tag key={tag} variant="default">{tag}</Tag>
           ))}
         </div>
-        <h3 className="text-xl font-bold text-[var(--sc-ink)] mb-2" style={{ fontFamily: 'Outfit, system-ui, sans-serif' }}>
+        <h3 className="text-xl font-bold text-[var(--ik-ink)] mb-2" style={{ fontFamily: 'Bricolage Grotesque Variable, system-ui, sans-serif' }}>
           {recipe.emoji} {recipe.title}
         </h3>
-        <p className="text-[var(--sc-ink-soft)] text-sm mb-4 leading-relaxed">{recipe.description}</p>
+        <p className="text-[var(--ik-ink-muted)] text-sm mb-4 leading-relaxed">{recipe.description}</p>
         <div className="flex gap-3">
           <button
             onClick={(e) => { e.stopPropagation(); onStartCooking?.(recipe); }}
             className="btn-primary flex-1 flex items-center justify-center gap-2"
             style={{
-              backgroundColor: 'var(--sc-terracotta)',
-              color: 'var(--sc-cream)',
+              backgroundColor: 'var(--ik-basil-dark)',
+              color: 'var(--ik-porcelain)',
               borderRadius: '16px',
               padding: '14px 24px',
               fontWeight: 600,
               fontSize: '15px',
               border: 'none',
               cursor: 'pointer',
-              boxShadow: 'var(--sc-shadow-card)',
+              boxShadow: 'var(--ik-shadow-card)',
             }}
           >
             <ChefHat className="w-5 h-5" aria-hidden="true" />
@@ -146,9 +147,9 @@ const RecipeBubble = memo(({ message, onStartCooking, onSaveRecipe, onViewRecipe
             onClick={(e) => { e.stopPropagation(); onSaveRecipe?.(recipe); }}
             className="btn-secondary flex-1 flex items-center justify-center"
             style={{
-              backgroundColor: 'var(--sc-cream)',
-              color: 'var(--sc-terracotta)',
-              border: '2px solid var(--sc-terracotta)',
+              backgroundColor: 'var(--ik-porcelain)',
+              color: 'var(--ik-basil-dark)',
+              border: '2px solid var(--ik-basil-dark)',
               borderRadius: '16px',
               padding: '12px 24px',
               fontWeight: 600,
@@ -173,14 +174,14 @@ const DraftBubble = memo(({ message, onSaveDraft, onDiscardDraft }: { message: D
       role="article"
       aria-label={`Anteprima ricetta: ${recipe.title}`}
       style={{
-        backgroundColor: 'var(--sc-peach-soft)',
-        borderColor: 'var(--sc-apricot)',
-        borderRadius: 'var(--sc-radius-feature)',
-        boxShadow: 'var(--sc-shadow-card)',
+        backgroundColor: 'var(--ik-sage)',
+        borderColor: 'var(--ik-basil-dark)',
+        borderRadius: 'var(--ik-radius-feature)',
+        boxShadow: 'var(--ik-shadow-card)',
         overflow: 'hidden',
       }}
     >
-      <div className="relative aspect-[16/9] overflow-hidden" style={{ backgroundColor: 'var(--sc-peach-soft)' }}>
+      <div className="relative aspect-[16/9] overflow-hidden" style={{ backgroundColor: 'var(--ik-sage)' }}>
         <img
           src={recipe.image}
           alt={recipe.title}
@@ -188,30 +189,30 @@ const DraftBubble = memo(({ message, onSaveDraft, onDiscardDraft }: { message: D
           loading="lazy"
         />
         <div className="absolute top-3 left-3">
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[var(--sc-apricot)] text-[var(--sc-cream)]">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[var(--ik-basil-dark)] text-[var(--ik-porcelain)]">
             <Sparkles className="w-3 h-3 mr-1" aria-hidden="true" />
             Anteprima
           </span>
         </div>
       </div>
-      <div className="p-5" style={{ fontFamily: 'DM Sans, system-ui, sans-serif' }}>
-        <p className="text-xs font-bold uppercase tracking-wide text-[var(--sc-terracotta)] mb-1">Anteprima — non ancora salvata</p>
-        <h3 className="text-xl font-bold text-[var(--sc-ink)] mb-2" style={{ fontFamily: 'Outfit, system-ui, sans-serif' }}>
+      <div className="p-5" style={{ fontFamily: 'Bricolage Grotesque Variable, system-ui, sans-serif' }}>
+        <p className="text-xs font-bold uppercase tracking-wide text-[var(--ik-basil-dark)] mb-1">Anteprima — non ancora salvata</p>
+        <h3 className="text-xl font-bold text-[var(--ik-ink)] mb-2" style={{ fontFamily: 'Bricolage Grotesque Variable, system-ui, sans-serif' }}>
           {recipe.emoji} {recipe.title}
         </h3>
-        <p className="text-[var(--sc-ink-soft)] text-sm mb-4 leading-relaxed">{recipe.description}</p>
+        <p className="text-[var(--ik-ink-muted)] text-sm mb-4 leading-relaxed">{recipe.description}</p>
         <div className="grid gap-4 sm:grid-cols-2 mb-4">
           <div>
-            <h4 className="font-bold text-[var(--sc-ink)] mb-2">Ingredienti</h4>
-            <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--sc-ink-soft)]">
+            <h4 className="font-bold text-[var(--ik-ink)] mb-2">Ingredienti</h4>
+            <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--ik-ink-muted)]">
               {recipe.ingredients.map((ing) => (
                 <li key={`${recipe.id}-${ing.name}`}>{ing.amount} {ing.name}</li>
               ))}
             </ul>
           </div>
           <div>
-            <h4 className="font-bold text-[var(--sc-ink)] mb-2">Procedimento</h4>
-            <ol className="list-decimal space-y-1 pl-5 text-sm text-[var(--sc-ink-soft)]">
+            <h4 className="font-bold text-[var(--ik-ink)] mb-2">Procedimento</h4>
+            <ol className="list-decimal space-y-1 pl-5 text-sm text-[var(--ik-ink-muted)]">
               {recipe.steps.map((step, i) => (
                 <li key={`${recipe.id}-step-${i}`}>{step}</li>
               ))}
@@ -223,15 +224,15 @@ const DraftBubble = memo(({ message, onSaveDraft, onDiscardDraft }: { message: D
             onClick={() => onSaveDraft?.(recipe)}
             className="btn-primary flex-1 flex items-center justify-center gap-2"
             style={{
-              backgroundColor: 'var(--sc-terracotta)',
-              color: 'var(--sc-cream)',
+              backgroundColor: 'var(--ik-basil-dark)',
+              color: 'var(--ik-porcelain)',
               borderRadius: '16px',
               padding: '14px 24px',
               fontWeight: 600,
               fontSize: '15px',
               border: 'none',
               cursor: 'pointer',
-              boxShadow: 'var(--sc-shadow-card)',
+              boxShadow: 'var(--ik-shadow-card)',
             }}
           >
             <Save className="w-5 h-5" aria-hidden="true" />
@@ -241,9 +242,9 @@ const DraftBubble = memo(({ message, onSaveDraft, onDiscardDraft }: { message: D
             onClick={() => onDiscardDraft?.(recipe.id)}
             className="btn-secondary flex-1 flex items-center justify-center gap-2"
             style={{
-              backgroundColor: 'var(--sc-cream)',
-              color: 'var(--sc-terracotta)',
-              border: '2px solid var(--sc-apricot)',
+              backgroundColor: 'var(--ik-porcelain)',
+              color: 'var(--ik-basil-dark)',
+              border: '2px solid var(--ik-basil-dark)',
               borderRadius: '16px',
               padding: '12px 24px',
               fontWeight: 600,
@@ -265,21 +266,21 @@ const ErrorBubble = memo(({ message }: { message: ErrorMessage }) => (
     className="chat-bubble-error max-w-[85%] animate-slide-up"
     role="alert"
     style={{
-      backgroundColor: 'var(--sc-coral-soft)',
-      color: 'var(--sc-terracotta)',
-      borderRadius: 'var(--sc-radius-panel)',
+      backgroundColor: 'var(--ik-tomato-soft)',
+      color: 'var(--ik-tomato)',
+      borderRadius: 'var(--ik-radius-panel)',
       padding: '12px 16px',
-      border: '1px solid var(--sc-coral-soft)',
+      border: '1px solid var(--ik-tomato-soft)',
     }}
   >
-    <p className="text-[var(--sc-terracotta)] text-sm leading-relaxed" style={{ fontFamily: 'DM Sans, system-ui, sans-serif' }}>
+    <p className="text-[var(--ik-tomato)] text-sm leading-relaxed" style={{ fontFamily: 'Bricolage Grotesque Variable, system-ui, sans-serif' }}>
       {message.content}
     </p>
     {message.action && (
       <button
         onClick={message.action.onAction}
-        className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-[var(--sc-terracotta)] hover:underline"
-        style={{ fontFamily: 'DM Sans, system-ui, sans-serif' }}
+        className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-[var(--ik-tomato)] hover:underline"
+        style={{ fontFamily: 'Bricolage Grotesque Variable, system-ui, sans-serif' }}
       >
         {message.action.label}
       </button>
@@ -294,20 +295,20 @@ const TypingBubble = memo(() => (
     aria-live="polite"
     aria-atomic="true"
     style={{
-      backgroundColor: 'var(--sc-cream)',
-      color: 'var(--sc-ink)',
-      borderRadius: 'var(--sc-radius-bubble)',
+      backgroundColor: 'var(--ik-porcelain)',
+      color: 'var(--ik-ink)',
+      borderRadius: 'var(--ik-radius-panel)',
       borderBottomLeftRadius: '6px',
       padding: '14px 18px',
-      border: '1px solid var(--sc-peach-soft)',
-      boxShadow: 'var(--sc-shadow-soft)',
+      border: '1px solid var(--ik-sage)',
+      boxShadow: 'var(--ik-shadow-card)',
     }}
   >
-    <div className="flex items-center gap-2 text-[var(--sc-ink-soft)]" style={{ fontFamily: 'DM Sans, system-ui, sans-serif', fontSize: '0.9375rem' }}>
+    <div className="flex items-center gap-2 text-[var(--ik-ink-muted)]" style={{ fontFamily: 'Bricolage Grotesque Variable, system-ui, sans-serif', fontSize: '0.9375rem' }}>
       <span className="relative flex h-5 w-5">
-        <span className="animate-bounce absolute top-0 left-0 h-1.5 w-1.5 rounded-full bg-[var(--sc-terracotta)]" style={{ animationDelay: '0ms' }} />
-        <span className="animate-bounce absolute top-0 left-1.5 h-1.5 w-1.5 rounded-full bg-[var(--sc-terracotta)]" style={{ animationDelay: '150ms' }} />
-        <span className="animate-bounce absolute top-0 left-3 h-1.5 w-1.5 rounded-full bg-[var(--sc-terracotta)]" style={{ animationDelay: '300ms' }} />
+        <span className="animate-bounce absolute top-0 left-0 h-1.5 w-1.5 rounded-full bg-[var(--ik-basil-dark)]" style={{ animationDelay: '0ms' }} />
+        <span className="animate-bounce absolute top-0 left-1.5 h-1.5 w-1.5 rounded-full bg-[var(--ik-basil-dark)]" style={{ animationDelay: '150ms' }} />
+        <span className="animate-bounce absolute top-0 left-3 h-1.5 w-1.5 rounded-full bg-[var(--ik-basil-dark)]" style={{ animationDelay: '300ms' }} />
       </span>
       <span>Chef sta pensando...</span>
     </div>

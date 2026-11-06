@@ -45,7 +45,7 @@ import {
   syncVerifiedSession,
   listenForReconnect,
 } from './syncQueue';
-import { getActiveDataScope, getPersonalDataScope, setActiveDataScope, setPersonalDataScope } from './scopeContext';
+import { getActiveDataScope, getPersonalDataScope, setActiveDataScope, setPersonalDataScope, subscribeActiveDataScope } from './scopeContext';
 import { isScopeWritable, trackScopedWrite } from './scopeWriteFence';
 import { parseSyncMutation } from './validation';
 
@@ -93,6 +93,29 @@ describe('sync queue', () => {
     window.localStorage.clear();
     setActiveDataScope('guest');
     setPersonalDataScope('guest');
+  });
+
+  it('keeps an already-active account scope stable when House lookup confirms no membership', async () => {
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
+    const transitions: string[] = [];
+    const unsubscribe = subscribeActiveDataScope((scope) => transitions.push(scope));
+    const request = vi.fn().mockResolvedValue(null) as ApiRequest;
+
+    try {
+      await expect(initializeSessionScope(session, request)).resolves.toMatchObject({
+        state: null,
+        mergeSummary: null,
+        guestMergeFailed: false,
+      });
+
+      expect(request).toHaveBeenCalledOnce();
+      expect(request).toHaveBeenCalledWith('/v1/house');
+      expect(transitions).toEqual([]);
+      expect(getActiveDataScope()).toBe(accountScope);
+    } finally {
+      unsubscribe();
+    }
   });
 
   it('rejects client-authored Dinner provider markers in personal AI consent sync records', () => {
@@ -260,6 +283,35 @@ describe('sync queue', () => {
     await expect(readSyncCursor(getAccountSyncScope('user-b'))).resolves.toBe(3);
     expect(requestA).toHaveBeenCalledOnce();
     expect(requestB).toHaveBeenCalledOnce();
+  });
+
+  it.each([400, 409])('preserves the House queue and cursor for sync_scope_invalid HTTP %i, then retries cleanly', async (status) => {
+    const houseScope = 'house:sync-scope-invalid' as const;
+    setActiveDataScope(houseScope);
+    setPersonalDataScope(accountScope);
+    const mutationId = `scope-invalid-${status}`;
+    const cursor = 11;
+    await enqueueMutation(houseScope, { ...sampleMutation(mutationId), syncScope: houseScope });
+    await writeMeta(`syncCursor:${houseScope}`, cursor);
+    const onMembershipLost = vi.fn();
+    const request = vi.fn()
+      .mockRejectedValueOnce(new ApiClientError(status, 'sync_scope_invalid', 'The requested sync scope is not valid for this entity'))
+      .mockResolvedValueOnce({ changes: [], nextCursor: cursor + 1 });
+
+    await expect(syncVerifiedSession(session, { request, onMembershipLost })).resolves.toBeNull();
+    expect(getSyncStatus(accountScope)).toMatchObject({
+      state: 'error', error: expect.objectContaining({ status, code: 'sync_scope_invalid' }),
+    });
+    expect(getActiveDataScope()).toBe(houseScope);
+    expect(onMembershipLost).not.toHaveBeenCalled();
+    await expect(readQueuedMutations(houseScope)).resolves.toEqual([expect.objectContaining({ mutationId, syncScope: houseScope })]);
+    await expect(readSyncCursor(houseScope)).resolves.toBe(cursor);
+
+    await expect(syncVerifiedSession(session, { request, onMembershipLost })).resolves.toMatchObject({ complete: true });
+    await expect(readQueuedMutations(houseScope)).resolves.toEqual([]);
+    await expect(readSyncCursor(houseScope)).resolves.toBe(cursor + 1);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(onMembershipLost).not.toHaveBeenCalled();
   });
 
   it('keeps house and account cursors independent across joining and leaving', async () => {

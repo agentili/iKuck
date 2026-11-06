@@ -119,7 +119,11 @@ test('reset-password submits successfully and redirects to login', async ({ page
   await page.getByRole('button', { name: 'Salva nuova password' }).click();
 
   await expect(page.getByRole('heading', { name: 'Password aggiornata' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Torna all\u2019accesso' })).toBeVisible();
+  const loginLink = page.getByRole('link', { name: 'Vai all’accesso' });
+  await expect(loginLink).toHaveAttribute('href', '/profile');
+  await loginLink.click();
+  await expect(page).toHaveURL(/\/profile$/);
+  await expect(page.getByRole('heading', { name: 'Accedi al tuo profilo' })).toBeVisible();
   expect(resetCalled).toBe(true);
   expect(requestBody).toEqual({ token: resetToken, password: 'newSecurePassword123' });
 });
