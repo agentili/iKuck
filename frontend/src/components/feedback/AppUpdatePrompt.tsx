@@ -18,7 +18,7 @@ export default function AppUpdatePrompt({
 
   return (
     <aside
-      className="app-overlay fixed inset-x-4 z-50 mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-4 rounded-2xl border-2 border-emerald-200 bg-white p-4 shadow-xl"
+      className="app-update-overlay fixed inset-x-4 z-50 mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-4 rounded-[var(--ik-radius-panel)] border-2 border-[var(--ik-border)] bg-[var(--ik-surface)] p-4 shadow-xl"
       aria-label="Aggiornamento applicazione"
     >
       <div className="min-w-0 flex-1">
@@ -33,7 +33,7 @@ export default function AppUpdatePrompt({
               : 'Puoi continuare a usare l’app e scegliere quando aggiornare.'}
         </p>
       </div>
-      <div className="flex shrink-0 flex-wrap gap-2">
+      <div className="flex min-w-0 max-w-full flex-wrap gap-2">
         <button
           type="button"
           onClick={onUpdate}

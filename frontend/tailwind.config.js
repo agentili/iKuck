@@ -73,9 +73,9 @@ export default {
         yolk: 'rgb(var(--tk-yolk) / <alpha-value>)',
         sage: 'rgb(var(--tk-sage) / <alpha-value>)',
         primary: {
-          DEFAULT: '#10b981',
-          dark: '#059669',
-          light: '#34d399',
+          DEFAULT: 'rgb(var(--tk-ink) / <alpha-value>)',
+          dark: 'var(--ik-basil-dark)',
+          light: 'var(--ik-sage)',
         },
       },
       fontFamily: {

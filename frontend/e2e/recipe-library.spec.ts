@@ -19,6 +19,11 @@ const verifiedSession = {
   expiresAt: '2026-10-12T12:00:00.000Z',
 } as const;
 
+const aiConsentStatus = {
+  consent: { enabled: false, updatedAt: '2026-09-18T10:00:00.000Z' },
+  selectedProvider: 'openai',
+} as const;
+
 const savedRecipes = [
   {
     id: 'saved-orata-al-forno',
@@ -70,6 +75,7 @@ const installVerifiedBackend = async (
         status: 200,
         json: { uploaded: 0, downloaded: 0, pending: 0, complete: true },
       },
+      'GET /v1/ai-recipes/consent': { status: 200, json: aiConsentStatus },
       'GET /v1/ai-recipes': { status: 200, json: { recipes: savedRecipes } },
       ...extraResponses,
     },
@@ -188,19 +194,21 @@ test('nav: «Ricette» raggiungibile, nome accessibile completo, nessun overflow
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 700 });
-  await page.evaluate(() => {
-    document.documentElement.style.fontSize = '200%';
-  });
   await page.route('**/v1/house', (route) => route.fulfill({ status: 200, json: { house: null } }));
   await page.goto('/');
 
-  const ricette = page.getByRole('link', { name: 'Ricette', exact: true });
+  const mainNavigation = page.getByRole('navigation', { name: 'Navigazione principale' });
+  const ricette = mainNavigation.getByRole('link', { name: 'Ricette', exact: true });
   await expect(ricette).toBeVisible();
+  await expect(ricette).toHaveAccessibleName('Ricette');
 
-  // Attende che main#main-content sia montato prima di leggere le geometrie:
+  // Attende che main#main-content sia montato prima di ingrandire il testo e leggere le geometrie:
   // senza questo, sotto carico parallelo getBoundingClientRect() restituisce
   // null perché l'elemento non è ancora nel DOM (flaky su geometry.main).
   await expect(page.locator('main#main-content')).toBeVisible();
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '200%';
+  });
 
   const geometry = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
@@ -219,6 +227,88 @@ test('nav: «Ricette» raggiungibile, nome accessibile completo, nessun overflow
   expect(geometry.main).not.toBeNull();
 });
 
+for (const viewportWidth of [320, 390]) {
+  test(`/recipes: nessun overflow e azione finale raggiungibile a ${viewportWidth}px con testo 200%`, async ({
+    page,
+  }) => {
+    const viewportHeight = viewportWidth === 320 ? 740 : 844;
+    await page.setViewportSize({ width: viewportWidth, height: viewportHeight });
+    await page.goto('/recipes');
+    await expect(page.getByRole('heading', { name: 'Ricette', exact: true })).toBeVisible();
+
+    const finalAction = page.getByRole('link', { name: 'Apri Zuppa rustica di verdure' });
+    await expect(finalAction).toBeVisible();
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '200%';
+    });
+    await finalAction.scrollIntoViewIfNeeded();
+
+    const geometry = await page.evaluate(() => {
+      const navigation = document.querySelector('nav[aria-label="Navigazione principale"]');
+      const action = document.querySelector<HTMLAnchorElement>(
+        'a[aria-label="Apri Zuppa rustica di verdure"]',
+      );
+      if (!navigation || !action) return null;
+
+      const navigationRect = navigation.getBoundingClientRect();
+      const actionRect = action.getBoundingClientRect();
+      const actionHitTarget = document.elementFromPoint(
+        actionRect.left + actionRect.width / 2,
+        actionRect.top + actionRect.height / 2,
+      );
+      const overflowers = Array.from(document.body.querySelectorAll<HTMLElement>('*'))
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          const className = typeof element.className === 'string'
+            ? `.${element.className.trim().replace(/\s+/g, '.')}`
+            : '';
+          return {
+            element: `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ''}${className}`,
+            left: Math.round(rect.left * 10) / 10,
+            right: Math.round(rect.right * 10) / 10,
+          };
+        })
+        .filter(({ left, right }) => left < -0.5 || right > document.documentElement.clientWidth + 0.5)
+        .sort((a, b) => b.right - a.right)
+        .slice(0, 6);
+
+      return {
+        viewport: document.documentElement.clientWidth,
+        innerWidth: window.innerWidth,
+        visualViewportWidth: window.visualViewport?.width ?? null,
+        content: document.documentElement.scrollWidth,
+        fontSize: getComputedStyle(document.documentElement).fontSize,
+        navigationPosition: getComputedStyle(navigation).position,
+        navigationLeft: Math.round(navigationRect.left * 10) / 10,
+        navigationRight: Math.round(navigationRect.right * 10) / 10,
+        navigationTop: Math.round(navigationRect.top * 10) / 10,
+        actionTop: Math.round(actionRect.top * 10) / 10,
+        actionBottom: Math.round(actionRect.bottom * 10) / 10,
+        actionVisible: actionRect.top >= 0 && actionRect.bottom <= window.innerHeight,
+        actionCenterReachable: actionHitTarget === action || action.contains(actionHitTarget),
+        overflowers,
+      };
+    });
+
+    if (geometry === null) throw new Error('Navigazione principale o azione finale non montata');
+    expect(geometry.viewport).toBe(viewportWidth);
+    expect(geometry.innerWidth).toBe(viewportWidth);
+    expect(geometry.visualViewportWidth).toBe(viewportWidth);
+    expect(geometry.fontSize).toBe('32px');
+    expect(
+      geometry.content,
+      `overflow orizzontale su /recipes con testo 200%: ${JSON.stringify(geometry)}`,
+    ).toBeLessThanOrEqual(geometry.viewport);
+    expect(geometry.navigationPosition, JSON.stringify(geometry)).toBe('fixed');
+    expect(geometry.navigationLeft, JSON.stringify(geometry)).toBeGreaterThanOrEqual(0);
+    expect(geometry.navigationRight, JSON.stringify(geometry)).toBeLessThanOrEqual(geometry.viewport);
+    expect(geometry.actionVisible, JSON.stringify(geometry)).toBe(true);
+    expect(geometry.actionCenterReachable, JSON.stringify(geometry)).toBe(true);
+    await finalAction.click();
+    await expect(page).toHaveURL('/recipes/zuppa-rustica-verdure');
+  });
+}
+
 test('offline: catalogo consultabile, gruppo salvate in errore non bloccante', async ({
   page,
   context,
@@ -233,6 +323,7 @@ test('offline: catalogo consultabile, gruppo salvate in errore non bloccante', a
         status: 200,
         json: { uploaded: 0, downloaded: 0, pending: 0, complete: true },
       },
+      'GET /v1/ai-recipes/consent': { status: 200, json: aiConsentStatus },
     },
   });
   await page.route('**/v1/ai-recipes', (route) => route.abort());

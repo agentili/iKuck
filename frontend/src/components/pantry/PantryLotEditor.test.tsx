@@ -34,4 +34,13 @@ describe('PantryLotEditor', () => {
 
     expect(onSubmit).toHaveBeenCalledWith({ quantity: 320, unit: 'g', expiresAt: '2026-09-20' });
   });
+
+  it('uses theme-aware controls with stable accessible names', () => {
+    render(<PantryLotEditor onCancel={vi.fn()} onSubmit={vi.fn().mockReturnValue(true)} />);
+
+    expect(screen.getByLabelText('Quantità del lotto')).toHaveClass('ik-input');
+    expect(screen.getByLabelText('Unità di misura')).toHaveClass('ik-input');
+    expect(screen.getByLabelText('Data di scadenza')).toHaveClass('ik-input');
+    expect(screen.getByRole('button', { name: 'Salva dettagli' })).toHaveClass('ik-button-primary');
+  });
 });

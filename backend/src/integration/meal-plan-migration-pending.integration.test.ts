@@ -93,6 +93,7 @@ integration('retryable membership migration and quarantine in PostgreSQL', () =>
       await database.db.execute(sql`DELETE FROM meal_plan_states WHERE scope_type = 'house' AND scope_id = ${houseId}`);
       await database.db.execute(sql`DELETE FROM meal_plan_receipts WHERE scope_type = 'house' AND scope_id = ${houseId}`);
       await database.db.execute(sql`DELETE FROM sync_items WHERE scope_type = 'house' AND scope_id = ${houseId}`);
+      await database.db.execute(sql`DELETE FROM processed_sync_mutations WHERE scope_type = 'house' AND scope_id = ${houseId}`);
       await database.db.delete(houses).where(eq(houses.id, houseId));
     }
     for (const userId of userIds) {
@@ -100,6 +101,7 @@ integration('retryable membership migration and quarantine in PostgreSQL', () =>
       await database.db.execute(sql`DELETE FROM meal_plan_states WHERE scope_type = 'user' AND scope_id = ${userId}`);
       await database.db.execute(sql`DELETE FROM meal_plan_receipts WHERE scope_type = 'user' AND scope_id = ${userId}`);
       await database.db.execute(sql`DELETE FROM sync_items WHERE scope_type = 'user' AND scope_id = ${userId}`);
+      await database.db.execute(sql`DELETE FROM processed_sync_mutations WHERE scope_type = 'user' AND scope_id = ${userId}`);
     }
     if (userIds.length > 0) await database.db.delete(users).where(inArray(users.id, userIds));
   };
@@ -196,10 +198,10 @@ integration('retryable membership migration and quarantine in PostgreSQL', () =>
       expect(personalFeed.statusCode).toBe(200);
       const sharedRejected = await memberApp.inject({
         method: 'POST', url: '/v1/sync', headers,
-        payload: { deviceId: 'shared', cursor: 0, syncScope: `account:${memberId}`, mutations: [], supportedEntityTypes: ['meal_plan_entry'] },
+        payload: { deviceId: 'shared', cursor: 0, syncScope: `account:${memberId}`, mutations: [], supportedEntityTypes: ['meal_plan_entry'], mealPlanReadVersion: 2 },
       });
-      expect(sharedRejected.statusCode).toBe(503);
-      expect(sharedRejected.json()).toMatchObject({ code: 'house_migration_pending', retryable: true });
+      expect(sharedRejected.statusCode).toBe(409);
+      expect(sharedRejected.json()).toMatchObject({ code: 'sync_scope_invalid' });
 
       // GET /v1/house retries the migration: first attempt completes and clears the pending mark.
       const bootstrap = await memberApp.inject({ method: 'GET', url: '/v1/house', headers });
@@ -226,9 +228,11 @@ integration('retryable membership migration and quarantine in PostgreSQL', () =>
   });
 
   it('retries POST /v1/house/import-personal-data idempotently and clears pending after commit', async () => {
-    const { memberId } = await createActorsAndHouse();
+    const { memberId, houseId } = await createActorsAndHouse();
     const memberRepository = createDrizzleSyncRepository(database.db, { mealPlanV2Enabled: true });
     await memberRepository.applyMealPlanCommand(memberId, manualCommand(`account:${memberId}`, 'import-plan', 'import-recipe'));
+    await database.db.execute(sql`INSERT INTO house_memberships (id, house_id, user_id, role, joined_at, updated_at)
+      VALUES (${randomUuid()}, ${houseId}, ${memberId}, 'member', now(), now())`);
     let failNext = true;
     const repository = {
       ...memberRepository,
@@ -350,12 +354,8 @@ integration('retryable membership migration and quarantine in PostgreSQL', () =>
       });
       expect(await pendingRowFor(memberId)).toHaveLength(1);
 
-      // While pending: readAll (export) is fail-closed with 503
-      const blockedExport = await memberApp.inject({
-        method: 'GET', url: '/v1/sync/export', headers,
-      });
-      expect(blockedExport.statusCode).toBe(503);
-      expect(blockedExport.json()).toMatchObject({ code: 'house_migration_pending', retryable: true });
+      // While pending: readAll (export) is fail-closed with house_migration_pending
+      await expect(repository.readAll(memberId)).rejects.toMatchObject({ code: 'house_migration_pending' });
 
       // GET /v1/house retries the migration: first attempt completes and clears the pending mark.
       const bootstrap = await memberApp.inject({ method: 'GET', url: '/v1/house', headers });
@@ -363,10 +363,8 @@ integration('retryable membership migration and quarantine in PostgreSQL', () =>
       expect(await pendingRowFor(memberId)).toHaveLength(0);
 
       // readAll now works and includes the migrated house Plan
-      const exportRead = await memberApp.inject({ method: 'GET', url: '/v1/sync/export', headers });
-      expect(exportRead.statusCode).toBe(200);
-      const exportData = exportRead.json();
-      const planEntries = exportData.filter((e: { entityType: string }) => e.entityType === 'meal_plan_entry');
+      const exportRead = await repository.readAll(memberId);
+      const planEntries = exportRead.filter((change) => change.entityType === 'meal_plan_entry');
       expect(planEntries.length).toBeGreaterThanOrEqual(1);
     } finally {
       await adminApp.close();

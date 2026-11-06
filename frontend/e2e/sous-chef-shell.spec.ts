@@ -70,7 +70,8 @@ const horizontalOverflow = (page: Page) =>
     scrollWidth: document.documentElement.scrollWidth,
     innerWidth: window.innerWidth,
     overflowing: Array.from(document.querySelectorAll<HTMLElement>('body *'))
-      .filter((element) => element.getBoundingClientRect().right > window.innerWidth + 1)
+      .filter((element) => element.getBoundingClientRect().right > window.innerWidth + 1
+        && element.closest('.chef-chat-quick-navigation') === null)
       .map((element) => `${element.tagName.toLowerCase()}.${element.className}`.slice(0, 120))
       .slice(0, 5),
   }));
@@ -117,7 +118,7 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
     await page.goto('/recipes');
     await bottomNav(page).getByRole('link', { name: 'Chef', exact: true }).click();
     await expect(page).toHaveURL('/');
-    await expect(page.getByRole('group', { name: 'Risposte rapide' })).toBeVisible();
+    await expect(heading(page, 'Chef')).toBeVisible();
   });
 
   test('«Piano» apre la schermata separata e mostra quattro date anche senza capability condivisa', async ({ page }) => {
@@ -129,6 +130,23 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
     await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(4);
     await expect(page.getByText('Condivisione non disponibile')).toBeVisible();
     await expect(page.getByText(/non supporta ancora il piano condiviso/i)).toBeVisible();
+  });
+
+  test('i link in uscita dal Piano aprono Spesa e riportano a Chef', async ({ page }) => {
+    await page.goto('/plan');
+    await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(4);
+
+    await page.getByRole('link', { name: 'Apri la lista della spesa' }).click();
+    await expect(page).toHaveURL('/shopping-list');
+    await expect(heading(page, 'Lista della spesa')).toBeVisible();
+    await expect(bottomNav(page).getByRole('link', { name: 'Spesa', exact: true }))
+      .toHaveAttribute('aria-current', 'page');
+
+    await bottomNav(page).getByRole('link', { name: 'Piano', exact: true }).click();
+    await expect(page).toHaveURL('/plan');
+    await page.getByRole('link', { name: 'Torna al Chef' }).click();
+    await expect(page).toHaveURL('/');
+    await expect(heading(page, 'Chef')).toBeVisible();
   });
 
   test('il server legacy non consente di leggere o modificare il piano condiviso', async ({ page }) => {
@@ -147,6 +165,65 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
     await expect(page.getByRole('searchbox', { name: 'Cerca ricette' })).toBeVisible();
   });
 
+  test('Ricerca, Salvate e Diario si aprono da Ricette e mantengono Ricette corrente', async ({ page }) => {
+    await page.goto('/recipes');
+    const secondaryNavigation = page.getByRole('navigation', { name: 'Altre sezioni di Ricette' });
+
+    await secondaryNavigation.getByRole('link', { name: 'Cerca ricette', exact: true }).click();
+    await expect(page).toHaveURL('/discover');
+    await expect(heading(page, 'Cerca ricette')).toBeVisible();
+    await expect(bottomNav(page).getByRole('link', { name: 'Ricette', exact: true }))
+      .toHaveAttribute('aria-current', 'page');
+
+    await page.goBack();
+    await expect(page).toHaveURL('/recipes');
+    await page.getByRole('navigation', { name: 'Altre sezioni di Ricette' })
+      .getByRole('link', { name: 'Ricette salvate', exact: true }).click();
+    await expect(page).toHaveURL('/saved');
+    await expect(heading(page, 'Le tue ricette')).toBeVisible();
+    await expect(bottomNav(page).getByRole('link', { name: 'Ricette', exact: true }))
+      .toHaveAttribute('aria-current', 'page');
+
+    await page.goBack();
+    await expect(page).toHaveURL('/recipes');
+    await page.getByRole('navigation', { name: 'Altre sezioni di Ricette' })
+      .getByRole('link', { name: 'Diario delle cene', exact: true }).click();
+    await expect(page).toHaveURL('/dinner-diary');
+    await expect(heading(page, 'Diario delle cene')).toBeVisible();
+    await expect(bottomNav(page).getByRole('link', { name: 'Ricette', exact: true }))
+      .toHaveAttribute('aria-current', 'page');
+  });
+
+  for (const [path, pageHeading] of [
+    ['/discover', 'Cerca ricette'],
+    ['/saved', 'Le tue ricette'],
+    ['/dinner-diary', 'Diario delle cene'],
+  ] as const) {
+    test(`la route ${path} resta accessibile tramite deep link`, async ({ page }) => {
+      await page.goto(path);
+      await expect(page).toHaveURL(path);
+      await expect(heading(page, pageHeading)).toBeVisible();
+      await expect(bottomNav(page).getByRole('link', { name: 'Ricette', exact: true }))
+        .toHaveAttribute('aria-current', 'page');
+    });
+  }
+
+  test('la ricetta del giorno di Chef apre il dettaglio reale e il ritorno porta a Chef', async ({ page }) => {
+    await page.goto('/');
+    const dailyRecipe = page.getByRole('region', { name: 'Ricetta del giorno' });
+    const recipeLink = dailyRecipe.getByRole('link', { name: 'Vedi ricetta' });
+    await expect(recipeLink).toBeVisible();
+    await recipeLink.click();
+    await expect(page).toHaveURL(/\/recipes\/[^/]+$/);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Torna a Chef' })).toHaveAttribute('href', '/');
+    await expect(bottomNav(page).getByRole('link', { name: 'Ricette', exact: true }))
+      .toHaveAttribute('aria-current', 'page');
+    await page.getByRole('link', { name: 'Torna a Chef' }).click();
+    await expect(page).toHaveURL('/');
+    await expect(heading(page, 'Chef')).toBeVisible();
+  });
+
   test('le voci della nav sono raggiungibili da tastiera (ARIA e focus)', async ({ page }) => {
     await page.goto('/');
     const spesaLink = bottomNav(page).getByRole('link', { name: 'Spesa', exact: true });
@@ -158,6 +235,7 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
 
   test('il link salta al contenuto e porta il focus al target stabile', async ({ page }) => {
     await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Chef', exact: true })).toBeVisible();
 
     const skipLink = page.getByRole('link', { name: 'Vai al contenuto principale' });
     await expect(skipLink).toHaveAttribute('href', '#sous-chef-main-content');
@@ -209,15 +287,18 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
       .not.toHaveAttribute('aria-current');
   });
 
-  test('Casa è raggiungibile dal profilo (profilo e modale della shell)', async ({ page }) => {
+  test('Casa è raggiungibile dalla pagina Profilo', async ({ page }) => {
     await page.goto('/profile');
     await page.getByRole('link', { name: 'La mia casa', exact: true }).click();
     await expect(page).toHaveURL('/house');
     await expect(heading(page, 'La mia casa')).toBeVisible();
+  });
 
-    // Anche dal menu profilo della shell Sous-Chef.
+  test('Casa è raggiungibile dal menu account della shell Sous Chef', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: 'Menu' }).click();
+    const menuButton = page.getByRole('button', { name: 'Menu' });
+    await expect(menuButton).toBeVisible();
+    await menuButton.click();
     const dialog = page.getByRole('dialog', { name: 'Profilo' });
     await expect(dialog).toBeVisible();
     await dialog.getByRole('link', { name: /casa/i }).click();
@@ -240,20 +321,26 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
     await expect(heading(page, 'La tua dispensa')).toBeVisible();
     await page.getByRole('button', { name: /indietro/i }).click();
     await expect(page).toHaveURL('/');
-    await expect(page.getByRole('group', { name: 'Risposte rapide' })).toBeVisible();
+    await expect(heading(page, 'Chef')).toBeVisible();
   });
 
   test('320px: cinque voci visibili e nessun clipping orizzontale', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 800 });
-    for (const path of ['/', '/plan', '/pantry']) {
-      await page.goto(path);
+    await page.goto('/');
+    await expect(bottomNav(page).getByRole('link')).toHaveCount(5);
+
+    for (const [path, label] of [['/', 'Chef'], ['/plan', 'Piano'], ['/pantry', 'Dispensa']] as const) {
+      if (path !== '/') {
+        await bottomNav(page).getByRole('link', { name: label, exact: true }).click();
+        await expect(page).toHaveURL(path);
+      }
       const overflow = await horizontalOverflow(page);
       expect(overflow.overflowing, `elementi che escono dal viewport a 320px su ${path}`).toEqual([]);
       expect(overflow.scrollWidth, `scroll orizzontale a 320px su ${path}`)
         .toBeLessThanOrEqual(overflow.innerWidth + 1);
-      for (const label of ['Dispensa', 'Spesa', 'Chef', 'Piano', 'Ricette']) {
-        await expect(bottomNav(page).getByRole('link', { name: label, exact: true }),
-          `voce «${label}» a 320px su ${path}`).toBeVisible();
+      for (const navLabel of ['Dispensa', 'Spesa', 'Chef', 'Piano', 'Ricette']) {
+        await expect(bottomNav(page).getByRole('link', { name: navLabel, exact: true }),
+          `voce «${navLabel}» a 320px su ${path}`).toBeVisible();
       }
     }
   });
@@ -280,16 +367,268 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
     }
     const overflow = await horizontalOverflow(page);
     expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth + 1);
+
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const bottomGeometry = await page.evaluate(() => {
+      const navigation = document.querySelector<HTMLElement>('nav[aria-label="Navigazione principale"]')!;
+      const main = document.querySelector<HTMLElement>('main')!;
+      const lastTextLeaf = Array.from(main.querySelectorAll<HTMLElement>('*'))
+        .filter((element) => element.children.length === 0
+          && Boolean(element.textContent?.trim())
+          && element.getClientRects().length > 0)
+        .map((element) => ({
+          text: element.textContent?.trim() ?? '',
+          bottom: element.getBoundingClientRect().bottom,
+        }))
+        .reduce((last, current) => current.bottom > last.bottom ? current : last, { text: '', bottom: -Infinity });
+      const navBounds = navigation.getBoundingClientRect();
+      return {
+        navPosition: getComputedStyle(navigation).position,
+        navTop: navBounds.top,
+        navBottom: navBounds.bottom,
+        viewportHeight: window.innerHeight,
+        lastTextLeaf,
+      };
+    });
+    expect(bottomGeometry.navPosition).toBe('fixed');
+    expect(bottomGeometry.navBottom).toBeCloseTo(bottomGeometry.viewportHeight, 0);
+    expect(bottomGeometry.lastTextLeaf.text).not.toBe('');
+    expect(bottomGeometry.lastTextLeaf.bottom).toBeLessThanOrEqual(bottomGeometry.navTop - 8);
   });
 
   test('viewport 640×512: nessun clipping orizzontale', async ({ page }) => {
     await page.setViewportSize({ width: 640, height: 512 });
-    for (const path of ['/', '/plan', '/recipes']) {
-      await page.goto(path);
+    await page.goto('/');
+    await expect(bottomNav(page).getByRole('link')).toHaveCount(5);
+    for (const [path, label] of [['/', 'Chef'], ['/plan', 'Piano'], ['/recipes', 'Ricette']] as const) {
+      if (path !== '/') {
+        await bottomNav(page).getByRole('link', { name: label, exact: true }).click();
+        await expect(page).toHaveURL(path);
+      }
       const overflow = await horizontalOverflow(page);
       expect(overflow.overflowing, `elementi che escono dal viewport allo zoom 200% su ${path}`).toEqual([]);
       expect(overflow.scrollWidth, `scroll orizzontale allo zoom 200% su ${path}`)
         .toBeLessThanOrEqual(overflow.innerWidth + 1);
+    }
+  });
+
+  test('la bottom nav resta compatta e le etichette non vanno a capo a 320/390px con testo al 200%', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 740 });
+    await page.goto('/profile');
+    const navigation = bottomNav(page);
+    await expect(navigation.getByRole('link')).toHaveCount(5);
+
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 740 });
+      await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+
+      for (const theme of ['light', 'dark'] as const) {
+        await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+        const geometry = await navigation.evaluate((nav) => {
+          const navBounds = nav.getBoundingClientRect();
+          const links = Array.from(nav.querySelectorAll('a')).map((link) => {
+            const bounds = link.getBoundingClientRect();
+            const label = link.querySelector<HTMLElement>('span[aria-hidden="true"]')!;
+            const visibleLabel = Array.from(label.children)
+              .find((child) => child.getClientRects().length > 0)!;
+            const textRange = document.createRange();
+            textRange.selectNodeContents(visibleLabel);
+            const textRects = Array.from(textRange.getClientRects()).map((rect) => ({
+              left: rect.left,
+              right: rect.right,
+              top: rect.top,
+              bottom: rect.bottom,
+            }));
+            return {
+              name: link.getAttribute('aria-label'),
+              bounds: { left: bounds.left, right: bounds.right, width: bounds.width, height: bounds.height },
+              text: visibleLabel.textContent?.trim() ?? '',
+              textRects,
+            };
+          });
+          return {
+            height: navBounds.height,
+            position: getComputedStyle(nav).position,
+            links,
+          };
+        });
+
+        expect(geometry.position).toBe('fixed');
+        expect(geometry.height, `${width}px/${theme}: ${JSON.stringify(geometry)}`).toBeLessThanOrEqual(80);
+        expect(geometry.links.map(({ name }) => name)).toEqual(['Dispensa', 'Spesa', 'Chef', 'Piano', 'Ricette']);
+        expect(geometry.links.map(({ text }) => text)).toEqual(width === 320
+          ? ['Disp.', 'Sp.', 'Chef', 'Pi.', 'Ric.']
+          : ['Dispensa', 'Spesa', 'Chef', 'Piano', 'Ricette']);
+        for (const link of geometry.links) {
+          expect(link.bounds.width, link.name ?? '').toBeGreaterThanOrEqual(44);
+          expect(link.bounds.height, link.name ?? '').toBeGreaterThanOrEqual(44);
+          expect(link.textRects, `${link.name} va a capo a ${width}px/${theme}`).toHaveLength(1);
+          expect(link.textRects[0]?.left, `${link.name} esce a sinistra a ${width}px/${theme}`)
+            .toBeGreaterThanOrEqual(link.bounds.left - 1);
+          expect(link.textRects[0]?.right, `${link.name} esce a destra a ${width}px/${theme}`)
+            .toBeLessThanOrEqual(link.bounds.right + 1);
+        }
+      }
+    }
+  });
+
+  test('Chef keeps real destination shortcuts reachable without mounting AI chat', async ({ page }) => {
+    const aiRequests: string[] = [];
+    page.on('request', (request) => {
+      const path = new URL(request.url()).pathname;
+      if (path === '/v1/chef-chat' || path === '/v1/ai-recipes/consent') aiRequests.push(path);
+    });
+
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.goto('/');
+    await expect(heading(page, 'Chef')).toBeVisible();
+    await expect(page.getByText('Chat AI non disponibile. La chat AI è stata rinviata.', { exact: true })).toBeVisible();
+    await expect(page.getByRole('textbox')).toHaveCount(0);
+    await expect(page.getByRole('log')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Invia messaggio' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Idea per cena' })).toHaveCount(0);
+
+    const shortcuts = page.getByRole('group', { name: 'Risposte rapide' });
+    const destinations = [
+      ['Ricette', '/recipes'],
+      ['Dispensa', '/pantry'],
+      ['Spesa', '/shopping-list'],
+      ['Casa', '/house'],
+      ['Cucina viva', '/cucina'],
+    ] as const;
+    for (const [label, destination] of destinations) {
+      const link = shortcuts.getByRole('link', { name: label, exact: true });
+      await expect(link).toBeVisible();
+      await expect(link).toHaveAttribute('href', destination);
+    }
+
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+    const geometry = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      content: document.documentElement.scrollWidth,
+    }));
+    expect(geometry.content, `overflow at 320px/200% text: ${JSON.stringify(geometry)}`).toBeLessThanOrEqual(geometry.viewport);
+    await shortcuts.getByRole('link', { name: 'Dispensa', exact: true }).click();
+    await expect(page).toHaveURL('/pantry');
+    await expect(heading(page, 'La tua dispensa')).toBeVisible();
+    expect(aiRequests).toEqual([]);
+  });
+
+  test('Chef destination links activate from the keyboard', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.goto('/');
+    const shortcuts = page.getByRole('group', { name: 'Risposte rapide' });
+    const pantryLink = shortcuts.getByRole('link', { name: 'Dispensa', exact: true });
+    await expect(pantryLink).toBeVisible();
+    await pantryLink.focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL('/pantry');
+    await expect(heading(page, 'La tua dispensa')).toBeVisible();
+  });
+
+  test('Home: aggiunta ingredienti, ricerca locale esplicita e link alla ricetta funzionano', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.goto('/cucina');
+    await expect(heading(page, 'Cucina viva')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Trova ricette' })).toBeDisabled();
+
+    await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Aggiungi ingredienti' });
+    await dialog.getByRole('combobox', { name: 'Ingredienti presenti' }).fill('pasta, tonno, passata');
+    await dialog.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+    await expect(page.getByRole('list', { name: 'Ingredienti disponibili' })).toContainText('Pasta');
+    await expect(page.getByRole('button', { name: 'Trova ricette' })).toBeEnabled();
+    await expect(heading(page, 'Ricette per te')).toHaveCount(0);
+
+    await page.getByRole('link', { name: 'Apri tutta la dispensa' }).click();
+    await expect(page).toHaveURL('/pantry');
+    await expect(heading(page, 'La tua dispensa')).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL('/cucina');
+    await expect(heading(page, 'Cucina viva')).toBeVisible();
+    await expect(heading(page, 'Ricette per te')).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Trova ricette' }).click();
+    const resultsHeading = heading(page, 'Ricette per te');
+    await expect(resultsHeading).toBeVisible();
+    await expect(resultsHeading).toBeFocused();
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '200%';
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+    const bottomGeometry = await page.evaluate(() => {
+      const main = document.querySelector<HTMLElement>('.sous-chef-main-content main')!;
+      const navigation = document.querySelector<HTMLElement>('nav[aria-label="Navigazione principale"]')!;
+      const navigationBounds = navigation.getBoundingClientRect();
+      const lastTextLeaf = Array.from(main.querySelectorAll<HTMLElement>('*'))
+        .filter((element) => element.children.length === 0
+          && Boolean(element.textContent?.trim())
+          && element.getClientRects().length > 0)
+        .map((element) => ({
+          text: element.textContent?.trim() ?? '',
+          bottom: element.getBoundingClientRect().bottom,
+        }))
+        .reduce((last, current) => current.bottom > last.bottom ? current : last, { text: '', bottom: -Infinity });
+      return {
+        lastTextLeaf,
+        navigationTop: navigationBounds.top,
+        navigationPosition: getComputedStyle(navigation).position,
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      };
+    });
+    expect(bottomGeometry.lastTextLeaf.text).not.toBe('');
+    expect(bottomGeometry.lastTextLeaf.bottom).toBeLessThanOrEqual(bottomGeometry.navigationTop - 8);
+    expect(bottomGeometry.navigationPosition).toBe('fixed');
+    expect(bottomGeometry.scrollWidth).toBeLessThanOrEqual(bottomGeometry.clientWidth + 1);
+    const recipeLink = page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' });
+    await expect(recipeLink).toBeVisible();
+    await recipeLink.click();
+    await expect(page).toHaveURL(/\/recipes\/pasta-tonno-pomodoro/);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  });
+
+  test('Home resta operabile in chiaro e scuro su mobile ingrandito e desktop', async ({ page }) => {
+    const viewports = [{ width: 320, height: 800 }, { width: 1280, height: 900 }];
+    await page.setViewportSize(viewports[0]);
+    await page.goto('/cucina');
+    for (const [index, viewport] of viewports.entries()) {
+      if (index > 0) {
+        await page.evaluate(() => { document.documentElement.style.removeProperty('font-size'); });
+        await page.setViewportSize(viewport);
+      }
+      await expect(heading(page, 'Cucina viva')).toBeVisible();
+      const addIngredients = page.getByRole('button', { name: 'Aggiungi ingredienti' });
+      const searchRecipes = page.getByRole('button', { name: 'Trova ricette' });
+      await expect(addIngredients).toBeVisible();
+      await expect(searchRecipes).toBeVisible();
+
+      if (viewport.width === 320) {
+        await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+      }
+      for (const theme of ['light', 'dark'] as const) {
+        await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+        const palette = await page.evaluate(() => ({
+          theme: document.documentElement.dataset.theme,
+          page: getComputedStyle(document.body).backgroundColor,
+          surface: getComputedStyle(document.querySelector<HTMLElement>('.ik-pantry-workbench')!).backgroundColor,
+          ink: getComputedStyle(document.querySelector<HTMLElement>('.ik-page-intro h1')!).color,
+        }));
+        expect(palette.theme).toBe(theme);
+        expect(palette.page).not.toBe(palette.surface);
+        expect(palette.ink).not.toBe(palette.page);
+
+        await searchRecipes.scrollIntoViewIfNeeded();
+        const [searchBounds, navigationBounds] = await Promise.all([
+          searchRecipes.boundingBox(),
+          bottomNav(page).boundingBox(),
+        ]);
+        expect(searchBounds).not.toBeNull();
+        expect(navigationBounds).not.toBeNull();
+        expect(searchBounds!.y + searchBounds!.height).toBeLessThanOrEqual(navigationBounds!.y - 8);
+        const overflow = await horizontalOverflow(page);
+        expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth + 1);
+      }
     }
   });
 });

@@ -339,8 +339,8 @@ integration('meal plan v2 import in PostgreSQL', () => {
           payload: expect.objectContaining({ kind: 'manual', recipeId: 'house-winning-recipe' }),
         }),
       ]);
-      const accountFeed = await repository.readChanges(userId, 0, 100, accountScope, ['meal_plan_entry']);
-      expect.soft(accountFeed.filter((change) => change.entityId === losingDate)).toEqual([]);
+      await expect(repository.readChanges(userId, 0, 100, accountScope, ['meal_plan_entry']))
+        .rejects.toMatchObject({ code: 'sync_scope_invalid' });
       const sourceRows = await database.db.execute(sql`SELECT state.plan_date, projection.id AS projection_id
         FROM meal_plan_states AS state
         JOIN sync_items AS projection ON projection.scope_type = 'user' AND projection.scope_id = ${userId}

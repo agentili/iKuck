@@ -1,48 +1,28 @@
 import { memo } from 'react';
-import { useChatStore } from './chatStore';
 
 interface QuickRepliesProps {
-  onQuickReply?: (action: string) => void;
+  onQuickReply: (prompt: string) => void;
 }
 
-export const QuickReplies = memo(({ onQuickReply }: QuickRepliesProps) => {
-  const quickReplies = useChatStore((state) => state.quickReplies);
-  const handleQuickReply = useChatStore((state) => state.handleQuickReply);
+const prompts = [
+  { id: 'dinner', label: 'Idea per cena', prompt: 'Dammi un’idea per una cena semplice.' },
+  { id: 'vegetarian', label: 'Ricetta vegetariana', prompt: 'Suggerisci una ricetta vegetariana semplice.' },
+  { id: 'side-dish', label: 'Contorno semplice', prompt: 'Suggerisci un contorno facile da preparare.' },
+] as const;
 
-  const handleClick = (action: string) => {
-    if (onQuickReply) {
-      onQuickReply(action);
-    } else {
-      handleQuickReply(action as any);
-    }
-  };
-
-  return (
-    <div className="flex flex-wrap gap-2 justify-center px-4 pb-4" role="group" aria-label="Risposte rapide">
-      {quickReplies.map((reply) => (
-        <button
-          key={reply.id}
-          onClick={() => handleClick(reply.action)}
-          className="chat-quick-reply"
-          style={{
-            backgroundColor: 'var(--sc-peach-soft)',
-            color: 'var(--sc-terracotta)',
-            border: '1px solid var(--sc-apricot-soft)',
-            borderRadius: 'var(--sc-radius-pill)',
-            padding: '10px 16px',
-            fontSize: '13px',
-            fontWeight: 500,
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            fontFamily: 'DM Sans, system-ui, sans-serif',
-          }}
-          aria-label={reply.label}
-        >
-          {reply.label}
-        </button>
-      ))}
-    </div>
-  );
-});
+export const QuickReplies = memo(({ onQuickReply }: QuickRepliesProps) => (
+  <div className="chef-quick-replies flex w-full flex-nowrap gap-2 overflow-x-auto px-1 pb-1" role="group" aria-label="Spunti per iniziare" tabIndex={0}>
+    {prompts.map(({ id, label, prompt }) => (
+      <button
+        key={id}
+        type="button"
+        onClick={() => onQuickReply(prompt)}
+        className="chat-quick-reply inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full border border-[var(--ik-border-strong)] bg-[var(--ik-sage)] px-3 py-2 text-sm font-medium text-[var(--ik-basil-dark)] transition-colors hover:bg-[var(--ik-mist)]"
+      >
+        {label}
+      </button>
+    ))}
+  </div>
+));
 
 QuickReplies.displayName = 'QuickReplies';

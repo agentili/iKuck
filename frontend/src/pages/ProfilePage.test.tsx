@@ -96,6 +96,32 @@ describe('ProfilePage', () => {
     expect(screen.getByText('Accesso con Google non disponibile in questo ambiente.')).toBeVisible();
   });
 
+  it('labels the profile return destination as Chef when Sous Chef owns the root route', async () => {
+    const sousChefFlag = vi.spyOn(features, 'isSousChef').mockReturnValue(true);
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1', expiresAt: '2026-10-12T10:00:00.000Z' });
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    await screen.findByRole('heading', { name: 'Il tuo profilo' });
+    expect(screen.getByRole('link', { name: /Torna a Chef/i })).toHaveAttribute('href', '/');
+    sousChefFlag.mockRestore();
+  });
+
+  it('labels the guest profile return destination as Chef in Sous Chef mode', () => {
+    const sousChefFlag = vi.spyOn(features, 'isSousChef').mockReturnValue(true);
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    expect(screen.getByRole('link', { name: /Torna a Chef/i })).toHaveAttribute('href', '/');
+    sousChefFlag.mockRestore();
+  });
+
+  it('keeps the legacy recipes label for a guest profile when Sous Chef is disabled', () => {
+    const sousChefFlag = vi.spyOn(features, 'isSousChef').mockReturnValue(false);
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    expect(screen.getByRole('link', { name: /Torna alle ricette/i })).toHaveAttribute('href', '/');
+    sousChefFlag.mockRestore();
+  });
+
   it('keeps the plan import unavailable while the Sous-Chef rollout flag is off', async () => {
     vi.spyOn(features, 'isSousChef').mockReturnValue(false);
     await saveGuestPlanState({ date: '2026-11-03', revision: crypto.randomUUID(), serverSequence: 0,
@@ -375,7 +401,7 @@ describe('ProfilePage', () => {
     await user.click(screen.getByRole('button', { name: 'Importa i dati locali' }));
 
     expect(screen.getByRole('button', { name: 'Conferma importazione' })).toBeInTheDocument();
-    expect(screen.getByText(/Confermi l’unione.*non verranno cancellati/)).toBeInTheDocument();
+    expect(screen.getByText(/Confermi l['’]unione.*non verranno cancellati/)).toBeInTheDocument();
   });
 
   it('clears the local session and navigates home when logout fails', async () => {

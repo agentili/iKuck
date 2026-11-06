@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, type KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import { RECIPES } from '../domain/recipes';
@@ -18,6 +18,23 @@ import PageSection from '../components/ui/PageSection';
 const ALL_RECIPES_LABEL = 'Tutte le ricette';
 const AI_RECIPES_LABEL = 'Ricette AI';
 const SAVED_RECIPES_LABEL = 'Ricette salvate';
+const PAGE_SECTION_CLASS = [
+  'bg-[var(--ik-surface)]',
+  'text-[var(--ik-ink)]',
+  '[&_h2]:text-[var(--ik-ink)]',
+  '[&_.ik-eyebrow]:text-[var(--ik-basil-dark)]',
+  '[&_p]:text-[var(--ik-ink-muted)]',
+].join(' ');
+const PAGE_INTERACTION_FOCUS_CLASS = [
+  '[&_a:focus-visible]:outline',
+  '[&_a:focus-visible]:outline-2',
+  '[&_a:focus-visible]:outline-offset-2',
+  '[&_a:focus-visible]:outline-[var(--ik-focus)]',
+  '[&_button:focus-visible]:outline',
+  '[&_button:focus-visible]:outline-2',
+  '[&_button:focus-visible]:outline-offset-2',
+  '[&_button:focus-visible]:outline-[var(--ik-focus)]',
+].join(' ');
 
 const scopeLabel = (scope: string): string => (
   scope.startsWith('house:') ? 'Casa' : scope === 'guest' ? 'dati locali' : 'personale'
@@ -39,21 +56,27 @@ const newestFirst = (
 
 const filterRecipesByTag = (recipes: any[], filterId: string): any[] => {
   if (filterId === 'all') return recipes;
-  
+
   const tagMap: Record<string, string[]> = {
-    'veloce': ['Veloce'],
-    'vegetariano': ['Vegetariano'],
-    'carne': ['Carne', 'Proteico'],
-    'pesce': ['Pesce'],
-    'forno': ['Forno'],
+    veloce: ['veloce'],
+    vegetariano: ['vegetariano', 'vegetariana', 'vegano', 'vegana'],
+    carne: ['carne', 'proteico'],
+    pesce: ['pesce'],
+    forno: ['forno'],
   };
-  
+  const categoryMap: Record<string, string> = {
+    carne: 'meat',
+    pesce: 'fish',
+  };
+
   const tags = tagMap[filterId];
-  if (!tags) return recipes;
-  
-  return recipes.filter(recipe => 
-    recipe.tags?.some((tag: string) => tags.includes(tag))
-  );
+  const category = categoryMap[filterId];
+  if (!tags && !category) return recipes;
+
+  return recipes.filter((recipe) => {
+    if (category !== undefined && recipe.category === category) return true;
+    return recipe.tags?.some((tag: string) => tags?.includes(tag.trim().toLocaleLowerCase('it')));
+  });
 };
 
 export default function DiscoverPage() {
@@ -182,13 +205,19 @@ export default function DiscoverPage() {
     [suggestedRecipes, filteredSuggestedIds, activeFilter],
   );
 
-  const isEmptySearch = query.length > 0
+  const recipeSourcesLoaded = !libraryLoading && (!verified || !savedLoading);
+  const recipeSourcesAvailable = libraryError === null && (!verified || savedError === null);
+  const isEmptySearch = query.trim().length > 0
+    && recipeSourcesLoaded
+    && recipeSourcesAvailable
     && filteredLibrary.length === 0
     && filteredSaved.length === 0
     && filteredSuggested.length === 0;
 
-  const isEmptyFilter = query.length === 0
+  const isEmptyFilter = query.trim().length === 0
     && activeFilter !== 'all'
+    && recipeSourcesLoaded
+    && recipeSourcesAvailable
     && filteredLibrary.length === 0
     && filteredSaved.length === 0
     && filteredSuggested.length === 0;
@@ -215,7 +244,7 @@ export default function DiscoverPage() {
     setActiveFilter(filterId);
   }, []);
 
-  const handleKeyDown = useCallback((event: React.KeyboardEvent, filterId: string) => {
+  const handleFilterKeyDown = useCallback((event: KeyboardEvent<HTMLButtonElement>, filterId: string): void => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       applyFilter(filterId);
@@ -223,22 +252,22 @@ export default function DiscoverPage() {
   }, [applyFilter]);
 
   return (
-    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-6xl px-4 pb-8 pt-5 sm:px-6 sm:pt-8 lg:px-8">
+    <main id="main-content" className={`ik-page ik-discover-page mx-auto min-h-screen w-full max-w-6xl px-4 pb-8 pt-5 text-[var(--ik-ink)] sm:px-6 sm:pt-8 lg:px-8 ${PAGE_INTERACTION_FOCUS_CLASS}`}>
       <header className="ik-page-intro mb-5 max-w-2xl sm:mb-7">
-        <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">
-          Cerca · {scopeLabel(activeScope)}
+        <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em]">
+          Ambito: {scopeLabel(activeScope)}
         </p>
-        <h1 className="mt-1 text-4xl font-black leading-[1.04] text-gray-950 sm:text-5xl">Cerca ricette</h1>
-        <p className="mt-3 max-w-xl text-base leading-relaxed text-gray-700">
+        <h1 className="mt-1 text-[clamp(2.5rem,6vw,3.75rem)] font-black leading-[1.04] tracking-[-0.03em] text-[var(--ik-ink)]">Cerca ricette</h1>
+        <p className="mt-3 max-w-xl text-base leading-relaxed text-[var(--ik-ink-muted)]">
           Cerca per titolo, ingrediente o filtra per categoria.
         </p>
       </header>
 
-      {/* Search Bar */}
-      <section className="rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] p-4 sm:p-5 mb-6">
-        <div className="flex gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" aria-hidden="true" />
+      <section aria-label="Ricerca ricette" className="mb-5 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4 sm:p-5">
+        <div className="flex min-w-0 gap-3">
+          <div className="relative min-w-0 flex-1">
+            <label htmlFor="recipe-search" className="sr-only">Cerca ricette</label>
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--ik-ink-muted)]" aria-hidden="true" />
             <input
               id="recipe-search"
               type="search"
@@ -246,38 +275,37 @@ export default function DiscoverPage() {
               placeholder="Cerca per titolo o ingrediente…"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              className="block min-h-11 w-full rounded-xl border-2 border-gray-300 bg-white pl-12 pr-4 py-2 text-gray-900 focus:border-emerald-700 focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-emerald-700 sm:text-base"
+              className="ik-input block min-h-12 w-full border-2 py-2 pl-12 pr-4 text-[var(--ik-ink)] placeholder:text-[var(--ik-ink-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)] sm:text-base"
             />
           </div>
           {query && (
             <button
               type="button"
               onClick={() => setQuery('')}
-              className="p-2 rounded-xl text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl text-[var(--ik-ink-muted)] hover:bg-[var(--ik-mist)] hover:text-[var(--ik-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]"
               aria-label="Pulisci ricerca"
             >
               <X className="w-5 h-5" aria-hidden="true" />
             </button>
           )}
         </div>
-        <p className="mt-2 text-xs text-gray-600">
-          Filtra live per titolo o ingrediente; nessun dato lascia il dispositivo.
+        <p className="mt-2 text-sm text-[var(--ik-ink-muted)]">
+          Titolo e ingredienti vengono confrontati sul dispositivo. Le ricette AI richiedono un account verificato.
         </p>
       </section>
 
-      {/* Filter Chips */}
-      <div className="flex flex-wrap gap-2 mb-6" role="group" aria-label="Filtri categoria">
+      <div className="mb-6 flex flex-wrap gap-2" role="group" aria-label="Filtri categoria">
         {filters.map((filter) => (
           <button
             key={filter.id}
             type="button"
             onClick={() => applyFilter(filter.id)}
-            onKeyDown={(e) => handleKeyDown(e, filter.id)}
+            onKeyDown={(event) => handleFilterKeyDown(event, filter.id)}
             aria-pressed={activeFilter === filter.id}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-colors focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-[var(--sc-terracotta)] ${
+            className={`inline-flex min-h-11 items-center gap-1.5 rounded-[var(--ik-radius-pill)] border px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)] ${
               activeFilter === filter.id
-                ? 'bg-[var(--sc-terracotta)] text-[var(--sc-cream)]'
-                : 'bg-[var(--sc-peach-soft)] text-[var(--sc-terracotta)] hover:bg-[var(--sc-apricot-soft)]'
+                ? 'ik-button-primary border-transparent'
+                : 'border-[var(--ik-border)] bg-[var(--ik-sage)] text-[var(--ik-ink)] hover:border-[var(--ik-border-strong)] hover:bg-[var(--ik-mist)]'
             }`}
           >
             {filter.icon && <span aria-hidden="true">{filter.icon}</span>}
@@ -288,12 +316,12 @@ export default function DiscoverPage() {
 
       {/* Empty filter state */}
       {isEmptyFilter && (
-        <div className="text-center py-12 px-4" role="status">
-          <p className="text-[var(--sc-ink-soft)] mb-2">Nessuna ricetta corrisponde al filtro selezionato.</p>
+        <div className="mb-6 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-mist)] px-4 py-8 text-center" role="status">
+          <p className="mb-3 text-[var(--ik-ink-muted)]">Nessuna ricetta corrisponde al filtro selezionato.</p>
           <button
             type="button"
             onClick={() => applyFilter('all')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium bg-[var(--sc-terracotta)] text-[var(--sc-cream)] hover:bg-[var(--sc-terracotta-strong)]"
+            className="ik-button-primary inline-flex min-h-11 items-center justify-center rounded-xl px-4 py-2 text-sm font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]"
           >
             Mostra tutte
           </button>
@@ -307,6 +335,7 @@ export default function DiscoverPage() {
           eyebrow="Dal diario"
           title={SAVED_RECIPES_LABEL}
           titleId="library-recipes-title"
+          className={PAGE_SECTION_CLASS}
           description="Le ricette che hai salvato dal Diario, disponibili anche offline."
           action={libraryLoading && <p role="status" className="text-sm font-semibold text-emerald-900">Carico le ricette salvate…</p>}
         >
@@ -341,6 +370,7 @@ export default function DiscoverPage() {
           eyebrow="Generate con l'AI"
           title={AI_RECIPES_LABEL}
           titleId="ai-recipes-title"
+          className={PAGE_SECTION_CLASS}
           action={savedLoading && <p role="status" className="text-sm font-semibold text-emerald-900">Carico le ricette AI…</p>}
         >
           {savedError !== null && <ErrorBanner message={savedError} />}
@@ -391,17 +421,20 @@ export default function DiscoverPage() {
           eyebrow="Catalogo"
           title={ALL_RECIPES_LABEL}
           titleId="suggested-recipes-title"
+          className={PAGE_SECTION_CLASS}
           description="Ricette offline, sempre disponibili."
         >
           {isEmptySearch && (
-            <EmptyState
-              text={`Nessuna ricetta trovata per «${query}». Prova un altro titolo o ingrediente.`}
-              action={{
-                label: 'Vedi tutte le ricette',
-                href: '/discover',
-                ariaLabel: 'Vedi tutte le ricette',
-              }}
-            />
+            <div className="space-y-3">
+              <EmptyState text={`Nessuna ricetta trovata per «${query}». Prova un altro titolo o ingrediente.`} />
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                className="ik-button-secondary inline-flex min-h-11 items-center justify-center rounded-xl border-2 px-4 py-2 font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]"
+              >
+                Pulisci la ricerca
+              </button>
+            </div>
           )}
           {(!isEmptySearch && filteredSuggested.length === 0) && (
             <EmptyState text={activeFilter !== 'all' ? "Nessuna ricetta del catalogo corrisponde al filtro." : "Nessuna ricetta trovata."} />

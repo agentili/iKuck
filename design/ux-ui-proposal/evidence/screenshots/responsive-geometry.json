@@ -2,9 +2,11 @@
   {
     "width": 390,
     "height": 844,
-    "searchBottom": 642.1875,
-    "navigationTop": 787,
-    "gap": 144.8125
+    "viewport": 390,
+    "content": 390,
+    "searchBottom": 656.1875,
+    "navigationTop": 799,
+    "gap": 142.8125
   },
   {
     "width": 320,
@@ -14,22 +16,22 @@
     "content": 320,
     "nav": {
       "x": 0,
-      "y": 587,
+      "y": 655,
       "width": 320,
-      "height": 113,
-      "top": 587,
+      "height": 45,
+      "top": 655,
       "right": 320,
       "bottom": 700,
       "left": 0
     },
     "main": {
       "x": 0,
-      "y": 112,
+      "y": 96,
       "width": 320,
-      "height": 2840.75,
-      "top": 112,
+      "height": 997.953125,
+      "top": 96,
       "right": 320,
-      "bottom": 2952.75,
+      "bottom": 1093.953125,
       "left": 0
     }
   },
@@ -41,23 +43,50 @@
     "content": 768,
     "nav": {
       "x": 0,
-      "y": 96,
-      "width": 255,
-      "height": 262.375,
-      "top": 96,
-      "right": 255,
-      "bottom": 358.375,
+      "y": 855,
+      "width": 768,
+      "height": 45,
+      "top": 855,
+      "right": 768,
+      "bottom": 900,
       "left": 0
     },
     "main": {
-      "x": 256,
-      "y": 0,
-      "width": 512,
+      "x": 0,
+      "y": 64,
+      "width": 768,
       "height": 900,
-      "top": 0,
+      "top": 64,
       "right": 768,
+      "bottom": 964,
+      "left": 0
+    }
+  },
+  {
+    "width": 1280,
+    "height": 900,
+    "rootFontSize": "100%",
+    "viewport": 1280,
+    "content": 1280,
+    "nav": {
+      "x": 0,
+      "y": 855,
+      "width": 1280,
+      "height": 45,
+      "top": 855,
+      "right": 1280,
       "bottom": 900,
-      "left": 256
+      "left": 0
+    },
+    "main": {
+      "x": 0,
+      "y": 64,
+      "width": 1280,
+      "height": 900,
+      "top": 64,
+      "right": 1280,
+      "bottom": 964,
+      "left": 0
     }
   },
   {
@@ -68,23 +97,23 @@
     "content": 1440,
     "nav": {
       "x": 0,
-      "y": 96,
-      "width": 255,
-      "height": 262.375,
-      "top": 96,
-      "right": 255,
-      "bottom": 358.375,
+      "y": 855,
+      "width": 1440,
+      "height": 45,
+      "top": 855,
+      "right": 1440,
+      "bottom": 900,
       "left": 0
     },
     "main": {
-      "x": 256,
-      "y": 0,
-      "width": 1184,
+      "x": 80,
+      "y": 64,
+      "width": 1280,
       "height": 900,
-      "top": 0,
-      "right": 1440,
-      "bottom": 900,
-      "left": 256
+      "top": 64,
+      "right": 1360,
+      "bottom": 964,
+      "left": 80
     }
   }
 ]

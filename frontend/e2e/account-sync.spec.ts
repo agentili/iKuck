@@ -361,7 +361,7 @@ test('two verified accounts share the house pantry while member authorization st
 
   await memberPage.goto('/house');
   await expect(memberPage.getByRole('heading', { name: 'Casa E2E' })).toBeVisible();
-  await expect(memberPage.getByText('Il tuo ruolo: member')).toBeVisible();
+  await expect(memberPage.getByText('Il tuo ruolo: Membro')).toBeVisible();
   await expect(memberPage.getByRole('heading', { name: 'Aggiungi persona' })).toHaveCount(0);
 
   assertOfflineBackendClean(memberPage);

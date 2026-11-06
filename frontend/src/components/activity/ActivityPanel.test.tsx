@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CookEvent, RecipePreference } from '@ikuck/shared/contracts';
+import { usePersistenceStatusStore } from '../../store/persistenceStatusStore';
 import ActivityPanel from './ActivityPanel';
 
 const event: CookEvent = {
@@ -25,11 +26,29 @@ const preference: RecipePreference = {
 };
 
 describe('ActivityPanel', () => {
+  afterEach(() => usePersistenceStatusStore.getState().reset());
+
   it('explains empty activity', () => {
     render(<ActivityPanel events={[]} preferences={[]} onRemoveEvent={vi.fn()} onRestoreEvent={vi.fn()} onClearActivity={vi.fn()} />);
 
     expect(screen.getByRole('heading', { name: 'La tua attività' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'La tua attività' })).toBeVisible();
     expect(screen.getByText('Non hai ancora segnato ricette come cucinate.')).toBeVisible();
+  });
+
+  it('announces unsaved activity and offers a real persistence retry', async () => {
+    const user = userEvent.setup();
+    const retry = vi.fn().mockResolvedValue(undefined);
+    usePersistenceStatusStore.getState().setStatus('activity', {
+      state: 'memory-only',
+      error: new Error('IndexedDB unavailable'),
+      retry,
+    });
+    render(<ActivityPanel events={[]} preferences={[]} onRemoveEvent={vi.fn()} onRestoreEvent={vi.fn()} onClearActivity={vi.fn()} />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Le modifiche all’attività sono disponibili solo in memoria.');
+    await user.click(screen.getByRole('button', { name: 'Riprova' }));
+    expect(retry).toHaveBeenCalledOnce();
   });
 
   it('shows cooking history, preference details and handles removal', async () => {

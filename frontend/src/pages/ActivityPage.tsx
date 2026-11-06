@@ -17,14 +17,14 @@ export default function ActivityPage() {
 
   if (!hasHydrated) {
     return (
-      <main className="mx-auto flex min-h-screen w-full max-w-4xl items-center justify-center px-4 py-8">
-        <p role="status" className="rounded-2xl border border-gray-200 bg-white px-5 py-4 font-semibold text-gray-700">Caricamento dell’attività…</p>
+      <main className="ik-page mx-auto flex min-h-screen w-full max-w-4xl items-center justify-center px-4 py-8">
+        <p role="status" className="rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] px-5 py-4 font-semibold text-[var(--ik-ink-muted)]">Caricamento dell’attività…</p>
       </main>
     );
   }
 
   return (
-    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-4xl px-4 pb-8 pt-5 sm:px-6 sm:pt-8 lg:px-8">
+    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-4xl px-4 pb-8 pt-5 text-[var(--ik-ink)] sm:px-6 sm:pt-8 lg:px-8">
       <DiaryNavigation />
       <ActivityPanel events={events} preferences={preferences} onRemoveEvent={removeCookEvent} onRestoreEvent={restoreCookEvent} onClearActivity={clearActivity} />
     </main>

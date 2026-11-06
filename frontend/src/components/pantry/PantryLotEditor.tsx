@@ -58,9 +58,9 @@ export default function PantryLotEditor({ initialDetails, onCancel, onSubmit }: 
   };
 
   return (
-    <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <label className="text-sm font-semibold text-gray-700">
+    <div role="group" aria-label="Dettagli lotto" className="mt-3 min-w-0 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-sage)] p-3">
+      <div className="grid min-w-0 gap-3 sm:grid-cols-3">
+        <label className="min-w-0 text-sm font-semibold text-[var(--ik-ink)]">
           Quantità (opzionale)
           <input
             type="number"
@@ -69,37 +69,37 @@ export default function PantryLotEditor({ initialDetails, onCancel, onSubmit }: 
             value={quantity}
             onChange={(event) => setQuantity(event.target.value)}
             aria-label="Quantità del lotto"
-            className="mt-1 min-h-11 w-full rounded-xl border-2 border-gray-200 bg-white px-3 py-2 font-normal text-gray-900 outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+            className="ik-input mt-1 min-h-11 w-full min-w-0 border-2 px-3 py-2 font-normal outline-none focus:ring-4 focus:ring-[var(--ik-focus)]"
           />
         </label>
-        <label className="text-sm font-semibold text-gray-700">
+        <label className="min-w-0 text-sm font-semibold text-[var(--ik-ink)]">
           Unità (opzionale)
           <select
             value={unit}
             onChange={(event) => setUnit(event.target.value as PantryUnit | '')}
             aria-label="Unità di misura"
-            className="mt-1 min-h-11 w-full rounded-xl border-2 border-gray-200 bg-white px-3 py-2 font-normal text-gray-900 outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+            className="ik-input mt-1 min-h-11 w-full min-w-0 border-2 px-3 py-2 font-normal outline-none focus:ring-4 focus:ring-[var(--ik-focus)]"
           >
             <option value="">Nessuna unità</option>
             {(Object.keys(UNIT_LABELS) as PantryUnit[]).map((value) => <option key={value} value={value}>{UNIT_LABELS[value]}</option>)}
           </select>
         </label>
-        <label className="text-sm font-semibold text-gray-700">
+        <label className="min-w-0 text-sm font-semibold text-[var(--ik-ink)]">
           Scadenza (opzionale)
           <input
             type="date"
             value={expiresAt}
             onChange={(event) => setExpiresAt(event.target.value)}
             aria-label="Data di scadenza"
-            className="mt-1 min-h-11 w-full rounded-xl border-2 border-gray-200 bg-white px-3 py-2 font-normal text-gray-900 outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+            className="ik-input mt-1 min-h-11 w-full min-w-0 border-2 px-3 py-2 font-normal outline-none focus:ring-4 focus:ring-[var(--ik-focus)]"
           />
         </label>
       </div>
-      <p className="mt-2 text-sm text-emerald-900">Lascia vuota la quantità se vuoi indicare soltanto che l’ingrediente è presente.</p>
-      {error !== null && <p role="alert" className="mt-2 text-sm font-semibold text-red-700">{error}</p>}
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" onClick={handleSubmit} className="min-h-10 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800">Salva dettagli</button>
-        <button type="button" onClick={onCancel} className="min-h-10 rounded-xl border-2 border-gray-300 bg-white px-4 py-2 font-semibold text-gray-800 hover:border-gray-900">Annulla</button>
+      <p className="mt-2 text-sm text-[var(--ik-ink-muted)]">Lascia vuota la quantità se vuoi indicare soltanto che l’ingrediente è presente.</p>
+      {error !== null && <p role="alert" className="mt-2 text-sm font-semibold text-[var(--ik-tomato)]">{error}</p>}
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
+        <button type="button" onClick={handleSubmit} className="ik-button-primary min-h-11 w-full px-4 py-2 font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ik-focus)] sm:w-auto">Salva dettagli</button>
+        <button type="button" onClick={onCancel} className="ik-button-secondary min-h-11 w-full border-2 bg-[var(--ik-surface)] px-4 py-2 font-semibold hover:bg-[var(--ik-sage)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ik-focus)] sm:w-auto">Annulla</button>
       </div>
     </div>
   );

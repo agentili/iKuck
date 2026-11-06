@@ -603,11 +603,11 @@ export async function initializeSessionScope(
       ensureCurrent();
     }
     ensureCurrent();
-    setActiveDataScope(GUEST_SYNC_SCOPE);
-    setPersonalDataScope(accountScope);
-    // Guest data belongs to the device, not to the authenticated house.
-    // Only the explicit Profile import may call mergeGuestPantryIntoHouse.
     if (state?.house !== null && state?.house !== undefined) {
+      // Guest data belongs to the device, not to the authenticated house.
+      // Only the explicit Profile import may call mergeGuestPantryIntoHouse.
+      setActiveDataScope(GUEST_SYNC_SCOPE);
+      setPersonalDataScope(accountScope);
       const houseScope: SyncScope = `house:${state.house.id}`;
       // A prior departure may have failed mid-purge (even across a reload).
       // Never reactivate that House's old queue or cursor on re-admission.

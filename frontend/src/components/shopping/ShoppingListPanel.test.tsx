@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react';
+import { useState } from 'react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { ShoppingListItem, ShoppingListItemPayload } from '@ikuck/shared/contracts';
@@ -160,6 +161,273 @@ describe('ShoppingListPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Salva dettagli' }));
 
     expect(onUpdate).toHaveBeenCalledWith('shopping-pasta', expect.objectContaining({ label: 'Penne' }));
+  });
+
+  it('exposes a clearly named entry workbench before the pending list', () => {
+    renderPanel([item()]);
+    const entry = screen.getByRole('form', { name: 'Aggiungi un prodotto' });
+    const pending = screen.getByRole('region', { name: /Da acquistare/ });
+    expect(within(entry).getByRole('textbox', { name: 'Cosa ti serve?' })).toBeVisible();
+    expect(entry.compareDocumentPosition(pending) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('keeps focus on undo during partial restore and retries only failed items', async () => {
+    const user = userEvent.setup();
+    const pasta = item({ purchased: true });
+    const pane = item({ id: 'shopping-pane', label: 'Pane', purchased: true });
+    const onRestoreItem = vi.fn();
+    let paneFailed = false;
+    function ShoppingHarness() {
+      const [items, setItems] = useState([pasta, pane]);
+      return <ShoppingListPanel
+        items={items}
+        onAdd={() => null}
+        onTogglePurchased={() => false}
+        onRemove={() => undefined}
+        onRestoreItem={(restored) => {
+          onRestoreItem(restored);
+          if (restored.id === pane.id && !paneFailed) {
+            paneFailed = true;
+            return false;
+          }
+          setItems((current) => [...current, restored]);
+          return true;
+        }}
+        onUpdate={() => false}
+        onClearPurchased={() => {
+          setItems((current) => current.filter((entry) => !entry.purchased));
+          return 2;
+        }}
+      />;
+    }
+    render(<ShoppingHarness />);
+
+    const clear = screen.getByRole('button', { name: 'Rimuovi gli acquistati' });
+    clear.focus();
+    await user.keyboard('{Enter}');
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('button', { name: 'Annulla' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Segna Pasta come da acquistare' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Segna Pane come da acquistare' })).not.toBeInTheDocument();
+    await user.keyboard('{Enter}');
+    expect(onRestoreItem.mock.calls.map(([restored]) => restored.id)).toEqual([pasta.id, pane.id, pane.id]);
+    expect(screen.queryByRole('button', { name: 'Annulla' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Segna Pane come da acquistare' })).toHaveFocus();
+  });
+
+  it('keeps focus on undo when a restoration fails completely', async () => {
+    const user = userEvent.setup();
+    const purchased = item({ purchased: true });
+    let attempt = 0;
+    function ShoppingHarness() {
+      const [items, setItems] = useState([purchased]);
+      return <ShoppingListPanel
+        items={items}
+        onAdd={() => null}
+        onTogglePurchased={() => false}
+        onRemove={() => undefined}
+        onRestoreItem={(restored) => {
+          attempt += 1;
+          if (attempt === 1) return false;
+          setItems((current) => [...current, restored]);
+          return true;
+        }}
+        onUpdate={() => false}
+        onClearPurchased={() => {
+          setItems([]);
+          return 1;
+        }}
+      />;
+    }
+    render(<ShoppingHarness />);
+
+    const clear = screen.getByRole('button', { name: 'Rimuovi gli acquistati' });
+    clear.focus();
+    await user.keyboard('{Enter}');
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('button', { name: 'Annulla' })).toHaveFocus();
+    expect(screen.queryByRole('button', { name: 'Segna Pasta come da acquistare' })).not.toBeInTheDocument();
+    await user.keyboard('{Enter}');
+    expect(attempt).toBe(2);
+    expect(screen.getByRole('button', { name: 'Segna Pasta come da acquistare' })).toHaveFocus();
+  });
+
+  it('keeps the clear action with purchased items, after pending items', () => {
+    renderPanel([item({ purchased: true }), item({ id: 'shopping-pane', label: 'Pane' })]);
+
+    const pending = screen.getByRole('region', { name: /Da acquistare/ });
+    const purchased = screen.getByRole('region', { name: /Acquistati/ });
+    expect(within(pending).getByText('Pane')).toBeVisible();
+    expect(within(purchased).getByText('Pasta')).toBeVisible();
+    expect(within(purchased).getByRole('button', { name: 'Rimuovi gli acquistati' })).toBeVisible();
+    expect(pending.compareDocumentPosition(purchased) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('focuses the editor and returns focus to the row after cancelling', async () => {
+    const user = userEvent.setup();
+    const onUpdate = vi.fn().mockReturnValue(true);
+    renderPanel([item()], { onUpdate });
+
+    await user.click(screen.getByRole('button', { name: 'Modifica Pasta' }));
+    expect(screen.getByRole('textbox', { name: 'Nome' })).toHaveFocus();
+    await user.clear(screen.getByRole('textbox', { name: 'Nome' }));
+    await user.type(screen.getByRole('textbox', { name: 'Nome' }), 'Penne');
+    await user.click(screen.getByRole('button', { name: 'Annulla modifiche' }));
+    expect(screen.queryByRole('textbox', { name: 'Nome' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Modifica Pasta' })).toHaveFocus();
+    expect(onUpdate).not.toHaveBeenCalled();
+  });
+
+  it('keeps an actionable pending area when everything is purchased', () => {
+    renderPanel([item({ purchased: true })]);
+
+    const pending = screen.getByRole('region', { name: /Da acquistare/ });
+    expect(within(pending).getByText('Tutto acquistato')).toBeVisible();
+    expect(within(pending).getByText(/Puoi aggiungere/)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Aggiungi alla lista' })).toBeVisible();
+  });
+
+  it('focuses undo after a keyboard removal', async () => {
+    const user = userEvent.setup();
+    function ShoppingHarness() {
+      const [items, setItems] = useState([item()]);
+      return <ShoppingListPanel
+        items={items}
+        onAdd={() => null}
+        onTogglePurchased={() => false}
+        onRemove={(id) => setItems((current) => current.filter((entry) => entry.id !== id))}
+        onRestoreItem={() => true}
+        onUpdate={() => false}
+        onClearPurchased={() => 0}
+      />;
+    }
+    render(<ShoppingHarness />);
+    const remove = screen.getByRole('button', { name: 'Rimuovi Pasta' });
+    remove.focus();
+    await user.keyboard('{Enter}');
+    expect(screen.queryByRole('button', { name: 'Rimuovi Pasta' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Annulla' })).toHaveFocus();
+  });
+
+  it('focuses the visible purchased disclosure after keyboard undo while purchased stays collapsed', async () => {
+    const user = userEvent.setup();
+    const purchased = item({ id: 'shopping-uova', ingredientId: 'uova', label: 'Uova', quantity: 6, unit: 'piece', purchased: true });
+    const onRestoreItem = vi.fn();
+    function ShoppingHarness() {
+      const [items, setItems] = useState([purchased, item({ id: 'shopping-pane', label: 'Pane' })]);
+      return <ShoppingListPanel
+        items={items}
+        onAdd={() => null}
+        onTogglePurchased={() => false}
+        onRemove={() => undefined}
+        onRestoreItem={(restored) => {
+          onRestoreItem(restored);
+          setItems((current) => [...current, restored]);
+          return true;
+        }}
+        onUpdate={() => false}
+        onClearPurchased={() => {
+          setItems((current) => current.filter((entry) => !entry.purchased));
+          return 1;
+        }}
+      />;
+    }
+    render(<ShoppingHarness />);
+
+    await user.click(screen.getByRole('button', { name: 'Nascondi acquistati' }));
+    const clear = screen.getByRole('button', { name: 'Rimuovi gli acquistati' });
+    clear.focus();
+    await user.keyboard('{Enter}');
+    expect(screen.queryByRole('button', { name: 'Mostra acquistati' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Annulla' })).toHaveFocus();
+    await user.keyboard('{Enter}');
+
+    const disclosure = screen.getByRole('button', { name: 'Mostra acquistati' });
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    expect(disclosure).toHaveFocus();
+    expect(screen.queryByRole('button', { name: 'Segna Uova come da acquistare' })).not.toBeInTheDocument();
+    expect(onRestoreItem).toHaveBeenCalledOnce();
+    expect(onRestoreItem.mock.calls[0][0]).toBe(purchased);
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('button', { name: 'Segna Uova come da acquistare' })).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: /Acquistati/ })).getByText('6 pezzi')).toBeVisible();
+  });
+
+  it('returns focus to a restored row after undo', async () => {
+    const user = userEvent.setup();
+    function ShoppingHarness() {
+      const [items, setItems] = useState([item()]);
+      return <ShoppingListPanel
+        items={items}
+        onAdd={() => null}
+        onTogglePurchased={() => false}
+        onRemove={(id) => setItems((current) => current.filter((entry) => entry.id !== id))}
+        onRestoreItem={(restored) => {
+          setItems((current) => [...current, restored]);
+          return true;
+        }}
+        onUpdate={() => false}
+        onClearPurchased={() => 0}
+      />;
+    }
+    render(<ShoppingHarness />);
+    const remove = screen.getByRole('button', { name: 'Rimuovi Pasta' });
+    remove.focus();
+    await user.keyboard('{Enter}');
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('button', { name: 'Segna Pasta come acquistato' })).toHaveFocus();
+  });
+
+  it('keeps focus on the purchased disclosure when a checked item moves into a hidden section', async () => {
+    const user = userEvent.setup();
+    function ShoppingHarness() {
+      const [items, setItems] = useState([item(), item({ id: 'shopping-pane', label: 'Pane', purchased: true })]);
+      return <ShoppingListPanel
+        items={items}
+        onAdd={() => null}
+        onTogglePurchased={(id) => {
+          setItems((current) => current.map((entry) => entry.id === id ? { ...entry, purchased: !entry.purchased } : entry));
+          return true;
+        }}
+        onRemove={() => undefined}
+        onUpdate={() => false}
+        onClearPurchased={() => 0}
+      />;
+    }
+    render(<ShoppingHarness />);
+    await user.click(screen.getByRole('button', { name: 'Nascondi acquistati' }));
+    const toggle = screen.getByRole('button', { name: 'Segna Pasta come acquistato' });
+    toggle.focus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('button', { name: 'Mostra acquistati' })).toHaveFocus();
+    expect(screen.getByRole('status', { name: 'Stato della lista' })).toHaveTextContent('Acquistato: Pasta.');
+  });
+
+  it('keeps keyboard focus and announces the change when an item moves to purchased', async () => {
+    const user = userEvent.setup();
+    function ShoppingHarness() {
+      const [items, setItems] = useState([item()]);
+      return <ShoppingListPanel
+        items={items}
+        onAdd={() => null}
+        onTogglePurchased={(id) => {
+          setItems((current) => current.map((entry) => entry.id === id ? { ...entry, purchased: !entry.purchased } : entry));
+          return true;
+        }}
+        onRemove={() => undefined}
+        onUpdate={() => false}
+        onClearPurchased={() => 0}
+      />;
+    }
+    render(<ShoppingHarness />);
+
+    await user.tab();
+    // The row can be activated with a keyboard once it has focus.
+    const toggle = screen.getByRole('button', { name: 'Segna Pasta come acquistato' });
+    toggle.focus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('button', { name: 'Segna Pasta come da acquistare' })).toHaveFocus();
+    expect(screen.getByRole('status', { name: 'Stato della lista' })).toHaveTextContent('Acquistato: Pasta.');
   });
 
   describe('ShoppingListPanel — conteggio "X da acquistare" in header', () => {

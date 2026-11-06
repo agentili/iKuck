@@ -154,7 +154,7 @@ export default function HomePage() {
   if (!hasHydrated || !diaryHasHydrated) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
-        <p role="status" className="rounded-2xl border border-gray-200 bg-white px-5 py-4 font-semibold text-gray-700">
+        <p role="status" className="rounded-2xl border border-[var(--ik-border)] bg-[var(--ik-surface)] px-5 py-4 font-semibold text-[var(--ik-ink-muted)]">
           Caricamento delle tue ricette…
         </p>
       </main>
@@ -203,15 +203,15 @@ export default function HomePage() {
   const hasPantryItems = pantryItems.length > 0;
 
   return (
-    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-6xl px-4 pb-8 pt-5 sm:px-6 sm:pt-8 lg:px-8">
+    <main id="main-content" className="ik-page ik-kitchen-page mx-auto min-h-screen w-full max-w-6xl px-4 pb-8 pt-5 sm:px-6 sm:pt-8 lg:px-8">
       <header className="ik-page-intro mb-5 max-w-2xl sm:mb-7">
-        <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Cucina · {activeScope.startsWith('house:') ? 'Casa' : activeScope === 'guest' ? 'dati locali' : 'personale'}</p>
-        <h1 className="mt-1 text-4xl font-black leading-[1.04] text-gray-950 sm:text-5xl">Cucina viva</h1>
-        <p className="mt-3 max-w-xl text-base leading-relaxed text-gray-700">Aggiungi quello che hai, poi scegli cosa cucinare. La ricerca parte solo quando la avvii.</p>
+        <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em] text-[var(--ik-basil-dark)]">Cucina · {activeScope.startsWith('house:') ? 'Casa' : activeScope === 'guest' ? 'dati locali' : 'personale'}</p>
+        <h1 className="mt-1 text-4xl font-black leading-[1.04] text-[var(--ik-ink)] sm:text-5xl">Cucina viva</h1>
+        <p className="mt-3 max-w-xl text-base leading-relaxed text-[var(--ik-ink-muted)]">Aggiungi quello che hai, poi scegli cosa cucinare. La ricerca parte solo quando la avvii.</p>
       </header>
 
       {persistenceIssue !== undefined && (
-        <div role="alert" className="mb-5 flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
+        <div role="alert" className="mb-5 flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-[var(--ik-radius-panel)] border-2 border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] px-4 py-3 text-[var(--ik-tomato)]">
           <p>
             {persistenceIssue.domain === 'pantry' && isPantrySnapshotConflictError(persistenceIssue.status.error)
               ? isPantrySnapshotConflictBackupError(persistenceIssue.status.error)
@@ -227,9 +227,9 @@ export default function HomePage() {
             {!pantryConflict && !malformedPantryBackup && <> {' '}Puoi riprovare quando vuoi.</>}
           </p>
           {hasRecoverablePantryConflict ? (
-            <Link to="/pantry" className="inline-flex min-h-10 items-center rounded-xl border-2 border-amber-700 px-3 py-1.5 font-bold text-amber-900 hover:bg-amber-100">Scegli una copia della dispensa</Link>
+            <Link to="/pantry" className="inline-flex min-h-10 items-center rounded-xl border-2 border-[var(--ik-basil)] px-3 py-1.5 font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)]">Scegli una copia della dispensa</Link>
           ) : !pantryConflict && !malformedPantryBackup ? (
-            <button type="button" onClick={() => void retryPersistence(persistenceIssue.domain)} className="min-h-10 rounded-xl border-2 border-amber-700 px-3 py-1.5 font-bold text-amber-900 hover:bg-amber-100">Riprova</button>
+            <button type="button" onClick={() => void retryPersistence(persistenceIssue.domain)} className="min-h-10 rounded-xl border-2 border-[var(--ik-basil)] px-3 py-1.5 font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)]">Riprova</button>
           ) : null}
         </div>
       )}
@@ -237,9 +237,9 @@ export default function HomePage() {
       <div className="ik-kitchen-layout mt-4">
         <section aria-labelledby="pantry-summary-title" className="ik-pantry-workbench ik-surface space-y-4 rounded-3xl border-2 p-4 sm:p-5">
           <div>
-            <p className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Banco ingredienti</p>
-            <h2 id="pantry-summary-title" className="mt-1 text-2xl font-black text-gray-950">{hasPantryItems ? 'Quello che hai' : 'Partiamo da cosa hai'}</h2>
-            <p className="mt-1 text-sm leading-relaxed text-gray-700">
+            <p className="text-sm font-bold uppercase tracking-[0.14em] text-[var(--ik-basil-dark)]">Banco ingredienti</p>
+            <h2 id="pantry-summary-title" className="mt-1 text-2xl font-black text-[var(--ik-ink)]">{hasPantryItems ? 'Quello che hai' : 'Partiamo da cosa hai'}</h2>
+            <p className="mt-1 text-sm leading-relaxed text-[var(--ik-ink-muted)]">
               {hasPantryItems
                 ? `${pantryItems.length} ${pantryItems.length === 1 ? 'ingrediente' : 'ingredienti'} · ambito ${activeScope.startsWith('house:') ? 'Casa' : activeScope === 'guest' ? 'locale' : 'personale'}`
                 : 'Aggiungi ingredienti qui: la dispensa si aggiorna senza cambiare pagina.'}
@@ -250,7 +250,7 @@ export default function HomePage() {
               {pantryItems.map((item) => <IngredientChip key={item.id} item={item} onRemove={removeIngredient} />)}
             </ul>
           ) : (
-            <p role="status" className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-950">Nessun ingrediente ancora aggiunto.</p>
+            <p role="status" className="rounded-2xl border border-dashed border-[var(--ik-sage)] bg-[var(--ik-mist)] px-4 py-3 text-sm font-medium text-[var(--ik-basil-dark)]">Nessun ingrediente ancora aggiunto.</p>
           )}
           <button
             ref={addDialogTriggerRef}
@@ -258,76 +258,76 @@ export default function HomePage() {
             onClick={openQuickAdd}
             className="ik-button-primary inline-flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold sm:w-auto"
           >Aggiungi ingredienti</button>
-          <Link to="/pantry" className="inline-flex min-h-11 items-center rounded-xl px-3 py-2 font-bold text-emerald-900 underline decoration-emerald-300 underline-offset-4 hover:bg-emerald-50">Apri tutta la dispensa</Link>
+          <Link to="/pantry" className="inline-flex min-h-11 items-center rounded-xl px-3 py-2 font-bold text-[var(--ik-basil-dark)] underline decoration-[var(--ik-border-strong)] underline-offset-4 hover:bg-[var(--ik-mist)]">Apri tutta la dispensa</Link>
           <SuggestionControls allowOneMissing={allowOneMissing} disabled={!hasPantryItems} onAllowOneMissingChange={setAllowOneMissing} onSearch={() => search()} />
-          {!hasPantryItems && <p className="text-sm text-gray-600">La ricerca è manuale e locale: nessuna chiamata parte aprendo la Home.</p>}
+          {!hasPantryItems && <p className="text-sm text-[var(--ik-ink-muted)]">La ricerca è manuale e locale: nessuna chiamata parte aprendo la Home.</p>}
         </section>
 
         <section aria-label="Risultati delle ricette" className="ik-kitchen-results min-w-0">
-      <section aria-labelledby="results-title" aria-live="polite" aria-atomic="false" className="mt-0">
-        {hasSearched && (
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 id="results-title" ref={resultsTitleRef} tabIndex={-1} className="text-3xl font-black text-gray-950">Ricette per te</h2>
-              <p className="mt-1 text-gray-600">Scelte usando quello che hai indicato nella dispensa.</p>
-            </div>
+          <div aria-live="polite" aria-atomic="false" className="mt-0">
+            {hasSearched && (
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 id="results-title" ref={resultsTitleRef} tabIndex={-1} className="text-3xl font-black text-[var(--ik-ink)]">Ricette per te</h2>
+                  <p className="mt-1 text-[var(--ik-ink-muted)]">Scelte usando quello che hai indicato nella dispensa.</p>
+                </div>
+                {suggestions.length > 0 && (
+                  <button type="button" onClick={refreshSuggestions} className="inline-flex min-h-11 items-center gap-2 rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-surface)] px-4 py-2 font-semibold text-[var(--ik-ink)] hover:border-[var(--ik-basil-dark)]">
+                    <RefreshCw size={17} aria-hidden="true" />
+                    Altre idee
+                  </button>
+                )}
+              </div>
+            )}
             {suggestions.length > 0 && (
-              <button type="button" onClick={refreshSuggestions} className="inline-flex min-h-11 items-center gap-2 rounded-xl border-2 border-gray-300 bg-white px-4 py-2 font-semibold text-gray-800 hover:border-gray-900">
-                <RefreshCw size={17} aria-hidden="true" />
-                Altre idee
-              </button>
+              <div className="space-y-7">
+                {readySuggestions.length > 0 && (
+                  <section aria-labelledby="ready-recipes-title" className="ik-results-group ik-results-group--ready rounded-3xl border-2 border-[var(--ik-sage)] bg-[var(--ik-mist)] p-4 sm:p-5">
+                    <div className="mb-4 max-w-2xl">
+                      <p className="text-sm font-bold uppercase tracking-[0.14em] text-[var(--ik-basil-dark)]">Senza spesa</p>
+                      <h3 id="ready-recipes-title" className="mt-1 text-2xl font-black text-[var(--ik-ink)]">Pronte da cucinare</h3>
+                      <p className="mt-1 text-sm leading-relaxed text-[var(--ik-ink-muted)] sm:text-base">Hai tutti gli ingredienti necessari; controlla le quantità indicate nella ricetta.</p>
+                    </div>
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      {readySuggestions.map((suggestion) => <LocalRecipeCard key={suggestion.recipe.id} suggestion={suggestion} />)}
+                    </div>
+                  </section>
+                )}
+                {onePurchaseSuggestions.length > 0 && (
+                  <section aria-labelledby="one-purchase-recipes-title" className="ik-results-group ik-results-group--one-purchase rounded-3xl border-2 border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] p-4 sm:p-5">
+                    <div className="mb-4 max-w-2xl">
+                      <p className="text-sm font-bold uppercase tracking-[0.14em] text-[var(--ik-warn-ink)]">Un piccolo acquisto</p>
+                      <h3 id="one-purchase-recipes-title" className="mt-1 text-2xl font-black text-[var(--ik-ink)]">Con un solo acquisto</h3>
+                      <p className="mt-1 text-sm leading-relaxed text-[var(--ik-ink-muted)] sm:text-base">Manca un solo ingrediente: aggiungilo alla lista e la ricetta è pronta.</p>
+                    </div>
+                    <div className="grid gap-3 xl:grid-cols-2">
+                      {onePurchaseSuggestions.map((suggestion) => (
+                        <LocalRecipeCard
+                          key={suggestion.recipe.id}
+                          suggestion={suggestion}
+                          missingIngredientInShoppingList={isMissingSuggestionInShoppingList(suggestion)}
+                          onAddMissingIngredient={addMissingSuggestionToShoppingList}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </div>
             )}
-          </div>
-        )}
-        {suggestions.length > 0 && (
-          <div className="space-y-7">
-            {readySuggestions.length > 0 && (
-              <section aria-labelledby="ready-recipes-title" className="ik-results-group ik-results-group--ready rounded-3xl border-2 border-emerald-100 bg-emerald-50/50 p-4 sm:p-5">
-                <div className="mb-4 max-w-2xl">
-                  <p className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Senza spesa</p>
-                  <h3 id="ready-recipes-title" className="mt-1 text-2xl font-black text-gray-950">Pronte da cucinare</h3>
-                  <p className="mt-1 text-sm leading-relaxed text-gray-700 sm:text-base">Hai tutti gli ingredienti necessari; controlla le quantità indicate nella ricetta.</p>
-                </div>
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {readySuggestions.map((suggestion) => <LocalRecipeCard key={suggestion.recipe.id} suggestion={suggestion} />)}
-                </div>
-              </section>
-            )}
-            {onePurchaseSuggestions.length > 0 && (
-              <section aria-labelledby="one-purchase-recipes-title" className="ik-results-group ik-results-group--one-purchase rounded-3xl border-2 border-amber-200 bg-amber-50/60 p-4 sm:p-5">
-                <div className="mb-4 max-w-2xl">
-                  <p className="text-sm font-bold uppercase tracking-[0.14em] text-amber-900">Un piccolo acquisto</p>
-                  <h3 id="one-purchase-recipes-title" className="mt-1 text-2xl font-black text-gray-950">Con un solo acquisto</h3>
-                  <p className="mt-1 text-sm leading-relaxed text-gray-700 sm:text-base">Manca un solo ingrediente: aggiungilo alla lista e la ricetta è pronta.</p>
-                </div>
-                <div className="grid gap-3 xl:grid-cols-2">
-                  {onePurchaseSuggestions.map((suggestion) => (
-                    <LocalRecipeCard
-                      key={suggestion.recipe.id}
-                      suggestion={suggestion}
-                      missingIngredientInShoppingList={isMissingSuggestionInShoppingList(suggestion)}
-                      onAddMissingIngredient={addMissingSuggestionToShoppingList}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-          </div>
-        )}
-        {hasSearched && suggestions.length === 0 && (
-          <div className="rounded-3xl border-2 border-gray-200 bg-white p-6">
-            <h3 className="text-xl font-bold text-gray-950">Nessuna ricetta pronta con questi ingredienti</h3>
-            {!allowOneMissing ? (
-              <button type="button" onClick={tryExtended} className="mt-4 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800">Prova con 1 ingrediente in più</button>
-            ) : (
-              <div className="mt-3">
-                <p className="text-gray-700">Puoi aggiungere altri ingredienti nella sezione Dispensa.</p>
-                <Link to="/pantry" className="mt-3 inline-flex min-h-11 items-center rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900">Gestisci la dispensa</Link>
+            {hasSearched && suggestions.length === 0 && (
+              <div className="rounded-[var(--ik-radius-feature)] border-2 border-[var(--ik-border)] bg-[var(--ik-surface)] p-6">
+                <h3 className="text-xl font-bold text-[var(--ik-ink)]">Nessuna ricetta pronta con questi ingredienti</h3>
+                {!allowOneMissing ? (
+                  <button type="button" onClick={tryExtended} className="mt-4 min-h-11 rounded-xl bg-[var(--ik-basil-dark)] px-4 py-2 font-bold text-[var(--ik-porcelain)] hover:bg-[var(--ik-basil)]">Prova con 1 ingrediente in più</button>
+                ) : (
+                  <div className="mt-3">
+                    <p className="text-[var(--ik-ink-muted)]">Puoi aggiungere altri ingredienti nella sezione Dispensa.</p>
+                    <Link to="/pantry" className="mt-3 inline-flex min-h-11 items-center rounded-xl border-2 border-[var(--ik-border)] px-4 py-2 font-bold text-[var(--ik-ink)] hover:border-[var(--ik-basil-dark)]">Gestisci la dispensa</Link>
+                  </div>
+                )}
               </div>
             )}
           </div>
-        )}
-      </section>
         </section>
       </div>
 

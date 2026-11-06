@@ -50,6 +50,16 @@ describe('DinnerDiaryPage', () => {
     useDinnerDiaryStore.setState({ hasHydrated: true, entries: [], recipes: [], drafts: [], error: null, confirmEntry: defaultConfirmEntry });
   });
 
+  it('does not report an empty diary when the local diary read failed', () => {
+    useDinnerDiaryStore.setState({ hasHydrated: true, entries: [], error: new Error('storage unavailable') });
+
+    renderPage();
+
+    expect(screen.queryByText('Non hai ancora registrato una cena.')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(/Non è stato possibile caricare o aggiornare il diario/i);
+    expect(screen.getByRole('status')).toHaveTextContent(/La cronologia non è disponibile/i);
+  });
+
   it('keeps Dinner consent closed until requested, leaving the diary form available', async () => {
     const user = userEvent.setup();
     const now = '2026-09-29T10:00:00.000Z';

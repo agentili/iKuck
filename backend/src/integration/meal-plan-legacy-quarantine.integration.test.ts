@@ -161,7 +161,7 @@ integration('legacy meal-plan migration quarantine in PostgreSQL', () => {
   });
 
   it('quarantines a manual source without a tuple or receipt and exposes the raw evidence read-only', async () => {
-    const { userId, adminId, houseId } = await createActorsAndHouse('manual-no-provenance');
+    const { userId, houseId } = await createActorsAndHouse('manual-no-provenance');
     const date = '2026-11-28';
     const { repository, command } = await seedLegacyPlan({
       userId, houseId, date, kind: 'manual', operationId: `manual-missing-${randomUUID()}`,
@@ -181,7 +181,9 @@ integration('legacy meal-plan migration quarantine in PostgreSQL', () => {
     await expect(remainingSourceRows(userId, date)).resolves.toEqual({ states: [], projections: [] });
 
     const recoveryApp = appFor(userId);
-    const outsiderApp = appFor(adminId);
+    const outsiderId = randomUUID();
+    await database.db.insert(users).values({ id: outsiderId, email: `plan-quarantine-outsider-${randomUUID()}@example.com`, emailVerifiedAt: new Date() });
+    const outsiderApp = appFor(outsiderId);
     try {
       const recovery = await recoveryApp.inject({ method: 'GET', url: '/v1/meal-plan/recovery', headers });
       expect(recovery.statusCode).toBe(200);
@@ -301,7 +303,7 @@ integration('legacy meal-plan migration quarantine in PostgreSQL', () => {
       });
       expect(sync.statusCode).toBe(409);
       expect(sync.json()).toMatchObject({ code: 'plan_migration_quarantined' });
-      expect(await repository.readMealPlanRecovery(userId)).toEqual([]);
+      expect(await repository.readMealPlanRecovery(userId)).toHaveLength(1);
     } finally {
       await app.close();
     }

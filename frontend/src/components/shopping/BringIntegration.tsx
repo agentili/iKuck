@@ -266,108 +266,123 @@ export default function BringIntegration({ userId, csrfToken }: { userId: string
   const disconnected = status === null || !status.connected || status.connectionId === null || reconnect;
 
   return (
-    <section className="ik-surface rounded-3xl border-2 bg-white p-4 sm:p-6" aria-labelledby="bring-title">
-      <h2 id="bring-title" className="text-3xl font-black">Lista Bring!</h2>
-      <p className="mt-2 text-[var(--ik-ink-muted)]">La lista resta su Bring! e richiede Internet. La lista iKuck rimane separata.</p>
-      {!online && <p role="status" className="mt-3">Sei offline: i dati Bring! mostrati potrebbero non essere aggiornati. Le modifiche sono disabilitate.</p>}
-      {busy && <p role="status" className="mt-3">Operazione Bring! in corso…</p>}
-      {error !== null && <p role="alert" className="mt-3 text-[var(--ik-tomato)]">{error}</p>}
-      {message !== null && <p role="status" className="mt-3 text-[var(--ik-basil-dark)]">{message}</p>}
+    <section
+      className="min-w-0 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4 text-[var(--ik-ink)] shadow-[var(--ik-shadow-surface)] sm:p-6"
+      aria-labelledby="bring-title"
+    >
+      <header className="min-w-0">
+        <h2 id="bring-title" className="text-2xl font-black leading-tight sm:text-3xl">Lista Bring!</h2>
+        <p className="mt-2 max-w-2xl leading-relaxed text-[var(--ik-ink-muted)]">La lista resta su Bring! e richiede Internet. La lista iKuck rimane separata.</p>
+      </header>
+
+      <div className="mt-4 grid gap-2">
+        {!online && <p role="status" aria-label="Connessione offline" className="rounded-[var(--ik-radius-control)] border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] px-3 py-2.5 text-sm font-semibold leading-relaxed text-[var(--ik-warn-ink)]">Sei offline: i dati Bring! mostrati potrebbero non essere aggiornati. Le modifiche sono disabilitate.</p>}
+        {busy && <p role="status" aria-label="Operazione Bring! in corso" className="rounded-[var(--ik-radius-control)] border border-[var(--ik-border)] bg-[var(--ik-mist)] px-3 py-2.5 text-sm font-semibold leading-relaxed text-[var(--ik-ink)]">Operazione Bring! in corso…</p>}
+        {error !== null && <p role="alert" className="rounded-[var(--ik-radius-control)] border border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] px-3 py-2.5 text-sm font-semibold leading-relaxed text-[var(--ik-tomato)]">{error}</p>}
+        {message !== null && <p role="status" aria-label="Aggiornamento Bring!" className="rounded-[var(--ik-radius-control)] border border-[var(--ik-basil)] bg-[var(--ik-sage)] px-3 py-2.5 text-sm font-semibold leading-relaxed text-[var(--ik-basil-dark)]">{message}</p>}
+      </div>
+      {sessionMatches && status?.connected && status.connectionId !== null && !reconnect && (
+        <p role="status" aria-label="Stato collegamento Bring!" className="mt-3 rounded-[var(--ik-radius-control)] border border-[var(--ik-basil)] bg-[var(--ik-sage)] px-3 py-2.5 text-sm font-semibold text-[var(--ik-basil-dark)]">
+          Collegamento Bring! attivo.
+        </p>
+      )}
 
       {!sessionMatches ? (
-        <p role="status" className="mt-4">Collega Bring! con una sessione verificata iKuck.</p>
+        <p role="status" aria-label="Sessione verificata richiesta" className="mt-4 rounded-[var(--ik-radius-control)] border border-[var(--ik-border)] bg-[var(--ik-mist)] p-3 text-sm font-semibold leading-relaxed">Collega Bring! con una sessione verificata iKuck.</p>
       ) : (
         <>
-          <button type="button" disabled={busy || !online} onClick={() => { void loadStatus(); }} className="ik-button-secondary mt-3 min-h-11 border px-3">
+          <button type="button" disabled={busy || !online} onClick={() => { void loadStatus(); }} className="ik-button-secondary mt-4 min-h-11 w-full border bg-[var(--ik-surface)] px-4 font-bold hover:bg-[var(--ik-sage)] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
             Aggiorna collegamento e liste
           </button>
 
-          {status === null && !busy && <p className="mt-4">Controlla il collegamento a Bring! per continuare.</p>}
+          {status === null && !busy && <p className="mt-4 rounded-[var(--ik-radius-control)] border border-[var(--ik-border)] bg-[var(--ik-mist)] p-3 text-sm leading-relaxed text-[var(--ik-ink-muted)]">Controlla il collegamento a Bring! per continuare.</p>}
           {status?.enabled === false ? (
-            <p className="mt-4">Bring! non è configurato su questa installazione.</p>
+            <p className="mt-4 rounded-[var(--ik-radius-control)] border border-[var(--ik-border)] bg-[var(--ik-mist)] p-3 text-sm leading-relaxed">Bring! non è configurato su questa installazione.</p>
           ) : (
             <>
               {disconnected && status !== null && <form onSubmit={connect} className="mt-4">
-                <fieldset disabled={busy || !online} className="grid gap-3">
-                  <legend className="font-bold">{reconnect ? 'Ricollega Bring!' : 'Collega Bring!'}</legend>
-                  <p>Le credenziali sono inviate a Bring! tramite il backend iKuck. La password non viene conservata; i token sono cifrati sul server. API non ufficiale.</p>
-                  <label className="grid gap-1">Email Bring!
-                    <input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={254} required className="ik-input min-h-11 px-3" />
+                <fieldset disabled={busy || !online} className="grid min-w-0 gap-4 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-mist)] p-4 sm:grid-cols-2">
+                  <legend className="px-1 font-bold sm:col-span-2">{reconnect ? 'Ricollega Bring!' : 'Collega Bring!'}</legend>
+                  <p className="rounded-[var(--ik-radius-control)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-3 text-sm leading-relaxed text-[var(--ik-ink-muted)] sm:col-span-2">Le credenziali sono inviate a Bring! tramite il backend iKuck. La password non viene conservata; i token sono cifrati sul server. API non ufficiale.</p>
+                  <label className="grid min-w-0 gap-1 text-sm font-semibold text-[var(--ik-ink)]">Email Bring!
+                    <input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={254} required className="ik-input min-h-11 w-full min-w-0 border-2 px-3 text-base focus-visible:border-[var(--ik-basil)]" />
                   </label>
-                  <label className="grid gap-1">Password Bring!
-                    <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} maxLength={256} required className="ik-input min-h-11 px-3" />
+                  <label className="grid min-w-0 gap-1 text-sm font-semibold text-[var(--ik-ink)]">Password Bring!
+                    <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} maxLength={256} required className="ik-input min-h-11 w-full min-w-0 border-2 px-3 text-base focus-visible:border-[var(--ik-basil)]" />
                   </label>
-                  <label className="flex min-h-11 items-center gap-2">
-                    <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-                    Autorizzo iKuck ad accedere e modificare le mie liste Bring! quando lo richiedo.
+                  <label className="flex min-h-11 min-w-0 items-center gap-2 text-sm font-semibold leading-relaxed text-[var(--ik-ink)] sm:col-span-2">
+                    <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} className="size-5 shrink-0 accent-[var(--ik-basil)]" />
+                    <span>Autorizzo iKuck ad accedere e modificare le mie liste Bring! quando lo richiedo.</span>
                   </label>
-                  <button type="submit" disabled={!consent} className="ik-button-primary min-h-11 px-4">Collega Bring!</button>
+                  <button type="submit" disabled={!consent} className="ik-button-primary min-h-11 px-4 font-bold disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2">Collega Bring!</button>
                 </fieldset>
               </form>}
 
-              {status?.connected && status.connectionId !== null && <button type="button" disabled={busy || !online} className="ik-button-secondary mt-3 min-h-11 border px-3" onClick={disconnect}>
+              {status?.connected && status.connectionId !== null && <button type="button" disabled={busy || !online} className="ik-button-secondary mt-3 min-h-11 w-full border bg-[var(--ik-surface)] px-4 font-bold hover:bg-[var(--ik-sage)] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto" onClick={disconnect}>
                 Scollega Bring!
               </button>}
 
-              {!disconnected && <fieldset disabled={busy || !online} className="mt-4 grid gap-4">
-                <legend className="font-bold">Scegli cosa visualizzare su Bring!</legend>
-                <label className="grid gap-1">Lista Bring!
-                  <select value={listId} onChange={(event) => select(event.target.value)} className="ik-input min-h-11 px-3">
+              {!disconnected && <fieldset disabled={busy || !online} className="mt-4 grid min-w-0 gap-4 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-mist)] p-4">
+                <legend className="px-1 font-bold">Scegli cosa visualizzare su Bring!</legend>
+                <label className="grid min-w-0 gap-1 text-sm font-semibold text-[var(--ik-ink)]">Lista Bring!
+                  <select value={listId} onChange={(event) => select(event.target.value)} className="ik-input min-h-11 w-full min-w-0 border-2 px-3 text-base focus-visible:border-[var(--ik-basil)]">
                     <option value="">Scegli una lista Bring!</option>
                     {lists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}
                   </select>
                 </label>
-                {listId !== '' && <button type="button" className="ik-button-secondary min-h-11 border px-3" onClick={() => select(listId)}>Aggiorna lista Bring!</button>}
-                {listsLoaded && lists.length === 0 && !busy && <p>Non ci sono liste Bring! disponibili.</p>}
-                {listId === '' && lists.length > 0 && <p>Scegli una lista per leggerne gli articoli.</p>}
+                {listId !== '' && <button type="button" className="ik-button-secondary min-h-11 w-full border bg-[var(--ik-surface)] px-4 font-bold hover:bg-[var(--ik-sage)] sm:w-auto" onClick={() => select(listId)}>Aggiorna lista Bring!</button>}
+                {listsLoaded && lists.length === 0 && !busy && <p className="rounded-[var(--ik-radius-control)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-3 text-sm leading-relaxed text-[var(--ik-ink-muted)]">Non ci sono liste Bring! disponibili.</p>}
+                {listId === '' && lists.length > 0 && <p className="rounded-[var(--ik-radius-control)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-3 text-sm leading-relaxed text-[var(--ik-ink-muted)]">Scegli una lista per leggerne gli articoli.</p>}
                 {snapshot !== null && <>
-                  {!snapshot.labelsAvailable && <p>Traduzioni non disponibili: sono mostrati i nomi originali Bring!.</p>}
-                  <form className="grid gap-3" onSubmit={(event) => {
+                  {!snapshot.labelsAvailable && <p className="rounded-[var(--ik-radius-control)] border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] p-3 text-sm leading-relaxed text-[var(--ik-warn-ink)]">Traduzioni non disponibili: sono mostrati i nomi originali Bring!.</p>}
+                  <form className="grid min-w-0 gap-3 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border-strong)] bg-[var(--ik-sage)] p-4 sm:grid-cols-2" onSubmit={(event) => {
                     event.preventDefault();
                     if (status?.connectionId && listId !== '' && !addDisabled) {
                       write({ connectionId: status.connectionId, listId, action: 'add', name: name.trim(), specification }, true);
                     }
                   }}>
-                    <label className="grid gap-1">Cosa aggiungere a Bring!
-                      <input value={name} onChange={(event) => setName(event.target.value)} maxLength={BRING_NAME_MAX_LENGTH} required className="ik-input min-h-11 px-3" />
+                    <label className="grid min-w-0 gap-1 text-sm font-semibold text-[var(--ik-ink)]">Cosa aggiungere a Bring!
+                      <input value={name} onChange={(event) => setName(event.target.value)} maxLength={BRING_NAME_MAX_LENGTH} required className="ik-input min-h-11 w-full min-w-0 border-2 px-3 text-base focus-visible:border-[var(--ik-basil)]" />
                     </label>
-                    <label className="grid gap-1">Specifica Bring!
-                      <input value={specification} onChange={(event) => setSpecification(event.target.value)} maxLength={BRING_SPEC_MAX_LENGTH} placeholder="es. 2 l, senza lattosio" className="ik-input min-h-11 px-3" />
+                    <label className="grid min-w-0 gap-1 text-sm font-semibold text-[var(--ik-ink)]">Specifica Bring!
+                      <input value={specification} onChange={(event) => setSpecification(event.target.value)} maxLength={BRING_SPEC_MAX_LENGTH} placeholder="es. 2 l, senza lattosio" className="ik-input min-h-11 w-full min-w-0 border-2 px-3 text-base focus-visible:border-[var(--ik-basil)]" />
                     </label>
-                    <button type="submit" disabled={addDisabled} className="ik-button-primary min-h-11 px-4">Aggiungi a Bring!</button>
+                    <button type="submit" disabled={addDisabled} className="ik-button-primary min-h-11 w-full px-4 font-bold disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2 sm:w-auto">Aggiungi a Bring!</button>
                   </form>
                   {(['purchase', 'recently'] as const).map((group) => {
                     const items = snapshot.items.filter((item) => item.state === group);
                     if (items.length === 0) return null;
                     return (
-                      <section key={group} aria-labelledby={`bring-${group}`}>
-                        <h3 id={`bring-${group}`} className="font-bold">{group === 'purchase' ? 'Da acquistare su Bring!' : 'Acquistati su Bring!'}</h3>
-                        <ul className="mt-3 grid gap-3">
+                      <section key={group} aria-labelledby={`bring-${group}`} className="min-w-0">
+                        <h3 id={`bring-${group}`} className="text-lg font-bold">{group === 'purchase' ? 'Da acquistare su Bring!' : 'Acquistati su Bring!'}</h3>
+                        <ul className="mt-3 grid min-w-0 gap-3">
                           {items.map((item, index) => (
-                            <li key={JSON.stringify([item.name, item.specification, item.state, index])} data-bring-name={item.name} className="rounded-xl border border-[var(--ik-border)] p-3">
+                            <li key={JSON.stringify([item.name, item.specification, item.state, index])} data-bring-name={item.name} className="min-w-0 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-3 text-[var(--ik-ink)] sm:p-4">
                               <p className="break-words font-bold">{item.label}</p>
-                              {item.specification !== '' && <p className="break-words">{item.specification}</p>}
-                              {!isMutableBringItem(item) && <p>Articolo non modificabile in sicurezza: gestiscilo nell’app Bring!.</p>}
-                              {group === 'purchase' && isMutableBringItem(item) && <button type="button" className="ik-button-secondary mt-2 min-h-11 px-3" onClick={() => itemAction(item, 'complete')}>
-                                Segna {item.label} acquistato su Bring!
-                              </button>}
-                              {group === 'recently' && isMutableBringItem(item) && <button type="button" className="ik-button-secondary mt-2 min-h-11 px-3" onClick={() => itemAction(item, 'restore')}>
-                                Ripristina {item.label} su Bring!
-                              </button>}
-                              {isMutableBringItem(item) && <button type="button" className="ik-button-secondary mt-2 min-h-11 px-3" onClick={() => itemAction(item, 'remove')}>
-                                Rimuovi {item.label} da Bring!
-                              </button>}
-                              {group === 'purchase' && isMutableBringItem(item) && <details className="mt-3">
-                                <summary className="flex min-h-11 cursor-pointer items-center">Modifica specifica di {item.label}</summary>
-                                <form className="mt-2 grid gap-2" onSubmit={(event) => {
+                              {item.specification !== '' && <p className="mt-1 break-words text-sm text-[var(--ik-ink-muted)]">{item.specification}</p>}
+                              {!isMutableBringItem(item) && <p className="mt-2 rounded-[var(--ik-radius-control)] border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] p-3 text-sm font-semibold leading-relaxed text-[var(--ik-warn-ink)]">Articolo non modificabile in sicurezza: gestiscilo nell’app Bring!.</p>}
+                              <div className="mt-3 grid min-w-0 gap-2 sm:flex sm:flex-wrap">
+                                {group === 'purchase' && isMutableBringItem(item) && <button type="button" className="ik-button-secondary min-h-11 w-full border bg-[var(--ik-surface)] px-3 font-semibold hover:bg-[var(--ik-sage)] sm:w-auto" onClick={() => itemAction(item, 'complete')}>
+                                  Segna {item.label} acquistato su Bring!
+                                </button>}
+                                {group === 'recently' && isMutableBringItem(item) && <button type="button" className="ik-button-secondary min-h-11 w-full border bg-[var(--ik-surface)] px-3 font-semibold hover:bg-[var(--ik-sage)] sm:w-auto" onClick={() => itemAction(item, 'restore')}>
+                                  Ripristina {item.label} su Bring!
+                                </button>}
+                                {isMutableBringItem(item) && <button type="button" className="ik-button-secondary min-h-11 w-full border bg-[var(--ik-surface)] px-3 font-semibold hover:bg-[var(--ik-tomato-soft)] sm:w-auto" onClick={() => itemAction(item, 'remove')}>
+                                  Rimuovi {item.label} da Bring!
+                                </button>}
+                              </div>
+                              {group === 'purchase' && isMutableBringItem(item) && <details className="mt-3 border-t border-[var(--ik-border)] pt-2">
+                                <summary className="flex min-h-11 cursor-pointer items-center rounded-[var(--ik-radius-control)] px-2 font-semibold text-[var(--ik-basil-dark)] underline underline-offset-2 hover:bg-[var(--ik-mist)]">Modifica specifica di {item.label}</summary>
+                                <form className="mt-2 grid min-w-0 gap-2 sm:grid-cols-2" onSubmit={(event) => {
                                   event.preventDefault();
                                   const value = new FormData(event.currentTarget).get('specification');
                                   if (typeof value === 'string') itemAction(item, 'update', value);
                                 }}>
-                                  <label className="grid gap-1">Nuova specifica di {item.label}
-                                    <input name="specification" defaultValue={item.specification} maxLength={BRING_SPEC_MAX_LENGTH} className="ik-input min-h-11 px-3" />
+                                  <label className="grid min-w-0 gap-1 text-sm font-semibold text-[var(--ik-ink)] sm:col-span-2">Nuova specifica di {item.label}
+                                    <input name="specification" defaultValue={item.specification} maxLength={BRING_SPEC_MAX_LENGTH} className="ik-input min-h-11 w-full min-w-0 border-2 px-3 text-base focus-visible:border-[var(--ik-basil)]" />
                                   </label>
-                                  <button type="submit" className="ik-button-primary min-h-11 px-3">Salva specifica di {item.label}</button>
+                                  <button type="submit" className="ik-button-primary min-h-11 w-full px-3 font-bold sm:col-span-2 sm:w-auto">Salva specifica di {item.label}</button>
                                 </form>
                               </details>}
                             </li>
@@ -376,7 +391,7 @@ export default function BringIntegration({ userId, csrfToken }: { userId: string
                       </section>
                     );
                   })}
-                  {snapshot.items.length === 0 && <p>La lista Bring! è vuota.</p>}
+                  {snapshot.items.length === 0 && <p role="status" aria-label="Lista Bring! vuota" className="rounded-[var(--ik-radius-panel)] border border-dashed border-[var(--ik-border-strong)] bg-[var(--ik-surface)] p-4 text-sm font-semibold text-[var(--ik-ink-muted)]">La lista Bring! è vuota.</p>}
                 </>}
               </fieldset>}
             </>

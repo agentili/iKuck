@@ -19,6 +19,8 @@ describe('UndoToast', () => {
     render(<UndoToast message="Lotto rimosso." onUndo={onUndo} onExpire={onExpire} />);
 
     expect(screen.getByRole('status')).toHaveTextContent('Lotto rimosso.');
+    expect(screen.getByRole('status')).toHaveClass('bg-[var(--ik-ink)]', 'text-[var(--ik-porcelain)]');
+    expect(screen.getByRole('button', { name: 'Annulla' })).toHaveClass('bg-[var(--ik-yolk)]', 'text-[var(--ik-on-yolk)]');
     fireEvent.click(screen.getByRole('button', { name: 'Annulla' }));
 
     expect(onUndo).toHaveBeenCalledOnce();

@@ -163,7 +163,8 @@ test('consumes only mapped dinner ingredients once, rolls back failed persistenc
   await page.getByLabel('Quantità per porzione di Pasta').fill('80 g');
   await page.evaluate(() => window.sessionStorage.setItem('fail-dinner-consumption-write', 'true'));
   await page.getByRole('button', { name: 'Registra la cena' }).click();
-  await expect(page.getByRole('alert')).toContainText('La dispensa non è stata aggiornata');
+  await expect(page.getByRole('alert').filter({ hasText: 'La dispensa non è stata aggiornata' }))
+    .toContainText('La dispensa non è stata aggiornata');
   const afterFailure = await readGuestState(page);
   expect(afterFailure.pantry).toEqual(beforeCommit.pantry);
   expect(afterFailure.dinners).toHaveLength(0);

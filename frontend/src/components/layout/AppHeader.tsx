@@ -33,7 +33,7 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
       type="button"
       onClick={toggleTheme}
       aria-label={resolvedTheme === 'dark' ? 'Attiva tema chiaro' : 'Attiva tema scuro'}
-      className="grid min-h-11 min-w-11 place-items-center rounded-xl text-gray-800 hover:bg-gray-100"
+      className="grid min-h-11 min-w-11 place-items-center rounded-xl text-[var(--ik-ink)] hover:bg-[var(--ik-sage)]"
     >
       {resolvedTheme === 'dark' ? <Sun size={19} aria-hidden="true" /> : <Moon size={19} aria-hidden="true" />}
     </button>
@@ -51,20 +51,20 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
     : house === null ? accountStatus : `Casa · ${house.name}`;
 
   return (
-    <header className="ik-app-header app-sidebar fixed left-0 top-0 z-40 flex h-auto w-full flex-col border-b border-gray-200 bg-white">
-      <a href="#main-content" className="sr-only rounded-lg bg-gray-950 px-3 py-2 text-sm font-bold text-white focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50">
+    <header className="ik-app-header app-sidebar fixed left-0 top-0 z-40 flex h-auto w-full flex-col border-b border-[var(--ik-border)] bg-[var(--ik-porcelain)]">
+      <a href="#main-content" className="sr-only rounded-lg bg-[var(--ik-basil-dark)] px-3 py-2 text-sm font-bold text-[var(--ik-porcelain)] focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50">
         Salta al contenuto
       </a>
-      <div className="app-sidebar-brand flex min-h-14 items-center justify-between gap-3 border-b border-gray-200 px-4 sm:px-6 lg:px-7">
-        <Link to="/" aria-label="iKuck" className="shrink-0 rounded-lg text-xl font-black tracking-tight text-emerald-900">iKuck</Link>
-        <span className="app-mobile-scope text-xs font-bold text-gray-600">{mobileScopeLabel}</span>
+      <div className="app-sidebar-brand flex min-h-14 items-center justify-between gap-3 border-b border-[var(--ik-border)] px-4 sm:px-6 lg:px-7">
+        <Link to="/" aria-label="iKuck" className="shrink-0 rounded-lg text-xl font-black tracking-tight text-[var(--ik-basil-dark)]">iKuck</Link>
+        <span className="app-mobile-scope text-xs font-bold text-[var(--ik-ink-muted)]">{mobileScopeLabel}</span>
         <div className="app-mobile-links items-center gap-1">
-          <Link to="/profile" aria-label="Profilo" className="grid min-h-11 min-w-11 place-items-center rounded-xl text-gray-800 hover:bg-gray-100"><UserRound size={19} aria-hidden="true" /></Link>
-          <Link to="/house" aria-label="Casa" className="grid min-h-11 min-w-11 place-items-center rounded-xl text-gray-800 hover:bg-gray-100"><Home size={19} aria-hidden="true" /></Link>
+          <Link to="/profile" aria-label="Profilo" className="grid min-h-11 min-w-11 place-items-center rounded-xl text-[var(--ik-ink)] hover:bg-[var(--ik-sage)]"><UserRound size={19} aria-hidden="true" /></Link>
+          <Link to="/house" aria-label="Casa" className="grid min-h-11 min-w-11 place-items-center rounded-xl text-[var(--ik-ink)] hover:bg-[var(--ik-sage)]"><Home size={19} aria-hidden="true" /></Link>
           {renderThemeToggle()}
         </div>
       </div>
-      <nav aria-label="Navigazione principale" className="app-navigation fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white sm:static sm:ml-auto sm:border-0 sm:bg-transparent">
+      <nav aria-label="Navigazione principale" className="app-navigation ik-navigation-surface fixed inset-x-0 bottom-0 z-40 border-t border-[var(--ik-border)] bg-[var(--ik-surface)] sm:static sm:ml-auto sm:border-0 sm:bg-transparent">
         <ul className="mx-auto grid max-w-lg grid-cols-5 gap-1 px-2 sm:flex sm:max-w-none sm:justify-end sm:px-0">
           {primaryLinks.map(({ path, label, compactLabel, narrowLabel, icon: Icon }) => {
             const isCurrent = path === '/'
@@ -81,7 +81,7 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
             const pantryBadge =
               path === '/pantry' && pendingCount > 0 ? (
                 <span
-                  className="ml-1 inline-block min-h-6 min-w-6 rounded-full bg-red-100 px-1.5 py-0.5 text-xs font-bold text-red-900"
+                  className="ml-1 inline-block min-h-6 min-w-6 rounded-full bg-[var(--ik-yolk-soft)] px-1.5 py-0.5 text-xs font-bold text-[var(--ik-warn-ink)]"
                   aria-label={`${pendingCount} articoli da confermare`}
                 >
                   {pendingCount}
@@ -93,7 +93,7 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
                   to={path}
                   aria-label={linkAriaLabel}
                   aria-current={isCurrent ? 'page' : undefined}
-                  className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-center text-xs font-bold leading-tight sm:min-h-11 sm:flex-row sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${isCurrent ? 'bg-emerald-100 text-emerald-950' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-950'}`}
+                  className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-center text-xs font-bold leading-tight sm:min-h-11 sm:flex-row sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${isCurrent ? 'bg-[var(--ik-sage)] text-[var(--ik-basil-dark)]' : 'text-[var(--ik-ink-muted)] hover:bg-[var(--ik-sage)] hover:text-[var(--ik-ink)]'}`}
                 >
                   <Icon size={20} strokeWidth={2.25} aria-hidden="true" />
                   <span className="app-navigation-label-full min-w-0">{label}</span>
@@ -106,15 +106,15 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
           })}
         </ul>
       </nav>
-      <div className="app-sidebar-account mt-auto border-t border-gray-200 p-4">
-        <p className="flex items-center gap-2 text-sm font-bold text-gray-900">
+      <div className="app-sidebar-account mt-auto border-t border-[var(--ik-border)] p-4">
+        <p className="flex items-center gap-2 text-sm font-bold text-[var(--ik-ink)]">
           {connection === 'offline' && <WifiOff size={16} aria-hidden="true" />}
           <span>{accountStatus}</span>
         </p>
-        <p className="mt-1 truncate text-xs text-gray-600">{scopeLabel}</p>
+        <p className="mt-1 truncate text-xs text-[var(--ik-ink-muted)]">{scopeLabel}</p>
         <div className="mt-3 flex flex-wrap gap-2">
-          <Link to="/profile" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-300 px-3 py-2 text-sm font-bold text-gray-800 hover:bg-gray-50"><UserRound size={16} aria-hidden="true" /> Profilo</Link>
-          <Link to="/house" className="inline-flex min-h-11 items-center rounded-xl border border-gray-300 px-3 py-2 text-sm font-bold text-gray-800 hover:bg-gray-50">Casa</Link>
+          <Link to="/profile" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--ik-border)] px-3 py-2 text-sm font-bold text-[var(--ik-ink)] hover:bg-[var(--ik-mist)]"><UserRound size={16} aria-hidden="true" /> Profilo</Link>
+          <Link to="/house" className="inline-flex min-h-11 items-center rounded-xl border border-[var(--ik-border)] px-3 py-2 text-sm font-bold text-[var(--ik-ink)] hover:bg-[var(--ik-mist)]">Casa</Link>
           {renderThemeToggle()}
         </div>
       </div>

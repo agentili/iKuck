@@ -10,11 +10,11 @@ import { getActiveDataScope, subscribeActiveDataScope } from '../../sync/scopeCo
 
 export function DailyRecipeCard() {
   const scope = useSyncExternalStore((listener) => subscribeActiveDataScope(() => listener()), getActiveDataScope, getActiveDataScope);
-  const items = usePantryStore((s) => s.pantryItems);
-  const staples = usePantryStore((s) => s.stapleIds);
-  const pantryReady = usePantryStore((s) => s.hasHydrated);
-  const profile = useDietProfileStore((s) => s.profile);
-  const dietReady = useDietProfileStore((s) => s.hasHydrated);
+  const items = usePantryStore((state) => state.pantryItems);
+  const staples = usePantryStore((state) => state.stapleIds);
+  const pantryReady = usePantryStore((state) => state.hasHydrated);
+  const profile = useDietProfileStore((state) => state.profile);
+  const dietReady = useDietProfileStore((state) => state.hasHydrated);
   const availableIds = useMemo(() => [...items.filter((item) => item.known).map((item) => item.id), ...staples], [items, staples]);
   const [date, setDate] = useState(localDateKey);
   const [state, setState] = useState<{ scope: string; date: string; selection: DailyRecipeSelection | null; error: boolean } | null>(null);
@@ -41,15 +41,35 @@ export function DailyRecipeCard() {
   const visibleState = state !== null && pantryReady && dietReady && isDailyResultCurrent(state, scope, date) ? state : null;
   const selection = visibleState?.selection ?? null;
   return (
-    <section aria-label="Ricetta del giorno" className="mx-4 my-3 rounded-2xl border border-[var(--sc-peach-soft)] bg-white p-4">
-      <h2 className="font-bold text-[var(--sc-ink)]">Ricetta del giorno</h2>
-      {visibleState === null ? <p>Caricamento…</p> : visibleState.error ? <p role="alert">Non è possibile salvare la proposta su questo dispositivo.</p> : selection === null ? <p>Nessuna ricetta compatibile disponibile nel catalogo.</p> : <>
-        <h3 className="mt-1 text-lg font-bold">{selection.recipe.title}</h3>
-        <p>{selection.recipe.durationMinutes === null ? 'Tempo non disponibile' : `${selection.recipe.durationMinutes} minuti`}</p>
-        {selection.missingIngredientIds.length === 0 ? <p>Ingredienti presenti; verifica le quantità.</p> : <p>Ingredienti mancanti: {selection.missingIngredientIds.map((id) => getIngredient(id)?.label ?? id).join(', ')}. Verifica le quantità.</p>}
-        {selection.reasons.length > 0 && <p>Proposta alternativa: {selection.reasons.includes('missing') ? 'richiede più di un ingrediente mancante' : ''}{selection.reasons.length > 1 ? '; ' : ''}{selection.reasons.includes('duration') ? 'supera 30 minuti o ha un tempo non disponibile' : ''}.</p>}
-        <Link className="mt-2 inline-flex min-h-11 items-center underline" to={`/recipes/${selection.recipe.id}`}>Vedi ricetta</Link>
-      </>}
+    <section
+      aria-label="Ricetta del giorno"
+      tabIndex={0}
+      className="chef-chat-recipe-card mx-4 my-2 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4 shadow-[var(--ik-shadow-card)]"
+    >
+      <h2 className="font-bold text-[var(--ik-ink)]">Ricetta del giorno</h2>
+      {visibleState === null ? (
+        <p className="mt-2 text-sm text-[var(--ik-ink-muted)]" role="status" aria-live="polite">Caricamento ricetta del giorno…</p>
+      ) : visibleState.error ? (
+        <p className="mt-2 rounded-xl border border-[var(--ik-tomato-soft)] bg-[var(--ik-tomato-soft)] p-3 text-sm text-[var(--ik-tomato)]" role="alert">
+          Non è possibile salvare la proposta su questo dispositivo.
+        </p>
+      ) : selection === null ? (
+        <p className="mt-2 text-sm text-[var(--ik-ink-muted)]" role="status">Nessuna ricetta compatibile disponibile nel catalogo.</p>
+      ) : (
+        <>
+          <h3 className="mt-1 text-lg font-bold text-[var(--ik-ink)]">{selection.recipe.title}</h3>
+          <p className="text-sm text-[var(--ik-ink-muted)]">{selection.recipe.durationMinutes === null ? 'Tempo non disponibile' : `${selection.recipe.durationMinutes} minuti`}</p>
+          {selection.missingIngredientIds.length === 0
+            ? <p className="mt-1 text-sm text-[var(--ik-basil-dark)]">Ingredienti presenti; verifica le quantità.</p>
+            : <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">Ingredienti mancanti: {selection.missingIngredientIds.map((id) => getIngredient(id)?.label ?? id).join(', ')}. Verifica le quantità.</p>}
+          {selection.reasons.length > 0 && (
+            <p className="mt-1 text-sm text-[var(--ik-warn-ink)]">
+              Proposta alternativa: {selection.reasons.includes('missing') ? 'richiede più di un ingrediente mancante' : ''}{selection.reasons.length > 1 ? '; ' : ''}{selection.reasons.includes('duration') ? 'supera 30 minuti o ha un tempo non disponibile' : ''}.
+            </p>
+          )}
+          <Link className="mt-2 inline-flex min-h-11 items-center rounded-lg font-semibold text-[var(--ik-basil-dark)] underline underline-offset-2" to={`/recipes/${selection.recipe.id}`}>Vedi ricetta</Link>
+        </>
+      )}
     </section>
   );
 }

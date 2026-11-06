@@ -32,31 +32,33 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <main id="main-content" className="mx-auto flex min-h-screen w-full max-w-xl items-center px-4 py-8 sm:px-6">
-      <section className="w-full rounded-3xl border-2 border-gray-200 bg-white p-6 shadow-sm sm:p-8">
+    <main id="main-content" className="ik-page mx-auto flex min-h-screen w-full max-w-2xl !max-w-2xl items-center justify-center px-4 py-8 text-[var(--ik-ink)] sm:px-6 sm:py-10">
+      <section aria-labelledby="forgot-password-title" className="ik-surface ik-profile-surface w-full border-2 p-6 sm:p-9">
         {submitted ? (
           <>
-            <h1 className="text-3xl font-black text-gray-950">Controlla la tua email</h1>
-            <p className="mt-3 text-gray-600">
+            <p className="ik-eyebrow">Account · Recupero</p>
+            <h1 id="forgot-password-title" className="mt-2 text-[clamp(2rem,7vw,3.25rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Controlla la tua email</h1>
+            <p role="status" aria-live="polite" className="mt-3 text-base leading-relaxed text-[var(--ik-ink-muted)]">
               Se l'email è registrata, riceverai le istruzioni per recuperare l'account.
             </p>
-            <Link to="/" className="mt-6 inline-flex min-h-11 items-center rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900">
+            <Link to="/recipes" className="ik-button-secondary mt-6 inline-flex min-h-12 w-full items-center justify-center border-2 bg-[var(--ik-surface)] px-4 py-3 text-center font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)] sm:w-auto">
               Torna alle ricette
             </Link>
           </>
         ) : (
           <>
-            <h1 className="text-3xl font-black text-gray-950">Recupera la password</h1>
-            <p className="mt-3 text-gray-600">
+            <p className="ik-eyebrow">Account · Recupero</p>
+            <h1 id="forgot-password-title" className="mt-2 text-[clamp(2rem,7vw,3.25rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Recupera la password</h1>
+            <p className="mt-3 text-base leading-relaxed text-[var(--ik-ink-muted)]">
               Inserisci la tua email per ricevere un link di recupero.
             </p>
             {error !== null && (
-              <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 font-semibold text-rose-900">
+              <p role="alert" className="mt-4 rounded-[var(--ik-radius-control)] border border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] p-3 font-semibold text-[var(--ik-tomato)]">
                 {error}
               </p>
             )}
             <form className="mt-5 grid gap-3" onSubmit={handleSubmit}>
-              <label className="grid gap-1 text-sm font-semibold text-gray-800">
+              <label className="grid gap-1 text-sm font-semibold text-[var(--ik-ink)]">
                 Email
                 <input
                   type="email"
@@ -65,18 +67,18 @@ export default function ForgotPasswordPage() {
                   autoComplete="email"
                   required
                   maxLength={254}
-                  className="min-h-11 rounded-xl border-2 border-gray-200 bg-gray-50 px-3 outline-none focus:border-gray-900"
+                  className="ik-input min-h-12 border-2 px-3 text-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]"
                 />
               </label>
               <button
                 type="submit"
                 disabled={isLoading}
-                className="mt-2 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800 disabled:opacity-60"
+                className="ik-button-primary mt-2 min-h-12 w-full px-4 py-3 font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)] disabled:cursor-wait disabled:opacity-60 sm:w-fit"
               >
                 {isLoading ? 'Invio…' : 'Invia link di recupero'}
               </button>
             </form>
-            <Link to="/" className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900">
+            <Link to="/recipes" className="ik-button-secondary mt-4 inline-flex min-h-12 w-full items-center justify-center border-2 bg-[var(--ik-surface)] px-4 py-3 text-center font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)] sm:w-fit">
               Torna alle ricette
             </Link>
           </>

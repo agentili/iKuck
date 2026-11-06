@@ -2,6 +2,7 @@ import { type FormEvent, type KeyboardEvent, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { getAllIngredients, normalizeIngredientName, parseIngredientInput } from '@ikuck/shared/ingredients';
 import type { ParsedIngredient } from '../../domain/types';
+import { isSousChef } from '../../config/features';
 
 interface IngredientInputProps {
   onAdd: (items: ParsedIngredient[]) => void;
@@ -9,6 +10,7 @@ interface IngredientInputProps {
 }
 
 export default function IngredientInput({ onAdd, idBase = 'pantry' }: IngredientInputProps) {
+  const pantryEntry = isSousChef() && idBase === 'pantry';
   const [value, setValue] = useState('');
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
@@ -73,11 +75,11 @@ export default function IngredientInput({ onAdd, idBase = 'pantry' }: Ingredient
   const activeSuggestion = activeSuggestionIndex >= 0 ? suggestions[activeSuggestionIndex] : undefined;
 
   return (
-    <form onSubmit={handleSubmit} className="relative space-y-3">
-      <label htmlFor={`${idBase}-input`} className="block text-sm font-semibold text-gray-700">
+    <form onSubmit={handleSubmit} className="relative min-w-0 space-y-3">
+      <label htmlFor={`${idBase}-input`} className={`block text-sm font-semibold ${pantryEntry ? 'text-[var(--ik-ink)]' : 'text-gray-700'}`}>
         Ingredienti presenti
       </label>
-      <div className="ik-ingredient-entry flex gap-3">
+      <div className={`ik-ingredient-entry flex gap-3 ${pantryEntry ? 'min-w-0 flex-col sm:flex-row' : ''}`}>
         <input
           id={`${idBase}-input`}
           role="combobox"
@@ -98,14 +100,18 @@ export default function IngredientInput({ onAdd, idBase = 'pantry' }: Ingredient
           aria-describedby={`${idBase}-input-help`}
           placeholder="es. pasta, pomodori, tonno"
           autoComplete="off"
-          className="ik-input min-h-12 flex-1 rounded-2xl border-2 border-gray-200 bg-white px-4 py-3 text-base text-gray-900 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+          className={`ik-input min-h-12 min-w-0 flex-1 rounded-2xl border-2 px-4 py-3 text-base outline-none transition focus:ring-4 ${pantryEntry
+            ? 'border-[var(--ik-border)] bg-[var(--ik-surface)] text-[var(--ik-ink)] focus:border-[var(--ik-basil)] focus:ring-[var(--ik-sage)]'
+            : 'border-gray-200 bg-white text-gray-900 focus:border-emerald-600 focus:ring-emerald-100'}`}
         />
-        <button type="submit" className="ik-button-primary inline-flex min-h-12 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-2xl bg-emerald-700 px-3 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800 sm:px-5 sm:text-base">
+        <button type="submit" className={`ik-button-primary inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-2xl px-3 py-3 text-sm font-semibold transition sm:px-5 sm:text-base ${pantryEntry
+          ? 'w-full min-w-0 whitespace-normal text-center text-[var(--ik-porcelain)] sm:w-auto'
+          : 'whitespace-nowrap bg-emerald-700 text-white hover:bg-emerald-800'}`}>
           <Plus size={19} aria-hidden="true" />
           Aggiungi ingredienti
         </button>
       </div>
-      <p id={`${idBase}-input-help`} className="text-sm text-gray-600">Separa più ingredienti con una virgola. Puoi usare anche le frecce e Invio per scegliere un suggerimento.</p>
+      <p id={`${idBase}-input-help`} className={`text-sm ${pantryEntry ? 'text-[var(--ik-ink-muted)]' : 'text-gray-600'}`}>Separa più ingredienti con una virgola. Puoi usare anche le frecce e Invio per scegliere un suggerimento.</p>
       {showSuggestions && (
         <ul id={`${idBase}-suggestions`} role="listbox" aria-label="Ingredienti suggeriti" className="absolute left-0 right-0 z-20 grid gap-1 rounded-2xl border border-gray-200 bg-white p-2 shadow-xl sm:right-auto sm:min-w-72">
           {suggestions.map((ingredient) => (

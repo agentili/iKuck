@@ -38,11 +38,11 @@ export default function QuickAddIngredientsDialog({ open, scope, onClose, onAdd 
   if (!open) return null;
 
   return (
-    <div className="ik-quick-add-overlay fixed inset-0 z-50 grid place-items-center p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="ik-modal-backdrop fixed inset-0 z-50 grid place-items-center p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <dialog
         ref={dialogRef}
         aria-labelledby="quick-add-title"
-        className="ik-quick-add-dialog w-full max-w-xl rounded-3xl border border-[var(--ik-border)] bg-[var(--ik-porcelain)] p-5 shadow-2xl sm:p-7"
+        className="ik-modal-surface ik-quick-add-dialog w-full max-w-xl rounded-3xl p-5 sm:p-7"
         onCancel={(event) => {
           event.preventDefault();
           if (dialogRef.current?.querySelector('[role="combobox"]')?.getAttribute('aria-expanded') !== 'true') onClose();

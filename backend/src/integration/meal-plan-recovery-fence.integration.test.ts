@@ -62,12 +62,14 @@ integration('meal-plan migration recovery and feed fences in PostgreSQL', () => 
       await database.db.execute(sql`DELETE FROM meal_plan_states WHERE scope_type = 'house' AND scope_id = ${houseId}`);
       await database.db.execute(sql`DELETE FROM meal_plan_receipts WHERE scope_type = 'house' AND scope_id = ${houseId}`);
       await database.db.execute(sql`DELETE FROM sync_items WHERE scope_type = 'house' AND scope_id = ${houseId}`);
+      await database.db.execute(sql`DELETE FROM processed_sync_mutations WHERE scope_type = 'house' AND scope_id = ${houseId}`);
       await database.db.delete(houses).where(eq(houses.id, houseId));
     }
     for (const userId of userIds) {
       await database.db.execute(sql`DELETE FROM meal_plan_states WHERE scope_type = 'user' AND scope_id = ${userId}`);
       await database.db.execute(sql`DELETE FROM meal_plan_receipts WHERE scope_type = 'user' AND scope_id = ${userId}`);
       await database.db.execute(sql`DELETE FROM sync_items WHERE scope_type = 'user' AND scope_id = ${userId}`);
+      await database.db.execute(sql`DELETE FROM processed_sync_mutations WHERE scope_type = 'user' AND scope_id = ${userId}`);
     }
     if (userIds.length > 0) await database.db.delete(users).where(inArray(users.id, userIds));
   };
@@ -293,10 +295,8 @@ integration('meal-plan migration recovery and feed fences in PostgreSQL', () => 
     expect(sourceStates).toEqual([]);
     expect(sourceProjections).toEqual([]);
 
-    const composite = await repository.readChanges(userId, 0, 100, undefined, ['meal_plan_entry']);
-    expect(composite.filter((change) => change.entityId === date)).toEqual([
-      expect.objectContaining({ syncScope: houseScope, payload: expect.objectContaining({ kind: 'deleted', revision: targetRevision }) }),
-    ]);
+    await expect(repository.readChanges(userId, 0, 100, undefined, ['meal_plan_entry']))
+      .rejects.toMatchObject({ code: 'plan_migration_quarantined' });
     await expect(repository.readChanges(userId, 0, 100, accountScope, ['meal_plan_entry']))
       .rejects.toMatchObject({ code: 'sync_scope_invalid' });
 
@@ -305,8 +305,8 @@ integration('meal-plan migration recovery and feed fences in PostgreSQL', () => 
       WHERE house_id = ${houseId} AND source_account_id = ${userId} AND plan_date = ${date}`);
     expect(retriedQuarantineRows).toHaveLength(1);
     expect(retriedQuarantineRows[0]?.fingerprint).toBe(quarantine.fingerprint);
-    expect((await repository.readChanges(userId, 0, 100, undefined, ['meal_plan_entry'])
-      ).filter((change) => change.entityId === date)).toHaveLength(1);
+    await expect(repository.readChanges(userId, 0, 100, undefined, ['meal_plan_entry']))
+      .rejects.toMatchObject({ code: 'plan_migration_quarantined' });
   });
 
   it('rejects an explicit account Plan feed for a member without blocking personal data', async () => {

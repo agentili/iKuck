@@ -35,9 +35,9 @@ const expiryLabel = (date: string | null): string => {
 
 const expiryClassName = (date: string | null): string => {
   const status = getExpiryStatus(date);
-  if (status === 'expired') return 'text-red-700';
-  if (status === 'expiring_soon') return 'text-amber-700';
-  return 'text-gray-600';
+  if (status === 'expired') return 'text-[var(--ik-tomato)]';
+  if (status === 'expiring_soon') return 'text-[var(--ik-warn-ink)]';
+  return 'text-[var(--ik-ink-muted)]';
 };
 
 const detailsFromLot = (lot: PantryLot): PantryLotDetails => ({
@@ -74,27 +74,25 @@ export default function PantryLotsPanel({ ingredients, lots, onAddLot, onRemoveL
 
   return (
     <>
-    <details aria-labelledby="pantry-lots-title" className="rounded-2xl border border-gray-200 bg-white p-4">
-      <summary className="cursor-pointer list-none">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h3 id="pantry-lots-title" className="text-lg font-bold text-gray-950">Dettagli lotti</h3>
-        <p className="mt-1 text-sm text-gray-600">Puoi aggiungere lotti, quantità e scadenze senza complicare la ricerca delle ricette.</p>
+    <details aria-labelledby="pantry-lots-title" className="ik-disclosure min-w-0 border p-4">
+      <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 id="pantry-lots-title" className="text-lg font-bold text-[var(--ik-ink)]">Dettagli lotti</h3>
+          <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">Aggiungi quantità e scadenze solo quando ti servono.</p>
           </div>
-          <span className="rounded-full bg-gray-100 px-3 py-1 text-sm font-bold text-gray-700">{lotCountLabel}</span>
-        </div>
+          <span className="shrink-0 rounded-full bg-[var(--ik-mist)] px-3 py-1 text-sm font-bold text-[var(--ik-ink-muted)]">{lotCountLabel}</span>
       </summary>
-      <div className="mt-3 grid gap-3">
+      <div className="mt-3 grid min-w-0 gap-3 border-t border-[var(--ik-border)] pt-3">
         {ingredients.map((ingredient) => {
           const ingredientLots = lots.filter((lot) => lot.ingredientId === ingredient.id);
           const aggregate = aggregates.find((item) => item.ingredientId === ingredient.id);
           const newEditorKey = `new:${ingredient.id}`;
           return (
-            <article key={ingredient.id} className="rounded-2xl border border-gray-200 bg-gray-50 p-3">
+            <article key={ingredient.id} className="min-w-0 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-mist)] p-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <h4 className="font-bold text-gray-950">Lotti di {ingredient.label}</h4>
-                  <p className="text-sm text-gray-600">
+                <div className="min-w-0 flex-1">
+                  <h4 className="font-bold text-[var(--ik-ink)]">Lotti di {ingredient.label}</h4>
+                  <p className="break-words text-sm text-[var(--ik-ink-muted)]">
                     {aggregate?.totalQuantity !== null && aggregate?.totalQuantity !== undefined && aggregate.totalUnit !== null
                       ? `Totale: ${formatQuantity(aggregate.totalQuantity)} ${UNIT_LABELS[aggregate.totalUnit]}`
                       : aggregate?.quantities.length
@@ -109,24 +107,24 @@ export default function PantryLotsPanel({ ingredients, lots, onAddLot, onRemoveL
                 <button
                   type="button"
                   onClick={() => setEditorKey(newEditorKey)}
-                  className="inline-flex min-h-10 items-center gap-1 rounded-xl border-2 border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-800 hover:border-gray-900"
+                  className="ik-button-secondary inline-flex min-h-11 w-full min-w-0 items-center justify-center gap-2 border-2 bg-[var(--ik-surface)] px-3 py-2 text-sm font-bold hover:bg-[var(--ik-sage)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ik-focus)] sm:w-auto"
                 >
                   <Plus size={16} aria-hidden="true" />
                   Aggiungi lotto
                 </button>
               </div>
-              <ul className="mt-3 grid gap-2" aria-label={`Lotti di ${ingredient.label}`}>
+              <ul className="mt-3 grid min-w-0 gap-2" aria-label={`Lotti di ${ingredient.label}`}>
                 {ingredientLots.map((lot, index) => (
-                  <li key={lot.id} className="rounded-xl border border-gray-200 bg-white p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm text-gray-700">
+                  <li key={lot.id} className="min-w-0 rounded-[var(--ik-radius-control)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-3">
+                    <div className="grid min-w-0 gap-2 sm:flex sm:items-center sm:justify-between">
+                      <p className="break-words text-sm text-[var(--ik-ink)]">
                         <span className="font-semibold">Lotto {index + 1}:</span>{' '}
                         {lot.quantity !== null && lot.unit !== null ? `${formatQuantity(lot.quantity)} ${UNIT_LABELS[lot.unit]}` : 'presenza indicata'}
-                        {' · '}{expiryLabel(lot.expiresAt)}
+                        <span className="text-[var(--ik-ink-muted)]">{' · '}{expiryLabel(lot.expiresAt)}</span>
                       </p>
-                      <div className="flex flex-wrap gap-2">
-                        <button type="button" onClick={() => setEditorKey(lot.id)} className="min-h-9 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-800 hover:border-gray-900">Modifica</button>
-                        <button type="button" onClick={() => removeLot(lot)} aria-label={`Rimuovi lotto ${index + 1} di ${ingredient.label}`} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50">
+                      <div className="grid min-w-0 grid-cols-1 gap-2 sm:flex">
+                        <button type="button" onClick={() => setEditorKey(lot.id)} className="ik-button-secondary min-h-11 w-full border-2 bg-[var(--ik-surface)] px-3 py-1.5 text-sm font-semibold hover:bg-[var(--ik-sage)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ik-focus)] sm:w-auto">Modifica</button>
+                        <button type="button" onClick={() => removeLot(lot)} aria-label={`Rimuovi lotto ${index + 1} di ${ingredient.label}`} className="inline-flex min-h-11 w-full min-w-0 items-center justify-center gap-2 rounded-[var(--ik-radius-control)] border border-[var(--ik-tomato)] bg-[var(--ik-surface)] px-3 py-1.5 text-sm font-semibold text-[var(--ik-tomato)] hover:bg-[var(--ik-tomato-soft)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ik-focus)] sm:w-auto">
                           <Trash2 size={15} aria-hidden="true" />
                           Rimuovi
                         </button>

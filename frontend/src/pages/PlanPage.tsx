@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, ShoppingCart } from 'lucide-react';
 import type { DietProfile, PlanCommand, PlanState, SyncMutationScope } from '@ikuck/shared/contracts';
@@ -9,6 +9,7 @@ import type { PantryRecipe } from '../domain/types';
 import { getActiveDataScope, subscribeActiveDataScope, type SyncScope } from '../sync/scopeContext';
 import { assertScopeWritable, isScopeWritable, subscribeScopeAvailability } from '../sync/scopeWriteFence';
 import { hydrateDietProfileStore, useDietProfileStore } from '../store/dietProfileStore';
+import { usePantryStore } from '../store/localPantryStore';
 import { useShoppingListStore } from '../store/shoppingListStore';
 import { getDeviceId } from '../sync/syncQueue';
 import { MealPlanUnavailableError, mealPlanApi, type MealPlanApi, type MealPlanRecoveryConflict, type MealPlanRecoveryQuarantine, type MealPlanRecoveryResolution } from '../mealPlan/api';
@@ -40,6 +41,7 @@ interface PlanPageView {
   conflicts: Array<{ id: string; date: string; command: PlanCommand; current: PlanState | null }>;
   recoveryConflicts: MealPlanRecoveryConflict[];
   recoveryQuarantines: MealPlanRecoveryQuarantine[];
+  recoveryError: string | null;
   pendingDates: string[];
   timeZone: string | null;
   canEdit: boolean;
@@ -56,6 +58,7 @@ const initialView = (scope: SyncScope): PlanPageView => ({
   conflicts: [],
   recoveryConflicts: [],
   recoveryQuarantines: [],
+  recoveryError: null,
   pendingDates: [],
   timeZone: null,
   canEdit: false,
@@ -123,13 +126,23 @@ const toView = async (
   }
   const recoveryConflicts: MealPlanRecoveryConflict[] = [];
   const recoveryQuarantines: MealPlanRecoveryQuarantine[] = [];
+  let recoveryError: string | null = null;
+  let recoveryBlocksEdits = false;
   if (scope.startsWith('house:') && scope !== 'guest') {
     try {
+      assertCurrent?.();
       const recovery = await mealPlanApi.readRecovery();
+      assertCurrent?.();
       recoveryConflicts.push(...recovery.conflicts);
       recoveryQuarantines.push(...recovery.quarantined);
-    } catch {
-      // Ignore recovery fetch errors; local conflicts still shown
+    } catch (error) {
+      assertCurrent?.();
+      if (isNetworkError(error)) {
+        recoveryError = 'La verifica dei conflitti di migrazione non è raggiungibile. Le modifiche non confermate restano sul dispositivo.';
+      } else {
+        recoveryError = 'Non è stato possibile verificare i conflitti di migrazione. Il piano resta in sola lettura finché il controllo non riesce.';
+        recoveryBlocksEdits = true;
+      }
     }
   }
   return {
@@ -141,9 +154,10 @@ const toView = async (
     conflicts: snapshot.conflicts,
     recoveryConflicts,
     recoveryQuarantines,
+    recoveryError,
     pendingDates: [...new Set(outbox.map((record) => record.command.date))],
     timeZone,
-    canEdit,
+    canEdit: !recoveryBlocksEdits && canEdit,
     mode,
     message,
   };
@@ -364,6 +378,11 @@ export default function PlanPage() {
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const expiresAt = useAuthStore((state) => state.expiresAt);
   const profileState = useDietProfileStore((state) => state.profile);
+  const pantryItems = usePantryStore((state) => state.pantryItems);
+  const stapleIds = usePantryStore((state) => state.stapleIds);
+  const pantryHasHydrated = usePantryStore((state) => state.hasHydrated);
+  const shoppingItems = useShoppingListStore((state) => state.items);
+  const shoppingHasHydrated = useShoppingListStore((state) => state.hasHydrated);
   const houseState = useHouseStore((state) => state.state);
   const activeScope = useSyncExternalStore(subscribeActiveDataScope, getActiveDataScope, getActiveDataScope);
   const [view, setView] = useState<PlanPageView>(() => initialView('guest'));
@@ -515,34 +534,48 @@ export default function PlanPage() {
       pending: currentView.pendingDates.includes(date),
     })), [currentView]);
 
-    const missingIngredients = useMemo(() => {
-      if (currentView.status !== 'ready') return [] as const;
-      const availableIds = new Set(
-        useShoppingListStore.getState().items
-          .filter((item) => !item.purchased)
-          .map((item) => item.ingredientId)
-      );
-      const result: Array<{ ingredientId: string; label: string; recipeTitle: string }> = [];
-      for (const row of rows) {
-        const state = row.state;
-        if (state === null || state.recipeId === null) continue;
-        const recipe = RECIPES.find((r) => r.id === state.recipeId);
-        if (!recipe) continue;
-        for (const ing of recipe.ingredients) {
-          if (ing.optional) continue;
-          if (availableIds.has(ing.ingredientId)) continue;
-          const label = ing.name ?? ing.ingredientId;
-          result.push({
-            ingredientId: ing.ingredientId,
-            label,
-            recipeTitle: recipe.title,
-          });
-        }
+  const missingIngredients = useMemo(() => {
+    if (currentView.status !== 'ready' || !pantryHasHydrated || !shoppingHasHydrated) return [];
+    const availableIds = new Set([
+      ...pantryItems.filter((item) => item.known).map((item) => item.id),
+      ...stapleIds,
+    ]);
+    const listedIds = new Set(shoppingItems.map((item) => item.ingredientId));
+    const result: Array<{
+      ingredientId: string;
+      label: string;
+      recipeId: string;
+      recipeTitle: string;
+      alreadyListed: boolean;
+    }> = [];
+    for (const row of rows) {
+      const state = row.state;
+      if (state === null || state.recipeId === null) continue;
+      const recipe = RECIPES.find((candidate) => candidate.id === state.recipeId);
+      if (!recipe) continue;
+      for (const ingredient of recipe.ingredients) {
+        if (ingredient.optional || availableIds.has(ingredient.ingredientId)) continue;
+        result.push({
+          ingredientId: ingredient.ingredientId,
+          label: ingredient.name ?? ingredient.ingredientId,
+          recipeId: recipe.id,
+          recipeTitle: recipe.title,
+          alreadyListed: listedIds.has(ingredient.ingredientId),
+        });
       }
-      return result;
-    }, [rows, currentView.status]);
+    }
+    return result;
+  }, [
+    rows,
+    currentView.status,
+    pantryHasHydrated,
+    shoppingHasHydrated,
+    pantryItems,
+    stapleIds,
+    shoppingItems,
+  ]);
 
-    const localCopy = currentView.mode === 'guest';
+  const localCopy = currentView.mode === 'guest';
 
   const shareStatus = currentView.mode === 'guest'
     ? 'Salvato su questo dispositivo · non condiviso'
@@ -554,7 +587,7 @@ export default function PlanPage() {
           ? 'Fuso provvisorio · piano condiviso non modificabile'
           : currentView.scope.startsWith('house:') ? 'Condiviso con la Casa' : 'Sincronizzato con il tuo account';
 
-  useEffect(() => setTimeZoneDraft(currentView.timeZone ?? ''), [currentView.timeZone]);
+  useLayoutEffect(() => setTimeZoneDraft(currentView.timeZone ?? ''), [currentView.timeZone]);
 
   const chooseReplacement = async (date: string, currentState: PlanState | null): Promise<void> => {
     const fence = captureActionFence(view.scope);
@@ -751,22 +784,45 @@ export default function PlanPage() {
     }
   };
 
+  const addMissingToShoppingList = (): void => {
+    const fence = captureActionFence(currentView.scope);
+    if (!fence.isCurrent() || !pantryHasHydrated || !shoppingHasHydrated) return;
+    const availableIds = new Set([
+      ...usePantryStore.getState().getAvailableIngredientIds(),
+      ...useShoppingListStore.getState().items.map((item) => item.ingredientId),
+    ]);
+    const recipeIds = new Set(rows.flatMap((row) => (
+      row.state?.recipeId === null || row.state === null ? [] : [row.state.recipeId]
+    )));
+    let totalAdded = 0;
+    for (const recipeId of recipeIds) {
+      if (!fence.isCurrent()) return;
+      const recipe = RECIPES.find((candidate) => candidate.id === recipeId);
+      if (recipe === undefined) continue;
+      totalAdded += useShoppingListStore.getState().addMissingRecipeIngredients(recipe, [...availableIds]);
+    }
+    if (!fence.isCurrent()) return;
+    publishFeedback(totalAdded > 0
+      ? `${totalAdded} ingredienti aggiunti alla lista della spesa.`
+      : 'Nessun nuovo ingrediente da aggiungere (già presenti in dispensa o nella lista).');
+  };
+
   return (
-    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-3xl px-4 pb-8 pt-5 sm:px-6 sm:pt-8 lg:px-8">
+    <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-3xl px-4 pb-8 pt-5 text-[var(--ik-ink)] sm:px-6 sm:pt-8 lg:px-8">
       <header className="ik-page-intro mb-5 max-w-2xl sm:mb-7">
-        <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Pasti dei prossimi giorni</p>
-        <h1 className="mt-1 text-4xl font-black leading-[1.04] text-gray-950 sm:text-5xl">Piano</h1>
-        <p className="mt-3 max-w-xl text-base leading-relaxed text-gray-700">Quattro giorni da domani, con ricette che puoi cambiare.</p>
+        <p className="ik-eyebrow text-sm font-bold">Pasti dei prossimi giorni</p>
+        <h1 className="mt-1 text-[clamp(2.5rem,6vw,3.75rem)] font-black leading-[1.04] tracking-[-0.03em] text-[var(--ik-ink)]">Piano</h1>
+        <p className="mt-3 max-w-xl text-base leading-relaxed text-[var(--ik-ink-muted)]">Quattro giorni da domani, con ricette che puoi cambiare.</p>
       </header>
 
-      <section aria-label="Stato della condivisione" className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--ik-border)] pb-3">
-        <p role="status" className="font-semibold text-gray-800">{currentView.status === 'loading' ? 'Caricamento del piano…' : shareStatus}</p>
-        {currentView.timeZone !== null && <p className="text-sm text-gray-600">Fuso: {currentView.timeZone}</p>}
+      <section aria-label="Stato della condivisione" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4">
+        <p role="status" className="inline-flex min-h-9 items-center rounded-full bg-[var(--ik-mist)] px-3 py-1 text-sm font-semibold text-[var(--ik-ink)]">{currentView.status === 'loading' ? 'Caricamento del piano…' : shareStatus}</p>
+        {currentView.timeZone !== null && <p className="text-sm font-medium text-[var(--ik-ink-muted)]">Fuso: {currentView.timeZone}</p>}
       </section>
 
       {currentView.status === 'ready' && currentView.scope.startsWith('house:') && houseState?.membership?.role === 'admin' && currentView.canEdit && (
-        <form className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); void changeHouseTimeZone(); }}>
-          <label className="grid gap-1 text-sm font-semibold text-gray-800">
+        <form className="mb-4 flex flex-wrap items-end gap-3 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4" onSubmit={(event) => { event.preventDefault(); void changeHouseTimeZone(); }}>
+          <label className="grid gap-1 text-sm font-semibold text-[var(--ik-ink)]">
             Fuso orario della Casa
             <input
               type="text"
@@ -774,44 +830,52 @@ export default function PlanPage() {
               autoComplete="off"
               value={timeZoneDraft}
               onChange={(event) => setTimeZoneDraft(event.currentTarget.value)}
-              className="min-h-11 w-56 rounded-lg border border-gray-400 px-3 py-2"
+              className="ik-input min-h-11 w-full border-2 px-3 py-2 sm:w-56"
               aria-describedby="house-time-zone-help"
             />
           </label>
           <p id="house-time-zone-help" className="sr-only">Usa un identificativo IANA, per esempio Europe/Rome.</p>
-          <button type="submit" disabled={savingTimeZone || !scopeWritable} className="min-h-11 rounded-xl border-2 border-emerald-700 px-4 py-2 font-bold text-emerald-950 disabled:opacity-60">
+          <button type="submit" disabled={savingTimeZone || !scopeWritable} className="min-h-11 rounded-xl border-2 border-[var(--ik-basil)] bg-[var(--ik-surface)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)] disabled:opacity-60">
             {savingTimeZone ? 'Aggiornamento…' : 'Aggiorna fuso'}
           </button>
         </form>
       )}
 
-      {currentView.message !== null && <p role="status" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">{currentView.message}</p>}
-      {currentFeedback !== null && <p role="alert" className="mb-4 text-sm font-semibold text-amber-900">{currentFeedback}</p>}
-      {currentView.status === 'loading' && <p role="status" className="py-6 text-gray-600">Caricamento del piano…</p>}
-      {currentView.status === 'error' && <p role="alert" className="py-4 text-red-800">{currentView.message ?? 'Il piano non è stato caricato.'}</p>}
-      {currentView.status === 'blocked' && <p role="status" className="py-4 text-gray-700">Il piano condiviso non è disponibile.</p>}
+      {currentView.message !== null && <p role="status" className="mb-4 rounded-[var(--ik-radius-panel)] border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] px-4 py-3 text-sm text-[var(--ik-warn-ink)]">{currentView.message}</p>}
+      {currentView.status === 'ready' && currentView.recoveryError !== null && <p role="alert" className="mb-4 rounded-[var(--ik-radius-panel)] border border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] px-4 py-3 text-sm text-[var(--ik-tomato)]">{currentView.recoveryError}</p>}
+      {currentFeedback !== null && <p role="alert" className="mb-4 rounded-[var(--ik-radius-control)] border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] px-4 py-3 text-sm font-semibold text-[var(--ik-warn-ink)]">{currentFeedback}</p>}
+      {currentView.status === 'loading' && <p role="status" className="rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] px-4 py-5 text-[var(--ik-ink-muted)]">Caricamento del piano…</p>}
+      {currentView.status === 'error' && <p role="alert" className="rounded-[var(--ik-radius-panel)] border border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] px-4 py-4 text-[var(--ik-tomato)]">{currentView.message ?? 'Il piano non è stato caricato.'}</p>}
+      {currentView.status === 'blocked' && <p role="status" className="rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-mist)] px-4 py-4 text-[var(--ik-ink-muted)]">Il piano condiviso non è disponibile.</p>}
 
       {currentView.status === 'ready' && (
-        <ol aria-label="Pasti da domani" className="divide-y divide-[var(--ik-border)] border-y border-[var(--ik-border)]">
+        <ol aria-label="Pasti da domani" className="grid gap-3">
           {rows.map(({ date, label, state, pending }) => {
             const recipe = state?.recipeId === null || state === null ? undefined : RECIPES.find((candidate) => candidate.id === state.recipeId);
             const rowPending = pending || currentView.mode === 'offline' && state !== null && currentView.overlays[date] !== undefined;
             return (
-              <li key={date} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 py-4 sm:grid-cols-[minmax(10rem,0.85fr)_minmax(0,1.7fr)_auto] sm:items-center" data-date={date}>
-                <time dateTime={date} className="font-bold capitalize text-gray-950">{label}</time>
-                <div className="min-w-0">
-                  {recipe !== undefined ? <p className="font-semibold text-gray-900">{recipe.title}</p>
-                    : state?.kind === 'deleted' ? <p className="font-semibold text-gray-700">Pasto rimosso</p>
-                      : state !== null ? <p className="font-semibold text-gray-800">Ricetta non più disponibile nel catalogo</p>
-                        : <p className="text-gray-600">Nessuna ricetta compatibile al momento</p>}
+              <li key={date} className="grid gap-3 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4 sm:grid-cols-[minmax(10rem,0.85fr)_minmax(0,1.7fr)_auto] sm:items-center sm:gap-x-4 sm:p-5" data-date={date}>
+                <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-3">
+                  <time dateTime={date} className="text-sm font-bold capitalize text-[var(--ik-basil-dark)]">{label}</time>
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                    {state?.kind === 'automatic' && <span className="rounded-full bg-[var(--ik-mist)] px-2.5 py-1 text-[var(--ik-ink-muted)]">Proposta automatica</span>}
+                    {state?.kind === 'manual' && <span className="rounded-full bg-[var(--ik-sage)] px-2.5 py-1 text-[var(--ik-basil-dark)]">Scelta manuale</span>}
+                    {state?.kind === 'deleted' && <span className="rounded-full bg-[var(--ik-yolk-soft)] px-2.5 py-1 text-[var(--ik-warn-ink)]">Pasto rimosso</span>}
+                    {rowPending && <span className="rounded-full bg-[var(--ik-yolk-soft)] px-2.5 py-1 text-[var(--ik-warn-ink)]">In attesa di conferma · non condivisa</span>}
+                  </div>
+                </div>
+                <div className="min-w-0 sm:col-span-2">
+                  {recipe !== undefined ? <p className="text-lg font-bold leading-snug text-[var(--ik-ink)]">{recipe.title}</p>
+                    : state?.kind === 'deleted' ? <p className="font-semibold text-[var(--ik-ink)]">Pasto rimosso</p>
+                      : state !== null ? <p className="font-semibold text-[var(--ik-ink)]">Ricetta non più disponibile nel catalogo</p>
+                        : <p className="text-[var(--ik-ink-muted)]">Nessuna ricetta compatibile al momento</p>}
                   {recipe?.durationMinutes !== null && recipe?.durationMinutes !== undefined
-                    && <p className="mt-1 text-sm text-gray-600">{recipe.durationMinutes} minuti</p>}
-                  {rowPending && <p className="mt-1 text-sm font-medium text-amber-800">In attesa di conferma · non condivisa</p>}
+                    && <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">{recipe.durationMinutes} minuti</p>}
                 </div>
                 {state !== null && currentView.canEdit && (
                   <button
                     type="button"
-                    className="col-span-2 inline-flex min-h-11 items-center justify-center rounded-xl border-2 border-emerald-700 px-3 py-2 text-sm font-bold text-emerald-950 hover:bg-emerald-50 disabled:opacity-60 sm:col-span-1"
+                    className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border-2 border-[var(--ik-basil)] bg-[var(--ik-surface)] px-3 py-2 text-sm font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)] disabled:opacity-60 sm:col-start-3 sm:row-start-2 sm:w-auto"
                     aria-label={`Cambia ricetta per ${label}`}
                     disabled={busyDate !== null || !scopeWritable}
                     onClick={() => void chooseReplacement(date, state)}
@@ -826,59 +890,46 @@ export default function PlanPage() {
                 )}
 
                 {currentView.status === 'ready' && missingIngredients.length > 0 && (
-                  <section aria-label="Ingredienti mancanti per il piano" className="mt-5 border-t border-[var(--ik-border)] pt-4">
-                    <header className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                  <section aria-label="Ingredienti mancanti per il piano" className="mt-5 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4 sm:p-5">
+                    <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-[var(--sc-basil-dark)]">
+                        <p className="inline-flex items-center gap-2 text-xs font-bold text-[var(--ik-basil-dark)]">
                           <ShoppingCart size={14} aria-hidden="true" /> Spesa
                         </p>
-                        <h2 className="mt-1 text-xl font-black text-gray-900">Ingredienti mancanti per il piano</h2>
-                        <p className="mt-1 text-sm text-gray-600">{missingIngredients.length} ingredienti non presenti in dispensa</p>
+                        <h2 className="mt-1 text-xl font-black text-[var(--ik-ink)]">Ingredienti mancanti per il piano</h2>
+                        <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">{missingIngredients.length} ingredienti non presenti in dispensa</p>
                       </div>
                       <button
-                                    type="button"
-                                    onClick={() => {
-                                      const recipesForMissing = missingIngredients
-                                        .map((m) => RECIPES.find((r) => r.title === m.recipeTitle))
-                                        .filter((r): r is typeof RECIPES[0] => r !== undefined);
-                                      let totalAdded = 0;
-                                      for (const recipe of recipesForMissing) {
-                                        const added = useShoppingListStore.getState().addMissingRecipeIngredients(recipe, []);
-                                        totalAdded += added;
-                                      }
-                                      if (totalAdded > 0) {
-                                        publishFeedback(`${totalAdded} ingredienti aggiunti alla lista della spesa.`);
-                                      } else {
-                                        publishFeedback('Nessun nuovo ingrediente da aggiungere (già presenti o acquistati).');
-                                      }
-                                    }}
-                                    disabled={missingIngredients.length === 0}
-                                    className="min-h-11 rounded-xl border-2 border-emerald-700 px-4 py-2 font-bold text-emerald-950 hover:bg-emerald-50 disabled:opacity-60"
-                                  >
-                                    <Plus size={18} aria-hidden="true" /> Aggiungi alla lista
-                                  </button>
+                        type="button"
+                        onClick={addMissingToShoppingList}
+                        disabled={missingIngredients.length === 0 || !pantryHasHydrated || !shoppingHasHydrated}
+                        className="ik-button-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2 font-bold disabled:opacity-60"
+                      >
+                        <Plus size={18} aria-hidden="true" /> Aggiungi alla lista
+                      </button>
                     </header>
-                    <div className="grid gap-2" role="list">
-                                {missingIngredients.map((m, idx) => (
-                                  <div key={`${m.ingredientId}-${idx}`} className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--ik-border)] bg-white p-3">
-                                    <p className="font-semibold text-gray-900">{m.label}</p>
-                                    <p className="text-sm text-gray-600">Per: {m.recipeTitle}</p>
-                                  </div>
-                                ))}
-                              </div>
+                    <ul className="grid gap-2 sm:grid-cols-2">
+                      {missingIngredients.map((ingredient, index) => (
+                        <li key={`${ingredient.ingredientId}-${index}`} className="flex flex-wrap items-center gap-2 rounded-[var(--ik-radius-control)] border border-[var(--ik-border)] bg-[var(--ik-mist)] p-3">
+                          <p className="font-semibold text-[var(--ik-ink)]">{ingredient.label}</p>
+                          <p className="text-sm text-[var(--ik-ink-muted)]">Per: {ingredient.recipeTitle}</p>
+                          {ingredient.alreadyListed && <p className="text-sm font-semibold text-[var(--ik-basil-dark)]">Già nella lista</p>}
+                        </li>
+                      ))}
+                    </ul>
                   </section>
                 )}
 
                 {currentView.status === 'ready' && (currentView.conflicts.length > 0 || currentView.recoveryConflicts.length > 0 || currentView.recoveryQuarantines.length > 0) && (
-        <section aria-label="Modifiche in conflitto e recovery" className="mt-5 border-t border-[var(--ik-border)] pt-4">
-          <h2 className="text-base font-bold text-gray-900">Modifiche da rivedere</h2>
+        <section aria-label="Modifiche in conflitto e recovery" className="mt-5 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4 sm:p-5">
+          <h2 className="text-2xl font-black text-[var(--ik-ink)]">Modifiche da rivedere</h2>
           {currentView.conflicts.map((conflict) => {
             const recipeId = conflict.command.action === 'manual_set' ? conflict.command.recipeId : null;
             const recipe = recipeId === null ? undefined : RECIPES.find((candidate) => candidate.id === recipeId);
             return (
-              <div key={conflict.id} className="mt-2 flex flex-wrap items-center gap-3 text-sm text-gray-700">
+              <div key={conflict.id} className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-[var(--ik-radius-control)] border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] p-3 text-sm text-[var(--ik-ink)]">
                 <p>{recipe?.title ?? 'Una scelta precedente'} non è stata condivisa; resta conservata su questo dispositivo.</p>
-                {recipe !== undefined && currentView.canEdit && <button type="button" disabled={!scopeWritable} className="min-h-11 font-bold text-emerald-900 underline underline-offset-2 disabled:opacity-60" onClick={() => void retryConflict(conflict.id)}>Riproporre la scelta</button>}
+                {recipe !== undefined && currentView.canEdit && <button type="button" disabled={!scopeWritable} className="min-h-11 rounded-xl border-2 border-[var(--ik-basil)] bg-[var(--ik-surface)] px-3 py-2 font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)] disabled:opacity-60" onClick={() => void retryConflict(conflict.id)}>Riproporre la scelta</button>}
               </div>
             );
           })}
@@ -900,19 +951,19 @@ export default function PlanPage() {
               ? 'Rigenerazione esplicita'
               : originalAction;
             return (
-              <div key={conflict.id} className="mt-2 p-3 rounded-lg border border-amber-300 bg-amber-50">
-                <div className="flex flex-wrap items-start gap-3 text-sm text-gray-800">
+              <div key={conflict.id} className="mt-3 rounded-[var(--ik-radius-control)] border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] p-4">
+                <div className="flex flex-wrap items-start gap-3 text-sm text-[var(--ik-ink)]">
                   <div className="flex-1 min-w-[200px]">
-                    <p className="font-semibold text-amber-900">Conflitto migrazione: {conflict.planDate}</p>
-                    <p className="mt-1"><strong>Fonte (account):</strong> {sourceRecipe?.title ?? conflict.sourceState?.kind === 'deleted' ? 'Pasto rimosso' : conflict.sourceState?.kind ?? 'Sconosciuto'}</p>
-                    <p><strong>Destinazione (Casa):</strong> {targetRecipe?.title ?? conflict.targetStateAtStaging.kind === 'deleted' ? 'Pasto rimosso' : conflict.targetStateAtStaging.kind ?? 'Sconosciuto'}</p>
-                    <p className="mt-1 text-xs text-gray-600">Comando originale: {originalActionLabel}</p>
+                    <p className="font-semibold text-[var(--ik-warn-ink)]">Conflitto migrazione: {conflict.planDate}</p>
+                    <p className="mt-1"><strong>Fonte (account):</strong> {sourceRecipe?.title ?? (conflict.sourceState?.kind === 'deleted' ? 'Pasto rimosso' : conflict.sourceState?.kind ?? 'Sconosciuto')}</p>
+                    <p><strong>Destinazione (Casa):</strong> {targetRecipe?.title ?? (conflict.targetStateAtStaging.kind === 'deleted' ? 'Pasto rimosso' : conflict.targetStateAtStaging.kind ?? 'Sconosciuto')}</p>
+                    <p className="mt-1 text-xs text-[var(--ik-ink-muted)]">Comando originale: {originalActionLabel}</p>
                   </div>
                   {recipe !== undefined && currentView.canEdit && scopeWritable && (
                     <button
                       type="button"
                       disabled={!scopeWritable}
-                      className="min-h-11 min-w-28 rounded-xl border-2 border-emerald-700 px-3 py-2 font-bold text-emerald-900 hover:bg-emerald-50 disabled:opacity-60"
+                      className="min-h-11 min-w-28 rounded-xl border-2 border-[var(--ik-basil)] px-3 py-2 font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)] disabled:opacity-60"
                       onClick={() => void resolveRecoveryConflict(conflict.id, recipeId, conflict.originalCommand, conflict.sourceRevision, conflict.targetRevisionAtStaging)}
                     >
                       Risolvi
@@ -928,14 +979,14 @@ export default function PlanPage() {
             const targetRecipeId = quarantine.targetSnapshot.state?.kind === 'manual' || quarantine.targetSnapshot.state?.kind === 'automatic' ? quarantine.targetSnapshot.state?.recipeId : null;
             const targetRecipe = targetRecipeId === null ? undefined : RECIPES.find((candidate) => candidate.id === targetRecipeId);
             return (
-              <div key={quarantine.planDate} className="mt-2 p-3 rounded-lg border border-red-300 bg-red-50" role="alert">
-                <div className="flex flex-wrap items-start gap-3 text-sm text-gray-800">
+              <div key={quarantine.planDate} className="mt-3 rounded-[var(--ik-radius-control)] border border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] p-4" role="alert">
+                <div className="flex flex-wrap items-start gap-3 text-sm text-[var(--ik-ink)]">
                   <div className="flex-1 min-w-[200px]">
-                    <p className="font-semibold text-red-900">Quarantena migrazione: {quarantine.planDate}</p>
+                    <p className="font-semibold text-[var(--ik-tomato)]">Quarantena migrazione: {quarantine.planDate}</p>
                     <p className="mt-1"><strong>Codice:</strong> {quarantine.reasonCode}</p>
-                    <p><strong>Fonte (account):</strong> {sourceRecipe?.title ?? quarantine.sourceSnapshot.state?.kind === 'deleted' ? 'Pasto rimosso' : quarantine.sourceSnapshot.state?.kind ?? 'Sconosciuto'}</p>
-                    <p><strong>Destinazione (Casa):</strong> {targetRecipe?.title ?? quarantine.targetSnapshot.state?.kind === 'deleted' ? 'Pasto rimosso' : quarantine.targetSnapshot.state?.kind ?? 'Sconosciuto'}</p>
-                    <p className="mt-1 text-xs text-gray-600">Non risolvibile automaticamente: i dati originali sono incompleti o incoerenti. L'evidenza grezza è conservata per analisi manuale.</p>
+                    <p><strong>Fonte (account):</strong> {sourceRecipe?.title ?? (quarantine.sourceSnapshot.state?.kind === 'deleted' ? 'Pasto rimosso' : quarantine.sourceSnapshot.state?.kind ?? 'Sconosciuto')}</p>
+                    <p><strong>Destinazione (Casa):</strong> {targetRecipe?.title ?? (quarantine.targetSnapshot.state?.kind === 'deleted' ? 'Pasto rimosso' : quarantine.targetSnapshot.state?.kind ?? 'Sconosciuto')}</p>
+                    <p className="mt-1 text-xs text-[var(--ik-ink-muted)]">Non risolvibile automaticamente: i dati originali sono incompleti o incoerenti. L'evidenza grezza è conservata per analisi manuale.</p>
                   </div>
                 </div>
               </div>
@@ -945,8 +996,8 @@ export default function PlanPage() {
       )}
 
       <div className="mt-5 flex flex-wrap gap-3">
-        <Link to="/shopping-list" className="inline-flex min-h-11 items-center rounded-xl border-2 border-emerald-700 px-4 py-2 font-bold text-emerald-900 hover:bg-emerald-50">Apri la lista della spesa</Link>
-        <Link to="/" className="ik-back-link inline-flex min-h-11 items-center rounded-xl px-3 py-2 font-semibold text-emerald-800 underline underline-offset-2">Torna al Chef</Link>
+        <Link to="/shopping-list" className="inline-flex min-h-11 items-center justify-center rounded-xl border-2 border-[var(--ik-basil)] bg-[var(--ik-surface)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)]">Apri la lista della spesa</Link>
+        <Link to="/" className="ik-back-link inline-flex min-h-11 items-center rounded-xl px-3 py-2 font-semibold text-[var(--ik-basil-dark)] underline underline-offset-2">Torna al Chef</Link>
       </div>
     </main>
   );

@@ -45,7 +45,7 @@ import {
   syncVerifiedSession,
   listenForReconnect,
 } from './syncQueue';
-import { getActiveDataScope, getPersonalDataScope, setActiveDataScope, setPersonalDataScope } from './scopeContext';
+import { getActiveDataScope, getPersonalDataScope, setActiveDataScope, setPersonalDataScope, subscribeActiveDataScope } from './scopeContext';
 import { isScopeWritable, trackScopedWrite } from './scopeWriteFence';
 import { parseSyncMutation } from './validation';
 
@@ -93,6 +93,29 @@ describe('sync queue', () => {
     window.localStorage.clear();
     setActiveDataScope('guest');
     setPersonalDataScope('guest');
+  });
+
+  it('keeps an already-active account scope stable when House lookup confirms no membership', async () => {
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
+    const transitions: string[] = [];
+    const unsubscribe = subscribeActiveDataScope((scope) => transitions.push(scope));
+    const request = vi.fn().mockResolvedValue(null) as ApiRequest;
+
+    try {
+      await expect(initializeSessionScope(session, request)).resolves.toMatchObject({
+        state: null,
+        mergeSummary: null,
+        guestMergeFailed: false,
+      });
+
+      expect(request).toHaveBeenCalledOnce();
+      expect(request).toHaveBeenCalledWith('/v1/house');
+      expect(transitions).toEqual([]);
+      expect(getActiveDataScope()).toBe(accountScope);
+    } finally {
+      unsubscribe();
+    }
   });
 
   it('rejects client-authored Dinner provider markers in personal AI consent sync records', () => {

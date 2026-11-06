@@ -11,6 +11,8 @@ describe('AppUpdatePrompt', () => {
 
     render(<AppUpdatePrompt status="available" onUpdate={onUpdate} onLater={onLater} />);
 
+    expect(screen.getByRole('complementary', { name: 'Aggiornamento applicazione' }))
+      .toHaveClass('app-update-overlay', 'fixed', 'inset-x-4', 'z-50');
     expect(screen.getByText('Aggiornamento disponibile')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Aggiorna ora' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Più tardi' })).toBeInTheDocument();

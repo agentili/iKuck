@@ -8,10 +8,13 @@ describe('QuickAddIngredientsDialog', () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
     render(<QuickAddIngredientsDialog open scope="guest" onClose={onClose} onAdd={vi.fn()} />);
+    const dialog = screen.getByRole('dialog', { name: 'Aggiungi ingredienti' });
+    expect(dialog).toHaveClass('ik-modal-surface', 'ik-quick-add-dialog');
+    expect(dialog.parentElement).toHaveClass('ik-modal-backdrop');
     const input = screen.getByRole('combobox', { name: 'Ingredienti presenti' });
     await user.type(input, 'pom');
     await user.keyboard('{Escape}');
-    expect(screen.getByRole('dialog', { name: 'Aggiungi ingredienti' })).toBeInTheDocument();
+    expect(dialog).toBeInTheDocument();
     expect(input).toHaveAttribute('aria-expanded', 'false');
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalledTimes(1);

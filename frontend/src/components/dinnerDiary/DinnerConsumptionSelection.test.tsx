@@ -46,5 +46,8 @@ describe('DinnerConsumptionSelection', () => {
     await user.type(screen.getByRole('textbox', { name: 'Quantità per porzione di Pasta' }), '80 g');
 
     expect(screen.getByText(/Ne userai 100 g; mancano 60 g rispetto ai 160 g richiesti/i)).toBeVisible();
+    const deficitNotice = screen.getByText(/La registrazione userà solo le scorte presenti e mostrerà il deficit effettivo/i);
+    expect(deficitNotice).toBeVisible();
+    expect(deficitNotice).toHaveClass('text-[var(--ik-warn-ink)]');
   });
 });

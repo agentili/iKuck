@@ -32,10 +32,10 @@ const Tag = ({ children, variant = 'default' }: { children: React.ReactNode; var
   <span
     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
       variant === 'ready'
-        ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+        ? 'bg-[var(--ik-sage)] text-[var(--ik-basil-dark)]'
         : variant === 'missing'
-        ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'
-        : 'bg-[var(--sc-peach-soft)] text-[var(--sc-terracotta)] dark:bg-[var(--sc-peach-soft)] dark:text-[var(--sc-terracotta)]'
+        ? 'bg-[var(--ik-yolk-soft)] text-[var(--ik-warn-ink)]'
+        : 'bg-[var(--ik-sage)] text-[var(--ik-basil-dark)]'
     }`}
   >
     {children}
@@ -242,19 +242,19 @@ export const RecipeDetailModal = memo(({
 
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="recipe-modal-title">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="ik-modal-backdrop absolute inset-0" onClick={onClose} />
       
       <div 
         ref={modalRef}
-        className="absolute bottom-0 left-0 right-0 md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:bottom-auto md:max-h-[90vh] md:max-w-2xl md:rounded-2xl bg-[var(--sc-cream)] border border-[var(--sc-peach-soft)] shadow-[var(--sc-shadow-lift)] animate-slide-up max-h-[90vh] overflow-y-auto"
+        className="ik-modal-surface absolute bottom-0 left-0 right-0 md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:bottom-auto md:max-h-[90vh] md:max-w-2xl md:rounded-2xl animate-slide-up max-h-[90vh] overflow-y-auto"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-[var(--sc-peach-soft)] sticky top-0 bg-[var(--sc-cream)]/95 backdrop-blur-sm z-10 rounded-t-2xl">
-          <h2 id="recipe-modal-title" className="text-lg font-bold text-[var(--sc-ink)]">{recipe.emoji} {recipe.title}</h2>
+        <div className="flex items-center justify-between p-4 border-b border-[var(--ik-border)] sticky top-0 bg-[var(--ik-surface)] z-10 rounded-t-2xl">
+          <h2 id="recipe-modal-title" className="text-lg font-bold text-[var(--ik-ink)]">{recipe.emoji} {recipe.title}</h2>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-[var(--sc-ink-faint)] hover:bg-[var(--sc-peach-soft)] transition-colors"
+            className="p-2 rounded-xl text-[var(--ik-ink-muted)] hover:bg-[var(--ik-sage)] transition-colors"
             aria-label="Chiudi"
           >
             <X className="w-5 h-5" aria-hidden="true" />
@@ -264,7 +264,7 @@ export const RecipeDetailModal = memo(({
         {/* Content */}
         <div className="p-4 pb-20 max-h-[calc(90vh-80px)] overflow-y-auto">
           {/* Hero Image */}
-          <div className="relative aspect-[16/9] rounded-2xl overflow-hidden mb-4" style={{ backgroundColor: 'var(--sc-peach-soft)' }}>
+          <div className="relative aspect-[16/9] rounded-2xl overflow-hidden mb-4" style={{ backgroundColor: 'var(--ik-sage)' }}>
             <img
               src={recipe.image}
               alt={recipe.title}
@@ -279,7 +279,7 @@ export const RecipeDetailModal = memo(({
           </div>
 
           {/* Meta Info */}
-          <div className="flex flex-wrap items-center gap-4 mb-4 text-sm text-[var(--sc-ink-soft)]">
+          <div className="flex flex-wrap items-center gap-4 mb-4 text-sm text-[var(--ik-ink-muted)]">
             <span className="flex items-center gap-1.5">
               <Clock className="w-4 h-4" aria-hidden="true" />
               {recipe.time}
@@ -295,7 +295,7 @@ export const RecipeDetailModal = memo(({
 
           {/* Description */}
           {recipe.description && (
-            <p className="text-[var(--sc-ink-soft)] leading-relaxed mb-4">{recipe.description}</p>
+            <p className="text-[var(--ik-ink-muted)] leading-relaxed mb-4">{recipe.description}</p>
           )}
 
           {/* Diet & Allergens */}
@@ -303,7 +303,7 @@ export const RecipeDetailModal = memo(({
             <div className="mb-4">
               {recipe.diets.length > 0 && (
                 <div className="mb-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-faint)] mb-1">Dieta</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ik-ink-muted)] mb-1">Dieta</p>
                   <div className="flex flex-wrap gap-1.5">
                     {recipe.diets.map((diet) => (
                       <Tag key={diet} variant="ready">{DIET_LABELS[diet] || diet}</Tag>
@@ -313,7 +313,7 @@ export const RecipeDetailModal = memo(({
               )}
               {recipe.allergens.length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-faint)] mb-1">Allergeni</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ik-ink-muted)] mb-1">Allergeni</p>
                   <div className="flex flex-wrap gap-1.5">
                     {recipe.allergens.map((allergen) => (
                       <Tag key={allergen} variant="missing">{ALLERGEN_LABELS[allergen] || allergen}</Tag>
@@ -326,8 +326,8 @@ export const RecipeDetailModal = memo(({
 
           {/* Ingredients */}
           <div className="mb-4">
-            <h3 className="font-bold text-[var(--sc-ink)] mb-2">Ingredienti</h3>
-            <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--sc-ink-soft)]">
+            <h3 className="font-bold text-[var(--ik-ink)] mb-2">Ingredienti</h3>
+            <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--ik-ink-muted)]">
               {recipe.ingredients.map((ingredient) => (
                 <li key={`${recipe.id}-${ingredient.name}`}>{ingredient.amount} {ingredient.name}</li>
               ))}
@@ -336,8 +336,8 @@ export const RecipeDetailModal = memo(({
 
           {/* Steps */}
           <div className="mb-6">
-            <h3 className="font-bold text-[var(--sc-ink)] mb-2">Procedimento</h3>
-            <ol className="list-decimal space-y-2 pl-5 text-sm text-[var(--sc-ink-soft)]">
+            <h3 className="font-bold text-[var(--ik-ink)] mb-2">Procedimento</h3>
+            <ol className="list-decimal space-y-2 pl-5 text-sm text-[var(--ik-ink-muted)]">
               {recipe.steps.map((step, index) => (
                 <li key={`${recipe.id}-step-${index}`}>{step}</li>
               ))}
@@ -346,27 +346,27 @@ export const RecipeDetailModal = memo(({
 
           {/* Error Toast */}
           {error && (
-            <div className="mb-4 p-3 rounded-xl bg-[var(--sc-coral-soft)] text-[var(--sc-terracotta)] text-sm" role="alert">
+            <div className="mb-4 p-3 rounded-xl bg-[var(--ik-tomato-soft)] text-[var(--ik-tomato)] text-sm" role="alert">
               {error}
             </div>
           )}
 
           {/* Actions */}
-          <div className="space-y-3 pt-4 border-t border-[var(--sc-peach-soft)]">
+          <div className="space-y-3 pt-4 border-t border-[var(--ik-sage)]">
             {/* Primary: Start Cooking */}
             <button
               type="button"
               onClick={handleStartCooking}
               className="btn-primary w-full flex items-center justify-center gap-2 py-3 recipe-modal-action"
               style={{
-                backgroundColor: 'var(--sc-terracotta)',
-                color: 'var(--sc-cream)',
+                backgroundColor: 'var(--ik-basil-dark)',
+                color: 'var(--ik-porcelain)',
                 borderRadius: '16px',
                 fontWeight: 600,
                 fontSize: '16px',
                 border: 'none',
                 cursor: 'pointer',
-                boxShadow: 'var(--sc-shadow-card)',
+                boxShadow: 'var(--ik-shadow-card)',
               }}
             >
               <ChefHat className="w-5 h-5" aria-hidden="true" />
@@ -383,9 +383,9 @@ export const RecipeDetailModal = memo(({
                     disabled={isSaving}
                     className="btn-secondary flex items-center justify-center gap-2 py-2 recipe-modal-action"
                     style={{
-                      backgroundColor: 'var(--sc-cream)',
-                      color: 'var(--sc-terracotta)',
-                      border: '2px solid var(--sc-terracotta)',
+                      backgroundColor: 'var(--ik-porcelain)',
+                      color: 'var(--ik-basil-dark)',
+                      border: '2px solid var(--ik-basil-dark)',
                       borderRadius: '16px',
                       fontWeight: 600,
                       fontSize: '14px',
@@ -400,9 +400,9 @@ export const RecipeDetailModal = memo(({
                     disabled={isDeleting}
                     className="btn-secondary flex items-center justify-center gap-2 py-2 recipe-modal-action"
                     style={{
-                      backgroundColor: 'var(--sc-cream)',
-                      color: 'var(--sc-terracotta)',
-                      border: '2px solid var(--sc-coral)',
+                      backgroundColor: 'var(--ik-porcelain)',
+                      color: 'var(--ik-basil-dark)',
+                      border: '2px solid var(--ik-tomato)',
                       borderRadius: '16px',
                       fontWeight: 600,
                       fontSize: '14px',
@@ -418,9 +418,9 @@ export const RecipeDetailModal = memo(({
                 onClick={handleAddToShoppingList}
                 className="btn-secondary flex items-center justify-center gap-2 py-2 recipe-modal-action"
                 style={{
-                  backgroundColor: 'var(--sc-cream)',
-                  color: 'var(--sc-terracotta)',
-                  border: '2px solid var(--sc-terracotta)',
+                  backgroundColor: 'var(--ik-porcelain)',
+                  color: 'var(--ik-basil-dark)',
+                  border: '2px solid var(--ik-basil-dark)',
                   borderRadius: '16px',
                   fontWeight: 600,
                   fontSize: '14px',
@@ -435,9 +435,9 @@ export const RecipeDetailModal = memo(({
                 onClick={handleShare}
                 className="btn-secondary flex items-center justify-center gap-2 py-2 recipe-modal-action"
                 style={{
-                  backgroundColor: 'var(--sc-cream)',
-                  color: 'var(--sc-terracotta)',
-                  border: '2px solid var(--sc-terracotta)',
+                  backgroundColor: 'var(--ik-porcelain)',
+                  color: 'var(--ik-basil-dark)',
+                  border: '2px solid var(--ik-basil-dark)',
                   borderRadius: '16px',
                   fontWeight: 600,
                   fontSize: '14px',
@@ -452,7 +452,7 @@ export const RecipeDetailModal = memo(({
             <Link
               to={`/recipes/${recipe.id}`}
               onClick={onClose}
-              className="w-full text-center text-sm font-medium text-[var(--sc-terracotta)] hover:underline mt-2 block"
+              className="w-full text-center text-sm font-medium text-[var(--ik-basil-dark)] hover:underline mt-2 block"
             >
               Visualizza pagina completa →
             </Link>

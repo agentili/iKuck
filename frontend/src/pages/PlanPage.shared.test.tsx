@@ -24,6 +24,7 @@ beforeEach(async () => {
   setActiveDataScope('house:house-1');
   useAuthStore.setState({ user, csrfToken: 'csrf-token', expiresAt: '2026-12-01T00:00:00.000Z' });
   vi.spyOn(mealPlanApi, 'readSyncPage').mockResolvedValue({ changes: [], nextCursor: 0 });
+  vi.spyOn(mealPlanApi, 'readRecovery').mockResolvedValue({ version: 2, conflicts: [], quarantined: [] });
 });
 
 afterEach(() => {
@@ -82,6 +83,8 @@ describe('PlanPage shared mode', () => {
 
     expect(await screen.findByText(/salvato su questo dispositivo/i)).toBeVisible();
     expect(await screen.findAllByRole('listitem')).toHaveLength(4);
+    expect(screen.getByRole('link', { name: 'Apri la lista della spesa' })).toHaveAttribute('href', '/shopping-list');
+    expect(screen.getByRole('link', { name: 'Torna al Chef' })).toHaveAttribute('href', '/');
   });
 
   it('aborts a guest recipe change when the account changes during the native IndexedDB read', async () => {
@@ -623,6 +626,7 @@ describe('PlanPage shared mode', () => {
     const timeZoneInput = await screen.findByRole('textbox', { name: 'Fuso orario della Casa' });
     await userInput.clear(timeZoneInput);
     await userInput.type(timeZoneInput, 'America/New_York');
+    expect(timeZoneInput).toHaveValue('America/New_York');
     await userInput.click(screen.getByRole('button', { name: 'Aggiorna fuso' }));
 
     await waitFor(() => expect(update).toHaveBeenCalledWith('America/New_York', '123e4567-e89b-42d3-a456-426614174000', 'csrf-token'));

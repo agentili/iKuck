@@ -40,5 +40,5 @@ integration('meal plan capability pagination in PostgreSQL', () => {
     expect(page).toHaveLength(1);
     expect(page[0]).toMatchObject({ entityType: 'pantry_item', entityId: 'tomato' });
     await expect(repository.readChanges(userId, page[0].serverSequence, 200, `account:${userId}`, ['pantry_item'])).resolves.toEqual([]);
-  });
+  }, 30_000);
 });

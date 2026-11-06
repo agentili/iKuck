@@ -3,47 +3,56 @@ import { assertOfflineBackendClean, installOfflineBackend } from './helpers/back
 
 test.skip(process.env.VITE_SOUS_CHEF !== 'true', 'Sous-Chef build required');
 
-test('Chef shows real chat interface with DailyRecipeCard', async ({ page }) => {
+const chefDestinations = [
+  { label: 'Ricette', path: '/recipes' },
+  { label: 'Dispensa', path: '/pantry' },
+  { label: 'Spesa', path: '/shopping-list' },
+  { label: 'Casa', path: '/house' },
+  { label: 'Cucina viva', path: '/cucina' },
+] as const;
+
+test('Chef keeps the local recipe card and real destinations while AI chat is deferred', async ({ page }) => {
   await installOfflineBackend(page);
   await page.goto('/');
 
-  // DailyRecipeCard is visible
   await expect(page.getByRole('region', { name: 'Ricetta del giorno' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Chef', exact: true })).toBeVisible();
+  await expect(page.getByText('Chat AI non disponibile. La chat AI è stata rinviata.', { exact: true })).toBeVisible();
+  await expect(page.getByPlaceholder(/Chiedimi una ricetta/i)).toHaveCount(0);
+  await expect(page.getByRole('log')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Invia messaggio' })).toHaveCount(0);
 
-  // Chat area shows welcome message (no messages yet)
-  await expect(page.getByText(/Ciao! Sono Chef/i)).toBeVisible();
-
-  // No simulated chat elements
-  await expect(page.getByText(/chat non disponibile/i)).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /autorizza e genera|input vocale/i })).toHaveCount(0);
-
-  // Real chat input is present
-  await expect(page.getByPlaceholder(/Chiedimi una ricetta/i)).toBeVisible();
-
-  // Link to /cucina for AI recipes
-  await page.getByRole('link', { name: /cucina e ricette ai/i }).click();
+  const shortcuts = page.getByRole('group', { name: 'Risposte rapide' });
+  for (const destination of chefDestinations) {
+    const link = shortcuts.getByRole('link', { name: destination.label, exact: true });
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute('href', destination.path);
+  }
+  await shortcuts.getByRole('link', { name: 'Cucina viva', exact: true }).click();
   await expect(page).toHaveURL('/cucina');
   await expect(page.getByRole('heading', { name: 'Cucina viva' })).toBeVisible();
 
   assertOfflineBackendClean(page);
 });
 
-test('actions remain reachable at 320px with 200% text', async ({ page }) => {
+test('Chef destinations remain reachable at 320px with 200% text', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
   await installOfflineBackend(page);
   await page.goto('/');
   await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
 
-  // Chat input should be reachable
-  const input = page.getByPlaceholder(/Chiedimi una ricetta/i);
-  await input.scrollIntoViewIfNeeded();
-  const uncovered = await input.evaluate((element: HTMLElement) => {
-    const rect = element.getBoundingClientRect();
-    const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-    return top === element || element.contains(top);
-  });
-  expect(uncovered).toBe(true);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const geometry = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    content: document.documentElement.scrollWidth,
+  }));
+  expect(geometry.content, `horizontal overflow at 320px with 200% text: ${JSON.stringify(geometry)}`)
+    .toBeLessThanOrEqual(geometry.viewport);
+  const shortcuts = page.getByRole('group', { name: 'Risposte rapide' });
+  const pantryLink = shortcuts.getByRole('link', { name: 'Dispensa', exact: true });
+  await expect(pantryLink).toBeVisible();
+  await pantryLink.click();
+  await expect(page).toHaveURL('/pantry');
+  await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
 
   assertOfflineBackendClean(page);
 });

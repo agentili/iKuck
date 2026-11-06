@@ -1,24 +1,35 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+import { isSousChef } from './config/features';
 import { useAuthStore } from './auth/authStore';
 import { useActivityStore } from './store/activityStore';
 import { useShoppingListStore } from './store/shoppingListStore';
 import { usePantryStore } from './store/localPantryStore';
+import { useDinnerDiaryStore } from './store/dinnerDiaryStore';
 import { useHouseStore } from './house/houseStore';
 import { usePantryMergeNoticeStore } from './store/pantryMergeNoticeStore';
 import { getActiveDataScope, setActiveDataScope, setPersonalDataScope } from './sync/scopeContext';
 import { clearDataScope } from './sync/syncQueue';
 import { isScopeWritable, trackScopedWrite } from './sync/scopeWriteFence';
 import { writeDinnerEntries } from './storage/dinnerDiaryStorage';
+import { PANTRY_STORAGE_KEY, pantryStorage, writePantrySnapshot } from './storage/pantryStorage';
 
 const syncVerifiedSession = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 const listenForReconnect = vi.hoisted(() => vi.fn().mockReturnValue(vi.fn()));
 const initializeSessionScope = vi.hoisted(() => vi.fn());
+const hydratePantryStoreMock = vi.hoisted(() => vi.fn());
+const scrollIntoViewMock = vi.fn();
 
 vi.mock('./sync/syncQueue', async () => {
   const actual = await vi.importActual<typeof import('./sync/syncQueue')>('./sync/syncQueue');
   return { ...actual, initializeSessionScope, syncVerifiedSession, listenForReconnect };
+});
+
+vi.mock('./store/localPantryStore', async () => {
+  const actual = await vi.importActual<typeof import('./store/localPantryStore')>('./store/localPantryStore');
+  return { ...actual, hydratePantryStore: hydratePantryStoreMock };
 });
 
 const verifiedUser = {
@@ -27,8 +38,21 @@ const verifiedUser = {
   emailVerifiedAt: '2026-09-12T10:00:00.000Z',
 };
 
+const getHomeHeading = (): string => (isSousChef() ? 'Chef' : 'Cucina viva');
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+};
+
 describe('App synchronization lifecycle', () => {
   beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoViewMock,
+    });
+    scrollIntoViewMock.mockClear();
     syncVerifiedSession.mockClear();
     listenForReconnect.mockClear();
     initializeSessionScope.mockReset();
@@ -37,6 +61,9 @@ describe('App synchronization lifecycle', () => {
       setActiveDataScope(scope);
       setPersonalDataScope(scope);
       return { state: null, mergeSummary: null, guestMergeFailed: false };
+    });
+    hydratePantryStoreMock.mockReset().mockImplementation(async () => {
+      usePantryStore.setState({ hasHydrated: true });
     });
     useHouseStore.getState().clear();
     setActiveDataScope('guest');
@@ -52,6 +79,7 @@ describe('App synchronization lifecycle', () => {
     });
     useActivityStore.setState({ hasHydrated: true, events: [], preferences: [] });
     useShoppingListStore.setState({ hasHydrated: true, items: [] });
+    useDinnerDiaryStore.setState({ hasHydrated: true, entries: [], recipes: [], drafts: [], error: null });
   });
 
   it('hides a revoked House diary immediately while purge waits for a local write', async () => {
@@ -94,6 +122,7 @@ describe('App synchronization lifecycle', () => {
   });
 
   it('hides the previous account’s routes during a new account’s unresolved House bootstrap', async () => {
+    const user = userEvent.setup();
     useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
     const { rerender } = render(<App />);
     await waitFor(() => expect(syncVerifiedSession).toHaveBeenCalledOnce());
@@ -106,6 +135,11 @@ describe('App synchronization lifecycle', () => {
     window.history.pushState({}, '', '/pantry');
     window.dispatchEvent(new PopStateEvent('popstate'));
     await screen.findByRole('heading', { name: 'La tua dispensa' });
+    if (isSousChef()) {
+      const inventorySummary = screen.getByText('Inventario', { exact: true });
+      expect(inventorySummary.closest('details')).not.toHaveAttribute('open');
+      await user.click(inventorySummary);
+    }
     expect(screen.getByText('Pasta privata')).toBeVisible();
 
     useAuthStore.setState({ user: { ...verifiedUser, id: 'user-2', email: 'other@example.com' }, csrfToken: 'csrf-2' });
@@ -132,9 +166,23 @@ describe('App synchronization lifecycle', () => {
 
   it('keeps verified navigation available and retries a transient House lookup without exposing scoped data', async () => {
     const actual = await vi.importActual<typeof import('./sync/syncQueue')>('./sync/syncQueue');
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 'temporary_unavailable' }), { status: 503 }))
-      .mockResolvedValueOnce(new Response('null', { status: 200, headers: { 'content-type': 'application/json' } }));
+    const houseResponses = [
+      new Response(JSON.stringify({ code: 'temporary_unavailable' }), { status: 503 }),
+      new Response('null', { status: 200, headers: { 'content-type': 'application/json' } }),
+    ];
+    const fetchMock = vi.fn<typeof fetch>((input) => {
+      const path = String(input);
+      if (path === '/v1/house') {
+        return Promise.resolve(houseResponses.shift() ?? new Response('null', { status: 200 }));
+      }
+      if (path === '/v1/ai-recipes/consent') {
+        return Promise.resolve(new Response(JSON.stringify({
+          consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' },
+          selectedProvider: 'openai',
+        }), { status: 200 }));
+      }
+      return Promise.resolve(new Response('null', { status: 200 }));
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     const houseScope = 'house:offline-home' as const;
@@ -143,11 +191,12 @@ describe('App synchronization lifecycle', () => {
     usePantryStore.setState({ hasHydrated: true, pantryItems: [{ id: 'secret-pasta', label: 'Dispensa privata House', known: true }] });
     initializeSessionScope.mockImplementation((...args: Parameters<typeof actual.initializeSessionScope>) => actual.initializeSessionScope(...args));
     useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
+    window.history.pushState({}, '', '/');
     const { unmount } = render(<App />);
 
     try {
       await waitFor(() => expect(initializeSessionScope).toHaveBeenCalled());
-      const alert = await screen.findByRole('alert');
+      const alert = await screen.findByText(/verificare l’ambito della Casa/i);
       expect(alert).toHaveTextContent(/verificare l’ambito della Casa/i);
       expect(screen.getByRole('navigation', { name: 'Navigazione principale' })).toBeVisible();
       expect(screen.getByRole('button', { name: 'Riprova' })).toBeVisible();
@@ -156,11 +205,15 @@ describe('App synchronization lifecycle', () => {
       expect(isScopeWritable(houseScope)).toBe(false);
       await expect(trackScopedWrite(houseScope, async () => undefined)).rejects.toMatchObject({ code: 'scope_unverified' });
       expect(syncVerifiedSession).not.toHaveBeenCalled();
-      expect(fetchMock).toHaveBeenNthCalledWith(1, '/v1/house', expect.objectContaining({ method: 'GET' }));
+      const initialHouseRequests = fetchMock.mock.calls.filter(([path]) => String(path) === '/v1/house');
+      expect(initialHouseRequests).toHaveLength(1);
+      expect(initialHouseRequests[0]?.[1]).toEqual(expect.objectContaining({ method: 'GET' }));
 
-      screen.getByRole('button', { name: 'Riprova' }).click();
-      expect(await screen.findByRole('heading', { name: 'Cucina viva' })).toBeVisible();
-      expect(fetchMock).toHaveBeenNthCalledWith(2, '/v1/house', expect.objectContaining({ method: 'GET' }));
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Riprova' }));
+      expect(await screen.findByRole('heading', { name: getHomeHeading() })).toBeVisible();
+      const retriedHouseRequests = fetchMock.mock.calls.filter(([path]) => String(path) === '/v1/house');
+      expect(retriedHouseRequests).toHaveLength(2);
+      expect(retriedHouseRequests[1]?.[1]).toEqual(expect.objectContaining({ method: 'GET' }));
       expect(getActiveDataScope()).toBe('account:user-1');
       await waitFor(() => expect(syncVerifiedSession).toHaveBeenCalledOnce());
     } finally {
@@ -296,17 +349,21 @@ describe('App synchronization lifecycle', () => {
     render(<App />);
 
     expect(restoreSession).toHaveBeenCalledOnce();
-    await screen.findByRole('heading', { name: 'Cucina viva' });
+    await screen.findByRole('heading', { name: getHomeHeading() });
   });
 
   it('hydrates pantry data before an authenticated profile uses it', async () => {
     useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
     usePantryStore.setState({ hasHydrated: false, pantryItems: [] });
+    hydratePantryStoreMock.mockImplementation(async () => {
+      usePantryStore.setState({ hasHydrated: true });
+    });
     window.history.pushState({}, '', '/profile');
 
     render(<App />);
 
     await waitFor(() => expect(usePantryStore.getState().hasHydrated).toBe(true));
+    expect(hydratePantryStoreMock).toHaveBeenCalledOnce();
     window.history.pushState({}, '', '/');
   });
 
@@ -370,14 +427,19 @@ describe('App synchronization lifecycle', () => {
 
     render(<App />);
 
-    expect(await screen.findByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: getHomeHeading() })).toBeVisible();
     expect(screen.queryByLabelText('Ingredienti presenti')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Apri tutta la dispensa' })).toHaveAttribute('href', '/pantry');
-    expect(screen.getByRole('button', { name: 'Trova ricette' })).toBeEnabled();
+    if (isSousChef()) {
+      const quickLinks = screen.getByRole('group', { name: 'Risposte rapide' });
+      expect(within(quickLinks).getByRole('link', { name: 'Dispensa' })).toHaveAttribute('href', '/pantry');
+    } else {
+      expect(screen.getByRole('link', { name: 'Apri tutta la dispensa' })).toHaveAttribute('href', '/pantry');
+      expect(screen.getByRole('button', { name: 'Trova ricette' })).toBeEnabled();
+    }
   });
 
   it.each([
-    ['/', 'Cucina viva'],
+    ['/', getHomeHeading()],
     ['/pantry', 'La tua dispensa'],
     ['/recipes/pasta-tonno-pomodoro', 'Pasta tonno e pomodoro'],
     ['/profile', 'Accedi al tuo profilo'],
@@ -393,6 +455,209 @@ describe('App synchronization lifecycle', () => {
 
     expect(await screen.findByRole('heading', { name: heading })).toBeVisible();
     expect(window.location.pathname).toBe(path);
+  });
+
+  it('keeps guest sign-in reachable on Profile while guest pantry hydration is pending', async () => {
+    hydratePantryStoreMock.mockReturnValue(new Promise<void>(() => undefined));
+    window.history.pushState({}, '', '/profile');
+    const { unmount } = render(<App />);
+
+    try {
+      expect(await screen.findByRole('button', { name: 'Accedi o registrati' })).toBeVisible();
+      expect(screen.queryByText('Caricamento dati…')).not.toBeInTheDocument();
+      expect(getActiveDataScope()).toBe('guest');
+      expect(hydratePantryStoreMock).toHaveBeenCalledOnce();
+    } finally {
+      unmount();
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  it('keeps a verified shopping route available once scope is confirmed while pantry hydration is pending', async () => {
+    const accountScope = `account:${verifiedUser.id}` as const;
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
+    hydratePantryStoreMock.mockReturnValue(new Promise<void>(() => undefined));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      enabled: true,
+      connected: false,
+      connectionId: null,
+    }), { status: 200 })));
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
+    window.history.pushState({}, '', '/shopping-list');
+    const { unmount } = render(<App />);
+
+    try {
+      expect(await screen.findByRole('group', { name: 'Origine della lista' })).toBeVisible();
+      expect(screen.queryByText('Caricamento dati…')).not.toBeInTheDocument();
+      expect(getActiveDataScope()).toBe(accountScope);
+      expect(hydratePantryStoreMock).toHaveBeenCalledOnce();
+    } finally {
+      unmount();
+      vi.unstubAllGlobals();
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  it('renders a verified Profile after scope confirmation while pantry hydration is pending', async () => {
+    const accountScope = `account:${verifiedUser.id}` as const;
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
+    hydratePantryStoreMock.mockReturnValue(new Promise<void>(() => undefined));
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => {
+      if (path === '/v1/ai-recipes/consent') {
+        return Promise.resolve(new Response(JSON.stringify({ consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' } }), { status: 200 }));
+      }
+      if (path === '/v1/ai-recipes') {
+        return Promise.resolve(new Response(JSON.stringify({ recipes: [] }), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ profile: { displayName: 'Ale' } }), { status: 200 }));
+    }));
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
+    window.history.pushState({}, '', '/profile');
+    const { unmount } = render(<App />);
+
+    try {
+      expect(await screen.findByRole('heading', { name: 'Il tuo profilo' })).toBeVisible();
+      expect(hydratePantryStoreMock).toHaveBeenCalledOnce();
+      expect(getActiveDataScope()).toBe(accountScope);
+    } finally {
+      unmount();
+      vi.unstubAllGlobals();
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  it('renders the verified pantry loading state after House scope confirmation while hydration is pending', async () => {
+    const houseId = 'pantry-bootstrap-house';
+    const houseScope = `house:${houseId}` as const;
+    const houseState = {
+      house: { id: houseId, name: 'Casa', createdAt: '2026-09-24T00:00:00.000Z' },
+      membership: { role: 'member' as const, joinedAt: '2026-09-24T00:00:00.000Z' },
+      members: [],
+    };
+    initializeSessionScope.mockImplementation(async () => {
+      setActiveDataScope(houseScope);
+      setPersonalDataScope(`account:${verifiedUser.id}`);
+      return { state: houseState, mergeSummary: null, guestMergeFailed: false };
+    });
+    hydratePantryStoreMock.mockReturnValue(new Promise<void>(() => undefined));
+    usePantryStore.setState({
+      hasHydrated: false,
+      pantryItems: [{ id: 'stale-house-item', label: 'Dato di Casa non idratato', known: true }],
+      pantryLots: [],
+    });
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
+    window.history.pushState({}, '', '/pantry');
+    const { unmount } = render(<App />);
+
+    try {
+      expect(await screen.findByText('Caricamento della tua dispensa…')).toBeVisible();
+      expect(screen.queryByText('Caricamento dati…')).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'La tua dispensa' })).not.toBeInTheDocument();
+      expect(screen.queryByText('Dato di Casa non idratato')).not.toBeInTheDocument();
+      expect(getActiveDataScope()).toBe(houseScope);
+      expect(useHouseStore.getState().state?.house?.id).toBe(houseId);
+      expect(hydratePantryStoreMock).toHaveBeenCalled();
+    } finally {
+      unmount();
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  it('keeps account B isolated when account A pantry hydration completes after logout and login', async () => {
+    const accountAId = 'hydration-race-a';
+    const accountBId = 'hydration-race-b';
+    const accountAScope = `account:${accountAId}` as const;
+    const accountBScope = `account:${accountBId}` as const;
+    const accountA = { ...verifiedUser, id: accountAId, email: 'hydration-a@example.test' };
+    const accountB = { ...verifiedUser, id: accountBId, email: 'hydration-b@example.test' };
+    await clearDataScope(accountAScope);
+    await clearDataScope(accountBScope);
+    await writePantrySnapshot({
+      pantryItems: [{ id: 'late-account-a-item', label: 'Dispensa privata A', known: true }],
+      stapleIds: [],
+    }, accountAScope);
+
+    const pantryModule = await vi.importActual<typeof import('./store/localPantryStore')>('./store/localPantryStore');
+    const readStarted = deferred<void>();
+    const releaseARead = deferred<void>();
+    const originalGetItem = pantryStorage.getItem.bind(pantryStorage);
+    let heldARead = false;
+    const getItemSpy = vi.spyOn(pantryStorage, 'getItem').mockImplementation(async (name) => {
+      const requestedScope = getActiveDataScope();
+      const result = await originalGetItem(name);
+      if (name === PANTRY_STORAGE_KEY && requestedScope === accountAScope && !heldARead) {
+        heldARead = true;
+        readStarted.resolve();
+        await releaseARead.promise;
+      }
+      return result;
+    });
+    hydratePantryStoreMock.mockImplementation(() => pantryModule.hydratePantryStore());
+    initializeSessionScope.mockImplementation(async (session: { userId: string }) => {
+      const scope = `account:${session.userId}` as const;
+      setActiveDataScope(scope);
+      setPersonalDataScope(scope);
+      return { state: null, mergeSummary: null, guestMergeFailed: false };
+    });
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === '/v1/ai-recipes/consent') {
+        return Promise.resolve(new Response(JSON.stringify({
+          consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' },
+          selectedProvider: 'openai',
+        }), { status: 200 }));
+      }
+      if (path === '/v1/ai-recipes') return Promise.resolve(new Response(JSON.stringify({ recipes: [] }), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify({ profile: { displayName: null } }), { status: 200 }));
+    }));
+
+    useAuthStore.setState({ user: accountA, csrfToken: 'csrf-hydration-a' });
+    window.history.pushState({}, '', '/profile');
+    const view = render(<App />);
+
+    try {
+      await readStarted.promise;
+      expect(getActiveDataScope()).toBe(accountAScope);
+      expect(usePantryStore.getState().pantryItems).not.toContainEqual(expect.objectContaining({ id: 'late-account-a-item' }));
+
+      act(() => useAuthStore.setState({ user: null, csrfToken: null }));
+      view.rerender(<App />);
+      await waitFor(() => expect(getActiveDataScope()).toBe('guest'));
+      expect(await screen.findByRole('button', { name: 'Accedi o registrati' })).toBeVisible();
+
+      act(() => useAuthStore.setState({ user: accountB, csrfToken: 'csrf-hydration-b' }));
+      view.rerender(<App />);
+      expect(await screen.findByText(accountB.email, { exact: true })).toBeVisible();
+      expect(getActiveDataScope()).toBe(accountBScope);
+      expect(useAuthStore.getState().user?.id).toBe(accountBId);
+      expect(screen.queryByText('Dispensa privata A')).not.toBeInTheDocument();
+      expect(usePantryStore.getState().pantryItems).not.toContainEqual(expect.objectContaining({ id: 'late-account-a-item' }));
+
+      await act(async () => { releaseARead.resolve(); });
+      await waitFor(() => expect(usePantryStore.getState().hasHydrated).toBe(true));
+      expect(getActiveDataScope()).toBe(accountBScope);
+      expect(useAuthStore.getState().user?.id).toBe(accountBId);
+      expect(usePantryStore.getState().pantryItems).not.toContainEqual(expect.objectContaining({ id: 'late-account-a-item' }));
+
+      window.history.pushState({}, '', '/pantry');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      view.rerender(<App />);
+      expect(await screen.findByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
+      expect(screen.queryByText('Dispensa privata A')).not.toBeInTheDocument();
+    } finally {
+      releaseARead.resolve();
+      view.unmount();
+      getItemSpy.mockRestore();
+      vi.unstubAllGlobals();
+      useAuthStore.setState({ user: null, csrfToken: null });
+      setActiveDataScope('guest');
+      setPersonalDataScope('guest');
+      await clearDataScope(accountAScope);
+      await clearDataScope(accountBScope);
+      window.history.pushState({}, '', '/');
+    }
   });
 
   it('renders the authorized profile route with the restored verified session', async () => {

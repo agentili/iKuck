@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import CandidatesInbox from './CandidatesInbox';
@@ -42,6 +42,29 @@ const candidates = [
 const json = (body: unknown, status = 200): Response => (
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 );
+
+const createDeferred = <T,>() => {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
+const houseBCandidates = [{
+  id: 'b-1',
+  label: 'Farina Casa B',
+  rawLabel: 'Farina Casa B',
+  normalizedLabel: 'farina-casa-b',
+  specification: '1 kg',
+  listName: 'Spesa B',
+  checkedOffAt: null,
+  detectedAt: '2026-02-01T09:00:00.000Z',
+  expiresAt: '2026-03-03T09:00:00.000Z',
+  status: 'pending' as const,
+}];
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -209,7 +232,13 @@ describe('CandidatesInbox', () => {
       expiresAt: '2026-02-14T10:00:00.000Z',
       status: 'pending' as const,
     }));
-    fetchMock.mockResolvedValue(json({ candidates: many }));
+    fetchMock
+      .mockResolvedValueOnce(json({ candidates: many }))
+      .mockResolvedValueOnce(json({ results: many.slice(0, 100).map(({ id }) => ({
+        id,
+        ok: true,
+        code: 'accepted',
+      })) }));
     const user = userEvent.setup();
     render(<MemoryRouter><CandidatesInbox houseId="house-a" /></MemoryRouter>);
 
@@ -218,5 +247,260 @@ describe('CandidatesInbox', () => {
 
     const checked = screen.getAllByRole('checkbox', { checked: true });
     expect(checked).toHaveLength(100);
+    await user.click(screen.getByRole('button', { name: 'Accetta selezionati' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const acceptCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/accept'));
+    expect(acceptCall).toBeDefined();
+    expect(acceptCall![1]).toEqual(expect.objectContaining({
+      method: 'POST',
+      headers: expect.objectContaining({ 'x-csrf-token': 'csrf-1' }),
+    }));
+    const postedIds = (JSON.parse(String(acceptCall![1]!.body)) as { ids: string[] }).ids;
+    expect(postedIds).toHaveLength(100);
+    expect(postedIds).toEqual(many.slice(0, 100).map(({ id }) => id));
+  });
+
+  it('riprova il caricamento dopo un errore senza mostrare uno stato vuoto fuorviante', async () => {
+    setupAuthenticated();
+    fetchMock
+      .mockRejectedValueOnce(new TypeError('failed to fetch'))
+      .mockResolvedValueOnce(json({ candidates }));
+    const user = userEvent.setup();
+    render(<MemoryRouter><CandidatesInbox houseId="house-a" /></MemoryRouter>);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Rete non disponibile');
+    expect(screen.queryByText('Nessun articolo da confermare.')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Riprova' }));
+
+    expect(await screen.findByRole('checkbox', { name: 'Seleziona Latte' })).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.every(([, options]) => options?.method !== 'POST')).toBe(true);
+  });
+
+  it('limita il nuovo tentativo del batch ai candidati non confermati', async () => {
+    setupAuthenticated();
+    fetchMock
+      .mockResolvedValueOnce(json({ candidates }))
+      .mockResolvedValueOnce(json({ results: [
+        { id: 'c-1', ok: true, code: 'accepted' },
+        { id: 'c-2', ok: false, code: 'not_found' },
+      ] }))
+      .mockResolvedValueOnce(json({ results: [{ id: 'c-2', ok: true, code: 'accepted' }] }));
+    const user = userEvent.setup();
+    render(<MemoryRouter><CandidatesInbox houseId="house-a" /></MemoryRouter>);
+
+    await screen.findByRole('checkbox', { name: 'Seleziona Latte' });
+    await user.click(screen.getByRole('checkbox', { name: 'Seleziona Latte' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Seleziona Pasta' }));
+    await user.click(screen.getByRole('button', { name: 'Accetta selezionati' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('non è più disponibile');
+    await user.click(screen.getByRole('button', { name: 'Riprova' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const acceptCalls = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/accept'));
+    expect(JSON.parse(String(acceptCalls[1]![1]!.body))).toEqual({ ids: ['c-2'] });
+    await waitFor(() => expect(screen.queryByText('Pasta')).not.toBeInTheDocument());
+  });
+
+  it('ignora una risposta parzialmente fallita di accettazione dopo il cambio Casa', async () => {
+    setupAuthenticated();
+    const post = createDeferred<Response>();
+    fetchMock
+      .mockResolvedValueOnce(json({ candidates }))
+      .mockImplementationOnce(() => post.promise)
+      .mockResolvedValueOnce(json({ candidates: houseBCandidates }));
+    const user = userEvent.setup();
+    const { rerender } = render(<MemoryRouter><CandidatesInbox houseId="house-a" /></MemoryRouter>);
+
+    await screen.findByRole('checkbox', { name: 'Seleziona Latte' });
+    await user.click(screen.getByRole('checkbox', { name: 'Seleziona Latte' }));
+    await user.click(screen.getByRole('button', { name: 'Accetta selezionati' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const acceptCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/accept'));
+    expect(acceptCall).toBeDefined();
+    expect(acceptCall![1]).toEqual(expect.objectContaining({
+      method: 'POST',
+      headers: expect.objectContaining({ 'x-csrf-token': 'csrf-1' }),
+    }));
+    expect(JSON.parse(String(acceptCall![1]!.body))).toEqual({ ids: ['c-1'] });
+
+    rerender(<MemoryRouter><CandidatesInbox houseId="house-b" /></MemoryRouter>);
+    expect(await screen.findByText('Farina Casa B')).toBeVisible();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(usePantryCandidatesBadgeStore.getState()).toMatchObject({ houseId: 'house-b', pendingCount: 1 });
+
+    await act(async () => {
+      post.resolve(json({ results: [{ id: 'c-1', ok: false, code: 'not_found' }] }));
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.getByText('Farina Casa B')).toBeVisible();
+    expect(screen.queryByText('Latte')).not.toBeInTheDocument();
+    expect(screen.queryByText('Pasta')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Riprova' })).not.toBeInTheDocument();
+    expect(usePantryCandidatesBadgeStore.getState()).toMatchObject({ houseId: 'house-b', pendingCount: 1 });
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+  });
+
+  it('non applica il rigetto tardivo del POST dopo il cambio sessione', async () => {
+    setupAuthenticated();
+    const post = createDeferred<Response>();
+    fetchMock
+      .mockResolvedValueOnce(json({ candidates }))
+      .mockImplementationOnce(() => post.promise)
+      .mockResolvedValueOnce(json({ candidates: houseBCandidates }));
+    const user = userEvent.setup();
+    render(<MemoryRouter><CandidatesInbox houseId="house-a" /></MemoryRouter>);
+
+    await screen.findByRole('checkbox', { name: 'Seleziona Latte' });
+    await user.click(screen.getByRole('checkbox', { name: 'Seleziona Latte' }));
+    await user.click(screen.getByRole('button', { name: 'Accetta selezionati' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const acceptCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/accept'));
+    expect(acceptCall).toBeDefined();
+    expect(acceptCall![1]).toEqual(expect.objectContaining({
+      method: 'POST',
+      headers: expect.objectContaining({ 'x-csrf-token': 'csrf-1' }),
+    }));
+
+    useAuthStore.setState({
+      user: { ...verifiedUser, id: 'user-2', email: 'second@example.com' },
+      csrfToken: 'csrf-2',
+      connection: 'online',
+    });
+    expect(await screen.findByText('Farina Casa B')).toBeVisible();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const latestGetCall = fetchMock.mock.calls[2];
+    expect(latestGetCall![1]).toEqual(expect.objectContaining({
+      headers: expect.objectContaining({ 'x-csrf-token': 'csrf-2' }),
+    }));
+
+    await act(async () => {
+      post.reject(new TypeError('failed to fetch'));
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.getByText('Farina Casa B')).toBeVisible();
+    expect(screen.queryByText('Latte')).not.toBeInTheDocument();
+    expect(screen.queryByText('Pasta')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Riprova' })).not.toBeInTheDocument();
+    expect(usePantryCandidatesBadgeStore.getState()).toMatchObject({ houseId: 'house-a', pendingCount: 1 });
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+  });
+
+  it('ignora una risposta parziale del POST arrivata offline e ricarica i candidati aggiornati online', async () => {
+    setupAuthenticated();
+    const post = createDeferred<Response>();
+    fetchMock
+      .mockResolvedValueOnce(json({ candidates }))
+      .mockImplementationOnce(() => post.promise)
+      .mockResolvedValueOnce(json({ candidates: [candidates[1]!] }));
+    const user = userEvent.setup();
+    render(<MemoryRouter><CandidatesInbox houseId="house-a" /></MemoryRouter>);
+
+    await screen.findByRole('checkbox', { name: 'Seleziona Latte' });
+    await user.click(screen.getByRole('checkbox', { name: 'Seleziona Latte' }));
+    await user.click(screen.getByRole('button', { name: 'Accetta selezionati' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const acceptCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/accept'));
+    expect(acceptCall).toBeDefined();
+    expect(acceptCall![1]).toEqual(expect.objectContaining({
+      method: 'POST',
+      headers: expect.objectContaining({ 'x-csrf-token': 'csrf-1' }),
+    }));
+    expect(JSON.parse(String(acceptCall![1]!.body))).toEqual({ ids: ['c-1'] });
+
+    act(() => useAuthStore.setState({ connection: 'offline' }));
+    expect(screen.queryByRole('region', { name: 'Da confermare' })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+
+    await act(async () => {
+      post.resolve(json({ results: [{ id: 'c-1', ok: false, code: 'not_found' }] }));
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+    expect(usePantryCandidatesBadgeStore.getState()).toMatchObject({ houseId: 'house-a', pendingCount: 1 });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+
+    act(() => useAuthStore.setState({ connection: 'online' }));
+    expect(await screen.findByRole('checkbox', { name: 'Seleziona Pasta' })).toBeVisible();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const refreshedGet = fetchMock.mock.calls[2];
+    expect(refreshedGet?.[0]).toBe('/v1/pantry/candidates');
+    expect(refreshedGet?.[1]).toEqual(expect.objectContaining({
+      method: 'GET',
+      headers: expect.objectContaining({ 'x-csrf-token': 'csrf-1' }),
+    }));
+    expect(usePantryCandidatesBadgeStore.getState()).toMatchObject({ houseId: 'house-a', pendingCount: 1 });
+    expect(screen.queryByText('Latte')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Riprova' })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+  });
+
+  it('ignora il rigetto del POST offline e ricarica i candidati aggiornati al ritorno online', async () => {
+    setupAuthenticated();
+    const post = createDeferred<Response>();
+    fetchMock
+      .mockResolvedValueOnce(json({ candidates }))
+      .mockImplementationOnce(() => post.promise)
+      .mockResolvedValueOnce(json({ candidates: [candidates[1]!] }));
+    const user = userEvent.setup();
+    render(<MemoryRouter><CandidatesInbox houseId="house-a" /></MemoryRouter>);
+
+    await screen.findByRole('checkbox', { name: 'Seleziona Latte' });
+    await user.click(screen.getByRole('checkbox', { name: 'Seleziona Latte' }));
+    await user.click(screen.getByRole('button', { name: 'Accetta selezionati' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    act(() => useAuthStore.setState({ connection: 'offline' }));
+    expect(screen.queryByRole('region', { name: 'Da confermare' })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+
+    await act(async () => {
+      post.reject(new TypeError('failed to fetch'));
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+    expect(usePantryCandidatesBadgeStore.getState()).toMatchObject({ houseId: 'house-a', pendingCount: 1 });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+
+    act(() => useAuthStore.setState({ connection: 'online' }));
+    expect(await screen.findByRole('checkbox', { name: 'Seleziona Pasta' })).toBeVisible();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const refreshedGet = fetchMock.mock.calls[2];
+    expect(refreshedGet?.[0]).toBe('/v1/pantry/candidates');
+    expect(refreshedGet?.[1]).toEqual(expect.objectContaining({
+      method: 'GET',
+      headers: expect.objectContaining({ 'x-csrf-token': 'csrf-1' }),
+    }));
+    expect(usePantryCandidatesBadgeStore.getState()).toMatchObject({ houseId: 'house-a', pendingCount: 1 });
+    expect(screen.queryByText('Latte')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Riprova' })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+  });
+
+  it('ignora una risposta di caricamento quando la sessione passa offline', async () => {
+    setupAuthenticated();
+    let resolveFetch!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => { resolveFetch = resolve; }));
+    render(<MemoryRouter><CandidatesInbox houseId="house-a" /></MemoryRouter>);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    act(() => useAuthStore.setState({ connection: 'offline' }));
+    await act(async () => {
+      resolveFetch(json({ candidates }));
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.queryByRole('region', { name: 'Da confermare' })).not.toBeInTheDocument();
+    expect(usePantryCandidatesBadgeStore.getState().pendingCount).toBe(0);
   });
 });

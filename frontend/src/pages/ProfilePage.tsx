@@ -30,18 +30,18 @@ function ThemePreferenceControl() {
 
   return (
     <section aria-labelledby="color-theme-title" className="ik-surface ik-profile-surface mt-5 rounded-3xl border-2 p-5">
-      <h2 id="color-theme-title" className="text-xl font-black text-gray-950">Tema</h2>
+      <h2 id="color-theme-title" className="text-xl font-black text-[var(--ik-ink)]">Tema</h2>
       <fieldset role="radiogroup" aria-labelledby="color-theme-title" className="mt-3 flex flex-wrap gap-3 border-0 p-0">
         {options.map(({ value, label }) => (
-          <label key={value} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border-2 border-gray-200 px-3 font-semibold text-gray-800 has-[:checked]:border-emerald-700 has-[:checked]:bg-emerald-50">
-            <input type="radio" name="color-theme" value={value} checked={preference === value} onChange={() => choosePreference(value)} className="h-4 w-4 accent-emerald-700" />
+          <label key={value} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border-2 border-[var(--ik-border)] px-3 font-semibold text-[var(--ik-ink)] has-[:checked]:border-[var(--ik-basil)] has-[:checked]:bg-[var(--ik-sage)]">
+            <input type="radio" name="color-theme" value={value} checked={preference === value} onChange={() => choosePreference(value)} className="h-4 w-4 accent-[var(--ik-basil)]" />
             <span>{label}</span>
           </label>
         ))}
       </fieldset>
       {storageUnavailable
-        ? <p role="status" className="mt-2 text-sm font-semibold text-amber-900">La scelta vale solo finché l’app resta aperta: questo browser non consente di salvarla.</p>
-        : <p className="mt-2 text-sm text-gray-600">La scelta è conservata solo in questo browser; con Sistema segue il tema del dispositivo.</p>}
+        ? <p role="status" className="mt-2 rounded-xl border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] p-3 text-sm font-semibold text-[var(--ik-warn-ink)]">La scelta vale solo finché l’app resta aperta: questo browser non consente di salvarla.</p>
+        : <p className="mt-2 text-sm text-[var(--ik-ink-muted)]">La scelta è conservata solo in questo browser; con Sistema segue il tema del dispositivo.</p>}
     </section>
   );
 }
@@ -51,14 +51,14 @@ function MotionPreferenceControl() {
   const [storageUnavailable, setStorageUnavailable] = useState(hasUnpersistedMotionPreference);
   return (
     <section aria-labelledby="motion-preference-title" className="ik-surface ik-profile-surface mt-5 rounded-3xl border-2 p-5">
-      <h2 id="motion-preference-title" className="text-xl font-black text-gray-950">Movimento</h2>
-      <label className="mt-3 flex min-h-11 items-start gap-3 font-semibold text-gray-800">
-        <input type="checkbox" checked={reduced} onChange={(event) => { setReduced(event.target.checked); setStorageUnavailable(!saveReducedMotionPreference(event.target.checked)); }} className="mt-1 h-5 w-5 accent-emerald-700" />
+      <h2 id="motion-preference-title" className="text-xl font-black text-[var(--ik-ink)]">Movimento</h2>
+      <label className="mt-3 flex min-h-11 items-start gap-3 font-semibold text-[var(--ik-ink)]">
+        <input type="checkbox" checked={reduced} onChange={(event) => { setReduced(event.target.checked); setStorageUnavailable(!saveReducedMotionPreference(event.target.checked)); }} className="mt-1 h-5 w-5 accent-[var(--ik-basil)]" />
         <span>Riduci le animazioni su questo dispositivo</span>
       </label>
       {storageUnavailable
-        ? <p role="status" className="mt-2 text-sm font-semibold text-amber-900">La scelta vale solo finché l’app resta aperta: questo browser non consente di salvarla.</p>
-        : <p className="mt-2 text-sm text-gray-600">Impostazione conservata solo in questo browser; il movimento ridotto del sistema operativo resta sempre rispettato.</p>}
+        ? <p role="status" className="mt-2 rounded-xl border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] p-3 text-sm font-semibold text-[var(--ik-warn-ink)]">La scelta vale solo finché l’app resta aperta: questo browser non consente di salvarla.</p>
+        : <p className="mt-2 text-sm text-[var(--ik-ink-muted)]">Impostazione conservata solo in questo browser; il movimento ridotto del sistema operativo resta sempre rispettato.</p>}
     </section>
   );
 }
@@ -77,6 +77,7 @@ const operationError = (error: unknown): string => {
 };
 
 export default function ProfilePage() {
+  const returnLinkLabel = isSousChef() ? 'Torna a Chef' : 'Torna alle ricette';
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const csrfToken = useAuthStore((state) => state.csrfToken);
@@ -145,14 +146,14 @@ export default function ProfilePage() {
   if (user === null) {
     return (
       <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-2xl px-4 py-5 sm:px-6 sm:py-8">
-        <div className="mb-5"><Link to="/" className="inline-flex min-h-11 items-center rounded-xl px-2 font-semibold text-gray-700 underline underline-offset-2">← Torna alle ricette</Link></div>
+        <div className="mb-5"><Link to="/" className="ik-back-link inline-flex min-h-11 items-center rounded-xl px-2 font-semibold underline underline-offset-2">← {returnLinkLabel}</Link></div>
         <PageSection
           eyebrow="Account ospite"
           title="Accedi al tuo profilo"
           titleId="profile-title"
           titleLevel="h1"
           description="La dispensa ospite resta sul dispositivo. Il login non importa automaticamente i dati locali: l’importazione è un’azione separata."
-          className="border-emerald-200 shadow-sm sm:space-y-5"
+          className="ik-profile-surface sm:space-y-5"
         >
           <div className="mt-6"><AccountPanel /></div>
         </PageSection>
@@ -303,94 +304,94 @@ export default function ProfilePage() {
 
   return (
     <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-3xl px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
-      <div className="mb-5"><Link to="/" className="ik-back-link inline-flex min-h-11 items-center rounded-xl px-2 font-semibold text-gray-700 underline underline-offset-2">← Torna alle ricette</Link></div>
+      <div className="mb-5"><Link to="/" className="ik-back-link inline-flex min-h-11 items-center rounded-xl px-2 font-semibold underline underline-offset-2">← {returnLinkLabel}</Link></div>
       <PageSection
         eyebrow="Account verificato"
         title="Il tuo profilo"
         titleId="profile-title"
         titleLevel="h1"
         action={
-          <button type="button" onClick={() => { void handleLogout(); }} className="rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900">Esci</button>
+          <button type="button" onClick={() => { void handleLogout(); }} className="rounded-xl border-2 border-[var(--ik-border)] px-4 py-2 font-bold text-[var(--ik-ink)] hover:border-[var(--ik-basil)]">Esci</button>
         }
-        className="border-emerald-200 shadow-sm sm:space-y-5"
+        className="ik-profile-surface sm:space-y-5"
       >
-        <p className="mt-2 text-gray-600">{user.email}</p>
+        <p className="mt-2 text-[var(--ik-ink-muted)]">{user.email}</p>
         <div className="mt-4">
-          <Link to="/house" className="inline-flex min-h-11 items-center rounded-xl border-2 border-emerald-200 bg-emerald-50 px-4 py-2 font-bold text-emerald-900 hover:border-emerald-500">La mia casa</Link>
+          <Link to="/house" className="inline-flex min-h-11 items-center rounded-xl border-2 border-[var(--ik-sage)] bg-[var(--ik-mist)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:border-[var(--ik-basil-dark)]">La mia casa</Link>
         </div>
 
-        {message !== null && <p role="status" className="mt-5 rounded-xl bg-emerald-50 p-3 font-semibold text-emerald-900">{message}</p>}
+        {message !== null && <p role="status" className="mt-5 rounded-xl bg-[var(--ik-mist)] p-3 font-semibold text-[var(--ik-basil-dark)]">{message}</p>}
         {error !== null && <ErrorBanner message={error} />}
 
-        <div className="mt-7 grid gap-4 border-t border-gray-200 pt-6">
-          <h2 className="text-xl font-black text-gray-950">Dettagli</h2>
-          <label className="grid gap-1 text-sm font-semibold text-gray-800">
+        <div className="mt-7 grid gap-4 border-t border-[var(--ik-border)] pt-6">
+          <h2 className="text-xl font-black text-[var(--ik-ink)]">Dettagli</h2>
+          <label className="grid gap-1 text-sm font-semibold text-[var(--ik-ink)]">
             Nome visualizzato
-            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={80} className="min-h-11 rounded-xl border-2 border-gray-200 bg-gray-50 px-3 outline-none focus:border-gray-900" />
+            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={80} className="min-h-11 rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-mist)] px-3 outline-none focus:border-[var(--ik-basil)]" />
           </label>
-          <button type="button" onClick={() => void saveProfile()} disabled={isLoading || csrfToken === null} className="min-h-11 w-fit rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800 disabled:opacity-60">Salva profilo</button>
+          <button type="button" onClick={() => void saveProfile()} disabled={isLoading || csrfToken === null} className="min-h-11 w-full rounded-xl bg-[var(--ik-basil)] px-4 py-2 font-bold text-[var(--ik-porcelain)] hover:bg-[var(--ik-basil-dark)] disabled:opacity-60 sm:w-fit">Salva profilo</button>
         </div>
 
-        <div className="mt-7 grid gap-3 border-t border-gray-200 pt-6">
-          <h2 className="text-xl font-black text-gray-950">I tuoi dati</h2>
-          <p className="text-gray-600">{hasHouse
+        <div className="mt-7 grid gap-3 border-t border-[var(--ik-border)] pt-6">
+          <h2 className="text-xl font-black text-[var(--ik-ink)]">I tuoi dati</h2>
+          <p className="leading-relaxed text-[var(--ik-ink-muted)]">{hasHouse
             ? 'Importa esplicitamente i dati ospite nella Casa attiva. La dispensa ospite viene unita senza duplicare le quantità e rimossa dal dispositivo solo dopo la conferma del server; gli altri dati ospite restano sul dispositivo.'
             : 'Importa esplicitamente i dati ospite nel tuo account. I dati locali resteranno sul dispositivo e non verranno cancellati.'}</p>
-          {isSousChef() && guestPlanLoadFailed && <p role="status" className="rounded-xl bg-amber-50 p-3 font-semibold text-amber-950">Non è stato possibile verificare il Piano ospite su questo dispositivo.</p>}
+          {isSousChef() && guestPlanLoadFailed && <p role="status" className="rounded-xl border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] p-3 font-semibold text-[var(--ik-warn-ink)]">Non è stato possibile verificare il Piano ospite su questo dispositivo.</p>}
           {isSousChef() && guestPlanCount !== null && guestPlanCount > 0 && (
-            <section aria-labelledby="guest-plan-import-title" className="grid gap-3 rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-4">
+            <section aria-labelledby="guest-plan-import-title" className="grid gap-3 rounded-2xl border border-[var(--ik-border)] bg-[var(--ik-mist)] p-4">
               <div>
-                <h3 id="guest-plan-import-title" className="font-black text-emerald-950">Piano ospite sul dispositivo</h3>
-                <p className="mt-1 text-sm text-emerald-900">{guestPlanCount} scelte locali. L’importazione è separata dal resto dei dati e non parte con il login. Le voci sorgente vengono rimosse solo dopo la conferma del server; conflitti e interruzioni conservano il Piano ospite.</p>
+                <h3 id="guest-plan-import-title" className="font-black text-[var(--ik-ink)]">Piano ospite sul dispositivo</h3>
+                <p className="mt-1 text-sm leading-relaxed text-[var(--ik-ink-muted)]">{guestPlanCount} scelte locali. L'importazione è separata dal resto dei dati e non parte con il login. Le voci sorgente vengono rimosse solo dopo la conferma del server; conflitti e interruzioni conservano il Piano ospite.</p>
               </div>
               {!confirmPlanImport ? (
-                <button type="button" onClick={() => setConfirmPlanImport(true)} disabled={isImportingPlan || csrfToken === null || activeScope === 'guest'} className="min-h-11 w-fit rounded-xl bg-emerald-800 px-4 py-2 font-bold text-white hover:bg-emerald-900 disabled:opacity-60">Importa Piano ospite</button>
+                <button type="button" onClick={() => setConfirmPlanImport(true)} disabled={isImportingPlan || csrfToken === null || activeScope === 'guest'} className="min-h-11 w-full rounded-xl bg-[var(--ik-basil)] px-4 py-2 font-bold text-[var(--ik-porcelain)] hover:bg-[var(--ik-basil-dark)] disabled:opacity-60 sm:w-fit">Importa Piano ospite</button>
               ) : (
-                <div className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-amber-300 bg-amber-50 p-3">
-                  <p className="basis-full font-semibold text-amber-950">Confermi l’importazione di {guestPlanCount} scelte del Piano ospite {hasHouse ? 'nella Casa attiva' : 'nell’account'}? Le voci in conflitto resteranno sul dispositivo.</p>
-                  <button type="button" onClick={() => void handlePlanImport()} disabled={isImportingPlan || csrfToken === null || activeScope === 'guest'} className="min-h-11 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800 disabled:opacity-60">{isImportingPlan ? 'Importazione…' : 'Conferma importazione Piano'}</button>
-                  <button type="button" onClick={() => setConfirmPlanImport(false)} disabled={isImportingPlan} className="min-h-11 rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900 disabled:opacity-60">Annulla</button>
+                <div className="flex flex-col gap-3 rounded-xl border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] p-3 sm:flex-row sm:flex-wrap sm:items-center">
+                  <p className="basis-full font-semibold text-[var(--ik-warn-ink)]">Confermi l'importazione di {guestPlanCount} scelte del Piano ospite {hasHouse ? 'nella Casa attiva' : "nell'account"}? Le voci in conflitto resteranno sul dispositivo.</p>
+                  <button type="button" onClick={() => void handlePlanImport()} disabled={isImportingPlan || csrfToken === null || activeScope === 'guest'} className="min-h-11 w-full rounded-xl bg-[var(--ik-basil)] px-4 py-2 font-bold text-[var(--ik-porcelain)] hover:bg-[var(--ik-basil-dark)] disabled:opacity-60 sm:w-fit">{isImportingPlan ? 'Importazione…' : 'Conferma importazione Piano'}</button>
+                  <button type="button" onClick={() => setConfirmPlanImport(false)} disabled={isImportingPlan} className="min-h-11 w-full rounded-xl border-2 border-[var(--ik-border)] px-4 py-2 font-bold text-[var(--ik-ink)] hover:border-[var(--ik-basil)] disabled:opacity-60 sm:w-fit">Annulla</button>
                 </div>
               )}
-              {activeScope === 'guest' && <p className="text-sm font-semibold text-amber-950">Attiva prima un account o una Casa come ambito di destinazione.</p>}
+              {activeScope === 'guest' && <p className="text-sm font-semibold text-[var(--ik-warn-ink)]">Attiva prima un account o una Casa come ambito di destinazione.</p>}
             </section>
           )}
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             {!confirmImport ? (
-              <button type="button" onClick={() => setConfirmImport(true)} disabled={isImporting || csrfToken === null} className="min-h-11 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800 disabled:opacity-60">Importa i dati locali</button>
+              <button type="button" onClick={() => setConfirmImport(true)} disabled={isImporting || csrfToken === null} className="min-h-11 w-full rounded-xl bg-[var(--ik-basil)] px-4 py-2 font-bold text-[var(--ik-porcelain)] hover:bg-[var(--ik-basil-dark)] disabled:opacity-60 sm:w-fit">Importa i dati locali</button>
             ) : (
-              <div className="flex w-full flex-wrap items-center gap-3 rounded-xl border-2 border-amber-200 bg-amber-50 p-3">
-                <p className="basis-full font-semibold text-amber-950">{hasHouse
-                  ? 'Confermi l’unione dei dati ospite con la Casa attiva? La dispensa ospite viene rimossa solo dopo una fusione riuscita.'
-                  : 'Confermi l’unione dei dati locali con quelli dell’account? I dati locali non verranno cancellati.'}</p>
-                <button type="button" onClick={() => void handleImport()} disabled={isImporting || csrfToken === null} className="min-h-11 rounded-xl bg-gray-950 px-4 py-2 font-bold text-white hover:bg-gray-800 disabled:opacity-60">{isImporting ? 'Sincronizzazione…' : 'Conferma importazione'}</button>
-                <button type="button" onClick={() => setConfirmImport(false)} disabled={isImporting} className="min-h-11 rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900 disabled:opacity-60">Annulla</button>
+              <div className="flex w-full flex-col gap-3 rounded-xl border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] p-3 sm:flex-row sm:flex-wrap sm:items-center">
+                <p className="basis-full font-semibold text-[var(--ik-warn-ink)]">{hasHouse
+                  ? "Confermi l'unione dei dati ospite con la Casa attiva? La dispensa ospite viene rimossa solo dopo una fusione riuscita."
+                  : "Confermi l'unione dei dati locali con quelli dell'account? I dati locali non verranno cancellati."}</p>
+                <button type="button" onClick={() => void handleImport()} disabled={isImporting || csrfToken === null} className="min-h-11 w-full rounded-xl bg-[var(--ik-basil)] px-4 py-2 font-bold text-[var(--ik-porcelain)] hover:bg-[var(--ik-basil-dark)] disabled:opacity-60 sm:w-fit">{isImporting ? 'Sincronizzazione…' : 'Conferma importazione'}</button>
+                <button type="button" onClick={() => setConfirmImport(false)} disabled={isImporting} className="min-h-11 w-full rounded-xl border-2 border-[var(--ik-border)] px-4 py-2 font-bold text-[var(--ik-ink)] hover:border-[var(--ik-basil)] disabled:opacity-60 sm:w-fit">Annulla</button>
               </div>
             )}
-            <button type="button" onClick={() => void handleExport()} className="min-h-11 rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900">Esporta i miei dati</button>
+            <button type="button" onClick={() => void handleExport()} className="min-h-11 w-full rounded-xl border-2 border-[var(--ik-border)] px-4 py-2 font-bold text-[var(--ik-ink)] hover:border-[var(--ik-basil)] sm:w-fit">Esporta i miei dati</button>
           </div>
         </div>
 
-        <div className="mt-7 border-t border-gray-200 pt-6">
-          <h2 className="text-xl font-black text-gray-950">Accesso con Google</h2>
-          <p className="text-gray-600">Collega lo stesso indirizzo Google verificato per usare il pulsante di accesso rapido.</p>
+        <div className="mt-7 border-t border-[var(--ik-border)] pt-6">
+          <h2 className="text-xl font-black text-[var(--ik-ink)]">Accesso con Google</h2>
+          <p className="leading-relaxed text-[var(--ik-ink-muted)]">Collega lo stesso indirizzo Google verificato per usare il pulsante di accesso rapido.</p>
           <div className="max-w-sm">
             <GoogleSignInButton onCredential={(credential) => void handleGoogleLink(credential)} />
           </div>
-          {isLinkingGoogle && <p className="text-sm font-semibold text-gray-600">Collegamento in corso…</p>}
+          {isLinkingGoogle && <p className="text-sm font-semibold text-[var(--ik-ink-muted)]">Collegamento in corso…</p>}
         </div>
 
-        <section className="mt-7 border-t border-gray-200 pt-6" aria-labelledby="privacy-heading">
-          <h2 id="privacy-heading" className="text-xl font-black text-gray-950">Privacy e servizi esterni</h2>
-          <h3 className="mt-3 font-bold text-gray-900">Bring!</h3>
-          <p className="mt-2 text-gray-600">Il collegamento richiede una conferma esplicita. Dopo la conferma, email e password vengono inviate a Bring! tramite il backend iKuck. La password non viene conservata; la sessione è cifrata sul server e resta personale, anche quando usi una Casa condivisa.</p>
-          <p className="mt-2 text-gray-600">Le azioni che richiedi inviano a Bring! i nomi degli articoli e le specifiche della lista collegata. La lista Bring! non è copiata nella lista iKuck e non è disponibile offline; gli ingredienti delle ricette non vengono trasferiti automaticamente.</p>
-          <p className="mt-2 text-gray-600">Scollegare rimuove la sessione salvata da iKuck, ma non garantisce la revoca di sessioni o dati conservati da Bring!.</p>
+        <section className="mt-7 border-t border-[var(--ik-border)] pt-6" aria-labelledby="privacy-heading">
+          <h2 id="privacy-heading" className="text-xl font-black text-[var(--ik-ink)]">Privacy e servizi esterni</h2>
+          <h3 className="mt-3 font-bold text-[var(--ik-ink)]">Bring!</h3>
+          <p className="mt-2 leading-relaxed text-[var(--ik-ink-muted)]">Il collegamento richiede una conferma esplicita. Dopo la conferma, email e password vengono inviate a Bring! tramite il backend iKuck. La password non viene conservata; la sessione è cifrata sul server e resta personale, anche quando usi una Casa condivisa.</p>
+          <p className="mt-2 leading-relaxed text-[var(--ik-ink-muted)]">Le azioni che richiedi inviano a Bring! i nomi degli articoli e le specifiche della lista collegata. La lista Bring! non è copiata nella lista iKuck e non è disponibile offline; gli ingredienti delle ricette non vengono trasferiti automaticamente.</p>
+          <p className="mt-2 leading-relaxed text-[var(--ik-ink-muted)]">Scollegare rimuove la sessione salvata da iKuck, ma non garantisce la revoca di sessioni o dati conservati da Bring!</p>
         </section>
 
-        <details className="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-4">
-          <summary className="min-h-11 cursor-pointer py-3 font-bold text-gray-900 focus-visible:rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">Diagnostica applicazione</summary>
-          <dl className="grid gap-2 border-t border-gray-200 py-3 text-sm text-gray-700 sm:grid-cols-2">
+        <details className="mt-4 rounded-xl border border-[var(--ik-border)] bg-[var(--ik-mist)] px-4">
+          <summary className="min-h-11 cursor-pointer py-3 font-bold text-[var(--ik-ink)] focus-visible:rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]">Diagnostica applicazione</summary>
+          <dl className="grid gap-2 border-t border-[var(--ik-border)] py-3 text-sm text-[var(--ik-ink-muted)] sm:grid-cols-2">
             <div>
               <dt className="font-semibold">Versione app</dt>
               <dd>{appVersion}</dd>
@@ -402,16 +403,16 @@ export default function ProfilePage() {
           </dl>
         </details>
 
-        <div className="mt-7 border-t border-rose-200 pt-6">
-          <h2 className="text-xl font-black text-rose-950">Zona delicata</h2>
-          <p className="mt-2 text-gray-600">Eliminare l’account rimuove i dati personali remoti e chiude la sessione. Se ci sono altri membri, i dati condivisi restano nella Casa. I dati ospite presenti sul dispositivo non vengono cancellati.</p>
+        <div className="mt-7 rounded-2xl border border-[var(--ik-tomato-soft)] bg-[var(--ik-surface)] p-4 sm:p-5">
+          <h2 className="text-xl font-black text-[var(--ik-tomato)]">Zona delicata</h2>
+          <p className="mt-2 leading-relaxed text-[var(--ik-ink-muted)]">Eliminare l’account rimuove i dati personali remoti e chiude la sessione. Se ci sono altri membri, i dati condivisi restano nella Casa. I dati ospite presenti sul dispositivo non vengono cancellati.</p>
           {!confirmDelete ? (
-            <button type="button" onClick={() => setConfirmDelete(true)} className="mt-4 min-h-11 rounded-xl border-2 border-rose-300 px-4 py-2 font-bold text-rose-900 hover:border-rose-600">Elimina account</button>
+            <button type="button" onClick={() => setConfirmDelete(true)} className="mt-4 min-h-11 w-full rounded-xl border-2 border-[var(--ik-tomato)] px-4 py-2 font-bold text-[var(--ik-tomato)] hover:bg-[var(--ik-tomato-soft)] sm:w-fit">Elimina account</button>
           ) : (
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <p className="basis-full font-semibold text-rose-900">Confermi definitivamente?</p>
-              <button type="button" onClick={() => void handleDelete()} disabled={isDeleting} className="min-h-11 rounded-xl bg-rose-700 px-4 py-2 font-bold text-white hover:bg-rose-800 disabled:opacity-60">{isDeleting ? 'Eliminazione…' : 'Conferma eliminazione account'}</button>
-              <button type="button" onClick={() => setConfirmDelete(false)} className="min-h-11 rounded-xl border-2 border-gray-300 px-4 py-2 font-bold text-gray-800 hover:border-gray-900">Annulla</button>
+              <p className="basis-full font-semibold text-[var(--ik-tomato)]">Confermi definitivamente?</p>
+              <button type="button" onClick={() => void handleDelete()} disabled={isDeleting} className="min-h-11 w-full rounded-xl bg-[var(--ik-tomato)] px-4 py-2 font-bold text-[var(--ik-porcelain)] hover:opacity-90 disabled:opacity-60 sm:w-fit">{isDeleting ? 'Eliminazione…' : 'Conferma eliminazione account'}</button>
+              <button type="button" onClick={() => setConfirmDelete(false)} className="min-h-11 w-full rounded-xl border-2 border-[var(--ik-border)] px-4 py-2 font-bold text-[var(--ik-ink)] hover:border-[var(--ik-basil)] sm:w-fit">Annulla</button>
             </div>
           )}
         </div>

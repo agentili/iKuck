@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import AppInstallPrompt from './AppInstallPrompt';
@@ -91,6 +91,30 @@ describe('AppInstallPrompt', () => {
     expect(screen.queryByText('Usa iKuck come app')).not.toBeInTheDocument();
   });
 
+  it('uses semantic palette tokens for generic install feedback and actions', async () => {
+    const { event } = dispatchBeforeInstallPrompt('accepted');
+    render(<AppInstallPrompt />);
+    await act(async () => {
+      window.dispatchEvent(event);
+    });
+
+    await screen.findByText('Installa iKuck');
+    const banner = screen.getByRole('complementary', { name: 'Installa l’applicazione iKuck' });
+    expect(banner).toHaveClass('border-[var(--ik-border)]', 'bg-[var(--ik-surface)]');
+    expect(screen.getByText('Installa iKuck')).toHaveClass('text-[var(--ik-ink)]');
+    expect(screen.getByText(/Aggiungi iKuck alla schermata home/)).toHaveClass('text-[var(--ik-ink-muted)]');
+    expect(screen.getByRole('button', { name: /^Installa/ })).toHaveClass(
+      'bg-[var(--ik-basil-dark)]',
+      'text-[var(--ik-porcelain)]',
+      'hover:bg-[var(--ik-basil)]',
+    );
+    expect(screen.getByRole('button', { name: 'Più tardi' })).toHaveClass(
+      'border-[var(--ik-border)]',
+      'text-[var(--ik-ink)]',
+      'hover:border-[var(--ik-border-strong)]',
+    );
+  });
+
   it('espone il posizionamento non invadente (sopra la nav inferiore su mobile, centrato su desktop)', async () => {
     const { event } = dispatchBeforeInstallPrompt('accepted');
     render(<AppInstallPrompt />);
@@ -102,6 +126,8 @@ describe('AppInstallPrompt', () => {
     });
 
     expect(banner).toHaveClass('app-overlay', 'fixed', 'inset-x-4', 'z-50');
+    expect(banner).toHaveClass('gap-y-1', 'px-3', 'py-2', 'sm:gap-4', 'sm:p-4');
+    expect(within(banner).getByRole('button', { name: 'Installa' })).toHaveClass('min-h-11');
     // Su mobile occupa la larghezza piena con margini laterali; su desktop resta centrato e limitato.
     expect(banner).toHaveClass('sm:mx-auto', 'sm:max-w-2xl');
     expect(banner).not.toHaveClass('max-w-2xl');

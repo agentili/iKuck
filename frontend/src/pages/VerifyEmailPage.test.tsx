@@ -24,11 +24,15 @@ describe('VerifyEmailPage', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Conferma la tua email' })).toBeInTheDocument();
+    expect(screen.getByRole('main')).toHaveClass('ik-page');
+    expect(screen.getByRole('region', { name: 'Conferma la tua email' })).toHaveClass('ik-surface', 'ik-profile-surface');
     expect(screen.queryByText('secret-verification-token-1234567890')).not.toBeInTheDocument();
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
     expect(replaceState).toHaveBeenCalledWith(expect.anything(), '', '/verify-email');
 
-    await user.click(screen.getByRole('button', { name: 'Conferma email' }));
+    const confirmButton = screen.getByRole('button', { name: 'Conferma email' });
+    expect(confirmButton).toHaveClass('ik-button-primary', 'focus-visible:outline-[var(--ik-focus)]');
+    await user.click(confirmButton);
 
     expect(await screen.findByRole('heading', { name: 'Email verificata' })).toBeInTheDocument();
     expect(vi.mocked(fetch)).toHaveBeenCalledWith('/v1/auth/verify-email', expect.objectContaining({
@@ -52,7 +56,9 @@ describe('VerifyEmailPage', () => {
     );
 
     expect(await screen.findByText('Il link non è valido o è scaduto.')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveClass('bg-[var(--ik-tomato-soft)]', 'text-[var(--ik-tomato)]');
     expect(screen.queryByText('expired-token-1234567890')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Torna alle ricette' })).toHaveAttribute('href', '/recipes');
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
 });

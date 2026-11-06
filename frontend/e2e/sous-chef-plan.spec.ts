@@ -150,7 +150,10 @@ test('una ricevuta del Piano arrivata dopo il logout conserva la coda account gi
 });
 
 test('il Piano ospite si importa solo su conferma e si riprende dopo la riconnessione', async ({ page }) => {
-  await installOfflineBackend(page);
+  await installOfflineBackend(page, { responses: {
+    'GET /v1/ai-recipes/consent': { json: { consent: { enabled: false, updatedAt: '2026-10-01T00:00:00.000Z' }, selectedProvider: 'openai' } },
+    'GET /v1/ai-recipes': { json: { recipes: [] } },
+  } });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/plan');
   const planHeading = page.getByRole('heading', { name: 'Piano', exact: true });

@@ -211,6 +211,14 @@ const useChefChatStore = create<ChefChatState>()(
               })();
 
               hydrationPromise = currentPromise;
+              void currentPromise.then(
+                () => {
+                  if (hydrationPromise === currentPromise) hydrationPromise = null;
+                },
+                () => {
+                  if (hydrationPromise === currentPromise) hydrationPromise = null;
+                },
+              );
             }
 
             const pendingHydration = hydrationPromise;

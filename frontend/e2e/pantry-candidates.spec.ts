@@ -55,6 +55,10 @@ test('un utente verificato con una Casa recupera i candidati con una sola chiama
           ],
         },
       },
+      'GET /v1/ai-recipes/consent': {
+        status: 200,
+        json: { consent: { enabled: false, updatedAt: '2026-09-12T10:00:00.000Z' }, selectedProvider: 'openai' },
+      },
       'POST /v1/sync': {
         status: 200,
         json: { uploaded: 0, downloaded: 0, pending: 0, complete: true },

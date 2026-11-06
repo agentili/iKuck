@@ -34,6 +34,7 @@ interface BringFetchGate {
   holdNextItemsResponse: boolean;
   itemsResponseHeld: boolean;
   itemsResponseResumed: boolean;
+  itemsResponseConsumed: boolean;
   releaseItemsResponse: (() => void) | null;
 }
 
@@ -328,6 +329,99 @@ const loginAs = async (page: Page, account: AccountKey): Promise<void> => {
   await expect(page.getByText(data.email, { exact: true })).toBeVisible();
 };
 
+interface SafeSessionSwitchState {
+  pathname: string;
+  loadingText: string | null;
+  activeScope: string | null;
+  personalScope: string | null;
+  inFlightRequests: Array<{ method: string; path: string }>;
+  indexedDbEvents: string[];
+  pendingIndexedDbGets: number[];
+}
+
+const installSessionSwitchDiagnostics = async (page: Page): Promise<{
+  snapshot: () => Promise<SafeSessionSwitchState>;
+}> => {
+  const inFlightRequests = new Map<import('@playwright/test').Request, { method: string; path: string }>();
+  const trackRequest = (request: import('@playwright/test').Request) => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith('/v1/')) inFlightRequests.set(request, { method: request.method(), path: url.pathname });
+  };
+  page.on('request', trackRequest);
+  page.on('requestfinished', (request) => { inFlightRequests.delete(request); });
+  page.on('requestfailed', (request) => { inFlightRequests.delete(request); });
+  await page.addInitScript(() => {
+    const target = window as typeof window & { __ikuckIndexedDbDebug?: { nextId: number; nextRequestId: number; events: string[]; ids: WeakMap<IDBTransaction, number> } };
+    const state = { nextId: 0, nextRequestId: 0, events: [] as string[], ids: new WeakMap<IDBTransaction, number>() };
+    target.__ikuckIndexedDbDebug = state;
+    const log = (event: string) => {
+      if (state.events.length >= 500) return;
+      state.events.push(event);
+    };
+    const databasePrototype = IDBDatabase.prototype as IDBDatabase & {
+      transaction: (storeNames: string | string[], mode?: IDBTransactionMode, options?: IDBTransactionOptions) => IDBTransaction;
+    };
+    const originalTransaction = databasePrototype.transaction;
+    databasePrototype.transaction = function (storeNames, mode, options) {
+      const transaction = originalTransaction.call(this, storeNames, mode, options);
+      const names = Array.isArray(storeNames) ? storeNames : [storeNames];
+      if (names.includes('keyValue')) {
+        const id = ++state.nextId;
+        state.ids.set(transaction, id);
+        log(`start ${id} ${mode ?? 'readonly'}`);
+        transaction.addEventListener('complete', () => log(`complete ${id}`));
+        transaction.addEventListener('abort', () => log(`abort ${id}`));
+      }
+      return transaction;
+    };
+    const objectStorePrototype = IDBObjectStore.prototype as IDBObjectStore & {
+      get: (query: IDBValidKey | IDBKeyRange) => IDBRequest<unknown>;
+    };
+    const originalGet = objectStorePrototype.get;
+    objectStorePrototype.get = function (query) {
+      const request = originalGet.call(this, query);
+      if (this.name === 'keyValue') {
+        const transactionId = state.ids.get(this.transaction) ?? 0;
+        const requestId = ++state.nextRequestId;
+        log(`get-start ${transactionId} ${requestId}`);
+        request.addEventListener('success', () => log(`get-success ${transactionId} ${requestId}`));
+        request.addEventListener('error', () => log(`get-error ${transactionId} ${requestId}`));
+      }
+      return request;
+    };
+  });
+  return {
+    snapshot: async () => {
+      const browser = await page.evaluate(() => {
+        const readScope = (key: string): string | null => {
+          try { return window.localStorage.getItem(key); } catch { return null; }
+        };
+        return {
+          pathname: window.location.pathname,
+          loadingText: document.querySelector('[role="status"]')?.textContent ?? null,
+          activeScope: readScope('ikuck-active-data-scope'),
+          personalScope: readScope('ikuck-personal-data-scope'),
+          indexedDbEvents: (window as typeof window & { __ikuckIndexedDbDebug?: { events: string[] } })
+            .__ikuckIndexedDbDebug?.events ?? [],
+        };
+      });
+      const pendingIndexedDbGets = new Set<number>();
+      for (const event of browser.indexedDbEvents) {
+        const [kind, , rawId] = event.split(' ');
+        const id = Number(rawId);
+        if (!Number.isInteger(id)) continue;
+        if (kind === 'get-start') pendingIndexedDbGets.add(id);
+        if (kind === 'get-success' || kind === 'get-error') pendingIndexedDbGets.delete(id);
+      }
+      return {
+        ...browser,
+        pendingIndexedDbGets: [...pendingIndexedDbGets],
+        inFlightRequests: Array.from(inFlightRequests.values()),
+      };
+    },
+  };
+};
+
 test.beforeEach(async ({ context }) => {
   await context.clearCookies();
 });
@@ -541,6 +635,79 @@ test('reconnects with a fresh remote session after Bring expires', async ({ page
   expect(backend.logoutPrincipals).toEqual([]);
 });
 
+test('bootstraps account B after logout without a held Bring response', async ({ page }) => {
+  test.setTimeout(60000);
+  const backend = await installBackend(page);
+  const diagnostics = await installSessionSwitchDiagnostics(page);
+  const accountAHouse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === '/v1/house' && response.status() === 200;
+  });
+  await loginAs(page, 'a');
+  expect((await accountAHouse).status()).toBe(200);
+  await expect.poll(async () => (await diagnostics.snapshot()).activeScope).toBe('account:account-a');
+
+  const logoutResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/v1/auth/logout' && response.status() === 204;
+  });
+  await page.getByRole('button', { name: /Esci$/ }).click();
+  expect((await logoutResponse).status()).toBe(204);
+  if (isSousChefBuild) await openShellProfileMenu(page);
+  await page.getByRole('link', { name: 'Profilo', exact: true }).click({ timeout: 5000 });
+  await expect(page.getByRole('button', { name: 'Accedi o registrati' })).toBeVisible();
+  const afterLogout = await diagnostics.snapshot();
+  await test.info().attach('after-logout-diagnostics.json', {
+    body: JSON.stringify({
+      afterLogout,
+      fixtureRequests: backend.requests.map(({ method, path, principal }) => ({ method, path, principal })),
+      heldBringItemsResponse: false,
+    }, null, 2),
+    contentType: 'application/json',
+  });
+  expect(afterLogout.loadingText).not.toBe('Caricamento dati…');
+  expect(afterLogout).toMatchObject({
+    pathname: '/profile',
+    activeScope: 'guest',
+    personalScope: 'guest',
+  });
+  expect(afterLogout.inFlightRequests.filter((request) => request.path === '/v1/integrations/bring/items')).toEqual([]);
+  await page.getByRole('button', { name: 'Accedi o registrati' }).click();
+  await page.getByRole('button', { name: 'Accedi', exact: true }).click();
+  await page.getByLabel('Email', { exact: true }).fill(ACCOUNT_DATA.b.email);
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-only-account-password');
+  const accountBHouse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === '/v1/house' && response.status() === 200;
+  });
+  await page.getByRole('button', { name: 'Accedi al profilo' }).click();
+  expect((await accountBHouse).status()).toBe(200);
+
+  await expect(page.getByText(ACCOUNT_DATA.b.email, { exact: true })).toBeVisible();
+  const browser = await diagnostics.snapshot();
+  await test.info().attach('after-account-B-diagnostics.json', {
+    body: JSON.stringify({
+      browser,
+      fixtureRequests: backend.requests.map(({ method, path, principal }) => ({ method, path, principal })),
+      heldBringItemsResponse: false,
+    }, null, 2),
+    contentType: 'application/json',
+  });
+  expect(browser.loadingText).not.toBe('Caricamento dati…');
+  expect(browser.inFlightRequests.filter((request) => request.path === '/v1/integrations/bring/items')).toEqual([]);
+  expect(browser).toMatchObject({
+    pathname: '/profile',
+    activeScope: 'account:account-b',
+    personalScope: 'account:account-b',
+  });
+  expect(backend.logoutPrincipals).toEqual(['a']);
+  expect(backend.csrfFailures).toEqual([]);
+  expect(backend.upstreamRequests).toEqual([]);
+  expect(backend.requests.filter((request) => request.path.endsWith('/items'))).toEqual([]);
+  expect(backend.requests.filter((request) => request.path === '/v1/house' && request.principal === 'b')).toHaveLength(1);
+  expect(backend.requests.filter((request) => request.path === '/v1/profile' && request.principal === 'b')).toHaveLength(1);
+});
+
 test('does not apply account A items after the session switches to account B', async ({ page }) => {
   const backend = await installBackend(page, {
     connected: ['a', 'b'],
@@ -555,12 +722,14 @@ test('does not apply account A items after the session switches to account B', a
       },
     },
   });
+  const diagnostics = await installSessionSwitchDiagnostics(page);
   await page.addInitScript(() => {
     const target = window as typeof window & { __bringFetchGate?: BringFetchGate };
     const gate: BringFetchGate = {
       holdNextItemsResponse: false,
       itemsResponseHeld: false,
       itemsResponseResumed: false,
+      itemsResponseConsumed: false,
       releaseItemsResponse: null,
     };
     target.__bringFetchGate = gate;
@@ -576,7 +745,16 @@ test('does not apply account A items after the session switches to account B', a
         const body = await response.clone().text();
         await new Promise<void>((resolve) => { gate.releaseItemsResponse = resolve; });
         gate.itemsResponseResumed = true;
-        return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+        const heldResponse = new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+        const readBody = heldResponse.text.bind(heldResponse);
+        heldResponse.text = async () => {
+          try {
+            return await readBody();
+          } finally {
+            gate.itemsResponseConsumed = true;
+          }
+        };
+        return heldResponse;
       }
       return response;
     };
@@ -608,7 +786,21 @@ test('does not apply account A items after the session switches to account B', a
     await page.getByRole('button', { name: 'Accedi', exact: true }).click();
     await page.getByLabel('Email', { exact: true }).fill(ACCOUNT_DATA.b.email);
     await page.getByLabel('Password', { exact: true }).fill('synthetic-only-account-password');
+    const loginBResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === 'POST' && url.pathname === '/v1/auth/login';
+    });
+    const houseBResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === 'GET' && url.pathname === '/v1/house';
+    });
     await page.getByRole('button', { name: 'Accedi al profilo' }).click();
+    const [loginBResponse, houseBResponse] = await Promise.all([loginBResponsePromise, houseBResponsePromise]);
+    expect(loginBResponse.status()).toBe(200);
+    expect(houseBResponse.status()).toBe(200);
+    expect(backend.requests.filter((request) => request.method === 'GET'
+      && request.path === '/v1/house' && request.principal === 'b')).toHaveLength(1);
+
     await expect(page.getByText(ACCOUNT_DATA.b.email, { exact: true })).toBeVisible();
     if (isSousChefBuild) {
       await openShellProfileMenu(page);
@@ -628,8 +820,20 @@ test('does not apply account A items after the session switches to account B', a
       (window as typeof window & { __bringFetchGate?: BringFetchGate }).__bringFetchGate!.releaseItemsResponse?.();
     });
     await page.waitForFunction(() => (window as typeof window & { __bringFetchGate?: BringFetchGate }).__bringFetchGate?.itemsResponseResumed === true);
+    await page.waitForFunction(() => (window as typeof window & { __bringFetchGate?: BringFetchGate }).__bringFetchGate?.itemsResponseConsumed === true);
+    // The body has been consumed; let the caller's promise chain and React commit finish before asserting isolation.
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
     await expect(page.locator('[data-bring-name="Cookies"]').getByText('Biscotti', { exact: true })).toBeVisible();
     await expect(page.getByText('Latte', { exact: true })).toHaveCount(0);
+    const afterLateResponse = await diagnostics.snapshot();
+    expect(afterLateResponse).toMatchObject({
+      pathname: '/shopping-list',
+      activeScope: 'account:account-b',
+      personalScope: 'account:account-b',
+    });
+    expect(afterLateResponse.loadingText).not.toBe('Caricamento dati…');
     expect(backend.logoutPrincipals).toEqual(['a']);
     expect(backend.itemReads.map(({ principal, listId }) => ({ principal, listId }))).toEqual([
       { principal: 'a', listId: LIST_ONE },
@@ -638,6 +842,9 @@ test('does not apply account A items after the session switches to account B', a
     ]);
     expect(backend.bringRequests.filter((request) => request.method === 'GET' && request.path.endsWith('/items')).map((request) => request.principal)).toEqual(['a', 'a', 'b']);
     expect(backend.syncWriteTypes).toEqual([]);
+    expect(backend.writes).toEqual([]);
+    expect(backend.csrfFailures).toEqual([]);
+    expect(backend.upstreamRequests).toEqual([]);
   } finally {
     await page.evaluate(() => {
       (window as typeof window & { __bringFetchGate?: BringFetchGate }).__bringFetchGate?.releaseItemsResponse?.();

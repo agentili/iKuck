@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
-import { goToKitchen, kitchenHeading, openShellProfileMenu } from './helpers/appMode';
+import { goToKitchen, isSousChefBuild, kitchenHeading, openShellProfileMenu } from './helpers/appMode';
 
 test('scope storage property denial does not prevent SPA startup', async ({ page }) => {
   await page.addInitScript(() => {
@@ -252,7 +252,7 @@ test('session motion choice stays checked after leaving and returning to Profile
   await page.goto('/profile');
   const checkbox = page.getByRole('checkbox', { name: 'Riduci le animazioni su questo dispositivo' });
   await checkbox.check();
-  await page.getByRole('link', { name: /Torna alle ricette/ }).click();
+  await page.getByRole('link', { name: isSousChefBuild ? /Torna a Chef/ : /Torna alle ricette/ }).click();
   await openShellProfileMenu(page);
   await page.getByRole('link', { name: 'Profilo', exact: true }).click();
   await expect(page.getByRole('checkbox', { name: 'Riduci le animazioni su questo dispositivo' })).toBeChecked();

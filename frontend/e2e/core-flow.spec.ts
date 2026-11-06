@@ -500,7 +500,9 @@ test('manifest is available and the application works offline after first load',
   expect(manifest.id).toBe('/');
   expect(manifest.start_url).toBe('/');
   expect(manifest.shortcuts.map((shortcut: { url: string }) => shortcut.url)).toEqual(
-    expect.arrayContaining(['/pantry', '/shopping-list', '/activity']),
+    isSousChefBuild
+      ? ['/cucina', '/plan', '/recipes', '/pantry', '/shopping-list']
+      : ['/pantry', '/shopping-list', '/activity'],
   );
   expect(manifest.icons).toEqual(expect.arrayContaining([
     expect.objectContaining({ sizes: '192x192', purpose: 'any' }),

@@ -16,11 +16,8 @@ import {
  *   flag ON:
  *     VITE_SOUS_CHEF=true npm --prefix frontend run test:e2e -- e2e/sous-chef-sentinel.spec.ts
  *
- * Struttura:
- *  - "stato attuale"  → regole verificate sul baseline: devono restare verdi (regression guard);
- *  - "RED obiettivo"  → comportamento atteso dal piano (T02/T03): falliscono sul baseline
- *                        in modo intenzionale e documentato nel report T01; devono diventare
- *                        verdi con i task che implementano quei comportamenti.
+ * La suite afferma le route e i flussi attualmente accettati per entrambe le build.
+ * La chat AI è differita; le scorciatoie Chef restano link di navigazione reali.
  * Nessun test è considerato superato se saltato: gli skip vengono riportati come tali.
  */
 
@@ -194,34 +191,32 @@ test.describe('stato attuale · flag ON (shell Sous-Chef)', () => {
     await expect(heading(page, 'Le tue ricette')).toBeVisible();
   });
 
-  test('bottom nav «Chef» riporta alla chat dalla schermata Cerca', async ({ page }) => {
+  test('bottom nav «Chef» riporta alla schermata Chef dalla schermata Cerca', async ({ page }) => {
     await page.goto('/discover');
     await bottomNav(page).getByRole('link', { name: 'Chef' }).click();
     await expect(page).toHaveURL('/');
+    await expect(heading(page, 'Chef')).toBeVisible();
+    await expect(page.getByText('Chat AI non disponibile. La chat AI è stata rinviata.', { exact: true })).toBeVisible();
     await expect(page.getByRole('group', { name: 'Risposte rapide' })).toBeVisible();
   });
 
-  // I quick reply vengono attivati da tastiera perché con il puntatore risultano
-  // coperti dalla input bar fissa: l'occlusione è un difetto preesistente misurato
-  // dal test RED «[T05] quick reply raggiungibili col puntatore» qui sotto.
-  test('quick reply «Lista spesa» apre la lista spesa reale', async ({ page }) => {
+  test('scorciatoia «Spesa» apre la lista spesa reale', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: 'Lista spesa', exact: true }).press('Enter');
+    await page.getByRole('group', { name: 'Risposte rapide' }).getByRole('link', { name: 'Spesa', exact: true }).click();
     await expect(page).toHaveURL('/shopping-list');
     await expect(heading(page, 'Lista della spesa')).toBeVisible();
   });
 
-  test('quick reply «Casa» apre la casa reale', async ({ page }) => {
+  test('scorciatoia «Casa» apre la casa reale', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: 'Casa', exact: true }).press('Enter');
+    await page.getByRole('group', { name: 'Risposte rapide' }).getByRole('link', { name: 'Casa', exact: true }).click();
     await expect(page).toHaveURL('/house');
     await expect(heading(page, 'La mia casa')).toBeVisible();
   });
 
-  // The unavailable chat has no scanner; the direct pantry action remains available.
-  test('azione Chef apre la dispensa reale (/pantry)', async ({ page }) => {
+  test('scorciatoia Chef «Dispensa» apre la dispensa reale (/pantry)', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: 'Cosa ho in dispensa?' }).click();
+    await page.getByRole('group', { name: 'Risposte rapide' }).getByRole('link', { name: 'Dispensa', exact: true }).click();
     await expect(page).toHaveURL('/pantry');
     await expect(heading(page, 'La tua dispensa')).toBeVisible();
   });
@@ -233,25 +228,35 @@ test.describe('stato attuale · flag ON (shell Sous-Chef)', () => {
     await expect(heading(page, 'Il tuo profilo')).toBeVisible();
   });
 
-  // Real chat interface tests (T05)
-  test('real chat interface is present with input bar', async ({ page }) => {
+  test('Chef clearly defers AI chat and does not mount a composer', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByPlaceholder(/Chiedimi una ricetta/i)).toBeVisible();
-    await expect(page.getByText(/chat non disponibile/i)).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /input vocale/i })).toHaveCount(0);
+    await expect(heading(page, 'Chef')).toBeVisible();
+    await expect(page.getByText('Chat AI non disponibile. La chat AI è stata rinviata.', { exact: true })).toBeVisible();
+    await expect(page.getByPlaceholder(/Chiedimi una ricetta/i)).toHaveCount(0);
+    await expect(page.getByRole('log')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Invia messaggio' })).toHaveCount(0);
   });
 
-  test('chat shows welcome message when empty', async ({ page }) => {
+  test('Chef navigation destinations remain distinct from AI chat', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText(/Ciao! Sono Chef/i)).toBeVisible();
+    const shortcuts = page.getByRole('group', { name: 'Risposte rapide' });
+    for (const [label, path] of [
+      ['Ricette', '/recipes'],
+      ['Dispensa', '/pantry'],
+      ['Spesa', '/shopping-list'],
+      ['Casa', '/house'],
+      ['Cucina viva', '/cucina'],
+    ]) {
+      await expect(shortcuts.getByRole('link', { name: label, exact: true })).toHaveAttribute('href', path);
+    }
   });
 });
 
 // ---------------------------------------------------------------------------
-// RED · obiettivo del piano (failure preesistenti sul baseline T01)
+// Verifica funzionale della shell Sous-Chef sul candidato corrente
 // ---------------------------------------------------------------------------
 
-test.describe('RED obiettivo · T02/T03/T05 (falliscono sul baseline, documentati nel report T01)', () => {
+test.describe('verifica funzionale · T02/T03/T05', () => {
   test.skip(!SOUS_CHEF_ON, 'build senza VITE_SOUS_CHEF=true: la shell Sous-Chef non viene montata');
 
   test('[T02] la bottom nav offre Dispensa · Spesa · Chef · Piano · Ricette', async ({ page }) => {
@@ -277,29 +282,19 @@ test.describe('RED obiettivo · T02/T03/T05 (falliscono sul baseline, documentat
     await expect(page.locator('a[href="/dinner-diary"]').first()).toBeVisible();
   });
 
-  test('[T03] il quick reply «Cosa ho in dispensa?» porta alla dispensa reale', async ({ page }) => {
+  test('[T03] la scorciatoia «Dispensa» porta alla dispensa reale', async ({ page }) => {
     await page.goto('/');
-    // Attivazione da tastiera: isola il difetto di comportamento (risposta demo)
-    // dall'occlusione col puntatore tracciata dal test [T05] qui sotto.
-    await page.getByRole('button', { name: 'Cosa ho in dispensa?', exact: true }).press('Enter');
+    await page.getByRole('group', { name: 'Risposte rapide' }).getByRole('link', { name: 'Dispensa', exact: true }).click();
     await expect(page).toHaveURL('/pantry');
     await expect(heading(page, 'La tua dispensa')).toBeVisible();
   });
 
-  test('[T05] chat input is reachable with pointer (no overlay)', async ({ page }) => {
+  test('[T05] le scorciatoie Chef sono raggiungibili col puntatore senza overlay', async ({ page }) => {
     await page.goto('/');
-    const input = page.getByPlaceholder(/Chiedimi una ricetta/i);
-    await expect(input).toBeVisible();
-    const coveringElement = await input.evaluate((element: HTMLElement) => {
-      const rect = element.getBoundingClientRect();
-      const x = rect.left + rect.width / 2;
-      const y = rect.top + rect.height / 2;
-      const top = document.elementFromPoint(x, y);
-      if (top === null) return 'nessun elemento al centro del pulsante';
-      if (top === element || element.contains(top)) return null;
-      const label = top.getAttribute('aria-label') ?? top.getAttribute('placeholder') ?? '';
-      return `${top.tagName.toLowerCase()}${label === '' ? '' : `[${label}]`}.${top.className}`.slice(0, 200);
-    });
-    expect(coveringElement, 'elemento che copre l\'input chat al punto di click').toBeNull();
+    const pantryLink = page.getByRole('group', { name: 'Risposte rapide' }).getByRole('link', { name: 'Dispensa', exact: true });
+    await expect(pantryLink).toBeVisible();
+    await pantryLink.click();
+    await expect(page).toHaveURL('/pantry');
+    await expect(heading(page, 'La tua dispensa')).toBeVisible();
   });
 });

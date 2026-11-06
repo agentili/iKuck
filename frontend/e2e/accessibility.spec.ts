@@ -59,6 +59,7 @@ const auditedPages: AuditedPage[] = [
   { path: kitchenPath, heading: kitchenHeading, name: 'home', auth: false },
   { path: '/recipes', heading: 'Ricette', name: 'recipes-library', auth: false },
   { path: '/pantry', heading: 'La tua dispensa', name: 'pantry', auth: false },
+  ...(isSousChefBuild ? [{ path: '/plan', heading: 'Piano', name: 'plan', auth: false }] : []),
   { path: '/shopping-list', heading: 'Lista della spesa', name: 'shopping-list', auth: false },
   { path: '/dinner-diary', heading: 'Diario delle cene', name: 'dinner-diary', auth: true },
   { path: '/activity', heading: 'La tua attività', name: 'activity', auth: false },
@@ -257,6 +258,40 @@ test('keeps focus indicators visible for links, controls and summaries', async (
   }
 });
 
+test('Chef shortcuts are keyboard reachable with visible focus while AI chat is deferred', async ({ page }) => {
+  test.skip(!isSousChefBuild, 'Richiede il build Sous Chef.');
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Chef', exact: true })).toBeVisible();
+  await expect(page.getByText('Chat AI non disponibile. La chat AI è stata rinviata.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('log')).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Messaggio per Chef' })).toHaveCount(0);
+
+  const shortcuts = page.getByRole('group', { name: 'Risposte rapide' });
+  const recipesLink = shortcuts.getByRole('link', { name: 'Ricette', exact: true });
+  const pantryLink = shortcuts.getByRole('link', { name: 'Dispensa', exact: true });
+  let recipesLinkReceivedKeyboardFocus = false;
+  for (let step = 0; step < 30; step += 1) {
+    if (await recipesLink.evaluate((element) => element === document.activeElement)) {
+      recipesLinkReceivedKeyboardFocus = true;
+      break;
+    }
+    await page.keyboard.press('Tab');
+  }
+  expect(recipesLinkReceivedKeyboardFocus, 'Tab deve raggiungere la prima scorciatoia Chef.').toBe(true);
+
+  await page.keyboard.press('Tab');
+  await expect(pantryLink).toBeFocused();
+  const focusStyle = await pantryLink.evaluate((element) => {
+    const style = window.getComputedStyle(element);
+    return { outlineColor: style.outlineColor, outlineWidth: style.outlineWidth };
+  });
+  expect(focusStyle.outlineWidth).not.toBe('0px');
+  expect(focusStyle.outlineColor).not.toBe('rgba(0, 0, 0, 0)');
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL('/pantry');
+  await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
+});
+
 test('supports a 320px viewport and a 200% text-zoom equivalent without horizontal scroll', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
   await page.goto('/');
@@ -387,7 +422,8 @@ test('keeps common mobile actions comfortably tappable', async ({ page }) => {
   expect(detailsBox!.height).toBeGreaterThanOrEqual(44);
 
   await page.goto('/profile');
-  const backBox = await page.getByRole('link', { name: /Torna alle ricette/ }).boundingBox();
+  const backLinkName = isSousChefBuild ? /Torna a Chef/ : /Torna alle ricette/;
+  const backBox = await page.getByRole('link', { name: backLinkName }).boundingBox();
   expect(backBox).not.toBeNull();
   expect(backBox!.height).toBeGreaterThanOrEqual(44);
 });
@@ -396,7 +432,8 @@ test('respects reduced motion, heading order and icon-only accessible names', as
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/recipes/pasta-tonno-pomodoro');
 
-  const transitionDuration = await page.getByRole('link', { name: kitchenNavigationLabel }).evaluate((element) => (
+  const kitchenNavigation = page.getByRole('navigation', { name: 'Navigazione principale' });
+  const transitionDuration = await kitchenNavigation.getByRole('link', { name: kitchenNavigationLabel }).evaluate((element) => (
     window.getComputedStyle(element).transitionDuration
   ));
   expect(transitionDuration).toBe('0s');

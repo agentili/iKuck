@@ -21,6 +21,7 @@ export const SimplifiedHeader = memo(({ isMenuOpen = false, onMenuClick }: Simpl
   
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
+  const profileButtonRef = useRef<HTMLButtonElement>(null);
   const toggleTheme = () => saveColorThemePreference(resolvedTheme === 'dark' ? 'light' : 'dark');
 
   // Close profile menu on outside click
@@ -31,8 +32,18 @@ export const SimplifiedHeader = memo(({ isMenuOpen = false, onMenuClick }: Simpl
         setIsProfileOpen(false);
       }
     };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setIsProfileOpen(false);
+      profileButtonRef.current?.focus();
+    };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
   }, [isProfileOpen]);
 
   const accountStatus = connection === 'offline'
@@ -48,29 +59,29 @@ export const SimplifiedHeader = memo(({ isMenuOpen = false, onMenuClick }: Simpl
   if (!isSimplifiedHeader()) return null;
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-40 bg-[var(--sc-cream)]/95 backdrop-blur-sm border-b border-[var(--sc-peach-soft)]" role="banner">
-      <div className="mx-auto flex items-center justify-between gap-3 px-4 py-3 max-w-xl">
+    <header className="ik-app-header sous-chef-header fixed top-0 left-0 right-0 z-40 border-b border-[var(--ik-border)]" role="banner">
+      <div className="sous-chef-header-inner mx-auto flex items-center justify-between gap-3 px-4 py-3 max-w-xl">
         {/* Left: Logo + Menu button */}
-        <div className="flex items-center gap-3">
+        <div className="sous-chef-header-leading flex items-center gap-3">
           <button
             type="button"
             onClick={onMenuClick}
-            className="p-2 rounded-xl text-[var(--sc-ink)] hover:bg-[var(--sc-peach-soft)] transition-colors"
+            className="sous-chef-header-menu-button p-2 rounded-xl text-[var(--ik-ink)] hover:bg-[var(--ik-sage)] transition-colors"
             aria-label="Menu"
             aria-haspopup="dialog"
             aria-expanded={isMenuOpen}
             aria-controls={isMenuOpen ? 'profile-modal' : undefined}
           >
-            <Menu className="w-6 h-6" aria-hidden="true" />
+            <Menu className="sous-chef-header-menu-icon w-6 h-6" aria-hidden="true" />
           </button>
-          <Link to="/" aria-label="iKuck" className="shrink-0 text-xl font-black tracking-tight text-[var(--sc-terracotta)]">
+          <Link to="/" aria-label="iKuck" className="shrink-0 text-xl font-black tracking-tight text-[var(--ik-basil-dark)]">
             iKuck
           </Link>
         </div>
 
         {/* Center: Page title (optional) */}
         <div className="flex-1 text-center hidden sm:block">
-          <span aria-hidden="true" className="text-sm font-semibold text-[var(--sc-ink-faint)] truncate">
+          <span aria-hidden="true" className="text-sm font-semibold text-[var(--ik-ink-muted)] truncate">
             {location.pathname === '/' ? 'Chef' : 
              location.pathname.startsWith('/discover') ? 'Cerca' :
              location.pathname.startsWith('/plan') ? 'Piano' :
@@ -79,23 +90,24 @@ export const SimplifiedHeader = memo(({ isMenuOpen = false, onMenuClick }: Simpl
         </div>
 
         {/* Right: Theme + Profile */}
-        <div className="flex items-center gap-2">
+        <div className="sous-chef-header-actions flex items-center gap-2">
           {/* Theme Toggle */}
           <button
             type="button"
             onClick={toggleTheme}
             aria-label={resolvedTheme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}
-            className="grid min-h-10 min-w-10 place-items-center rounded-xl text-[var(--sc-ink)] hover:bg-[var(--sc-peach-soft)] transition-colors"
+            className="sous-chef-header-icon-button grid min-h-10 min-w-10 place-items-center rounded-xl text-[var(--ik-ink)] hover:bg-[var(--ik-sage)] transition-colors"
           >
-            {resolvedTheme === 'dark' ? <Sun className="w-5 h-5" aria-hidden="true" /> : <Moon className="w-5 h-5" aria-hidden="true" />}
+            {resolvedTheme === 'dark' ? <Sun className="sous-chef-header-action-icon w-5 h-5" aria-hidden="true" /> : <Moon className="sous-chef-header-action-icon w-5 h-5" aria-hidden="true" />}
           </button>
 
           {/* Profile Menu */}
           <div className="relative" ref={profileRef}>
             <button
               type="button"
+              ref={profileButtonRef}
               onClick={() => setIsProfileOpen(!isProfileOpen)}
-              className="grid min-h-10 min-w-10 place-items-center rounded-xl text-[var(--sc-ink)] hover:bg-[var(--sc-peach-soft)] transition-colors"
+              className="sous-chef-header-icon-button grid min-h-10 min-w-10 place-items-center rounded-xl text-[var(--ik-ink)] hover:bg-[var(--ik-sage)] transition-colors"
               aria-label="Profilo"
               aria-expanded={isProfileOpen}
               aria-haspopup="true"
@@ -104,17 +116,17 @@ export const SimplifiedHeader = memo(({ isMenuOpen = false, onMenuClick }: Simpl
             </button>
 
             {isProfileOpen && (
-              <div className="absolute right-0 top-full mt-2 w-56 bg-[var(--sc-cream)] border border-[var(--sc-peach-soft)] rounded-2xl shadow-[var(--sc-shadow-card)] py-2 z-50 animate-slide-down">
-                <div className="px-4 py-3 border-b border-[var(--sc-peach-soft)]">
-                  <p className="font-bold text-[var(--sc-ink)] truncate">{user?.email.split('@')[0] ?? 'Ospite'}</p>
-                  <p className="text-xs text-[var(--sc-ink-faint)] truncate">{user?.email ?? 'Dati locali'}</p>
-                  <p className="text-xs text-[var(--sc-ink-faint)] mt-1">{accountStatus} · {scopeLabel}</p>
+              <div className="absolute right-0 top-full mt-2 w-56 bg-[var(--ik-porcelain)] border border-[var(--ik-sage)] rounded-2xl shadow-[var(--ik-shadow-card)] py-2 z-50 animate-slide-down">
+                <div className="px-4 py-3 border-b border-[var(--ik-sage)]">
+                  <p className="font-bold text-[var(--ik-ink)] truncate">{user?.email.split('@')[0] ?? 'Ospite'}</p>
+                  <p className="text-xs text-[var(--ik-ink-muted)] truncate">{user?.email ?? 'Dati locali'}</p>
+                  <p className="text-xs text-[var(--ik-ink-muted)] mt-1">{accountStatus} · {scopeLabel}</p>
                 </div>
                 
                 <nav className="py-2">
                   <Link
                     to="/profile"
-                    className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-[var(--sc-ink)] hover:bg-[var(--sc-peach-soft)]"
+                    className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-[var(--ik-ink)] hover:bg-[var(--ik-sage)]"
                     onClick={() => setIsProfileOpen(false)}
                   >
                     <UserRound className="w-5 h-5" aria-hidden="true" />
@@ -122,7 +134,7 @@ export const SimplifiedHeader = memo(({ isMenuOpen = false, onMenuClick }: Simpl
                   </Link>
                   <Link
                     to="/house"
-                    className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-[var(--sc-ink)] hover:bg-[var(--sc-peach-soft)]"
+                    className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-[var(--ik-ink)] hover:bg-[var(--ik-sage)]"
                     onClick={() => setIsProfileOpen(false)}
                   >
                     <span className="w-5 h-5">🏠</span>
@@ -131,7 +143,7 @@ export const SimplifiedHeader = memo(({ isMenuOpen = false, onMenuClick }: Simpl
                   <button
                     type="button"
                     onClick={toggleTheme}
-                    className="flex items-center gap-3 w-full px-4 py-2 text-sm font-medium text-[var(--sc-ink)] hover:bg-[var(--sc-peach-soft)] text-left"
+                    className="flex items-center gap-3 w-full px-4 py-2 text-sm font-medium text-[var(--ik-ink)] hover:bg-[var(--ik-sage)] text-left"
                   >
                     {resolvedTheme === 'dark' ? <Sun className="w-5 h-5" aria-hidden="true" /> : <Moon className="w-5 h-5" aria-hidden="true" />}
                     {resolvedTheme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}
@@ -140,7 +152,7 @@ export const SimplifiedHeader = memo(({ isMenuOpen = false, onMenuClick }: Simpl
                     <button
                       type="button"
                       onClick={() => { useAuthStore.getState().logout(); setIsProfileOpen(false); }}
-                      className="flex items-center gap-3 w-full px-4 py-2 text-sm font-medium text-[var(--sc-terracotta)] hover:bg-[var(--sc-peach-soft)] text-left"
+                      className="flex items-center gap-3 w-full px-4 py-2 text-sm font-medium text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)] text-left"
                     >
                       <span className="w-5 h-5">🚪</span>
                       Esci

@@ -12,6 +12,9 @@ describe('NotFoundPage', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Pagina non trovata' })).toBeVisible();
+    expect(screen.getByRole('main')).toHaveClass('ik-page');
+    expect(screen.getByRole('region', { name: 'Pagina non trovata' })).toHaveClass('ik-surface', 'ik-profile-surface');
+    expect(screen.getByRole('heading', { name: 'Pagina non trovata' })).toHaveClass('text-[var(--ik-ink)]');
     expect(screen.getByRole('link', { name: 'Torna alla home' })).toHaveAttribute('href', '/');
     expect(screen.getByRole('main')).toHaveFocus();
   });
@@ -24,6 +27,6 @@ describe('NotFoundPage', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Ricetta non trovata' })).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Torna alle ricette' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'Torna alle ricette' })).toHaveAttribute('href', '/recipes');
   });
 });

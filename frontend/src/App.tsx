@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuthStore } from './auth/authStore';
 import { useHouseStore } from './house/houseStore';
 import AppHeader from './components/layout/AppHeader';
@@ -57,6 +57,30 @@ const getVisibleScope = (): string => {
 };
 
 export default function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
+  );
+}
+
+function AppContent() {
+  const location = useLocation();
+  useEffect(() => {
+    if (!isSousChef()) return;
+
+    const focusSkipLinkFirst = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab' || event.shiftKey || document.activeElement !== document.body) return;
+      const skipLink = document.querySelector<HTMLAnchorElement>('.sous-chef-skip-link');
+      if (skipLink === null) return;
+      event.preventDefault();
+      skipLink.focus();
+    };
+
+    document.addEventListener('keydown', focusSkipLinkFirst, true);
+    return () => document.removeEventListener('keydown', focusSkipLinkFirst, true);
+  }, []);
+
   const user = useAuthStore((state) => state.user);
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const restoreSession = useAuthStore((state) => state.restoreSession);
@@ -67,6 +91,7 @@ export default function App() {
   const previousSessionKey = useRef<string | null>(null);
   const [sessionRestored, setSessionRestored] = useState(false);
   const [readySessionKey, setReadySessionKey] = useState<string | null>(null);
+  const [scopeReadySessionKey, setScopeReadySessionKey] = useState<string | null>(null);
   const [scopeInitializationFailed, setScopeInitializationFailed] = useState(false);
   const [scopeRetryCount, setScopeRetryCount] = useState(0);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -88,6 +113,7 @@ export default function App() {
     const sessionChanged = previousSessionKey.current !== sessionKey;
     previousSessionKey.current = sessionKey;
     setScopeInitializationFailed(false);
+    setScopeReadySessionKey(null);
     let active = true;
     let removeReconnectListener: (() => void) | null = null;
 
@@ -120,6 +146,7 @@ export default function App() {
     if (session === null) {
       if (sessionChanged) useHouseStore.getState().clear();
       setActiveDataScope('guest');
+      setScopeReadySessionKey(sessionKey);
       void hydrateAndSync();
     } else {
       if (sessionChanged) useHouseStore.getState().clear();
@@ -131,6 +158,7 @@ export default function App() {
         .then(({ state, mergeSummary, guestMergeFailed }) => {
           if (!active) return;
           useHouseStore.setState({ state });
+          setScopeReadySessionKey(sessionKey);
           if (guestMergeFailed) {
             usePantryMergeNoticeStore.getState().showFailure();
           } else if (mergeSummary !== null && (mergeSummary.addedLots > 0 || mergeSummary.mergedLots > 0 || mergeSummary.importedStaples > 0)) {
@@ -167,41 +195,46 @@ export default function App() {
     && isScopePurgeMarkerUnavailable(currentHouseScope);
   if (verifiedSession && (housePurgeMarkerUnavailable || scopeInitializationFailed)) {
     return (
-      <BrowserRouter>
-        <div className="app-shell min-h-screen">
-          <AppHeader scopeUnverified={scopeInitializationFailed} />
-          <main id="main-content" className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-24 pt-24 sm:px-6 sm:pt-28">
-            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-950" role="alert">
-              <p>
-                {housePurgeMarkerUnavailable
-                  ? 'Non posso verificare la sicurezza dei dati della Casa perché la memoria locale del browser non è disponibile. Le scritture restano disabilitate; verifica la memoria locale e ricarica l’app.'
-                  : 'Non è stato possibile verificare l’ambito della Casa. Dispensa, spesa e diario restano nascosti e le scritture funzionali sono sospese finché il controllo non riesce. Verifica la connessione e riprova.'}
-              </p>
-              <button
-                type="button"
-                className="mt-4 min-h-11 rounded-xl bg-emerald-800 px-4 py-2 font-bold text-white hover:bg-emerald-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-800"
-                onClick={() => {
-                  if (housePurgeMarkerUnavailable) window.location.reload();
-                  else setScopeRetryCount((count) => count + 1);
-                }}
-              >
-                {housePurgeMarkerUnavailable ? 'Ricarica l’app' : 'Riprova'}
-              </button>
-            </div>
-          </main>
-        </div>
-      </BrowserRouter>
+      <div className="app-shell min-h-screen">
+        <AppHeader scopeUnverified={scopeInitializationFailed} />
+        <main id="main-content" className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-24 pt-24 sm:px-6 sm:pt-28">
+          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-950" role="alert">
+            <p>
+              {housePurgeMarkerUnavailable
+                ? 'Non posso verificare la sicurezza dei dati della Casa perché la memoria locale del browser non è disponibile. Le scritture restano disabilitate; verifica la memoria locale e ricarica l’app.'
+                : 'Non è stato possibile verificare l’ambito della Casa. Dispensa, spesa e diario restano nascosti e le scritture funzionali sono sospese finché il controllo non riesce. Verifica la connessione e riprova.'}
+            </p>
+            <button
+              type="button"
+              className="mt-4 min-h-11 rounded-xl bg-emerald-800 px-4 py-2 font-bold text-white hover:bg-emerald-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-800"
+              onClick={() => {
+                if (housePurgeMarkerUnavailable) window.location.reload();
+                else setScopeRetryCount((count) => count + 1);
+              }}
+            >
+              {housePurgeMarkerUnavailable ? 'Ricarica l’app' : 'Riprova'}
+            </button>
+          </div>
+        </main>
+      </div>
     );
   }
-  if (!sessionRestored || readySessionKey !== currentSessionKey || visibleScope !== expectedVisibleScope) {
+  const sessionRecoveryRoute = location.pathname === '/'
+    || location.pathname === '/profile'
+    || location.pathname === '/pantry'
+    || location.pathname === '/shopping-list';
+  const scopeReadyForCurrentSession = sessionRecoveryRoute && scopeReadySessionKey === currentSessionKey;
+  // Show recovery routes after scope verification; PantryPage keeps its own local-data hydration gate.
+  if (!sessionRestored
+    || (readySessionKey !== currentSessionKey && !scopeReadyForCurrentSession)
+    || visibleScope !== expectedVisibleScope) {
     return <div className="app-shell min-h-screen" role="status">Caricamento dati…</div>;
   }
 
   // Feature flag: SOUS-CHEF UI
   if (isSousChef()) {
     return (
-      <BrowserRouter>
-        <div className="sous-chef-shell min-h-screen bg-[var(--sc-cream)]">
+      <div className="sous-chef-shell min-h-screen bg-[var(--ik-porcelain)]">
           <a className="sous-chef-skip-link" href="#sous-chef-main-content">
             Vai al contenuto principale
           </a>
@@ -234,7 +267,7 @@ export default function App() {
                 <Route path="/cucina" element={<HomePage />} />
                 <Route path="/discover" element={<DiscoverPage />} />
                 <Route path="/saved" element={<SavedPage />} />
-                {/* T02: Piano is a standalone screen; its real model lands in T06/T07 */}
+                {/* Reuse the existing local/house Plan implementation. */}
                 <Route path="/plan" element={<PlanPage />} />
 
                 {/* Existing Routes (preserved) */}
@@ -266,14 +299,12 @@ export default function App() {
             />
           )}
         </div>
-      </BrowserRouter>
     );
   }
 
   // Legacy UI (original iKuck)
   return (
-    <BrowserRouter>
-      <div className="app-shell min-h-screen">
+    <div className="app-shell min-h-screen">
         <AppHeader />
         {(pantryMergeSummary !== null || pantryMergeFailed) && (
           <PantryMergeNotice
@@ -297,7 +328,6 @@ export default function App() {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="*" element={<NotFoundPage resource="page" />} />
         </Routes>
-      </div>
-    </BrowserRouter>
+    </div>
   );
 }

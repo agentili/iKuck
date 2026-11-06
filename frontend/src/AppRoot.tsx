@@ -47,7 +47,6 @@ export default function AppRoot() {
 
   return (
     <>
-      <App />
       {updateStatus !== null && (
         <AppUpdatePrompt
           status={updateStatus}
@@ -56,6 +55,7 @@ export default function AppRoot() {
           onLater={() => setUpdateStatus(null)}
         />
       )}
+      <App />
       <AppInstallPrompt />
     </>
   );
