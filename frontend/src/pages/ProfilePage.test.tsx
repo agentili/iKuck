@@ -271,7 +271,7 @@ describe('ProfilePage', () => {
     await user.click(screen.getByRole('button', { name: 'Importa i dati locali' }));
 
     expect(screen.getByRole('button', { name: 'Conferma importazione' })).toBeInTheDocument();
-    expect(screen.getByText(/Confermi l’unione.*non verranno cancellati/)).toBeInTheDocument();
+    expect(screen.getByText(/Confermi l'unione.*non verranno cancellati/)).toBeInTheDocument();
   });
 
   it('clears the local session and navigates home when logout fails', async () => {
@@ -284,7 +284,7 @@ describe('ProfilePage', () => {
       <MemoryRouter initialEntries={['/profile']}>
         <Routes>
           <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/" element={<h1>Home</h1>} />
+          <Route path="/recipes" element={<h1>Ricette</h1>} />
         </Routes>
       </MemoryRouter>,
     );
@@ -292,7 +292,7 @@ describe('ProfilePage', () => {
     await screen.findByRole('heading', { name: 'Il tuo profilo' });
     await user.click(screen.getByRole('button', { name: 'Esci' }));
 
-    expect(await screen.findByRole('heading', { name: 'Home' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Ricette' })).toBeInTheDocument();
     expect(logout).toHaveBeenCalledOnce();
     expect(clearSession).toHaveBeenCalledOnce();
   });

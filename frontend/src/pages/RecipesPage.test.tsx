@@ -276,7 +276,7 @@ describe('RecipesPage', () => {
     await userEvents.type(search, 'ricetta-inesistente-xyz');
 
     await waitFor(() => expect(screen.getByText(/Nessuna ricetta trovata/)).toBeInTheDocument());
-    expect(screen.getByRole('link', { name: 'Trova ricette' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'Trova ricette' })).toHaveAttribute('href', '/pantry');
   });
 
   it('ospite: legge le ricette salvate dal diario in read-only e apre il dettaglio con scope', async () => {
@@ -401,7 +401,7 @@ describe('RecipesPage', () => {
     await userEvents.type(search, 'zzzzzz');
 
     await waitFor(() => expect(screen.getByText(/Nessuna ricetta trovata/)).toBeInTheDocument());
-    expect(screen.getByRole('link', { name: 'Trova ricette' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'Trova ricette' })).toHaveAttribute('href', '/pantry');
     expect(screen.queryByRole('heading', { name: 'Torta al limone' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Salsa al limone' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Pollo al limone' })).not.toBeInTheDocument();

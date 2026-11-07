@@ -131,11 +131,11 @@ describe('device-only color theme preference', () => {
 
     colorTheme.saveColorThemePreference('dark');
     expect(document.documentElement.dataset.theme).toBe('dark');
-    expect(meta?.content).toBe('#101613');
+    expect(meta?.content).toBe('#191512');
 
     colorTheme.saveColorThemePreference('light');
     expect(document.documentElement.dataset.theme).toBe('light');
-    expect(meta?.content).toBe('#247A4A');
+    expect(meta?.content).toBe('#191512');
   });
 
   it('updates the applied theme when the system color scheme changes', () => {
@@ -148,7 +148,7 @@ describe('device-only color theme preference', () => {
     mediaChangeListener?.({ matches: true } as MediaQueryListEvent);
 
     expect(document.documentElement.dataset.theme).toBe('dark');
-    expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content).toBe('#101613');
+    expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content).toBe('#191512');
   });
 
   it('does not follow system changes when an explicit preference is selected', () => {

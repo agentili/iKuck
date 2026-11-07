@@ -6,27 +6,49 @@ const SOURCE_FILES = import.meta.glob('../**/*.{ts,tsx}', {
   import: 'default',
 }) as Record<string, string>;
 const THEME_COLOR_HASH = String.fromCharCode(35);
-const LIGHT_THEME_COLOR = `${THEME_COLOR_HASH}247A4A`;
-const DARK_THEME_COLOR = `${THEME_COLOR_HASH}101613`;
+const LIGHT_THEME_COLOR = `${THEME_COLOR_HASH}191512`;
+const DARK_THEME_COLOR = `${THEME_COLOR_HASH}191512`;
 const ALLOWED_THEME_COLOR_LINES = [
   {
-    path: /(?:^|\/)colorTheme\.ts$/,
+    path: /(?:^|[/\\])colorTheme\.ts$/,
     lines: new Set([
+      `/* Autumn warm palette — dark-first. Both light/dark use the same bg until light theme is approved. */`,
       `const LIGHT_THEME_COLOR = '${LIGHT_THEME_COLOR}';`,
       `const DARK_THEME_COLOR = '${DARK_THEME_COLOR}';`,
     ]),
   },
   {
-    path: /(?:^|\/)colorTheme\.test\.ts$/,
+    path: /(?:^|[/\\])colorTheme\.test\.ts$/,
     lines: new Set([
       `themeColorMeta.content = '${LIGHT_THEME_COLOR}';`,
+      `themeColorMeta.content = '#247A4A';`,
       `expect(meta?.content).toBe('${DARK_THEME_COLOR}');`,
       `expect(meta?.content).toBe('${LIGHT_THEME_COLOR}');`,
       `expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content).toBe('${DARK_THEME_COLOR}');`,
     ]),
   },
+  {
+    path: /(?:^|[/\\])theme[/\\]tokens\.ts$/,
+    lines: new Set([
+      `bg: '#191512',`,
+      `surface: '#261f1a',`,
+      `border: '#4c4540',`,
+      `primary: '#c76b43',`,
+      `primaryAction: '#d98a63',`,
+      `onPrimaryAction: '#191512',`,
+      `accent: '#e3a857',`,
+      `warning: '#ec8a3c',`,
+      `danger: '#e0604f',`,
+      `text: '#f6f2e9',`,
+      `textMuted: '#9c9188',`,
+      `focus: '#e3a857',`,
+      `card: '0 4px 12px rgb(0 0 0 / 0.35)',`,
+      `surface: '0 12px 30px rgb(0 0 0 / 0.45)',`,
+      `lift: '0 16px 32px rgb(0 0 0 / 0.55)',`,
+    ]),
+  },
 ];
-const HARDCODED_COLOR = /#[\da-f]{3,8}\b|(?:rgba?|hsla?|oklch|color)\s*\(/gi;
+const HARDCODED_COLOR = /#[0-9a-f]{3,8}\b|(?:rgba?|hsla?|oklch|color)\s*\(/gi;
 
 const findColorViolations = (filePath: string, source: string): string[] => source
   .split(/\r?\n/)

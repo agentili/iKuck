@@ -82,7 +82,7 @@ describe('ShoppingListPage', () => {
     render(<MemoryRouter><ShoppingListPage /></MemoryRouter>);
 
     expect(screen.getByRole('heading', { name: 'Lista della spesa' })).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Torna alle ricette' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'Torna alle ricette' })).toHaveAttribute('href', '/recipes');
     expect(screen.getByText('La lista è vuota')).toBeVisible();
   });
 

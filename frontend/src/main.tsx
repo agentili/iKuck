@@ -3,10 +3,12 @@ import AppRoot from './AppRoot';
 import './index.css';
 import { applyMotionPreference } from './domain/motionPreference';
 import { applyColorTheme, watchSystemColorTheme } from './domain/colorTheme';
+import { injectCssVariables } from './theme/tokens';
 
 applyColorTheme();
 watchSystemColorTheme();
 applyMotionPreference();
+injectCssVariables();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <AppRoot />,

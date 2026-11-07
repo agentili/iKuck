@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { Badge } from '../../components/shared';
 
 type RecipeCardVariant = 'salvata' | 'ai' | 'catalogo';
 
@@ -21,13 +22,10 @@ interface RecipeCardProps {
   openAriaLabel?: string;
 }
 
-const VARIANT_STYLE: Record<
-  RecipeCardVariant,
-  { label: string; border: string; background: string; text: string }
-> = {
-  salvata: { label: 'Salvata', border: 'border-emerald-200', background: 'bg-emerald-50', text: 'text-emerald-900' },
-  ai: { label: 'AI', border: 'border-emerald-200', background: 'bg-emerald-50', text: 'text-emerald-900' },
-  catalogo: { label: 'Catalogo', border: 'border-gray-200', background: 'bg-gray-50', text: 'text-gray-900' },
+const VARIANT_BADGE: Record<RecipeCardVariant, { label: string; variant: 'primary' | 'accent' | 'neutral' }> = {
+  salvata: { label: 'Salvata', variant: 'primary' },
+  ai: { label: 'AI', variant: 'accent' },
+  catalogo: { label: 'Catalogo', variant: 'neutral' },
 };
 
 export default function RecipeCard({
@@ -43,19 +41,17 @@ export default function RecipeCard({
   openHref,
   openAriaLabel,
 }: RecipeCardProps) {
-  const style = VARIANT_STYLE[variant];
+  const badge = VARIANT_BADGE[variant];
 
   return (
     <article
-      className={`rounded-[var(--ik-radius-panel)] border ${style.border} bg-white p-4`}
-      style={{ boxShadow: 'var(--ik-shadow-card)' }}
+      className="ik-card p-4"
+      data-availability={variant === 'catalogo' ? 'ready' : 'ready'}
     >
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-3 mb-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h3 className="text-xl font-black text-gray-950">{title}</h3>
-          <span className={`whitespace-nowrap rounded-full border-2 ${style.border} ${style.background} px-2.5 py-0.5 text-xs font-bold ${style.text}`}>
-            {style.label}
-          </span>
+          <h3 className="text-xl font-black text-[var(--color-text)]">{title}</h3>
+          <Badge variant={badge.variant}>{badge.label}</Badge>
         </div>
         {onToggle && (
           <button
@@ -63,28 +59,28 @@ export default function RecipeCard({
             onClick={onToggle}
             aria-expanded={isExpanded}
             aria-controls={detailsId}
-            className="shrink-0 rounded-xl p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+            className="shrink-0 rounded-xl p-2 text-[var(--color-text-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]"
           >
             {isExpanded ? 'Nascondi dettagli' : 'Mostra dettagli'}
           </button>
         )}
       </div>
       {description && description.trim().length > 0 && (
-        <p className="mb-3 text-sm leading-relaxed text-gray-600">{description}</p>
+        <p className="mb-3 text-sm leading-relaxed text-[var(--color-text-muted)]">{description}</p>
       )}
       {isExpanded && detailsId && (
         <div id={detailsId} className="space-y-3">
           {ingredients && ingredients.length > 0 && (
             <>
-              <h4 className="text-sm font-bold uppercase tracking-[0.14em] text-gray-600">
+              <h4 className="text-sm font-bold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
                 Ingredienti
               </h4>
-              <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700">
+              <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--color-text)]">
                 {ingredients.map((ingredient, index) => (
                   <li key={`${ingredient.name}-${index}`}>
                     <span>{ingredient.name}</span>
                     {showIngredientAmounts && ingredient.amount && (
-                      <span className="ml-1 text-gray-500">{ingredient.amount}</span>
+                      <span className="ml-1 text-[var(--color-text-muted)]">{ingredient.amount}</span>
                     )}
                   </li>
                 ))}
@@ -93,10 +89,10 @@ export default function RecipeCard({
           )}
           {steps && steps.length > 0 && (
             <>
-              <h4 className="text-sm font-bold uppercase tracking-[0.14em] text-gray-600">
+              <h4 className="text-sm font-bold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
                 Procedimento
               </h4>
-              <ol className="list-decimal space-y-1 pl-5 text-sm text-gray-700">
+              <ol className="list-decimal space-y-1 pl-5 text-sm text-[var(--color-text)]">
                 {steps.map((step, index) => (
                   <li key={index}>{step}</li>
                 ))}
@@ -109,7 +105,7 @@ export default function RecipeCard({
         <Link
           to={openHref}
           aria-label={openAriaLabel ?? `Apri ${title}`}
-          className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl border-2 border-gray-900 px-4 py-2 font-bold text-gray-900 hover:bg-gray-900 hover:text-white"
+          className="ik-button-secondary mt-3 min-h-11 w-full sm:w-auto"
         >
           Apri ricetta
         </Link>

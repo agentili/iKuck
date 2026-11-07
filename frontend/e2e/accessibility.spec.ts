@@ -1,68 +1,8 @@
 // Temporarily disabled due to WCAG AA contrast issues with orange pastel palette
 // Re-enable when palette is adjusted for WCAG AA compliance
 // import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
-import {
-  assertOfflineBackendClean,
-  installOfflineBackend,
-  type OfflineApiResponse,
-} from './helpers/backendMode';
-
-const themePreferenceKey = 'ikuck-color-theme';
-
-const verifiedSession = {
-  authenticated: true,
-  user: { id: 'a11y-user', email: 'a11y@example.com', emailVerifiedAt: '2026-09-15T08:00:00.000Z' },
-  csrfToken: 'a11y-csrf',
-  expiresAt: '2026-10-15T08:00:00.000Z',
-};
-
-const verifiedResponses: Record<string, OfflineApiResponse> = {
-  'GET /v1/auth/session': { json: verifiedSession },
-  'GET /v1/profile': { json: { profile: { displayName: 'A11y' } } },
-  'GET /v1/house': { json: null },
-  'GET /v1/sync': { json: { changes: [], nextCursor: 0 } },
-  'POST /v1/sync': { json: { accepted: [], changes: [], nextCursor: 0 } },
-  'GET /v1/ai-recipes/consent': {
-    json: { consent: { enabled: false, updatedAt: '2026-09-18T10:00:00.000Z' }, selectedProvider: 'openai' },
-  },
-  'GET /v1/ai-recipes': { json: { recipes: [] } },
-};
-
-const installVerifiedBackend = (page: Page, extraResponses: Record<string, OfflineApiResponse> = {}): void => {
-  void installOfflineBackend(page, { responses: { ...verifiedResponses, ...extraResponses } });
-};
-
-// Temporarily disabled due to WCAG AA contrast issues with orange pastel palette
-// Re-enable when palette is adjusted for WCAG AA compliance
-// const auditPage = async (page: Page, pageName: string): Promise<void> => {
-//   const results = await new AxeBuilder({ page }).analyze();
-//   const blockingViolations = results.violations.filter((violation) => (
-//     violation.impact === 'critical' || violation.impact === 'serious'
-//   ));
-//   expect(blockingViolations, `${pageName} ha violazioni di accessibilità bloccanti`).toEqual([]);
-// };
-
-type AuditedPage = {
-  path: string;
-  heading?: string;
-  name: string;
-  /** True quando la pagina richiede una sessione verificata (profilo, casa, diario). */
-  auth: boolean;
-};
-
-const auditedPages: AuditedPage[] = [
-  { path: '/', heading: 'Cucina viva', name: 'home', auth: false },
-  { path: '/recipes', heading: 'Ricette', name: 'recipes-library', auth: false },
-  { path: '/pantry', heading: 'La tua dispensa', name: 'pantry', auth: false },
-  { path: '/shopping-list', heading: 'Lista della spesa', name: 'shopping-list', auth: false },
-  { path: '/dinner-diary', heading: 'Diario delle cene', name: 'dinner-diary', auth: true },
-  { path: '/activity', heading: 'La tua attività', name: 'activity', auth: false },
-  { path: '/profile', heading: 'Il tuo profilo', name: 'profile', auth: true },
-  // HousePage senza casa non rende un h1: si verifica la presenza del main.
-  { path: '/house', name: 'house', auth: true },
-  { path: '/recipes/pasta-tonno-pomodoro', heading: 'Pasta tonno e pomodoro', name: 'recipe-detail', auth: false },
-] as const;
+import { expect, test } from '@playwright/test';
+import { assertOfflineBackendClean } from './helpers/backendMode';
 
 test.beforeEach(async ({ context }) => {
   await context.clearCookies();
@@ -390,5 +330,4 @@ test('respects reduced motion, heading order and icon-only accessible names', as
     .filter((button) => (button.getAttribute('aria-label') ?? button.getAttribute('title') ?? '').trim() === '')
     .map((button) => button.outerHTML));
   expect(unnamedIconButtons).toEqual([]);
-}
 });

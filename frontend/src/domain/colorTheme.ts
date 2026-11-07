@@ -2,8 +2,9 @@ export type ColorThemePreference = 'light' | 'dark' | 'system';
 
 const COLOR_THEME_PREFERENCE_KEY = 'ikuck-color-theme';
 const SYSTEM_COLOR_SCHEME_QUERY = '(prefers-color-scheme: dark)';
-const LIGHT_THEME_COLOR = '#247A4A';
-const DARK_THEME_COLOR = '#101613';
+/* Autumn warm palette — dark-first. Both light/dark use the same bg until light theme is approved. */
+const LIGHT_THEME_COLOR = '#191512';
+const DARK_THEME_COLOR = '#191512';
 
 let sessionColorThemePreference: ColorThemePreference | null = null;
 let sessionPreferencePersistenceFailed = false;

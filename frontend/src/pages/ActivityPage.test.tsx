@@ -43,7 +43,7 @@ describe('ActivityPage', () => {
   it('shows loading while activity hydration is pending', () => {
     render(<MemoryRouter><ActivityPage /></MemoryRouter>);
 
-    expect(screen.getByRole('status')).toHaveTextContent('Caricamento dell’attività…');
+    expect(screen.getByRole('status')).toHaveTextContent('Caricamento dell\'attività…');
     expect(hydrateActivityStoreMock).toHaveBeenCalledOnce();
   });
 

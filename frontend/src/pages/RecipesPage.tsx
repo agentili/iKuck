@@ -197,18 +197,16 @@ export default function RecipesPage() {
   return (
     <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-6xl px-4 pb-8 pt-5 sm:px-6 sm:pt-8 lg:px-8">
       <header className="ik-page-intro mb-5 max-w-2xl sm:mb-7">
-        <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">
-          Ricette · {scopeLabel(activeScope)}
-        </p>
-        <h1 className="mt-1 text-4xl font-black leading-[1.04] text-gray-950 sm:text-5xl">Ricette</h1>
-        <p className="mt-3 max-w-xl text-base leading-relaxed text-gray-700">
-          Le tue ricette salvate, quelle generate con l’AI e il catalogo della casa.
+        <p className="ik-eyebrow">Ricette · {scopeLabel(activeScope)}</p>
+        <h1 className="mt-1">Ricette</h1>
+        <p className="mt-3 max-w-xl text-base leading-relaxed text-[var(--color-text-muted)]">
+          Le tue ricette salvate, quelle generate con l'AI e il catalogo della casa.
         </p>
       </header>
 
       <div className="ik-kitchen-layout ik-kitchen-layout--two-columns mt-4">
         <div className="ik-kitchen-column min-w-0">
-        <section aria-label="Ricerca tra le ricette" className="rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] p-4 sm:p-5 mb-6">
+        <section aria-label="Ricerca tra le ricette" className="ik-surface rounded-[var(--radius-panel)] p-4 sm:p-5 mb-6">
           <div className="min-w-0 flex-1">
             <label className="sr-only">Cerca ricette</label>
             <input
@@ -218,9 +216,9 @@ export default function RecipesPage() {
               placeholder="Cerca per titolo o ingrediente…"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              className="block min-h-11 w-full rounded-xl border-2 border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-emerald-700 focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-emerald-700 sm:text-base"
+              className="ik-input min-h-11 w-full"
             />
-            <p className="mt-2 text-xs text-gray-600">
+            <p className="mt-2 text-xs text-[var(--color-text-muted)]">
               Filtra live per titolo o ingrediente; nessun dato lascia il dispositivo.
             </p>
           </div>
@@ -235,7 +233,7 @@ export default function RecipesPage() {
           description="Le ricette che hai salvato dal Diario, disponibili anche offline."
           action={
             libraryLoading && (
-              <p role="status" className="text-sm font-semibold text-emerald-900">
+              <p role="status" className="text-sm font-semibold text-[var(--color-primary)]">
                 Carico le tue ricette salvate…
               </p>
             )
@@ -268,12 +266,12 @@ export default function RecipesPage() {
         </PageSection>
 
         <PageSection
-          eyebrow="Generate con l’AI"
+          eyebrow="Generate con l'AI"
           title={AI_GROUP_LABEL}
           titleId="ai-recipes-title"
           action={
             savedLoading && (
-              <p role="status" className="text-sm font-semibold text-emerald-900">
+              <p role="status" className="text-sm font-semibold text-[var(--color-primary)]">
                 Carico le tue ricette AI…
               </p>
             )
@@ -281,19 +279,19 @@ export default function RecipesPage() {
         >
           {savedError !== null && <ErrorBanner message={savedError} />}
           {!verified && (
-            <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50/70 p-5 sm:p-6">
+            <div className="ik-status-warning rounded-2xl p-5 sm:p-6">
               <div className="flex items-start gap-3">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-emerald-700 text-white">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[var(--color-primary)] text-[var(--color-on-primary-action)]">
                   <LockKeyhole size={19} aria-hidden="true" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-xl font-black text-gray-950">Ricette AI riservate agli account verificati</h3>
-                  <p className="mt-1 text-sm leading-relaxed text-gray-700">
+                  <h3 className="text-xl font-black text-[var(--color-text)]">Ricette AI riservate agli account verificati</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-[var(--color-text-muted)]">
                     Le ricette AI richiedono un account verificato: accedi per vedere e gestire le tue ricette salvate.
                   </p>
                   <Link
                     to="/profile"
-                    className="mt-3 inline-flex min-h-11 items-center rounded-xl border-2 border-emerald-700 px-4 py-2 font-bold text-emerald-900 hover:bg-emerald-50"
+                    className="ik-button-secondary mt-3 min-h-11"
                   >
                     Accedi al tuo account
                   </Link>
@@ -333,7 +331,7 @@ export default function RecipesPage() {
               text={`Nessuna ricetta trovata per «${query}». Prova un altro titolo o ingrediente.`}
               action={{
                 label: 'Trova ricette',
-                href: '/',
+                href: '/pantry',
                 ariaLabel: 'Trova ricette',
               }}
             />

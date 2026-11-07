@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { useAuthStore } from './auth/authStore';
@@ -148,7 +148,7 @@ describe('App synchronization lifecycle', () => {
     try {
       await waitFor(() => expect(initializeSessionScope).toHaveBeenCalled());
       const alert = await screen.findByRole('alert');
-      expect(alert).toHaveTextContent(/verificare l’ambito della Casa/i);
+      expect(alert).toHaveTextContent(/Non è stato possibile verificare l..mbito della Casa/i);
       expect(screen.getByRole('navigation', { name: 'Navigazione principale' })).toBeVisible();
       expect(screen.getByRole('button', { name: 'Riprova' })).toBeVisible();
       expect(screen.queryByText('Dispensa privata House')).not.toBeInTheDocument();
@@ -159,7 +159,7 @@ describe('App synchronization lifecycle', () => {
       expect(fetchMock).toHaveBeenNthCalledWith(1, '/v1/house', expect.objectContaining({ method: 'GET' }));
 
       screen.getByRole('button', { name: 'Riprova' }).click();
-      expect(await screen.findByRole('heading', { name: 'Cucina viva' })).toBeVisible();
+      expect(await screen.findByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
       expect(fetchMock).toHaveBeenNthCalledWith(2, '/v1/house', expect.objectContaining({ method: 'GET' }));
       expect(getActiveDataScope()).toBe('account:user-1');
       await waitFor(() => expect(syncVerifiedSession).toHaveBeenCalledOnce());
@@ -296,7 +296,7 @@ describe('App synchronization lifecycle', () => {
     render(<App />);
 
     expect(restoreSession).toHaveBeenCalledOnce();
-    await screen.findByRole('heading', { name: 'Cucina viva' });
+    await screen.findByRole('heading', { name: 'La tua dispensa' });
   });
 
   it('hydrates pantry data before an authenticated profile uses it', async () => {
@@ -354,30 +354,33 @@ describe('App synchronization lifecycle', () => {
 
     expect(await screen.findByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
     expect(screen.getByLabelText('Ingredienti presenti')).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Dispensa' })).toHaveAttribute('href', '/pantry');
-    expect(screen.getByRole('link', { name: 'Dispensa' })).toHaveAttribute('aria-current', 'page');
+    // TabBar is the second navigation with role="navigation" and name="Navigazione principale"
+    const navigations = screen.getAllByRole('navigation', { name: 'Navigazione principale' });
+    const tabBarNav = navigations[navigations.length - 1];
+    const dispensaLink = within(tabBarNav).getByRole('link', { name: 'Dispensa' });
+    expect(dispensaLink).toHaveAttribute('href', '/pantry');
+    expect(dispensaLink).toHaveAttribute('aria-current', 'page');
 
     window.history.pushState({}, '', '/');
   });
 
-  it('keeps Home focused on cooking and sends pantry editing to its section', async () => {
+  it('shows the pantry as the primary landing section', async () => {
     usePantryStore.setState({
       hasHydrated: true,
       pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
       pantryLots: [],
     });
-    window.history.pushState({}, '', '/');
+    window.history.pushState({}, '', '/pantry');
 
     render(<App />);
 
-    expect(await screen.findByRole('heading', { name: 'Cucina viva' })).toBeVisible();
-    expect(screen.queryByLabelText('Ingredienti presenti')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Apri tutta la dispensa' })).toHaveAttribute('href', '/pantry');
-    expect(screen.getByRole('button', { name: 'Trova ricette' })).toBeEnabled();
+    await screen.findByRole('heading', { name: 'La tua dispensa' });
+    expect(screen.getByLabelText('Ingredienti presenti')).toBeVisible();
+    expect(screen.queryByRole('link', { name: 'Apri tutta la dispensa' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Vai alle ricette' })).toBeEnabled();
   });
 
   it.each([
-    ['/', 'Cucina viva'],
     ['/pantry', 'La tua dispensa'],
     ['/recipes/pasta-tonno-pomodoro', 'Pasta tonno e pomodoro'],
     ['/profile', 'Accedi al tuo profilo'],

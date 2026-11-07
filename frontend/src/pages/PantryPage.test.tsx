@@ -111,14 +111,14 @@ describe('PantryPage', () => {
     const pantry = screen.getByRole('list', { name: 'La tua dispensa' });
     expect(within(pantry).getByText('Pasta')).toBeVisible();
     expect(within(pantry).getByText('Tonno')).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Vai alle ricette' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('button', { name: 'Vai alle ricette' })).toBeEnabled();
   });
 
   it('does not expose a keyboard-activatable recipe link while the pantry is empty', () => {
     renderPantry();
 
-    expect(screen.queryByRole('link', { name: 'Vai alle ricette' })).not.toBeInTheDocument();
-    expect(screen.getByText('Vai alle ricette')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.queryByRole('button', { name: 'Vai alle ricette' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Vai alle ricette' })).toBeDisabled();
   });
 
   it('offers known ingredients while an ingredient is being typed', async () => {

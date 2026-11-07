@@ -74,7 +74,7 @@ export default function IngredientInput({ onAdd, idBase = 'pantry' }: Ingredient
 
   return (
     <form onSubmit={handleSubmit} className="relative space-y-3">
-      <label htmlFor={`${idBase}-input`} className="block text-sm font-semibold text-gray-700">
+      <label htmlFor={`${idBase}-input`} className="block text-sm font-semibold text-[var(--color-text)]">
         Ingredienti presenti
       </label>
       <div className="ik-ingredient-entry flex gap-3">
@@ -98,16 +98,16 @@ export default function IngredientInput({ onAdd, idBase = 'pantry' }: Ingredient
           aria-describedby={`${idBase}-input-help`}
           placeholder="es. pasta, pomodori, tonno"
           autoComplete="off"
-          className="ik-input min-h-12 flex-1 rounded-2xl border-2 border-gray-200 bg-white px-4 py-3 text-base text-gray-900 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+          className="ik-input min-h-12 flex-1"
         />
-        <button type="submit" className="ik-button-primary inline-flex min-h-12 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-2xl bg-emerald-700 px-3 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800 sm:px-5 sm:text-base">
+        <button type="submit" className="ik-button-primary inline-flex min-h-12 shrink-0 items-center justify-center gap-2 whitespace-nowrap sm:px-5 sm:text-base">
           <Plus size={19} aria-hidden="true" />
           Aggiungi ingredienti
         </button>
       </div>
-      <p id={`${idBase}-input-help`} className="text-sm text-gray-600">Separa più ingredienti con una virgola. Puoi usare anche le frecce e Invio per scegliere un suggerimento.</p>
+      <p id={`${idBase}-input-help`} className="text-sm text-[var(--color-text-muted)]">Separa più ingredienti con una virgola. Puoi usare anche le frecce e Invio per scegliere un suggerimento.</p>
       {showSuggestions && (
-        <ul id={`${idBase}-suggestions`} role="listbox" aria-label="Ingredienti suggeriti" className="absolute left-0 right-0 z-20 grid gap-1 rounded-2xl border border-gray-200 bg-white p-2 shadow-xl sm:right-auto sm:min-w-72">
+        <ul id={`${idBase}-suggestions`} role="listbox" aria-label="Ingredienti suggeriti" className="absolute left-0 right-0 z-20 grid gap-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-[var(--shadow-lift)] sm:right-auto sm:min-w-72">
           {suggestions.map((ingredient) => (
             <li
               key={ingredient.id}
@@ -116,7 +116,7 @@ export default function IngredientInput({ onAdd, idBase = 'pantry' }: Ingredient
               aria-selected={ingredient.id === activeSuggestion?.id}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => handleSuggestion(ingredient.label)}
-              className={`flex min-h-11 cursor-pointer items-center rounded-xl px-3 py-2 text-left font-medium text-gray-800 hover:bg-emerald-50 ${ingredient.id === activeSuggestion?.id ? 'bg-emerald-100' : ''}`}
+              className={`flex min-h-11 cursor-pointer items-center rounded-xl px-3 py-2 text-left font-medium text-[var(--color-text)] hover:bg-[var(--color-border)] ${ingredient.id === activeSuggestion?.id ? 'bg-[var(--color-border)]' : ''}`}
             >
               {ingredient.label}
             </li>

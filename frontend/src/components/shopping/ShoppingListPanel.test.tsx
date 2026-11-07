@@ -69,7 +69,7 @@ describe('ShoppingListPanel', () => {
     await user.type(screen.getByLabelText('Quantità da acquistare'), '500');
     await user.click(screen.getByRole('button', { name: 'Aggiungi alla lista' }));
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Se indichi una quantità, scegli anche l’unità.');
+    expect(screen.getByRole('alert')).toHaveTextContent('Se indichi una quantità, scegli anche l\'unità.');
     expect(onAdd).not.toHaveBeenCalled();
   });
 

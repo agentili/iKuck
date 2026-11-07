@@ -78,15 +78,17 @@ export default function ShoppingListPage() {
 
   if (!hasHydrated) {
     return (
-      <main className="mx-auto flex min-h-screen w-full max-w-4xl items-center justify-center px-4 py-8">
-        <p role="status" className="rounded-2xl border border-gray-200 bg-white px-5 py-4 font-semibold text-gray-700">Caricamento della lista…</p>
+      <main className="ik-page mx-auto flex min-h-screen w-full max-w-4xl items-center justify-center px-4 py-8">
+        <div className="ik-surface rounded-2xl p-5 text-center">
+          <p role="status" className="font-semibold text-[var(--color-text)]">Caricamento della lista…</p>
+        </div>
       </main>
     );
   }
 
   return (
     <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-4xl px-4 pb-8 pt-5 sm:px-6 sm:pt-8 lg:px-8">
-      <Link to="/" className="ik-back-link inline-flex min-h-11 items-center gap-2 rounded-xl px-2 py-2 font-semibold text-emerald-800 hover:bg-emerald-50">
+      <Link to="/recipes" className="ik-back-link inline-flex min-h-11 items-center gap-2 rounded-xl px-2 py-2 font-semibold hover:underline">
         <ArrowLeft size={18} aria-hidden="true" /> Torna alle ricette
       </Link>
       <div className="mt-6">
@@ -95,18 +97,18 @@ export default function ShoppingListPage() {
           <button type="button" aria-pressed={source === 'bring'} onClick={() => chooseSource('bring')} className="ik-button-secondary min-h-11 px-4">Bring!</button>
         </div>
         {providerChecking ? (
-          <p role="status">Verifico quale lista aprire…</p>
+          <p role="status" className="text-[var(--color-text-muted)]">Verifico quale lista aprire…</p>
         ) : currentProviderError !== null ? (
-          <p role="alert">{currentProviderError} Seleziona Bring! per riprovare il collegamento.</p>
+          <p role="alert" className="ik-status-danger rounded-xl p-4">{currentProviderError} Seleziona Bring! per riprovare il collegamento.</p>
         ) : source === 'ikuck' ? (
           <ShoppingListPanel items={items} onAdd={addItem} onTogglePurchased={togglePurchased} onRemove={removeItem} onRestoreItem={restoreItem} onUpdate={updateItem} onClearPurchased={clearPurchased} />
         ) : canUseBring ? (
           <BringIntegration key={`${user!.id}:${csrfToken!}`} userId={user!.id} csrfToken={csrfToken!} />
         ) : (
           <section className="ik-surface ik-surface--feature rounded-3xl p-4">
-            <h2 className="text-2xl font-black">Lista Bring!</h2>
-            <p>Per collegare Bring! accedi a un account iKuck verificato. La lista iKuck resta utilizzabile senza account e offline.</p>
-            <Link to="/profile" className="ik-back-link inline-flex min-h-11 items-center">Accedi o verifica il tuo account</Link>
+            <h2 className="text-2xl font-black text-[var(--color-text)]">Lista Bring!</h2>
+            <p className="mt-2 text-[var(--color-text-muted)]">Per collegare Bring! accedi a un account iKuck verificato. La lista iKuck resta utilizzabile senza account e offline.</p>
+            <Link to="/profile" className="ik-back-link inline-flex min-h-11 items-center mt-4">Accedi o verifica il tuo account</Link>
           </section>
         )}
       </div>

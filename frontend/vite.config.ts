@@ -73,8 +73,8 @@ export default defineConfig({
         scope: '/',
         display: 'standalone',
         orientation: 'portrait-primary',
-        theme_color: '#247A4A',
-        background_color: '#FAFBF7',
+        theme_color: '#191512',
+        background_color: '#191512',
         lang: 'it',
         categories: ['food', 'lifestyle'],
         shortcuts: [

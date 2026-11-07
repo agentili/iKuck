@@ -347,7 +347,7 @@ describe('HomePage recipe search', () => {
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
     expect(usePantryStore.getState().pantryItems).toEqual(selectedSnapshot.pantryItems);
     await expect(readPantrySnapshot('guest')).resolves.toMatchObject(selectedSnapshot);
-    await user.click(screen.getByRole('link', { name: 'Vai alle ricette' }));
+    await user.click(screen.getByRole('button', { name: 'Vai alle ricette' }));
 
     expect(screen.getByText('Riso')).toBeVisible();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();

@@ -17,8 +17,10 @@ export default function ActivityPage() {
 
   if (!hasHydrated) {
     return (
-      <main className="mx-auto flex min-h-screen w-full max-w-4xl items-center justify-center px-4 py-8">
-        <p role="status" className="rounded-2xl border border-gray-200 bg-white px-5 py-4 font-semibold text-gray-700">Caricamento dell’attività…</p>
+      <main className="ik-page mx-auto flex min-h-screen w-full max-w-4xl items-center justify-center px-4 py-8">
+        <div className="ik-surface rounded-2xl p-5 text-center">
+          <p role="status" className="font-semibold text-[var(--color-text)]">Caricamento dell'attività…</p>
+        </div>
       </main>
     );
   }
