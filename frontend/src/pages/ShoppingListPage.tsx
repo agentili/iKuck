@@ -1,4 +1,3 @@
-import { ArrowLeft } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../auth/authStore';
@@ -88,9 +87,6 @@ export default function ShoppingListPage() {
 
   return (
     <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-4xl px-4 pb-8 pt-5 sm:px-6 sm:pt-8 lg:px-8">
-      <Link to="/recipes" className="ik-back-link inline-flex min-h-11 items-center gap-2 rounded-xl px-2 py-2 font-semibold hover:underline">
-        <ArrowLeft size={18} aria-hidden="true" /> Torna alle ricette
-      </Link>
       <div className="mt-6">
         <div role="group" aria-label="Origine della lista" className="mb-4 flex flex-wrap gap-2">
           <button type="button" aria-pressed={source === 'ikuck'} onClick={() => chooseSource('ikuck')} className="ik-button-secondary min-h-11 px-4">iKuck</button>
