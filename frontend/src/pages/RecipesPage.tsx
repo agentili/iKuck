@@ -206,7 +206,7 @@ export default function RecipesPage() {
 
       <div className="ik-kitchen-layout ik-kitchen-layout--two-columns mt-4">
         <div className="ik-kitchen-column min-w-0">
-        <section aria-label="Ricerca tra le ricette" className="ik-surface rounded-[var(--radius-panel)] p-4 sm:p-5 mb-6">
+        <section aria-label="Ricerca tra le ricette" className="ik-surface ik-surface--feature rounded-[var(--radius-feature)] border-2 border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm sm:p-6 mb-6">
           <div className="min-w-0 flex-1">
             <label className="sr-only">Cerca ricette</label>
             <input

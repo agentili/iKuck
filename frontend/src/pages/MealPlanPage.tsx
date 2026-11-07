@@ -98,7 +98,7 @@ export default function MealPlanPage() {
         </p>
       </header>
 
-      <div className="ik-surface rounded-[var(--radius-panel)] border-2 border-[var(--color-border)] p-4 shadow-sm mb-6">
+      <div className="ik-surface ik-surface--feature rounded-[var(--radius-feature)] border-2 border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm mb-6">
         <div className="flex items-center justify-between">
           <Button variant="ghost" size="sm" onClick={() => setWeekStart(addDays(weekStart, -7))} aria-label="Settimana precedente">
             <ChevronLeft size={20} aria-hidden="true" />
@@ -192,7 +192,7 @@ export default function MealPlanPage() {
 
       {showRecipePicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="ik-surface rounded-[var(--radius-panel)] border-2 border-[var(--color-border)] w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
+          <div className="ik-surface ik-surface--feature rounded-[var(--radius-feature)] border-2 border-[var(--color-border)] bg-[var(--color-surface)] w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col shadow-sm">
             <header className="p-4 border-b border-[var(--color-border)] flex items-center justify-between">
               <h2 className="text-lg font-bold text-[var(--color-text)]">Scegli una ricetta</h2>
               <Button variant="ghost" size="sm" onClick={() => setShowRecipePicker(null)} aria-label="Chiudi">

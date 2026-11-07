@@ -226,7 +226,7 @@ export default function PantryPage() {
   if (!hasHydrated) {
     return (
       <main className="ik-page mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
-        <div className="ik-surface rounded-2xl p-5 text-center">
+        <div className="ik-surface ik-surface--feature rounded-[var(--radius-feature)] border-2 border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm text-center">
           <p role="status" className="font-semibold text-[var(--color-text)]">
             Caricamento della tua dispensa…
           </p>

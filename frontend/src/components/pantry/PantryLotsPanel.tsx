@@ -75,7 +75,7 @@ export default function PantryLotsPanel({ ingredients, lots, onAddLot, onRemoveL
 
   return (
     <>
-    <details aria-labelledby="pantry-lots-title" className="ik-surface">
+    <details aria-labelledby="pantry-lots-title" className="ik-surface ik-surface--feature rounded-[var(--radius-feature)] border-2 border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm sm:p-6">
       <summary className="cursor-pointer list-none">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -91,7 +91,7 @@ export default function PantryLotsPanel({ ingredients, lots, onAddLot, onRemoveL
           const aggregate = aggregates.find((item) => item.ingredientId === ingredient.id);
           const newEditorKey = `new:${ingredient.id}`;
           return (
-            <article key={ingredient.id} className="ik-surface">
+            <article key={ingredient.id} className="ik-card p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h4 className="font-bold text-[var(--color-text)]">Lotti di {ingredient.label}</h4>

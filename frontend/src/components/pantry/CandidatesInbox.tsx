@@ -142,11 +142,11 @@ export default function CandidatesInbox({ houseId }: CandidatesInboxProps) {
   if (!ready) return null;
 
   return (
-    <section aria-label="Da confermare" className="ik-surface ik-surface--feature mt-6 rounded-3xl border-2 border-emerald-200 bg-white p-4 shadow-sm sm:mt-8 sm:p-6">
+    <section aria-label="Da confermare" className="ik-surface ik-surface--feature mt-6 rounded-[var(--radius-feature)] border-2 border-[var(--color-accent)] bg-[var(--color-surface)] p-4 shadow-sm sm:mt-8 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 id="candidates-title" className="text-lg font-bold text-gray-950">Da confermare</h2>
-          <p className="mt-1 text-sm text-gray-600">
+          <h2 id="candidates-title" className="text-lg font-bold text-[var(--color-text)]">Da confermare</h2>
+          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
             Articoli spuntati su Bring! da confermare nella dispensa.
           </p>
         </div>
@@ -154,7 +154,7 @@ export default function CandidatesInbox({ houseId }: CandidatesInboxProps) {
           <button
             type="button"
             onClick={() => setSelectedIds(new Set())}
-            className="min-h-10 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-800 hover:bg-gray-50"
+            className="min-h-10 rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm font-semibold text-[var(--color-text)] hover:bg-[var(--color-surface)]"
           >
             Annulla selezione
           </button>
@@ -162,12 +162,12 @@ export default function CandidatesInbox({ houseId }: CandidatesInboxProps) {
       </div>
 
       {error !== null && (
-        <div role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-950">
+        <div role="alert" className="mt-4 rounded-xl border border-[var(--color-danger)] bg-[var(--color-danger)]/10 px-4 py-3 text-sm text-[var(--color-danger)]">
           {reasonMessage(error.code)}
           <button
             type="button"
             onClick={handleRetry}
-            className="mt-2 inline-flex min-h-10 items-center gap-1 rounded-lg border border-red-300 px-3 py-1.5 text-sm font-bold text-red-800 hover:bg-red-100"
+            className="mt-2 inline-flex min-h-10 items-center gap-1 rounded-lg border border-[var(--color-danger)] px-3 py-1.5 text-sm font-bold text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
           >
             <Trash2 size={14} aria-hidden="true" />
             Riprova
@@ -176,14 +176,14 @@ export default function CandidatesInbox({ houseId }: CandidatesInboxProps) {
       )}
 
       {loading && candidates.length === 0 && (
-        <p role="status" className="mt-4 rounded-2xl border border-dashed border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-950">
+        <p role="status" className="mt-4 rounded-[var(--radius-panel)] border border-dashed border-[var(--color-accent)] bg-[var(--color-accent)]/10 px-4 py-3 text-sm font-medium text-[var(--color-accent)]">
           <Loader2 size={16} className="mr-2" aria-hidden="true" />
           Caricamento degli articoli da confermare…
         </p>
       )}
 
       {candidates.length === 0 && !loading && (
-        <p role="status" className="mt-4 rounded-2xl border border-dashed border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-950">
+        <p role="status" className="mt-4 rounded-[var(--radius-panel)] border border-dashed border-[var(--color-accent)] bg-[var(--color-accent)]/10 px-4 py-3 text-sm font-medium text-[var(--color-accent)]">
           <Mail size={18} aria-hidden="true" />
           Nessun articolo da confermare.
         </p>

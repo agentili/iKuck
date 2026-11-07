@@ -54,14 +54,14 @@ export default function ActivityPanel({ events, preferences, onRemoveEvent, onRe
       }
     >
       <div className="mt-6 grid gap-6">
-        <section aria-labelledby="cooking-history-title">
+        <section aria-labelledby="cooking-history-title" className="ik-surface ik-surface--feature rounded-[var(--radius-feature)] border-2 border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm sm:p-6">
           <h2 id="cooking-history-title" className="text-xl font-black text-[var(--color-text)]">Ricette cucinate</h2>
           {events.length === 0 ? (
             <EmptyState text="Non hai ancora segnato ricette come cucinate." />
           ) : (
             <ul className="mt-3 grid gap-3">
               {events.map((event) => (
-                <li key={event.id} className="ik-surface flex items-start gap-3 p-4">
+                <li key={event.id} className="ik-card p-4 flex items-start gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="font-bold text-[var(--color-text)]">{event.recipeTitle}</p>
                     <p className="mt-1 text-sm text-[var(--color-text-muted)]">{formatDate(event.cookedAt)} · {event.servings} {event.servings === 1 ? 'porzione' : 'porzioni'}</p>
@@ -83,13 +83,13 @@ export default function ActivityPanel({ events, preferences, onRemoveEvent, onRe
         </section>
 
         {preferences.length > 0 && (
-          <section aria-labelledby="recipe-preferences-title">
+          <section aria-labelledby="recipe-preferences-title" className="ik-surface ik-surface--feature rounded-[var(--radius-feature)] border-2 border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm sm:p-6">
             <h2 id="recipe-preferences-title" className="text-xl font-black text-[var(--color-text)]">Preferiti e valutazioni</h2>
             <ul className="mt-3 grid gap-3 sm:grid-cols-2">
               {preferences.map((preference) => {
                 const title = getRecipeById(preference.recipeId)?.title ?? preference.recipeId;
                 return (
-                  <li key={preference.recipeId} className="ik-surface border-2 border-[var(--color-accent)] p-4">
+                  <li key={preference.recipeId} className="ik-card p-4">
                     <p className="font-bold text-[var(--color-text)]">{title}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-3 text-sm font-semibold text-[var(--color-text-muted)]">
                       {preference.favorite && <span className="inline-flex items-center gap-1"><Heart size={16} fill="currentColor" aria-hidden="true" /> Preferita</span>}

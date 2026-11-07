@@ -266,13 +266,13 @@ export default function BringIntegration({ userId, csrfToken }: { userId: string
   const disconnected = status === null || !status.connected || status.connectionId === null || reconnect;
 
   return (
-    <section className="ik-surface ik-surface--feature rounded-3xl border-2 bg-white p-4 sm:p-6" aria-labelledby="bring-title">
-      <h2 id="bring-title" className="text-3xl font-black">Lista Bring!</h2>
-      <p className="mt-2 text-[var(--ik-ink-muted)]">La lista resta su Bring! e richiede Internet. La lista iKuck rimane separata.</p>
+    <section className="ik-surface ik-surface--feature rounded-[var(--radius-feature)] border-2 border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm sm:p-6" aria-labelledby="bring-title">
+      <h2 id="bring-title" className="text-3xl font-black text-[var(--color-text)]">Lista Bring!</h2>
+      <p className="mt-2 text-[var(--color-text-muted)]">La lista resta su Bring! e richiede Internet. La lista iKuck rimane separata.</p>
       {!online && <p role="status" className="mt-3">Sei offline: i dati Bring! mostrati potrebbero non essere aggiornati. Le modifiche sono disabilitate.</p>}
       {busy && <p role="status" className="mt-3">Operazione Bring! in corso…</p>}
-      {error !== null && <p role="alert" className="mt-3 text-[var(--ik-tomato)]">{error}</p>}
-      {message !== null && <p role="status" className="mt-3 text-[var(--ik-basil-dark)]">{message}</p>}
+      {error !== null && <p role="alert" className="mt-3 text-[var(--color-danger)]">{error}</p>}
+      {message !== null && <p role="status" className="mt-3 text-[var(--color-primary)]">{message}</p>}
 
       {!sessionMatches ? (
         <p role="status" className="mt-4">Collega Bring! con una sessione verificata iKuck.</p>
