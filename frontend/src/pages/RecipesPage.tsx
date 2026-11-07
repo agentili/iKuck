@@ -238,6 +238,7 @@ export default function RecipesPage() {
               </p>
             )
           }
+          featured
         >
           {libraryError !== null && <ErrorBanner message={libraryError} />}
           {!libraryLoading && libraryError === null && libraryRecipes.length === 0 && (
@@ -276,6 +277,7 @@ export default function RecipesPage() {
               </p>
             )
           }
+          featured
         >
           {savedError !== null && <ErrorBanner message={savedError} />}
           {!verified && (
