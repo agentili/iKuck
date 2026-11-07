@@ -1,4 +1,4 @@
-import { Package, BookOpen, ShoppingBasket, Clock, UserRound } from 'lucide-react';
+import { Package, BookOpen, ShoppingBasket, Clock, Calendar } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { memo } from 'react';
 
@@ -6,8 +6,8 @@ const TAB_ITEMS = [
   { path: '/pantry', label: 'Dispensa', icon: Package },
   { path: '/recipes', label: 'Ricette', icon: BookOpen },
   { path: '/shopping-list', label: 'Spesa', icon: ShoppingBasket },
+  { path: '/meal-plan', label: 'Piano', icon: Calendar },
   { path: '/activity', label: 'Attività', icon: Clock },
-  { path: '/profile', label: 'Profilo', icon: UserRound },
 ] as const;
 
 export const TabBar = memo(() => {

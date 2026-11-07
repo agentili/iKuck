@@ -174,7 +174,7 @@ test('keeps focus indicators visible for links, controls and summaries', async (
   await page.goto('/shopping-list');
 
   const focusableSelectors = [
-    page.getByRole('link', { name: 'Cucina' }),
+    page.getByRole('link', { name: 'Dispensa' }),
     page.getByLabel('Cosa ti serve?'),
     page.getByRole('button', { name: 'Aggiungi alla lista' }),
     page.getByText('Aggiungi dettagli (facoltativi)'),
@@ -213,7 +213,7 @@ test('keeps pantry recipe action compact at 200% text zoom', async ({ page }) =>
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
 
   await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
-  const recipeAction = page.getByRole('link', { name: 'Vai alle ricette' });
+  const recipeAction = page.getByRole('button', { name: 'Vai alle ricette' });
   await recipeAction.scrollIntoViewIfNeeded();
   const recipeActionBox = await recipeAction.boundingBox();
 
@@ -224,13 +224,16 @@ test('keeps pantry recipe action compact at 200% text zoom', async ({ page }) =>
 
 test('keeps primary navigation fixed and touch-friendly on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/recipes/pasta-tonno-pomodoro');
-  await expect(page.getByRole('heading', { name: 'Pasta tonno e pomodoro' })).toBeVisible();
+  await page.goto('/pantry');
 
   const navigation = page.getByRole('navigation', { name: 'Navigazione principale' });
-  expect(await navigation.evaluate((element) => window.getComputedStyle(element).position)).toBe('fixed');
+  await expect(navigation).toBeVisible();
+  await expect(navigation).toHaveCount(1);
 
-  for (const name of ['Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario']) {
+  const position = await navigation.evaluate((element) => window.getComputedStyle(element).position);
+  expect(position).toBe('fixed');
+
+  for (const name of ['Dispensa', 'Ricette', 'Spesa', 'Attività', 'Profilo']) {
     const box = await navigation.getByRole('link', { name }).boundingBox();
     expect(box, `${name} should have a measurable touch target`).not.toBeNull();
     expect(box!.width).toBeGreaterThanOrEqual(44);
@@ -246,13 +249,13 @@ test('keeps primary navigation fixed and touch-friendly on mobile', async ({ pag
 
 test('keeps mobile navigation labels concise and on one line', async ({ page }) => {
   const scenarios = [
-    { width: 390, height: 844, zoom: false, labels: ['Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario'] },
-    { width: 320, height: 700, zoom: true, labels: ['Cucina', 'Ric.', 'Disp.', 'Spesa', 'Diario'] },
+    { width: 390, height: 844, zoom: false, labels: ['Dispensa', 'Ricette', 'Spesa', 'Attività', 'Profilo'] },
+    { width: 320, height: 700, zoom: true, labels: ['Dispensa', 'Ricette', 'Spesa', 'Attività', 'Profilo'] },
   ];
 
   for (const scenario of scenarios) {
     await page.setViewportSize({ width: scenario.width, height: scenario.height });
-    await page.goto('/');
+    await page.goto('/pantry');
     if (scenario.zoom) {
       await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
     }
@@ -281,7 +284,7 @@ test('keeps mobile navigation labels concise and on one line', async ({ page }) 
 
     expect(items.map((item) => item.label)).toEqual(scenario.labels);
     expect(items.every((item) => !item.wraps), JSON.stringify(items)).toBe(true);
-    expect(items.map((item) => item.accessibleName)).toEqual(['Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario']);
+    expect(items.map((item) => item.accessibleName)).toEqual(['Dispensa', 'Ricette', 'Spesa', 'Attività', 'Profilo']);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
   }
 });
@@ -312,7 +315,7 @@ test('respects reduced motion, heading order and icon-only accessible names', as
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/recipes/pasta-tonno-pomodoro');
 
-  const transitionDuration = await page.getByRole('link', { name: 'Cucina' }).evaluate((element) => (
+  const transitionDuration = await page.getByRole('link', { name: 'Dispensa' }).evaluate((element) => (
     window.getComputedStyle(element).transitionDuration
   ));
   expect(transitionDuration).toBe('0s');

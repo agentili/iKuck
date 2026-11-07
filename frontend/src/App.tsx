@@ -25,11 +25,12 @@ const HousePage = lazy(() => import('./pages/HousePage'));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
-const ShoppingListPage = lazy(() => import('./pages/ShoppingListPage'));
 const ActivityPage = lazy(() => import('./pages/ActivityPage'));
 const DinnerDiaryPage = lazy(() => import('./pages/DinnerDiaryPage'));
 const RecipesPage = lazy(() => import('./pages/RecipesPage'));
 const PantryPage = lazy(() => import('./pages/PantryPage'));
+const MealPlanPage = lazy(() => import('./pages/MealPlanPage'));
+const ShoppingListPage = lazy(() => import('./pages/ShoppingListPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 const RouteLoading = () => (
@@ -222,6 +223,7 @@ export default function App() {
             <Route path="/recipes" element={<RecipesPage />} />
             <Route path="/recipes/:recipeId" element={<RecipeDetailPage />} />
             <Route path="/shopping-list" element={<ShoppingListPage />} />
+            <Route path="/meal-plan" element={<MealPlanPage />} />
             <Route path="/activity" element={<ActivityPage />} />
             <Route path="/dinner-diary" element={<DinnerDiaryPage />} />
             <Route path="/profile" element={<ProfilePage />} />
