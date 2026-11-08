@@ -9,6 +9,7 @@ import GoogleSignInButton from '../components/account/GoogleSignInButton';
 import { appVersion, buildId } from '../version';
 import { hasUnpersistedMotionPreference, isReducedMotionPreference, saveReducedMotionPreference } from '../domain/motionPreference';
 import { type ColorThemePreference, getColorThemePreference, hasUnpersistedColorTheme, saveColorThemePreference, subscribeColorTheme } from '../domain/colorTheme';
+import { type AccentThemeId, getAccentThemePreference, saveAccentThemePreference, subscribeAccentTheme, ACCENT_PALETTES } from '../domain/accentTheme';
 import ErrorBanner from '../components/ui/ErrorBanner';
 import PageSection from '../components/ui/PageSection';
 import { Button, Input } from '../components/shared';
@@ -57,6 +58,35 @@ function MotionPreferenceControl() {
       {storageUnavailable
         ? <p role="status" className="mt-2 text-sm font-semibold text-[var(--color-warning)]">La scelta vale solo finché l'app resta aperta: questo browser non consente di salvarla.</p>
         : <p className="mt-2 text-sm text-[var(--color-text-muted)]">Impostazione conservata solo in questo browser; il movimento ridotto del sistema operativo resta sempre rispettato.</p>}
+    </section>
+  );
+}
+
+function AccentThemePreferenceControl() {
+  const preference = useSyncExternalStore(subscribeAccentTheme, getAccentThemePreference, () => 'autumn');
+  const themes = Object.values(ACCENT_PALETTES);
+
+  const choosePreference = (nextPreference: AccentThemeId) => {
+    saveAccentThemePreference(nextPreference);
+  };
+
+  return (
+    <section aria-labelledby="accent-theme-title" className="ik-surface ik-profile-surface mt-5 rounded-2xl border-2 p-5">
+      <h2 id="accent-theme-title" className="text-xl font-black text-[var(--color-text)]">Colore base</h2>
+      <p className="mt-2 text-sm text-[var(--color-text-muted)]">Scegli la tonalità principale dell'interfaccia.</p>
+      <fieldset role="radiogroup" aria-labelledby="accent-theme-title" className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 border-0 p-0">
+        {themes.map((theme) => (
+          <label key={theme.id} className="group relative cursor-pointer rounded-xl border-4 p-2 transition-colors border-[var(--color-border)] bg-[var(--color-surface)] has-[:checked]:border-[var(--color-primary)] has-[:checked]:bg-[color-mix(in_srgb,var(--color-primary)_15%,var(--color-surface))]">
+            <input type="radio" name="accent-theme" value={theme.id} checked={preference === theme.id} onChange={() => choosePreference(theme.id)} className="sr-only" />
+            <div className="flex items-center justify-center gap-2">
+              <div className="w-6 h-6 rounded-full" style={{ backgroundColor: theme.primary }} aria-hidden="true" />
+              <span className="sr-only">{theme.name}</span>
+            </div>
+            <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-xs font-semibold text-[var(--color-text-muted)] group-has-[:checked]:text-[var(--color-primary)]">{theme.name}</span>
+          </label>
+        ))}
+      </fieldset>
+      <p className="mt-3 text-sm text-[var(--color-text-muted)]">La scelta è conservata solo in questo browser.</p>
     </section>
   );
 }
@@ -347,6 +377,7 @@ export default function ProfilePage() {
       </PageSection>
       <ThemePreferenceControl />
       <MotionPreferenceControl />
+      <AccentThemePreferenceControl />
     </main>
   );
 }

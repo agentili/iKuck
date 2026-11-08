@@ -92,13 +92,6 @@ export default defineConfig({
             url: '/shopping-list',
             icons: [{ src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
           },
-          {
-            name: 'Attività',
-            short_name: 'Attività',
-            description: 'Apri ricette cucinate e preferiti.',
-            url: '/activity',
-            icons: [{ src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
-          },
         ],
         icons: [
           {
