@@ -1,10 +1,8 @@
 import { memo, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { UserRound, Moon, Sun, Home, LogOut, X } from 'lucide-react';
+import { UserRound, Home, LogOut, X } from 'lucide-react';
 import { useAuthStore } from '../../auth/authStore';
 import { useHouseStore } from '../../house/houseStore';
-import { resolveColorTheme, saveColorThemePreference, subscribeColorTheme } from '../../domain/colorTheme';
-import { useSyncExternalStore } from 'react';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -15,10 +13,8 @@ export const ProfileModal = memo(({ isOpen, onClose }: ProfileModalProps) => {
   const user = useAuthStore((state) => state.user);
   const connection = useAuthStore((state) => state.connection);
   const house = useHouseStore((state) => state.state?.house ?? null);
-  const resolvedTheme = useSyncExternalStore(subscribeColorTheme, resolveColorTheme, () => 'light');
-  
+
   const modalRef = useRef<HTMLDivElement>(null);
-  const toggleTheme = () => saveColorThemePreference(resolvedTheme === 'dark' ? 'light' : 'dark');
 
   // Close on Escape
   useEffect(() => {
@@ -145,37 +141,28 @@ export const ProfileModal = memo(({ isOpen, onClose }: ProfileModalProps) => {
           </Link>
           
           <Link
-            to="/house"
-            onClick={onClose}
-            className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-[var(--ik-ink)] hover:bg-[var(--ik-sage)] transition-colors"
-          >
-            <Home className="w-5 h-5" aria-hidden="true" />
-            <span className="font-medium">Casa e condivisione</span>
-          </Link>
+                      to="/house"
+                      onClick={onClose}
+                      className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-[var(--ik-ink)] hover:bg-[var(--ik-sage)] transition-colors"
+                    >
+                      <Home className="w-5 h-5" aria-hidden="true" />
+                      <span className="font-medium">Casa e condivisione</span>
+                    </Link>
           
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-[var(--ik-ink)] hover:bg-[var(--ik-sage)] transition-colors"
-          >
-            {resolvedTheme === 'dark' ? <Sun className="w-5 h-5" aria-hidden="true" /> : <Moon className="w-5 h-5" aria-hidden="true" />}
-            <span className="font-medium">{resolvedTheme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}</span>
-          </button>
-          
-          {user && (
-            <button
-              type="button"
-              onClick={() => { useAuthStore.getState().logout(); onClose(); }}
-              className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-[var(--ik-tomato)] hover:bg-[var(--ik-tomato-soft)] transition-colors"
-            >
-              <LogOut className="w-5 h-5" aria-hidden="true" />
-              <span className="font-medium">Esci</span>
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-});
+                    {user && (
+                      <button
+                        type="button"
+                        onClick={() => { useAuthStore.getState().logout(); onClose(); }}
+                        className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-[var(--ik-tomato)] hover:bg-[var(--ik-tomato-soft)] transition-colors"
+                      >
+                        <LogOut className="w-5 h-5" aria-hidden="true" />
+                        <span className="font-medium">Esci</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          });
 
 ProfileModal.displayName = 'ProfileModal';
