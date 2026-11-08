@@ -113,7 +113,7 @@ export default function MealPlanPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {weekDays.map((day) => {
+        {weekDays.map((day, dayIndex) => {
           const dayKey = day.toISOString().split('T')[0];
           const weekDayNames = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
           const isTodayDay = isSameDay(day, new Date());
@@ -133,7 +133,7 @@ export default function MealPlanPage() {
               )}
               <header className="mb-3">
                 <time dateTime={dayKey} className="text-sm font-semibold text-[var(--color-text)]">
-                  {weekDayNames[day.getDay()]}
+                  {weekDayNames[dayIndex]}
                 </time>
                 <p className="text-xs text-[var(--color-text-muted)]">{day.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })}</p>
               </header>
@@ -162,7 +162,7 @@ export default function MealPlanPage() {
                       variant="ghost"
                       size="sm"
                       onClick={() => setShowRecipePicker(day.toISOString().split('T')[0])}
-                      aria-label={`Cambia ricetta per ${weekDayNames[day.getDay()]}`}
+                      aria-label={`Cambia ricetta per ${weekDayNames[dayIndex]}`}
                     >
                       <MoreHorizontal size={16} aria-hidden="true" />
                     </Button>
