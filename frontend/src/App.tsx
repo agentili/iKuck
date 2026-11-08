@@ -11,7 +11,6 @@ import { initializeSessionScope, listenForReconnect, syncVerifiedSession, type S
 import { getActiveDataScope, setActiveDataScope, subscribeActiveDataScope } from './sync/scopeContext';
 import { isScopePurgeMarkerUnavailable, isScopeWritable, subscribeScopeAvailability } from './sync/scopeWriteFence';
 import { hydrateShoppingListStore } from './store/shoppingListStore';
-import { hydrateActivityStore } from './store/activityStore';
 import { hydrateDietProfileStore } from './store/dietProfileStore';
 import { hydratePantryStore } from './store/localPantryStore';
 import { usePantryMergeNoticeStore } from './store/pantryMergeNoticeStore';
@@ -25,7 +24,6 @@ const HousePage = lazy(() => import('./pages/HousePage'));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
-const ActivityPage = lazy(() => import('./pages/ActivityPage'));
 const DinnerDiaryPage = lazy(() => import('./pages/DinnerDiaryPage'));
 const RecipesPage = lazy(() => import('./pages/RecipesPage'));
 const PantryPage = lazy(() => import('./pages/PantryPage'));
@@ -101,7 +99,6 @@ export default function App() {
       if (!active) return;
       await Promise.all([
         hydrateShoppingListStore(),
-        hydrateActivityStore(),
         hydrateDietProfileStore(),
       ]);
       if (!active) return;
@@ -224,7 +221,6 @@ export default function App() {
             <Route path="/recipes/:recipeId" element={<RecipeDetailPage />} />
             <Route path="/shopping-list" element={<ShoppingListPage />} />
             <Route path="/meal-plan" element={<MealPlanPage />} />
-            <Route path="/activity" element={<ActivityPage />} />
             <Route path="/dinner-diary" element={<DinnerDiaryPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/house" element={<HousePage />} />
