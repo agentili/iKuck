@@ -113,18 +113,19 @@ export default function MealPlanPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {weekDays.map((day, dayIndex) => {
+        {weekDays
+          .filter((day) => !isPast(day))
+          .map((day, dayIndex) => {
           const dayKey = day.toISOString().split('T')[0];
           const weekDayNames = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
           const isTodayDay = isSameDay(day, new Date());
-          const isPastDay = isPast(day);
           const plan = getDayPlan(day);
           const hasPlan = dayHasPlan(day);
 
           return (
             <article
               key={dayKey}
-              className={`ik-card p-4 relative ${isTodayDay ? 'border-2 border-[var(--color-primary)]' : ''} ${isPastDay ? 'opacity-60' : ''}`}
+              className={`ik-card p-4 relative ${isTodayDay ? 'border-2 border-[var(--color-primary)]' : ''}`}
             >
               {isTodayDay && (
                 <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-[var(--color-primary)] text-[var(--color-on-primary-action)] text-xs font-semibold px-2 py-0.5 rounded-full">
@@ -154,7 +155,7 @@ export default function MealPlanPage() {
                       variant="ghost"
                       size="sm"
                       onClick={(e) => { e.stopPropagation(); clearDay(day); }}
-                      aria-label={`Rimuovi ${plan.title} da ${weekDayNames[day.getDay()]}`}
+                      aria-label={`Rimuovi ${plan.title} da ${weekDayNames[dayIndex]}`}
                     >
                       <X size={16} aria-hidden="true" />
                     </Button>
@@ -171,14 +172,13 @@ export default function MealPlanPage() {
               ) : (
                 <div className="text-center py-4">
                   <p className="text-sm text-[var(--color-text-muted)] mb-3">
-                    {isPastDay ? 'Giorno passato' : 'Nessun pasto pianificato'}
+                    Nessun pasto pianificato
                   </p>
                   <Button
                     variant="primary"
                     size="sm"
                     className="w-full"
                     onClick={() => setShowRecipePicker(day.toISOString().split('T')[0])}
-                    disabled={isPastDay}
                   >
                     <Plus size={16} aria-hidden="true" />
                     Aggiungi ricetta
