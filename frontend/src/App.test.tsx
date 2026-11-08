@@ -385,7 +385,6 @@ describe('App synchronization lifecycle', () => {
     ['/recipes/pasta-tonno-pomodoro', 'Pasta tonno e pomodoro'],
     ['/profile', 'Accedi al tuo profilo'],
     ['/shopping-list', 'Lista della spesa'],
-    ['/activity', 'La tua attività'],
     ['/house', 'La mia casa'],
     ['/verify-email', 'Link non valido'],
     ['/reset-password', 'Reimposta la password'],
@@ -396,6 +395,16 @@ describe('App synchronization lifecycle', () => {
 
     expect(await screen.findByRole('heading', { name: heading })).toBeVisible();
     expect(window.location.pathname).toBe(path);
+  });
+
+  it('does not expose the removed Activity page', async () => {
+    window.history.pushState({}, '', '/activity');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'Pagina non trovata' })).toBeVisible();
+    expect(window.location.pathname).toBe('/activity');
+    window.history.pushState({}, '', '/');
   });
 
   it('renders the authorized profile route with the restored verified session', async () => {

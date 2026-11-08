@@ -83,7 +83,7 @@ describe('deployment contracts', () => {
     ]);
   });
 
-  it('builds API and frontend images with the shared package in context', () => {
+  it('builds the API with shared sources and serves the prebuilt frontend', () => {
     const repositoryRoot = resolve(process.cwd(), '..');
     const composeFiles = ['compose.dev.yml', 'deploy/docker-compose.production.yml', 'deploy/docker-compose.standalone.yml'];
 
@@ -96,7 +96,7 @@ describe('deployment contracts', () => {
     }
 
     expect(readFileSync(resolve(repositoryRoot, 'backend/Dockerfile'), 'utf8')).toContain('COPY shared /app/shared');
-    expect(readFileSync(resolve(repositoryRoot, 'deploy/Caddy.Dockerfile'), 'utf8')).toContain('COPY shared /shared');
+    expect(readFileSync(resolve(repositoryRoot, 'deploy/Caddy.Dockerfile'), 'utf8')).toContain('COPY frontend/dist /srv/frontend');
   });
 
   });

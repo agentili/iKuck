@@ -590,7 +590,7 @@ describe('AiRecipePanel', () => {
     );
 
     const homePanel = screen.getByRole('region', { name: 'Ricette AI private' });
-    const dinnerPanel = await screen.findByRole('region', { name: 'Consenso per ricostruire ricette' });
+    const dinnerPanel = await screen.findByRole('region', { name: 'Consenso AI per Dinner' });
     await userEvents.click(await within(homePanel).findByRole('button', { name: 'Genera ricetta AI' }));
     await userEvents.click(within(dinnerPanel).getByRole('button', { name: /revoca consenso AI globale/i }));
     await waitFor(() => expect(within(homePanel).getByRole('checkbox')).not.toBeChecked());

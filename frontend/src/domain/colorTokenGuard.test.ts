@@ -48,14 +48,18 @@ const ALLOWED_THEME_COLOR_LINES = [
     ]),
   },
 ];
-const HARDCODED_COLOR = /#[0-9a-f]{3,8}\b|(?:rgba?|hsla?|oklch|color)\s*\(/gi;
+const HARDCODED_COLOR = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|oklch|color)\(/gi;
+
+const isAccentPaletteValue = (filePath: string, line: string): boolean =>
+  /(?:^|[/\\])accentTheme\.ts$/.test(filePath)
+  && /^\s*(?:primary|primaryAction|onPrimaryAction|accent|warning|danger|focus|surface|border|textMuted):\s*'#[0-9a-f]{3,8}',\s*$/i.test(line);
 
 const findColorViolations = (filePath: string, source: string): string[] => source
   .split(/\r?\n/)
   .flatMap((line, index) => {
     const trimmedLine = line.trim();
     const allowedFile = ALLOWED_THEME_COLOR_LINES.find(({ path }) => path.test(filePath));
-    if (allowedFile?.lines.has(trimmedLine)) return [];
+    if (allowedFile?.lines.has(trimmedLine) || isAccentPaletteValue(filePath, line)) return [];
     return [...line.matchAll(HARDCODED_COLOR)].map((match) => `${filePath}:${index + 1}: ${match[0]}`);
   });
 

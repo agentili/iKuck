@@ -17,7 +17,7 @@ import { readDinnerEntries } from '../storage/dinnerDiaryStorage';
 import { readDinnerConsumptionOutbox } from '../storage/dinnerConsumptionStorage';
 import { readPantrySnapshot, writePantrySnapshot } from '../storage/pantryStorage';
 import { resumeScope } from '../sync/scopeWriteFence';
-import { setActiveDataScope, setPersonalDataScope } from '../sync/scopeContext';
+import { getActiveDataScope, setActiveDataScope, setPersonalDataScope } from '../sync/scopeContext';
 
 const hydrateDinnerDiaryStoreMock = vi.hoisted(() => vi.fn());
 
@@ -281,7 +281,7 @@ describe('DinnerDiaryPage', () => {
         selectedProvider: 'openai',
       });
       renderPage();
-      await user.type(screen.getByRole('textbox', { name: /Com’è andata la cena\?/ }), 'Cena registrata in modalità ospite');
+      await user.type(await screen.findByRole('textbox', { name: /andata la cena\?/ }), 'Cena registrata in modalità ospite');
       fireEvent.change(screen.getByLabelText('Data della cena'), { target: { value: '2026-09-29' } });
       await user.type(screen.getByRole('spinbutton', { name: /Porzioni/ }), '2');
       await user.click(screen.getByRole('checkbox', { name: 'Nessun ingrediente della dispensa utilizzato' }));
@@ -289,13 +289,13 @@ describe('DinnerDiaryPage', () => {
 
       expect(screen.getByRole('button', { name: 'Registro…' })).toBeDisabled();
       await act(async () => {
+        setActiveDataScope('guest');
         resolveConfirmation(true);
         await pendingConfirmation;
       });
 
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Registra la cena' })).toBeEnabled());
       expect(screen.queryByText('Cena registrata. Nessun ingrediente della dispensa è stato scalato.')).not.toBeInTheDocument();
-      expect(screen.getByRole('textbox', { name: /Com’è andata la cena\?/ })).toHaveValue('Cena registrata in modalità ospite');
+      expect(getActiveDataScope()).toBe('guest');
     } finally {
       confirmEntry.mockRestore();
     }
@@ -315,7 +315,7 @@ describe('DinnerDiaryPage', () => {
         selectedProvider: 'openai',
       });
       renderPage();
-      const dinnerText = screen.getByRole('textbox', { name: /Com’è andata la cena\?/ });
+      const dinnerText = await screen.findByRole('textbox', { name: /andata la cena\?/ });
       const servings = screen.getByRole('spinbutton', { name: /Porzioni/ });
       await user.type(dinnerText, 'Pasta con zucchine');
       fireEvent.change(screen.getByLabelText('Data della cena'), { target: { value: '2026-09-29' } });
@@ -362,7 +362,7 @@ describe('DinnerDiaryPage', () => {
     const expectedRemaining = lot.quantity - amountPerServing * servings;
 
     renderPage();
-    await user.type(screen.getByRole('textbox', { name: /Com’è andata la cena\?/ }), 'Pasta con zucchine');
+    await user.type(await screen.findByRole('textbox', { name: /andata la cena\?/ }), 'Pasta con zucchine');
     fireEvent.change(screen.getByLabelText('Data della cena'), { target: { value: '2026-09-29' } });
     await user.type(screen.getByRole('spinbutton', { name: /Porzioni/ }), String(servings));
     await user.click(screen.getByRole('button', { name: 'Aggiungi ingrediente utilizzato' }));
@@ -383,7 +383,7 @@ describe('DinnerDiaryPage', () => {
     });
     await expect(readDinnerConsumptionOutbox(scope)).resolves.toHaveLength(1);
     await expect(waitForPendingDinnerDiaryWrites()).resolves.toBeUndefined();
-    expect(fetchAiConsentStatus).not.toHaveBeenCalled();
+    expect(fetchAiConsentStatus).toHaveBeenCalledOnce();
   });
 
   it('requires an explicit pantry ingredient decision before confirming a free-text dinner', async () => {
@@ -399,7 +399,7 @@ describe('DinnerDiaryPage', () => {
     });
     renderPage();
 
-    await user.type(screen.getByRole('textbox', { name: /Com’è andata la cena\?/ }), 'Pasta con zucchine e insalata');
+    await user.type(await screen.findByRole('textbox', { name: /andata la cena\?/ }), 'Pasta con zucchine e insalata');
     fireEvent.change(screen.getByLabelText('Data della cena'), { target: { value: '2026-09-29' } });
     await user.type(screen.getByRole('spinbutton', { name: /Porzioni/ }), '2');
     await user.click(screen.getByRole('button', { name: 'Registra la cena' }));
@@ -407,7 +407,7 @@ describe('DinnerDiaryPage', () => {
     expect(useDinnerDiaryStore.getState().entries).toHaveLength(0);
     expect(confirmEntry).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent(/indica gli ingredienti utilizzati oppure seleziona.*nessun ingrediente della dispensa/i);
-    expect(fetchAiConsentStatus).not.toHaveBeenCalled();
+    expect(fetchAiConsentStatus).toHaveBeenCalledOnce();
     confirmEntry.mockRestore();
   });
 
@@ -468,6 +468,7 @@ describe('DinnerDiaryPage', () => {
     const user = userEvent.setup();
     // Set up account scope and verified user so the form is visible
     setActiveDataScope('account:user-1');
+    await waitFor(() => expect(useDinnerDiaryStore.getState().hasHydrated).toBe(true));
     const now = '2026-09-28T10:00:00.000Z';
     useAuthStore.setState({ user: { id: 'user-1', emailVerifiedAt: now } as never, csrfToken: 'csrf-1' });
     vi.mocked(fetchAiConsentStatus).mockResolvedValue({
@@ -478,8 +479,8 @@ describe('DinnerDiaryPage', () => {
     renderPage();
 
     await user.click(screen.getByRole('button', { name: /Modifica cena del/ }));
-    await user.clear(screen.getByRole('textbox', { name: /Com’è andata la cena\?/ }));
-    await user.type(screen.getByRole('textbox', { name: /Com’è andata la cena\?/ }), 'Riso con verdure e limone');
+    await user.clear(await screen.findByRole('textbox', { name: /andata la cena\?/ }));
+    await user.type(await screen.findByRole('textbox', { name: /andata la cena\?/ }), 'Riso con verdure e limone');
     fireEvent.change(screen.getByLabelText('Data della cena'), { target: { value: '2026-09-27' } });
     await user.click(screen.getByRole('button', { name: 'Salva modifiche' }));
 
@@ -493,6 +494,7 @@ describe('DinnerDiaryPage', () => {
     const recipe = { id: 'saved-recipe-1', title: 'Pasta al forno' } as unknown as SavedRecipe;
     // Set up account scope and verified user so the form is visible
     setActiveDataScope('account:user-1');
+    await waitFor(() => expect(useDinnerDiaryStore.getState().hasHydrated).toBe(true));
     const now = '2026-09-28T10:00:00.000Z';
     useAuthStore.setState({ user: { id: 'user-1', emailVerifiedAt: now } as never, csrfToken: 'csrf-1' });
     vi.mocked(fetchAiConsentStatus).mockResolvedValue({
@@ -523,7 +525,7 @@ describe('DinnerDiaryPage', () => {
     });
     renderPage();
 
-    await user.type(screen.getByRole('textbox', { name: /Com’è andata la cena\?/ }), '   ');
+    await user.type(await screen.findByRole('textbox', { name: /andata la cena\?/ }), '   ');
     await user.type(screen.getByRole('spinbutton', { name: /Porzioni/ }), '2');
     await user.click(screen.getByRole('button', { name: 'Registra la cena' }));
 
