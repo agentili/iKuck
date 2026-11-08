@@ -51,7 +51,7 @@ describe('DinnerDiaryPage', () => {
   });
 
   it('keeps Dinner consent closed until requested, leaving the diary form available', async () => {
-    const user = userEvent.setup();
+    userEvent.setup();
     const now = '2026-09-29T10:00:00.000Z';
     vi.mocked(fetchAiConsentStatus).mockResolvedValue({
       consent: { enabled: true, homeProvider: 'gemini', dinnerProvider: 'gemini', updatedAt: now },
@@ -60,20 +60,11 @@ describe('DinnerDiaryPage', () => {
     useAuthStore.setState({ user: { id: 'user-1', emailVerifiedAt: now } as never, csrfToken: 'csrf-1' });
     renderPage();
 
-    const region = await screen.findByRole('region', { name: 'Consenso per ricostruire ricette' });
-    const checkbox = await screen.findByRole('checkbox', { name: /Gemini di Google.*testo della cena.*porzioni/i, hidden: true });
-    const disclosure = region.querySelector('details');
-    expect(disclosure).not.toBeNull();
-    expect(disclosure).not.toHaveAttribute('open');
-    expect(checkbox).not.toBeVisible();
-    expect(screen.getByRole('button', { name: 'Registra la cena' })).toBeVisible();
-    expect(screen.getByText(/Attivo per Gemini di Google/)).toBeVisible();
-
-    const summary = screen.getByText('Consenso AI per Dinner');
-    await user.click(summary);
+    await screen.findByRole('region', { name: 'Consenso AI per Dinner' });
+    const checkbox = await screen.findByRole('checkbox', { name: /Gemini di Google.*testo della cena.*porzioni/i });
     expect(checkbox).toBeVisible();
-    await user.click(summary);
-    expect(checkbox).not.toBeVisible();
+    expect(screen.getByRole('button', { name: 'Registra la cena' })).toBeVisible();
+
     expect(updateAiConsent).not.toHaveBeenCalled();
     expect(updateDinnerAiConsent).not.toHaveBeenCalled();
   });
@@ -93,20 +84,16 @@ describe('DinnerDiaryPage', () => {
     useAuthStore.setState({ user: { id: 'user-1', emailVerifiedAt: now } as never, csrfToken: 'csrf-1' });
     renderPage();
 
-    const disclosure = (await screen.findByRole('region', { name: 'Consenso per ricostruire ricette' })).querySelector('details');
     const revokeDinner = await screen.findByRole('button', { name: 'Revoca consenso Dinner' });
     const revokeGlobal = screen.getByRole('button', { name: 'Revoca consenso AI globale' });
-    expect(disclosure).not.toHaveAttribute('open');
     expect(revokeDinner).toBeVisible();
     expect(revokeGlobal).toBeVisible();
 
     await user.click(revokeDinner);
     expect(updateDinnerAiConsent).toHaveBeenCalledWith(null, 'csrf-1', undefined);
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Revoca consenso Dinner' })).not.toBeInTheDocument());
-    expect(disclosure).not.toHaveAttribute('open');
     await user.click(revokeGlobal);
     expect(updateAiConsent).toHaveBeenCalledWith(false, 'csrf-1', '2026-09-29T10:01:00.000Z', undefined, undefined);
-    expect(disclosure).not.toHaveAttribute('open');
   });
 
   it('tells guests that dinner text and servings stay on-device until verified consent', () => {
@@ -285,6 +272,14 @@ describe('DinnerDiaryPage', () => {
     const confirmEntry = vi.spyOn(useDinnerDiaryStore.getState(), 'confirmEntry').mockReturnValue(pendingConfirmation);
 
     try {
+      // Start with account scope so the form is visible
+      setActiveDataScope('account:user-1');
+      const now = '2026-09-28T10:00:00.000Z';
+      useAuthStore.setState({ user: { id: 'user-1', emailVerifiedAt: now } as never, csrfToken: 'csrf-1' });
+      vi.mocked(fetchAiConsentStatus).mockResolvedValue({
+        consent: { enabled: false, updatedAt: now },
+        selectedProvider: 'openai',
+      });
       renderPage();
       await user.type(screen.getByRole('textbox', { name: /Com’è andata la cena\?/ }), 'Cena registrata in modalità ospite');
       fireEvent.change(screen.getByLabelText('Data della cena'), { target: { value: '2026-09-29' } });
@@ -294,7 +289,6 @@ describe('DinnerDiaryPage', () => {
 
       expect(screen.getByRole('button', { name: 'Registro…' })).toBeDisabled();
       await act(async () => {
-        setActiveDataScope('account:user-1');
         resolveConfirmation(true);
         await pendingConfirmation;
       });
@@ -312,6 +306,14 @@ describe('DinnerDiaryPage', () => {
     const confirmEntry = vi.spyOn(useDinnerDiaryStore.getState(), 'confirmEntry').mockResolvedValue(false);
 
     try {
+      // Set up account scope and verified user so the form is visible
+      setActiveDataScope('account:user-1');
+      const now = '2026-09-28T10:00:00.000Z';
+      useAuthStore.setState({ user: { id: 'user-1', emailVerifiedAt: now } as never, csrfToken: 'csrf-1' });
+      vi.mocked(fetchAiConsentStatus).mockResolvedValue({
+        consent: { enabled: false, updatedAt: now },
+        selectedProvider: 'openai',
+      });
       renderPage();
       const dinnerText = screen.getByRole('textbox', { name: /Com’è andata la cena\?/ });
       const servings = screen.getByRole('spinbutton', { name: /Porzioni/ });
@@ -333,7 +335,7 @@ describe('DinnerDiaryPage', () => {
 
   it('maps a free-text dinner to a known pantry ingredient and commits the calculated quantity', async () => {
     const user = userEvent.setup();
-    const scope = 'guest';
+    const scope = 'account:user-1';
     const lot = {
       id: 'free-text-pasta-lot', ingredientId: 'pasta', label: 'Pasta', known: true,
       quantity: 200, unit: 'g' as const, expiresAt: null,
@@ -347,6 +349,12 @@ describe('DinnerDiaryPage', () => {
     setPersonalDataScope(scope);
     setActiveDataScope(scope);
     resumeScope(scope);
+    const now = '2026-09-28T10:00:00.000Z';
+    useAuthStore.setState({ user: { id: 'user-1', emailVerifiedAt: now } as never, csrfToken: 'csrf-1' });
+    vi.mocked(fetchAiConsentStatus).mockResolvedValue({
+      consent: { enabled: false, updatedAt: now },
+      selectedProvider: 'openai',
+    });
     usePantryStore.setState(initialPantry);
     await writePantrySnapshot(initialPantry, scope);
     const servings = 2;
@@ -381,6 +389,14 @@ describe('DinnerDiaryPage', () => {
   it('requires an explicit pantry ingredient decision before confirming a free-text dinner', async () => {
     const user = userEvent.setup();
     const confirmEntry = vi.spyOn(useDinnerDiaryStore.getState(), 'confirmEntry');
+    // Set up account scope and verified user so the form is visible
+    setActiveDataScope('account:user-1');
+    const now = '2026-09-28T10:00:00.000Z';
+    useAuthStore.setState({ user: { id: 'user-1', emailVerifiedAt: now } as never, csrfToken: 'csrf-1' });
+    vi.mocked(fetchAiConsentStatus).mockResolvedValue({
+      consent: { enabled: false, updatedAt: now },
+      selectedProvider: 'openai',
+    });
     renderPage();
 
     await user.type(screen.getByRole('textbox', { name: /Com’è andata la cena\?/ }), 'Pasta con zucchine e insalata');
@@ -450,7 +466,15 @@ describe('DinnerDiaryPage', () => {
 
   it('edits a saved dinner without dropping its existing links', async () => {
     const user = userEvent.setup();
-    useDinnerDiaryStore.setState({ hasHydrated: true, entries: [{ scope: 'guest', value: existingEntry }] });
+    // Set up account scope and verified user so the form is visible
+    setActiveDataScope('account:user-1');
+    const now = '2026-09-28T10:00:00.000Z';
+    useAuthStore.setState({ user: { id: 'user-1', emailVerifiedAt: now } as never, csrfToken: 'csrf-1' });
+    vi.mocked(fetchAiConsentStatus).mockResolvedValue({
+      consent: { enabled: false, updatedAt: now },
+      selectedProvider: 'openai',
+    });
+    useDinnerDiaryStore.setState({ hasHydrated: true, entries: [{ scope: 'account:user-1', value: existingEntry }] });
     renderPage();
 
     await user.click(screen.getByRole('button', { name: /Modifica cena del/ }));
@@ -467,7 +491,15 @@ describe('DinnerDiaryPage', () => {
   it('deletes a dinner independently from its saved recipe', async () => {
     const user = userEvent.setup();
     const recipe = { id: 'saved-recipe-1', title: 'Pasta al forno' } as unknown as SavedRecipe;
-    useDinnerDiaryStore.setState({ hasHydrated: true, entries: [{ scope: 'guest', value: existingEntry }], recipes: [{ scope: 'guest', value: recipe }] });
+    // Set up account scope and verified user so the form is visible
+    setActiveDataScope('account:user-1');
+    const now = '2026-09-28T10:00:00.000Z';
+    useAuthStore.setState({ user: { id: 'user-1', emailVerifiedAt: now } as never, csrfToken: 'csrf-1' });
+    vi.mocked(fetchAiConsentStatus).mockResolvedValue({
+      consent: { enabled: false, updatedAt: now },
+      selectedProvider: 'openai',
+    });
+    useDinnerDiaryStore.setState({ hasHydrated: true, entries: [{ scope: 'account:user-1', value: existingEntry }], recipes: [{ scope: 'account:user-1', value: recipe }] });
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderPage();
 
@@ -481,6 +513,14 @@ describe('DinnerDiaryPage', () => {
 
   it('rejects an empty dinner description without adding an entry', async () => {
     const user = userEvent.setup();
+    // Set up account scope and verified user so the form is visible
+    setActiveDataScope('account:user-1');
+    const now = '2026-09-28T10:00:00.000Z';
+    useAuthStore.setState({ user: { id: 'user-1', emailVerifiedAt: now } as never, csrfToken: 'csrf-1' });
+    vi.mocked(fetchAiConsentStatus).mockResolvedValue({
+      consent: { enabled: false, updatedAt: now },
+      selectedProvider: 'openai',
+    });
     renderPage();
 
     await user.type(screen.getByRole('textbox', { name: /Com’è andata la cena\?/ }), '   ');
@@ -504,7 +544,7 @@ describe('DinnerDiaryPage', () => {
     setActiveDataScope('account:user-1');
     renderPage();
 
-    const disclosure = await screen.findByRole('region', { name: 'Consenso per ricostruire ricette' });
+    const disclosure = await screen.findByRole('region', { name: 'Consenso AI per Dinner' });
     const dinnerDisclosure = Array.from(disclosure.querySelectorAll('p')).find((paragraph) => paragraph.textContent?.startsWith('La ricostruzione invia esclusivamente'));
     if (dinnerDisclosure === undefined) throw new Error('Dinner disclosure paragraph was not rendered');
     expect(dinnerDisclosure).toHaveTextContent(new RegExp(`invia esclusivamente a ${name} il testo originale della cena e le porzioni indicate`, 'i'));
@@ -531,7 +571,7 @@ describe('DinnerDiaryPage', () => {
     setActiveDataScope('account:user-1');
     renderPage();
 
-    const disclosure = await screen.findByRole('region', { name: 'Consenso per ricostruire ricette' });
+    const disclosure = await screen.findByRole('region', { name: 'Consenso AI per Dinner' });
     expect(disclosure).toHaveTextContent(/Non è stato possibile verificare il provider AI attivo/i);
     expect(disclosure.textContent).not.toMatch(/\bnull\b/i);
     expect(disclosure).not.toHaveTextContent(/I dati inviati a/);

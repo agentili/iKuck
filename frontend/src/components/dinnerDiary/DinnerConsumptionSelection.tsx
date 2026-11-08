@@ -3,20 +3,7 @@ import type { DinnerConsumptionIngredient, PantryConsumptionPlan } from '@ikuck/
 import { planPantryConsumption } from '@ikuck/shared/pantryConsumption';
 import { DIARY_INGREDIENT_AMOUNT_MAX_LENGTH } from '@ikuck/shared/limits';
 import { getIngredient, INGREDIENTS } from '@ikuck/shared/ingredients';
-
-interface DinnerConsumptionSelectionProps {
-  mode: 'free-text' | 'recipe';
-  ingredients: DinnerConsumptionIngredient[];
-  lots: readonly PantryLot[];
-  servings: number | null;
-  noneUsed: boolean;
-  onIngredientsChange: (ingredients: DinnerConsumptionIngredient[]) => void;
-  onNoneUsedChange: (noneUsed: boolean) => void;
-  disabled?: boolean;
-  confirmedPlan?: PantryConsumptionPlan | null;
-  confirmedNoIngredientsUsed?: boolean;
-  confirmedFallbackMessage?: string | null;
-}
+import { Button } from '../../components/shared';
 
 const formatQuantity = (quantity: number, unit: string): string => (
   `${new Intl.NumberFormat('it-IT', { maximumFractionDigits: 3 }).format(quantity)} ${unit}`
@@ -29,7 +16,7 @@ const unitLabel = (unit: string): string => ({
 const describeLine = (line: PantryConsumptionPlan['summary']['lines'][number]): string => {
   if (line.status === 'unused') return `${line.name}: non verrà scalato.`;
   if (line.status === 'presence_consumed') return `Verrà rimossa la presenza di ${line.name}; la quantità non è registrata.`;
-  if (line.status === 'unresolved') return `${line.name}: identifica l’ingrediente e indica una quantità certa, oppure deselezionalo.`;
+  if (line.status === 'unresolved') return `${line.name}: identifica l'ingrediente e indica una quantità certa, oppure deselezionalo.`;
   if (line.status === 'missing') {
     const deficit = line.deficit === null || line.unit === null ? '' : ` (deficit ${formatQuantity(line.deficit, unitLabel(line.unit))})`;
     return `${line.name}: non presente in dispensa${deficit}.`;
@@ -61,6 +48,20 @@ const describeCommittedPlan = (plan: PantryConsumptionPlan): string[] => plan.su
       : '';
     return `Scalati ${consumed} di ${line.name}${deficit}.`;
   });
+
+interface DinnerConsumptionSelectionProps {
+  mode: 'free-text' | 'recipe';
+  ingredients: DinnerConsumptionIngredient[];
+  lots: readonly PantryLot[];
+  servings: number | null;
+  noneUsed: boolean;
+  onIngredientsChange: (ingredients: DinnerConsumptionIngredient[]) => void;
+  onNoneUsedChange: (noneUsed: boolean) => void;
+  disabled?: boolean;
+  confirmedPlan?: PantryConsumptionPlan | null;
+  confirmedNoIngredientsUsed?: boolean;
+  confirmedFallbackMessage?: string | null;
+}
 
 export default function DinnerConsumptionSelection({
   mode,
@@ -106,22 +107,21 @@ export default function DinnerConsumptionSelection({
   };
 
   return (
-    <section aria-label="Ingredienti utilizzati dalla dispensa" className="ik-surface--quiet mt-4 rounded-2xl border border-[var(--ik-border)] p-4">
-      <h3 className="text-lg font-bold text-[var(--ik-ink)]">Ingredienti davvero utilizzati</h3>
-      <p className="mt-1 text-sm leading-relaxed text-[var(--ik-ink-muted)]">
+    <section aria-label="Ingredienti utilizzati dalla dispensa" className="ik-surface ik-surface--feature mt-4 rounded-[var(--radius-feature)] border-2 border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm sm:p-6">
+      <h3 className="text-lg font-bold text-[var(--color-text)]">Ingredienti davvero utilizzati</h3>
+      <p className="mt-1 text-sm leading-relaxed text-[var(--color-text-muted)]">
         {mode === 'recipe'
           ? 'La ricetta propone ingredienti e quantità per porzione. Verifica cosa avete usato: gli ingredienti facoltativi partono deselezionati.'
           : 'Scegli gli ingredienti della dispensa e indica la quantità per porzione. Il testo della cena non viene interpretato automaticamente.'}
       </p>
 
-      <label className="mt-3 flex min-h-11 items-start gap-3 text-sm font-semibold text-[var(--ik-ink)]">
+      <label className="mt-3 flex min-h-11 items-start gap-3 text-sm font-semibold text-[var(--color-text)]">
         <input
           type="checkbox"
           checked={noneUsed}
           disabled={disabled}
           onChange={(event) => chooseNone(event.target.checked)}
-          className="mt-1 h-5 w-5"
-          style={{ accentColor: 'var(--ik-basil)' }}
+          className="mt-1 h-5 w-5 accent-[var(--color-primary)]"
         />
         <span>Nessun ingrediente della dispensa utilizzato</span>
       </label>
@@ -133,8 +133,8 @@ export default function DinnerConsumptionSelection({
             const mapped = ingredient.ingredientId !== null ? getIngredient(ingredient.ingredientId) : undefined;
             const name = ingredient.name.trim() || `ingrediente ${index + 1}`;
             return (
-              <div key={`free-${index}`} className="grid gap-3 rounded-xl border border-[var(--ik-border)] bg-[var(--ik-surface)] p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                <label className="grid gap-1 text-sm font-semibold text-[var(--ik-ink)]">
+              <div key={`free-${index}`} className="ik-card p-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <label className="grid gap-1 text-sm font-semibold text-[var(--color-text)]">
                   Ingrediente usato {index + 1}
                   <select
                     aria-label={`Ingrediente usato ${index + 1}`}
@@ -147,13 +147,13 @@ export default function DinnerConsumptionSelection({
                         name: selected?.label ?? '',
                       });
                     }}
-                    className="ik-input min-h-11 w-full border-2 px-3 py-2"
+                    className="ik-input min-h-11 w-full"
                   >
                     <option value="">Scegli un ingrediente</option>
                     {INGREDIENTS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                   </select>
                 </label>
-                <label className="grid gap-1 text-sm font-semibold text-[var(--ik-ink)]">
+                <label className="grid gap-1 text-sm font-semibold text-[var(--color-text)]">
                   Quantità per porzione
                   <input
                     type="text"
@@ -162,23 +162,24 @@ export default function DinnerConsumptionSelection({
                     value={ingredient.amount}
                     onChange={(event) => updateIngredient(index, { ...ingredient, amount: event.target.value })}
                     placeholder="es. 80 g"
-                    className="ik-input min-h-11 w-full border-2 px-3 py-2 font-normal"
+                    className="ik-input min-h-11 w-full"
                   />
                 </label>
-                <button
+                <Button
                   type="button"
                   onClick={() => onIngredientsChange(ingredients.filter((_, currentIndex) => currentIndex !== index))}
                   aria-label={`Rimuovi ingrediente ${index + 1}`}
-                  className="ik-button-secondary min-h-11 w-fit border-2 px-3 py-2 text-sm font-semibold"
+                  variant="secondary"
+                  className="min-h-11 w-fit"
                 >
                   Rimuovi
-                </button>
+                </Button>
               </div>
             );
           })}
-          <button type="button" onClick={addIngredient} className="ik-button-secondary min-h-11 border-2 px-4 py-2 font-semibold">
+          <Button type="button" onClick={addIngredient} className="min-h-11">
             Aggiungi ingrediente utilizzato
-          </button>
+          </Button>
         </fieldset>
       ) : (
         <fieldset className="mt-3 space-y-3" disabled={disabled || noneUsed}>
@@ -187,8 +188,8 @@ export default function DinnerConsumptionSelection({
             const mapped = ingredient.ingredientId !== null ? getIngredient(ingredient.ingredientId) : undefined;
             const name = ingredient.name.trim() || mapped?.label || `ingrediente ${index + 1}`;
             return (
-              <div key={`recipe-${index}`} className="grid gap-3 rounded-xl border border-[var(--ik-border)] bg-[var(--ik-surface)] p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                <label className="grid gap-1 text-sm font-semibold text-[var(--ik-ink)]">
+              <div key={`recipe-${index}`} className="ik-card p-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <label className="grid gap-1 text-sm font-semibold text-[var(--color-text)]">
                   Ingrediente {index + 1}
                   <select
                     aria-label={`Ingrediente ricetta ${index + 1}`}
@@ -201,13 +202,13 @@ export default function DinnerConsumptionSelection({
                         name: selected?.label ?? ingredient.name,
                       });
                     }}
-                    className="ik-input min-h-11 w-full border-2 px-3 py-2"
+                    className="ik-input min-h-11 w-full"
                   >
                     <option value="">Associa a un ingrediente della dispensa</option>
                     {INGREDIENTS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                   </select>
                 </label>
-                <label className="grid gap-1 text-sm font-semibold text-[var(--ik-ink)]">
+                <label className="grid gap-1 text-sm font-semibold text-[var(--color-text)]">
                   Quantità per porzione
                   <input
                     type="text"
@@ -215,10 +216,10 @@ export default function DinnerConsumptionSelection({
                     aria-label={`Quantità per porzione di ${name}`}
                     value={ingredient.amount}
                     onChange={(event) => updateIngredient(index, { ...ingredient, amount: event.target.value })}
-                    className="ik-input min-h-11 w-full border-2 px-3 py-2 font-normal"
+                    className="ik-input min-h-11 w-full"
                   />
                 </label>
-                <label className="flex min-h-11 items-center gap-3 text-sm font-semibold text-[var(--ik-ink)]">
+                <label className="flex min-h-11 items-center gap-3 text-sm font-semibold text-[var(--color-text)]">
                   <input
                     type="checkbox"
                     checked={ingredient.used}
@@ -228,8 +229,7 @@ export default function DinnerConsumptionSelection({
                       updateIngredient(index, { ...ingredient, used: event.target.checked });
                     }}
                     aria-label={`Usato: ${name}`}
-                    className="h-5 w-5"
-                    style={{ accentColor: 'var(--ik-basil)' }}
+                    className="h-5 w-5 accent-[var(--color-primary)]"
                   />
                   {ingredient.optional ? 'Facoltativo: usato davvero' : 'Usato davvero'}
                 </label>
@@ -240,41 +240,41 @@ export default function DinnerConsumptionSelection({
       )}
 
       {confirmedPlan !== null ? (
-        <div className="mt-4 rounded-xl border border-[var(--ik-border-strong)] bg-[var(--ik-surface)] p-3" role="status" aria-label="Riepilogo dispensa aggiornata">
-          <p className="font-bold text-[var(--ik-ink)]">Cena registrata; riepilogo effettivo della dispensa:</p>
+        <div className="mt-4 rounded-[var(--radius-panel)] border border-[var(--color-warning)] bg-[var(--color-surface)] p-3" role="status" aria-label="Riepilogo dispensa aggiornata">
+          <p className="font-bold text-[var(--color-text)]">Cena registrata; riepilogo effettivo della dispensa:</p>
           {confirmedPlan.summary.lines.filter((line) => line.status !== 'unused').length > 0 ? (
-            <ul className="mt-2 space-y-1 text-sm text-[var(--ik-ink)]">
+            <ul className="mt-2 space-y-1 text-sm text-[var(--color-text)]">
               {describeCommittedPlan(confirmedPlan).map((line, index) => <li key={`confirmed-${index}`}>{line}</li>)}
             </ul>
-          ) : <p className="mt-1 text-sm text-[var(--ik-ink)]">Nessun ingrediente della dispensa è stato scalato.</p>}
+          ) : <p className="mt-1 text-sm text-[var(--color-text-muted)]">Nessun ingrediente della dispensa è stato scalato.</p>}
         </div>
       ) : confirmedNoIngredientsUsed ? (
-        <p role="status" className="mt-4 rounded-xl border border-[var(--ik-border-strong)] bg-[var(--ik-surface)] p-3 text-sm font-semibold text-[var(--ik-ink)]">
+        <p role="status" className="mt-4 rounded-[var(--radius-panel)] border border-[var(--color-warning)] bg-[var(--color-surface)] p-3 text-sm font-semibold text-[var(--color-text)]">
           Cena registrata. Nessun ingrediente della dispensa è stato scalato.
         </p>
       ) : confirmedFallbackMessage !== null ? (
-        <p role="status" className="mt-4 rounded-xl border border-[var(--ik-border-strong)] bg-[var(--ik-surface)] p-3 text-sm font-semibold text-[var(--ik-ink)]">{confirmedFallbackMessage}</p>
+        <p role="status" className="mt-4 rounded-[var(--radius-panel)] border border-[var(--color-warning)] bg-[var(--color-surface)] p-3 text-sm font-semibold text-[var(--color-text)]">{confirmedFallbackMessage}</p>
       ) : null}
 
       {confirmedPlan === null && !confirmedNoIngredientsUsed && confirmedFallbackMessage === null && (
-        <div className="mt-4 rounded-xl bg-[var(--ik-surface)] p-3">
-          <p className="text-sm font-bold text-[var(--ik-ink)]">Anteprima sulla dispensa attuale</p>
+        <div className="mt-4 rounded-[var(--radius-panel)] bg-[var(--color-surface)] p-3">
+          <p className="text-sm font-bold text-[var(--color-text)]">Anteprima sulla dispensa attuale</p>
           {!validServings ? (
-            <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">Indica le porzioni per calcolare il consumo.</p>
+            <p className="mt-1 text-sm text-[var(--color-text-muted)]">Indica le porzioni per calcolare il consumo.</p>
           ) : noneUsed ? (
-            <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">Nessun ingrediente verrà scalato.</p>
+            <p className="mt-1 text-sm text-[var(--color-text-muted)]">Nessun ingrediente verrà scalato.</p>
           ) : effectiveIngredients.filter((ingredient) => ingredient.used).length === 0 ? (
-            <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">Aggiungi gli ingredienti usati oppure conferma esplicitamente che non ne avete usati dalla dispensa.</p>
+            <p className="mt-1 text-sm text-[var(--color-text-muted)]">Aggiungi gli ingredienti usati oppure conferma esplicitamente che non ne avete usati dalla dispensa.</p>
           ) : (
-            <ul className="mt-2 space-y-1 text-sm text-[var(--ik-ink)]">
+            <ul className="mt-2 space-y-1 text-sm text-[var(--color-text)]">
               {plan.summary.lines.filter((line) => line.status !== 'unused').map((line, index) => <li key={`preview-${index}`}>{describeLine(line)}</li>)}
             </ul>
           )}
           {plan.unresolvedIngredients.length > 0 && (
-            <p className="mt-2 text-sm font-semibold text-rose-800">Prima di confermare, chiarisci ogni ingrediente o quantità ambigua.</p>
+            <p className="mt-2 text-sm font-semibold text-[var(--color-danger)]">Prima di confermare, chiarisci ogni ingrediente o quantità ambigua.</p>
           )}
           {plan.summary.deficitCount > 0 && (
-            <p className="mt-2 text-sm font-semibold text-amber-900">La registrazione userà solo le scorte presenti e mostrerà il deficit effettivo.</p>
+            <p className="mt-2 text-sm font-semibold text-[var(--color-warning)]">La registrazione userà solo le scorte presenti e mostrerà il deficit effettivo.</p>
           )}
         </div>
       )}

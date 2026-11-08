@@ -11,6 +11,7 @@ import { fetchAiConsentStatus, updateAiConsent, updateDinnerAiConsent } from '..
 import { clearAiRecipeProposalHistory } from '../ai/aiRecipeHistory';
 import DinnerConsumptionSelection from '../components/dinnerDiary/DinnerConsumptionSelection';
 import DinnerRecipePanel from '../components/dinnerDiary/DinnerRecipePanel';
+import DinnerConsentSection from '../components/dinnerDiary/DinnerConsentSection';
 import DiaryNavigation from '../components/layout/DiaryNavigation';
 import ErrorBanner from '../components/ui/ErrorBanner';
 import EmptyState from '../components/ui/EmptyState';
@@ -122,12 +123,6 @@ export default function DinnerDiaryPage() {
   const dinnerConsentEnabled = consent?.enabled === true
     && selectedProvider !== null
     && consent.dinnerProvider === selectedProvider;
-  const dinnerConsentStatus = !verified
-    ? 'Disponibile con un account verificato'
-    : consentLoading ? 'Verifico il consenso AI…'
-      : consent === null ? 'Consenso non disponibile'
-        : dinnerProviderName === null ? 'Provider non disponibile'
-          : dinnerConsentEnabled ? `Attivo per ${dinnerProviderName}` : `Da autorizzare per ${dinnerProviderName}`;
 
   const refreshConsentState = async (): Promise<void> => {
     const status = await fetchAiConsentStatus();
@@ -169,9 +164,9 @@ export default function DinnerDiaryPage() {
       if (error instanceof ApiClientError && error.code === 'ai_consent_revision_conflict') {
         try {
           await refreshConsentState();
-          setConsentError('Il consenso è cambiato in un’altra scheda. Ho aggiornato lo stato: verifica la scelta prima di salvare di nuovo.');
+          setConsentError('Il consenso è cambiato in un\'altra scheda. Ho aggiornato lo stato: verifica la scelta prima di salvare di nuovo.');
         } catch {
-          setConsentError('Il consenso è cambiato in un’altra scheda. Aggiorna la pagina e verifica la scelta prima di riprovare.');
+          setConsentError('Il consenso è cambiato in un\'altra scheda. Aggiorna la pagina e verifica la scelta prima di riprovare.');
         }
       } else {
         setConsentError('Non è stato possibile salvare il consenso AI. Riprova.');
@@ -198,9 +193,9 @@ export default function DinnerDiaryPage() {
       if (error instanceof ApiClientError && error.code === 'ai_consent_revision_conflict') {
         try {
           await refreshConsentState();
-          setConsentError('Il consenso è cambiato in un’altra scheda. Ho aggiornato lo stato: verifica la scelta prima di salvare di nuovo.');
+          setConsentError('Il consenso è cambiato in un\'altra scheda. Ho aggiornato lo stato: verifica la scelta prima di salvare di nuovo.');
         } catch {
-          setConsentError('Il consenso è cambiato in un’altra scheda. Aggiorna la pagina e verifica la scelta prima di riprovare.');
+          setConsentError('Il consenso è cambiato in un\'altra scheda. Aggiorna la pagina e verifica la scelta prima di riprovare.');
         }
       } else {
         setConsentError('Non è stato possibile salvare il consenso per il provider AI selezionato. Aggiorna la pagina e riprova.');
@@ -237,8 +232,6 @@ export default function DinnerDiaryPage() {
     void confirmNewDinner(numericServings);
   };
 
-  // A new dinner is always confirmed through the atomic consumption commit: the
-  // entry only becomes durable together with the pantry it consumes.
   const confirmNewDinner = async (numericServings: number | null) => {
     const scope = getActiveDataScope();
     if (numericServings === null) {
@@ -247,7 +240,7 @@ export default function DinnerDiaryPage() {
     }
     const ingredients = consumptionNoneUsed ? [] : consumptionIngredients;
     if (!consumptionNoneUsed && !ingredients.some((ingredient) => ingredient.used && ingredient.ingredientId !== null)) {
-      setFormError('Indica gli ingredienti utilizzati oppure seleziona «Nessun ingrediente della dispensa utilizzato».');
+      setFormError('Indica gli ingredienti utilizzati oppure seleziona "Nessun ingrediente della dispensa utilizzato".');
       return;
     }
     const committedAt = new Date().toISOString();
@@ -311,8 +304,10 @@ export default function DinnerDiaryPage() {
 
   if (!hasHydrated) {
     return (
-      <main className="mx-auto flex min-h-screen w-full max-w-4xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
-        <p role="status" className="rounded-2xl border border-gray-200 bg-white px-5 py-4 font-semibold text-gray-700">Caricamento del diario…</p>
+      <main className="ik-page mx-auto flex min-h-screen w-full max-w-4xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
+        <div className="ik-surface ik-surface--feature rounded-[var(--radius-feature)] border-2 border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm text-center">
+          <p role="status" className="font-semibold text-[var(--color-text)]">Caricamento del diario…</p>
+        </div>
       </main>
     );
   }
@@ -321,110 +316,71 @@ export default function DinnerDiaryPage() {
     <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-4xl px-4 pb-24 pt-5 sm:px-6 sm:pb-10 sm:pt-8 lg:px-8">
       <DiaryNavigation />
       <header className="ik-page-intro mb-5 max-w-2xl sm:mb-7">
-        <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">
+        <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em] text-[var(--color-primary)]">
           La memoria della tavola
         </p>
-        <h1 className="mt-1 text-4xl font-black leading-[1.04] text-gray-950 sm:text-5xl">
+        <h1 className="mt-1 text-4xl font-black leading-[1.04] text-[var(--color-text)] sm:text-5xl">
           Diario delle cene
         </h1>
-        <p className="mt-3 max-w-xl text-base leading-relaxed text-gray-700 sm:text-lg">
+        <p className="mt-3 max-w-xl text-base leading-relaxed text-[var(--color-text-muted)] sm:text-lg">
           Segna cosa avete mangiato, senza modificare la dispensa. Potrai ricostruire una ricetta in un secondo momento.
         </p>
       </header>
 
-      <section aria-label="Consenso per ricostruire ricette" className="mt-6 rounded-2xl border-2 border-emerald-100 bg-emerald-50/70 px-4 sm:px-5">
-        <details>
-          <summary className="min-h-11 cursor-pointer py-3 font-bold text-gray-950 focus-visible:rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">
-            Consenso AI per Dinner <span className="block pl-5 text-sm font-medium text-gray-700">{dinnerConsentStatus}</span>
-          </summary>
-          <div className="border-t border-emerald-200 py-4">
-            <h2 className="text-xl font-black text-gray-950">Ricostruisci una ricetta con l’AI</h2>
-            {verified ? (
-          <>
-            {dinnerProviderName !== null ? (
-              <>
-                <p className="mt-1 text-sm leading-relaxed text-gray-700">
-                  La ricostruzione invia esclusivamente a <strong>{dinnerProviderName}</strong> il testo originale della cena e le porzioni indicate; se le porzioni non sono indicate, non viene inviato un numero. Non invia la nota, gli ingredienti della dispensa, il profilo alimentare o le ricette AI. Le bozze restano modificabili e conservate solo su questo dispositivo finché non le confermi o le scarti; non vengono salvate sul server come ricette.
-                </p>
-                <p className="mt-2 text-sm leading-relaxed text-gray-700">
-                  Per Home soltanto, inviamo a {dinnerProviderName} i nomi degli ingredienti della dispensa; il profilo alimentare (dieta scelta, allergeni esclusi, calorie massime e proteine minime per porzione); e i titoli e nomi/quantità degli ingredienti delle ricette AI salvate o già proposte. Home invia anche l’elenco dei vincoli di generazione, attualmente vuoto. Questi dati non sono inviati dalla ricostruzione Dinner.
-                </p>
-              </>
-            ) : (
-              <p className="mt-1 text-sm leading-relaxed text-gray-700">Non è stato possibile verificare il provider AI attivo. La ricostruzione resta disattivata e il testo della cena non viene inviato.</p>
-            )}
-            {consentLoading ? <p role="status" className="mt-3 text-sm font-semibold text-gray-700">Verifico il consenso AI…</p> : consent !== null ? (
-              <>
-                {selectedProvider !== null && dinnerProviderName !== null ? (
-                  <>
-                    <label className="mt-3 flex items-start gap-3 text-sm font-semibold text-gray-800">
-                      <input type="checkbox" checked={consentDraft} onChange={(event) => setConsentDraft(event.target.checked)} disabled={consentSaving} aria-label={`Acconsento all’invio a ${dinnerProviderName} degli ingredienti della dispensa, del profilo alimentare e dei titoli e ingredienti delle ricette AI salvate o proposte`} className="mt-0.5 h-5 w-5 accent-emerald-700" />
-                      <span>Acconsento all’invio a {dinnerProviderName} di ingredienti della dispensa, profilo alimentare e dati delle ricette AI per Home. Questo consenso resta personale; disattivando il consenso generale qui, si revocano anche i permessi Dinner.</span>
-                    </label>
-                    {consent.enabled && !homeConsentEnabled && <p className="mt-2 text-xs font-semibold leading-relaxed text-amber-900">Il provider è cambiato o il consenso precedente non specificava il destinatario: il consenso Home non autorizza {dinnerProviderName} finché non approvi esplicitamente questa scelta.</p>}
-                    {consentDraft !== homeConsentEnabled && <button type="button" onClick={() => void saveConsent()} disabled={consentSaving} className="mt-3 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white disabled:opacity-60">{consentSaving ? 'Salvo…' : 'Salva consenso AI globale'}</button>}
-                    <label className="mt-3 flex items-start gap-3 text-sm font-semibold text-gray-800">
-                      <input
-                        type="checkbox"
-                        checked={dinnerConsentDraft}
-                        onChange={(event) => setDinnerConsentDraft(event.target.checked)}
-                        disabled={consentSaving || !consent.enabled}
-                        aria-label={`Acconsento all’invio a ${dinnerProviderName} del testo della cena e delle porzioni`}
-                        className="mt-0.5 h-5 w-5 accent-emerald-700"
-                      />
-                      <span>Acconsento a inviare a {dinnerProviderName} il testo originale della cena e le porzioni indicate per preparare bozze che restano solo su questo dispositivo finché non le confermi o le scarti; non sono salvate sul server come ricette.</span>
-                    </label>
-                    {!consent.enabled && <p className="mt-2 text-sm text-gray-700">Per usare Dinner, attiva prima il consenso AI generale e salva la scelta.</p>}
-                    {dinnerConsentDraft !== dinnerConsentEnabled && consent.enabled && <button type="button" onClick={() => void saveDinnerConsent()} disabled={consentSaving} className="mt-3 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white disabled:opacity-60">{consentSaving ? 'Salvo…' : 'Salva consenso Dinner'}</button>}
-                  </>
-                ) : <p role="status" className="mt-3 text-sm text-gray-700">Il consenso non è disponibile; la generazione resta disattivata.</p>}
-              </>
-            ) : <p role="status" className="mt-3 text-sm text-gray-700">Il consenso non è disponibile; la generazione resta disattivata.</p>}
-          </>
-        ) : user === null ? (
-          <p className="mt-3 text-sm text-gray-700">Come ospite, le cene restano sul dispositivo: non inviamo testo, porzioni o note a un servizio AI. La ricostruzione è disponibile solo con un account verificato; vedrai il provider attivo e potrai dare un consenso esplicito prima dell’invio.</p>
-        ) : (
-          <p className="mt-3 text-sm text-gray-700">Con un account non verificato, la ricostruzione AI è disattivata: il testo della cena, le porzioni e le note non vengono inviati a un provider AI. Verifica l’account per vedere il provider attivo e decidere se consentire la ricostruzione.</p>
-        )}
-          </div>
-        </details>
-        {verified && consent?.enabled && (
-          <div className="flex flex-wrap gap-2 border-t border-emerald-200 py-3">
-            {consent.dinnerProvider !== undefined && <button type="button" onClick={() => void saveDinnerConsent(null)} disabled={consentSaving} className="min-h-11 rounded-xl border-2 border-rose-300 px-4 py-2 font-bold text-rose-900 disabled:opacity-60">{consentSaving ? 'Salvataggio…' : 'Revoca consenso Dinner'}</button>}
-            <button type="button" onClick={() => void saveConsent(false)} disabled={consentSaving} className="min-h-11 rounded-xl border-2 border-rose-300 px-4 py-2 font-bold text-rose-900 disabled:opacity-60">{consentSaving ? 'Salvataggio…' : 'Revoca consenso AI globale'}</button>
-          </div>
-        )}
-        {consentError !== null && <ErrorBanner message={consentError} />}
-      </section>
+      <PageSection
+        featured
+        eyebrow="Impostazioni"
+        title="Consenso AI per Dinner"
+        titleId="dinner-consent-title"
+      >
+        <DinnerConsentSection
+          verified={verified}
+          userId={userId}
+          dinnerProviderName={dinnerProviderName}
+          consent={consent}
+          selectedProvider={selectedProvider}
+          consentDraft={consentDraft}
+          dinnerConsentDraft={dinnerConsentDraft}
+          consentLoading={consentLoading}
+          consentSaving={consentSaving}
+          consentError={consentError}
+          homeConsentEnabled={homeConsentEnabled}
+          dinnerConsentEnabled={dinnerConsentEnabled}
+          onConsentDraftChange={setConsentDraft}
+          onDinnerConsentDraftChange={setDinnerConsentDraft}
+          onSaveConsent={saveConsent}
+          onSaveDinnerConsent={saveDinnerConsent}
+        />
+      </PageSection>
 
       <PageSection
+        featured
         eyebrow="Il tuo diario"
         title={editingEntry === null ? 'Registra una cena' : 'Modifica la cena'}
         titleId="dinner-entry-form-title"
-        className="border-emerald-200 shadow-sm sm:space-y-5"
       >
         <form className="mt-4 space-y-4" onSubmit={submit}>
           <div className="grid gap-4 sm:grid-cols-[1fr_10rem]">
-            <label className="block text-sm font-bold text-gray-800" htmlFor="dinner-date">
+            <label className="block text-sm font-bold text-[var(--color-text)]" htmlFor="dinner-date">
               Data della cena
-              <span className="mt-1 flex min-h-11 items-center gap-2 rounded-xl border-2 border-gray-300 bg-white px-3 focus-within:border-emerald-700">
-                <CalendarDays size={18} aria-hidden="true" className="shrink-0 text-gray-500" />
-                <input id="dinner-date" type="date" required value={date} onChange={(event) => setDate(event.target.value)} className="min-w-0 flex-1 bg-transparent py-2 text-base text-gray-950 outline-none" />
+              <span className="mt-1 flex min-h-11 items-center gap-2 rounded-xl border-2 border-[var(--color-border)] bg-[var(--color-surface)] px-3 focus-within:border-[var(--color-primary)]">
+                <CalendarDays size={18} aria-hidden="true" className="shrink-0 text-[var(--color-text-muted)]" />
+                <input id="dinner-date" type="date" required value={date} onChange={(event) => setDate(event.target.value)} className="min-w-0 flex-1 bg-transparent py-2 text-base text-[var(--color-text)] outline-none" />
               </span>
             </label>
-            <label className="block text-sm font-bold text-gray-800" htmlFor="dinner-servings">
-              Porzioni <span className="font-normal text-gray-500">(facoltative)</span>
-              <input id="dinner-servings" type="number" inputMode="numeric" min={DIARY_SERVINGS_MIN} max={DIARY_SERVINGS_MAX} value={servings} onChange={(event) => setServings(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border-2 border-gray-300 px-3 py-2 text-base text-gray-950 focus:border-emerald-700 focus:outline-none" />
+            <label className="block text-sm font-bold text-[var(--color-text)]" htmlFor="dinner-servings">
+              Porzioni <span className="font-normal text-[var(--color-text-muted)]">(facoltative)</span>
+              <input id="dinner-servings" type="number" inputMode="numeric" min={DIARY_SERVINGS_MIN} max={DIARY_SERVINGS_MAX} value={servings} onChange={(event) => setServings(event.target.value)} className="ik-input mt-1 min-h-11 w-full" />
             </label>
           </div>
-          <label className="block text-sm font-bold text-gray-800" htmlFor="dinner-text">
-            Com’è andata la cena?
-            <textarea id="dinner-text" required maxLength={DIARY_TEXT_MAX_LENGTH} rows={4} value={text} onChange={(event) => setText(event.target.value)} placeholder="Per esempio: pasta con zucchine, poi insalata con pomodorini e feta." className="mt-1 min-h-28 w-full resize-y rounded-xl border-2 border-gray-300 px-3 py-2 text-base font-normal leading-relaxed text-gray-950 focus:border-emerald-700 focus:outline-none" />
-            <span className="mt-1 block text-right text-xs font-medium text-gray-500">{text.length}/{DIARY_TEXT_MAX_LENGTH}</span>
+          <label className="block text-sm font-bold text-[var(--color-text)]" htmlFor="dinner-text">
+            Com'è andata la cena?
+            <textarea id="dinner-text" required maxLength={DIARY_TEXT_MAX_LENGTH} rows={4} value={text} onChange={(event) => setText(event.target.value)} placeholder="Per esempio: pasta con zucchine, poi insalata con pomodorini e feta." className="ik-input mt-1 min-h-28 w-full resize-y" />
+            <span className="mt-1 block text-right text-xs font-medium text-[var(--color-text-muted)]">{text.length}/{DIARY_TEXT_MAX_LENGTH}</span>
           </label>
-          <label className="block text-sm font-bold text-gray-800" htmlFor="dinner-note">
-            Nota <span className="font-normal text-gray-500">(facoltativa)</span>
-            <textarea id="dinner-note" maxLength={DIARY_NOTE_MAX_LENGTH} rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Un dettaglio da ricordare" className="mt-1 min-h-20 w-full resize-y rounded-xl border-2 border-gray-300 px-3 py-2 text-base font-normal leading-relaxed text-gray-950 focus:border-emerald-700 focus:outline-none" />
+          <label className="block text-sm font-bold text-[var(--color-text)]" htmlFor="dinner-note">
+            Nota <span className="font-normal text-[var(--color-text-muted)]">(facoltativa)</span>
+            <textarea id="dinner-note" maxLength={DIARY_NOTE_MAX_LENGTH} rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Un dettaglio da ricordare" className="ik-input mt-1 min-h-20 w-full resize-y" />
           </label>
           {editingEntry === null && (
             <DinnerConsumptionSelection
@@ -441,14 +397,14 @@ export default function DinnerDiaryPage() {
             />
           )}
           {formError !== null && <ErrorBanner message={formError} />}
-          {storeError !== null && <p role="status" className="text-sm text-amber-900">Alcune modifiche potrebbero non essersi sincronizzate. Riprova quando sei online.</p>}
+          {storeError !== null && <p role="status" className="text-sm text-[var(--color-warning)]">Alcune modifiche potrebbero non essersi sincronizzate. Riprova quando sei online.</p>}
           <div className="flex flex-wrap gap-3">
             <button type="submit" disabled={confirmingDinner} className="ik-button-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 py-2 font-bold disabled:opacity-60">
               {!confirmingDinner && (editingEntry === null ? <Check size={18} aria-hidden="true" /> : <Save size={18} aria-hidden="true" />)}
               {confirmingDinner ? 'Registro…' : editingEntry === null ? 'Registra la cena' : 'Salva modifiche'}
             </button>
             {editingEntry !== null && (
-              <button type="button" onClick={resetForm} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border-2 border-gray-300 px-4 py-2 font-semibold text-gray-800 hover:bg-gray-50">
+              <button type="button" onClick={resetForm} className="ik-button-secondary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2 font-semibold">
                 <X size={17} aria-hidden="true" /> Annulla modifica
               </button>
             )}
@@ -457,15 +413,15 @@ export default function DinnerDiaryPage() {
       </PageSection>
 
       <PageSection
+        featured
         eyebrow="Il tuo archivio"
         title="Le tue cene"
         titleId="dinner-history-title"
         action={
-          <p className="text-sm font-semibold text-gray-600">
+          <p className="text-sm font-semibold text-[var(--color-text-muted)]">
             {orderedEntries.length} {orderedEntries.length === 1 ? 'cena' : 'cene'}
           </p>
         }
-        className="border-emerald-200 shadow-sm sm:space-y-5"
       >
         {orderedEntries.length === 0 ? (
           <EmptyState text="Non hai ancora registrato una cena." />
@@ -477,27 +433,27 @@ export default function DinnerDiaryPage() {
               const availableRecipes = savedRecipes.filter((recipe) => recipe.scope === entry.scope && !linkedRecipeIds.has(recipe.value.id));
               return (
                 <li key={`${entry.scope}:${entry.value.id}`}>
-                  <article className="rounded-2xl border-2 border-gray-200 bg-white p-4 sm:p-5">
+                  <article className="ik-card p-4 sm:p-5">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-bold text-emerald-800">{formatDinnerDate(entry.value.date)}</p>
-                        <p className="mt-2 whitespace-pre-wrap break-words text-base leading-relaxed text-gray-900">{entry.value.text}</p>
-                        {entry.value.note !== null && <p className="mt-2 text-sm text-gray-700">Nota: {entry.value.note}</p>}
+                        <p className="text-sm font-bold text-[var(--color-primary)]">{formatDinnerDate(entry.value.date)}</p>
+                        <p className="mt-2 whitespace-pre-wrap break-words text-base leading-relaxed text-[var(--color-text)]">{entry.value.text}</p>
+                        {entry.value.note !== null && <p className="mt-2 text-sm text-[var(--color-text-muted)]">Nota: {entry.value.note}</p>}
                         <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700">{entry.scope.startsWith('house:') ? 'Condivisa con la Casa' : 'Personale'}</span>
-                          {entry.value.servings !== null && <span className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700">{entry.value.servings} {entry.value.servings === 1 ? 'porzione' : 'porzioni'}</span>}
-                          <span className={`rounded-full px-2.5 py-1 ${entry.value.recipes.length === 0 ? 'bg-amber-100 text-amber-950' : 'bg-emerald-100 text-emerald-950'}`}>
+                          <span className="ik-badge">{entry.scope.startsWith('house:') ? 'Condivisa con la Casa' : 'Personale'}</span>
+                          {entry.value.servings !== null && <span className="ik-badge">{entry.value.servings} {entry.value.servings === 1 ? 'porzione' : 'porzioni'}</span>}
+                          <span className={`ik-badge ${entry.value.recipes.length === 0 ? 'bg-[var(--color-warning)]/20 text-[var(--color-warning)]' : 'bg-[var(--color-primary)]/20 text-[var(--color-primary)]'}`}>
                             {entry.value.recipes.length === 0 ? 'Da completare' : `${entry.value.recipes.length} ${entry.value.recipes.length === 1 ? 'ricetta collegata' : 'ricette collegate'}`}
                           </span>
                         </div>
-                        {entry.value.recipes.length > 0 && <ul className="mt-2 list-inside list-disc text-sm text-gray-700">{entry.value.recipes.map((recipe) => <li key={recipe.recipeId}>{recipe.title}</li>)}</ul>}
+                        {entry.value.recipes.length > 0 && <ul className="mt-2 list-inside list-disc text-sm text-[var(--color-text-muted)]">{entry.value.recipes.map((recipe) => <li key={recipe.recipeId}>{recipe.title}</li>)}</ul>}
                       </div>
                       {manageable && (
                         <div className="flex shrink-0 gap-2">
-                          <button type="button" onClick={() => edit(entry)} aria-label={`Modifica cena del ${formatDinnerDate(entry.value.date)}`} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border-2 border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-800 hover:bg-gray-50">
+                          <button type="button" onClick={() => edit(entry)} aria-label={`Modifica cena del ${formatDinnerDate(entry.value.date)}`} className="ik-button-secondary inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold">
                             <Pencil size={15} aria-hidden="true" /> <span>Modifica</span>
                           </button>
-                          <button type="button" onClick={() => remove(entry)} aria-label={`Elimina cena del ${formatDinnerDate(entry.value.date)}`} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border-2 border-rose-200 px-3 py-1.5 text-sm font-semibold text-rose-800 hover:bg-rose-50">
+                          <button type="button" onClick={() => remove(entry)} aria-label={`Elimina cena del ${formatDinnerDate(entry.value.date)}`} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border-2 border-[var(--color-danger)]/30 px-3 py-1.5 text-sm font-semibold text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10">
                             <Trash2 size={15} aria-hidden="true" /> <span>Elimina</span>
                           </button>
                         </div>
