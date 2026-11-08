@@ -1,15 +1,13 @@
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { AccountSummary, GeneratedRecipe } from '@ikuck/shared/contracts';
-import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { ApiClientError } from '../api/apiClient';
 import RecipesPage from './RecipesPage';
 import { useAuthStore } from '../auth/authStore';
 import { setActiveDataScope } from '../sync/scopeContext';
 import { fetchAiRecipes } from '../ai/aiRecipeApi';
-import { writeSavedRecipes, clearDinnerDiary } from '../storage/dinnerDiaryStorage';
 import { hydrateDinnerDiaryStore } from '../store/dinnerDiaryStore';
 
 vi.mock('../ai/aiRecipeApi', () => ({
@@ -34,7 +32,7 @@ const orataRecipe: GeneratedRecipe = {
   title: 'Orata al forno',
   description: 'Orata al forno con patate.',
   ingredients: [{ name: 'Orata', amount: '1' }, { name: 'Patate', amount: '300 g' }],
-  steps: ['Inforna l’orata a 200 gradi.', 'Servi con contorno.'],
+  steps: ['Inforna l\'orata a 200 gradi.', 'Servi con contorno.'],
   diets: [],
   allergens: [],
   createdAt: '2026-09-13T12:00:00.000Z',
@@ -53,66 +51,6 @@ const curryRecipe: GeneratedRecipe = {
   createdAt: '2026-09-13T12:00:00.000Z',
   updatedAt: '2026-09-15T12:00:00.000Z',
 };
-
-const savedRecipe = (overrides: Partial<SavedRecipe> = {}): SavedRecipe => ({
-  id: 'saved-lasagne',
-  title: 'Lasagne al forno',
-  description: 'Lasagne della domenica.',
-  ingredients: [
-    { name: 'Sfoglie', amount: '250 g', ingredientId: null, optional: false, provenance: 'provided' },
-    { name: 'Besciamella', amount: '500 ml', ingredientId: null, optional: false, provenance: 'provided' },
-  ],
-  steps: ['Stendi le sfoglie.', 'Cuoci in forno a 180 gradi per 30 minuti.'],
-  servings: 4,
-  durationMinutes: 90,
-  diets: null,
-  allergens: null,
-  suggestedFields: [],
-  source: 'diary',
-  authorId: null,
-  createdAt: '2026-10-01T10:00:00.000Z',
-  updatedAt: '2026-10-02T10:00:00.000Z',
-  ...overrides,
-});
-
-const pestoRecipe = savedRecipe({
-  id: 'saved-pesto',
-  title: 'Pasta al pesto',
-  description: '',
-  ingredients: [
-    { name: 'Basilico', amount: 'un mazzo', ingredientId: null, optional: false, provenance: 'provided' },
-    { name: 'Pinoli', amount: '30 g', ingredientId: null, optional: false, provenance: 'provided' },
-  ],
-  steps: ['Pesta basilico e pinoli.'],
-  createdAt: '2026-10-03T10:00:00.000Z',
-  updatedAt: '2026-10-04T10:00:00.000Z',
-});
-
-const tortaLimoneRecipe = savedRecipe({
-  id: 'saved-torta-limone',
-  title: 'Torta al limone',
-  description: 'Torta soffice al limone.',
-  ingredients: [
-    { name: 'Limone', amount: '2', ingredientId: null, optional: false, provenance: 'provided' },
-    { name: 'Farina', amount: '250 g', ingredientId: null, optional: false, provenance: 'provided' },
-  ],
-  steps: ['Mescola farina e uova con la scorza di limone.'],
-  createdAt: '2026-10-05T10:00:00.000Z',
-  updatedAt: '2026-10-06T10:00:00.000Z',
-});
-
-const giudiaLibraryRecipe = savedRecipe({
-  id: 'saved-giudia',
-  title: 'Carciofi alla giudìa',
-  description: 'Carciofi fritti croccanti.',
-  ingredients: [
-    { name: 'Carciofi', amount: '4', ingredientId: null, optional: false, provenance: 'provided' },
-    { name: 'Olio', amount: 'q.b.', ingredientId: null, optional: false, provenance: 'provided' },
-  ],
-  steps: ['Fritta i carciofi finché non sono dorati.'],
-  createdAt: '2026-10-07T10:00:00.000Z',
-  updatedAt: '2026-10-08T10:00:00.000Z',
-});
 
 const limoneAiRecipe: GeneratedRecipe = {
   id: 'saved-limone-ai',
@@ -140,6 +78,32 @@ const giudiaAiRecipe: GeneratedRecipe = {
   updatedAt: '2026-09-19T12:00:00.000Z',
 };
 
+const tortaLimoneRecipe: GeneratedRecipe = {
+  id: 'saved-torta-limone',
+  source: 'ai',
+  title: 'Torta al limone',
+  description: 'Torta soffice al limone.',
+  ingredients: [{ name: 'Limone', amount: '2' }, { name: 'Farina', amount: '250 g' }],
+  steps: ['Mescola farina e uova con la scorza di limone.'],
+  diets: [],
+  allergens: [],
+  createdAt: '2026-09-20T12:00:00.000Z',
+  updatedAt: '2026-09-21T12:00:00.000Z',
+};
+
+const giudiaLibraryRecipe: GeneratedRecipe = {
+  id: 'saved-giudia',
+  source: 'ai',
+  title: 'Carciofi alla giudìa',
+  description: 'Carciofi fritti croccanti.',
+  ingredients: [{ name: 'Carciofi', amount: '4' }, { name: 'Olio', amount: 'q.b.' }],
+  steps: ['Fritta i carciofi finché non sono dorati.'],
+  diets: [],
+  allergens: [],
+  createdAt: '2026-09-22T12:00:00.000Z',
+  updatedAt: '2026-09-23T12:00:00.000Z',
+};
+
 const renderPage = () => render(
   <MemoryRouter initialEntries={['/recipes']}>
     <Routes>
@@ -165,14 +129,13 @@ beforeEach((): void => {
 });
 
 describe('RecipesPage', () => {
-  it('renderizza i tre gruppi con le badge di fonte per una sessione verificata', async () => {
+  it('renderizza i due gruppi (AI e catalogo) per una sessione verificata', async () => {
     setVerifiedSession();
     vi.mocked(fetchAiRecipes).mockResolvedValue([orataRecipe]);
 
     renderPage();
 
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Orata al forno' })).toBeInTheDocument());
-    expect(screen.getByRole('heading', { name: 'Le tue ricette salvate' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Le tue ricette AI' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Ricette suggerite' })).toBeInTheDocument();
     expect(screen.getByText('Pollo al limone')).toBeInTheDocument();
@@ -180,7 +143,7 @@ describe('RecipesPage', () => {
     expect(screen.getAllByText('Catalogo').length).toBeGreaterThan(0);
   });
 
-  it('ordina le ricette salvate per updatedAt discendente', async () => {
+  it('ordina le ricette AI per updatedAt discendente', async () => {
     setVerifiedSession();
     vi.mocked(fetchAiRecipes).mockResolvedValue([orataRecipe, curryRecipe]);
 
@@ -210,7 +173,7 @@ describe('RecipesPage', () => {
     expect(screen.getByText('Orata al forno')).toBeInTheDocument();
   });
 
-  it('filtra anche sui nomi degli ingredienti delle ricette salvate', async () => {
+  it('filtra anche sui nomi degli ingredienti delle ricette AI', async () => {
     setVerifiedSession();
     vi.mocked(fetchAiRecipes).mockResolvedValue([curryRecipe]);
 
@@ -226,7 +189,7 @@ describe('RecipesPage', () => {
     expect(screen.queryByText('Pollo al limone')).not.toBeInTheDocument();
   });
 
-  it('mostra lo stato di caricamento solo sul gruppo salvate, catalogo consultabile', async () => {
+  it('mostra lo stato di caricamento solo sul gruppo AI, catalogo consultabile', async () => {
     setVerifiedSession();
     let resolveRecipes: ((value: GeneratedRecipe[]) => void) | null = null;
     vi.mocked(fetchAiRecipes).mockReturnValue(new Promise((resolve) => { resolveRecipes = resolve; }));
@@ -252,14 +215,12 @@ describe('RecipesPage', () => {
     expect(fetchAiRecipes).toHaveBeenCalledTimes(1);
   });
 
-  it('ospite: catalogo visibile, gruppo salvate con CTA accesso e nessuna chiamata', async () => {
+  it('ospite: catalogo visibile, gruppo AI con CTA accesso e nessuna chiamata', async () => {
     renderPage();
 
     expect(screen.getByText('Pollo al limone')).toBeInTheDocument();
     expect(screen.getByText(/Ricette AI riservate agli account verificati/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Accedi al tuo account' })).toHaveAttribute('href', '/profile');
-    expect(screen.getByRole('heading', { name: 'Le tue ricette salvate' })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText('Nessuna ricetta salvata ancora.')).toBeInTheDocument());
     expect(fetchAiRecipes).not.toHaveBeenCalled();
   });
 
@@ -279,87 +240,36 @@ describe('RecipesPage', () => {
     expect(screen.getByRole('link', { name: 'Trova ricette' })).toHaveAttribute('href', '/pantry');
   });
 
-  it('ospite: legge le ricette salvate dal diario in read-only e apre il dettaglio con scope', async () => {
-    await writeSavedRecipes([savedRecipe()], 'guest');
+  it('applica la ricerca live al gruppo AI per titolo e per ingrediente', async () => {
+    setVerifiedSession();
+    vi.mocked(fetchAiRecipes).mockResolvedValue([orataRecipe, curryRecipe]);
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Lasagne al forno' })).toBeInTheDocument());
-    expect(screen.getByText('Salvata')).toBeInTheDocument();
-    expect(hydrateDinnerDiaryStore).toHaveBeenCalledTimes(1);
-
-    const card = screen.getByRole('heading', { name: 'Lasagne al forno' }).closest('article');
-    expect(card).not.toBeNull();
-    const cardScreen = within(card as HTMLElement);
-
-    // Read-only: nessun form e nessun comando di creazione/modifica/eliminazione.
-    expect(document.querySelector('form')).toBeNull();
-    expect(screen.queryByRole('button', { name: /crea|modifica|elimina/i })).not.toBeInTheDocument();
-
-    // Card espandibile con ingredienti e procedimento.
-    const toggle = cardScreen.getByRole('button', { name: 'Mostra dettagli' });
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    const userEvents = userEvent.setup();
-    await userEvents.click(toggle);
-    expect(cardScreen.getByRole('button', { name: 'Nascondi dettagli' })).toHaveAttribute('aria-expanded', 'true');
-    expect(cardScreen.getByText('Sfoglie', { exact: true })).toBeInTheDocument();
-    expect(cardScreen.getByText('250 g')).toBeInTheDocument();
-    expect(cardScreen.getByText('Cuoci in forno a 180 gradi per 30 minuti.')).toBeInTheDocument();
-
-    // Link al dettaglio con lo scope attivo, come per le ricette del diario.
-    expect(screen.getByRole('link', { name: 'Apri Lasagne al forno' }))
-      .toHaveAttribute('href', '/recipes/saved-lasagne?scope=guest');
-  });
-
-  it('casa: mostra solo le ricette salvate dello scope casa attivo', async () => {
-    await writeSavedRecipes([savedRecipe({ id: 'saved-casa', title: 'Minestra di ceci della casa' })], 'house:house-1');
-    await writeSavedRecipes([savedRecipe({ id: 'saved-guest', title: 'Galette di mele' })], 'guest');
-
-    setActiveDataScope('house:house-1');
-    renderPage();
-
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Minestra di ceci della casa' })).toBeInTheDocument());
-    expect(screen.queryByText('Galette di mele')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Apri Minestra di ceci della casa' }))
-      .toHaveAttribute('href', '/recipes/saved-casa?scope=house%3Ahouse-1');
-  });
-
-  it('applica la ricerca live al gruppo salvate per titolo e per ingrediente', async () => {
-    await writeSavedRecipes([savedRecipe(), pestoRecipe], 'guest');
-
-    renderPage();
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Lasagne al forno' })).toBeInTheDocument());
-    expect(screen.getByRole('heading', { name: 'Pasta al pesto' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Orata al forno')).toBeInTheDocument());
+    expect(screen.getByText('Pollo al curry')).toBeInTheDocument();
 
     const search = screen.getByLabelText('Cerca ricette');
     const userEvents = userEvent.setup();
 
-    await userEvents.type(search, 'lasagne');
-    await waitFor(() => expect(screen.queryByText('Pasta al pesto')).not.toBeInTheDocument());
-    expect(screen.getByRole('heading', { name: 'Lasagne al forno' })).toBeInTheDocument();
+    await userEvents.type(search, 'orata');
+    await waitFor(() => expect(screen.queryByText('Pollo al curry')).not.toBeInTheDocument());
+    expect(screen.getByText('Orata al forno')).toBeInTheDocument();
 
     await userEvents.clear(search);
-    await userEvents.type(search, 'besciamella');
-    await waitFor(() => expect(screen.queryByText(/Nessuna ricetta salvata/)).not.toBeInTheDocument());
-    expect(screen.getByRole('heading', { name: 'Lasagne al forno' })).toBeInTheDocument();
-    expect(screen.queryByText('Pasta al pesto')).not.toBeInTheDocument();
-    // La coincidenza solo nel gruppo salvate tiene nascosta la CTA «nessun risultato».
+    await userEvents.type(search, 'curry');
+    await waitFor(() => expect(screen.queryByText('Orata al forno')).not.toBeInTheDocument());
+    expect(screen.getByText('Pollo al curry')).toBeInTheDocument();
     expect(screen.queryByText(/Nessuna ricetta trovata/)).not.toBeInTheDocument();
-
-    await userEvents.clear(search);
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Pasta al pesto' })).toBeInTheDocument());
-    expect(screen.getByRole('heading', { name: 'Lasagne al forno' })).toBeInTheDocument();
   });
 
-  // Filtro unificato: una sola query attraversa i tre gruppi (salvate, AI, catalogo).
+  // Filtro unificato: una sola query attraversa i due gruppi (AI, catalogo).
   const seedUnifiedGroups = async (): Promise<void> => {
     setVerifiedSession();
-    await clearDinnerDiary('account:user-1');
-    await writeSavedRecipes([tortaLimoneRecipe, giudiaLibraryRecipe], 'account:user-1');
-    vi.mocked(fetchAiRecipes).mockResolvedValue([limoneAiRecipe, giudiaAiRecipe]);
+    vi.mocked(fetchAiRecipes).mockResolvedValue([limoneAiRecipe, giudiaAiRecipe, tortaLimoneRecipe, giudiaLibraryRecipe]);
   };
 
-  it('filtra i tre gruppi con una sola query e ripristina tutto con query vuota', async () => {
+  it('filtra i due gruppi con una sola query e ripristina tutto con query vuota', async () => {
     await seedUnifiedGroups();
     renderPage();
 
@@ -367,13 +277,13 @@ describe('RecipesPage', () => {
     expect(screen.getByRole('heading', { name: 'Salsa al limone' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Pollo al limone' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Carciofi alla giudìa' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Carciofi alla giudìa del forno' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Carciofi alla giudìa del forno' })).toBeInTheDocument();
 
     const search = screen.getByLabelText('Cerca ricette');
     const userEvents = userEvent.setup();
     await userEvents.type(search, 'limone');
 
-    // Una coincidenza per gruppo: salvate, AI e catalogo restano; le giudìa escono.
+    // Una coincidenza per gruppo: AI e catalogo restano; le giudìa escono.
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Carciofi alla giudìa' })).not.toBeInTheDocument());
     expect(screen.getByRole('heading', { name: 'Torta al limone' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Salsa al limone' })).toBeInTheDocument();
@@ -385,8 +295,7 @@ describe('RecipesPage', () => {
     await userEvents.clear(search);
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Carciofi alla giudìa' })).toBeInTheDocument());
     expect(screen.getByRole('heading', { name: 'Carciofi alla giudìa del forno' })).toBeInTheDocument();
-    expect(screen.getAllByText('Salvata').length).toBe(2);
-    expect(screen.getAllByText('AI').length).toBe(2);
+    expect(screen.getAllByText('AI').length).toBe(4);
     expect(screen.getAllByText('Catalogo').length).toBeGreaterThan(0);
   });
 
@@ -416,7 +325,7 @@ describe('RecipesPage', () => {
     const search = screen.getByLabelText('Cerca ricette');
     const userEvents = userEvent.setup();
 
-    // Query senza accento su titolo accentato: coincide in salvate e AI, non nel catalogo.
+    // Query senza accento su titolo accentato: coincide in AI, non nel catalogo.
     await userEvents.type(search, 'giudia');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Carciofi alla giudìa' })).toBeInTheDocument());
     expect(screen.getByRole('heading', { name: 'Carciofi alla giudìa del forno' })).toBeInTheDocument();

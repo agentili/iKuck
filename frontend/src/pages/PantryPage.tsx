@@ -374,50 +374,46 @@ export default function PantryPage() {
           </span>
         }
       >
-        <div className="ik-kitchen-layout ik-kitchen-layout--two-columns min-w-0">
-          <div className="ik-kitchen-column min-w-0">
-            <IngredientInput onAdd={handleAdd} />
-          </div>
-          <div className="ik-kitchen-column min-w-0">
-            {pantryItems.length > 0 ? (
-              <>
-                <ul aria-label="La tua dispensa" className="space-y-3">
-                  {groupedPantryItems.map((group) => (
-                    <li key={group.key} className="space-y-1">
-                      <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-[var(--color-primary)]">
-                        {group.label}
-                      </h3>
-                      <ul className="space-y-2">
-                        {group.items.map((item) => (
-                          <IngredientChip key={item.id} item={item} onRemove={removeIngredient} />
-                        ))}
-                      </ul>
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  type="button"
-                  onClick={() => window.location.href = '/recipes'}
-                  className="ik-button-primary inline-flex min-h-12 w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-1 text-center text-base font-bold leading-tight sm:w-auto sm:flex-row sm:gap-2 sm:py-3"
-                >
-                  <ChefHat size={19} aria-hidden="true" />
-                  Vai alle ricette
-                </button>
-              </>
-            ) : (
-              <>
-                <EmptyState text="La tua dispensa è ancora vuota. Inserisci un ingrediente per iniziare." />
-                <button
-                  type="button"
-                  disabled
-                  className="ik-button-primary min-h-12 w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-1 text-center text-base font-bold leading-tight opacity-45 pointer-events-none sm:w-auto sm:flex-row sm:gap-2 sm:py-3"
-                >
-                  <ChefHat size={19} aria-hidden="true" />
-                  Vai alle ricette
-                </button>
-              </>
-            )}
-          </div>
+        <IngredientInput onAdd={handleAdd} />
+        <div className="mt-6">
+          {pantryItems.length > 0 ? (
+            <>
+              <ul aria-label="La tua dispensa" className="space-y-3">
+                {groupedPantryItems.map((group) => (
+                  <li key={group.key} className="space-y-1">
+                    <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-[var(--color-primary)]">
+                      {group.label}
+                    </h3>
+                    <ul className="space-y-2">
+                      {group.items.map((item) => (
+                        <IngredientChip key={item.id} item={item} onRemove={removeIngredient} />
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() => window.location.href = '/recipes'}
+                className="ik-button-primary inline-flex min-h-12 w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-1 text-center text-base font-bold leading-tight sm:w-auto sm:flex-row sm:gap-2 sm:py-3 mt-6"
+              >
+                <ChefHat size={19} aria-hidden="true" />
+                Vai alle ricette
+              </button>
+            </>
+          ) : (
+            <>
+              <EmptyState text="La tua dispensa è ancora vuota. Inserisci un ingrediente per iniziare." />
+              <button
+                type="button"
+                disabled
+                className="ik-button-primary min-h-12 w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-1 text-center text-base font-bold leading-tight opacity-45 pointer-events-none sm:w-auto sm:flex-row sm:gap-2 sm:py-3 mt-6"
+              >
+                <ChefHat size={19} aria-hidden="true" />
+                Vai alle ricette
+              </button>
+            </>
+          )}
         </div>
       </PageSection>
 

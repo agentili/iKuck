@@ -2,22 +2,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { LockKeyhole } from 'lucide-react';
 import { useSyncExternalStore } from 'react';
-import type { GeneratedRecipe } from '@ikuck/shared/contracts';
-import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { ApiClientError } from '../api/apiClient';
 import { fetchAiRecipes } from '../ai/aiRecipeApi';
 import { useAuthStore } from '../auth/authStore';
-import { adaptPantryRecipe, adaptGeneratedRecipe, adaptSavedRecipe, searchRecipes } from '../domain/recipeSearch';
+import { adaptPantryRecipe, adaptGeneratedRecipe, searchRecipes } from '../domain/recipeSearch';
 import { RECIPES } from '../domain/recipes';
-import { readSavedRecipes } from '../storage/dinnerDiaryStorage';
-import { hydrateDinnerDiaryStore } from '../store/dinnerDiaryStore';
 import { getActiveDataScope, subscribeActiveDataScope } from '../sync/scopeContext';
+import { hydrateDinnerDiaryStore } from '../store/dinnerDiaryStore';
 import ErrorBanner from '../components/ui/ErrorBanner';
 import EmptyState from '../components/ui/EmptyState';
 import PageSection from '../components/ui/PageSection';
 import RecipeCard from '../components/ui/RecipeCard';
+import type { GeneratedRecipe } from '@ikuck/shared/contracts';
 
-const LIBRARY_GROUP_LABEL = 'Le tue ricette salvate';
 const AI_GROUP_LABEL = 'Le tue ricette AI';
 const SUGGESTED_GROUP_LABEL = 'Ricette suggerite';
 
@@ -55,14 +52,10 @@ export default function RecipesPage() {
   const userId = user?.id ?? null;
 
   const [query, setQuery] = useState('');
-  const [libraryRecipes, setLibraryRecipes] = useState<SavedRecipe[]>([]);
-  const [libraryLoading, setLibraryLoading] = useState(true);
-  const [libraryError, setLibraryError] = useState<string | null>(null);
   const [savedRecipes, setSavedRecipes] = useState<GeneratedRecipe[]>([]);
   const [savedLoading, setSavedLoading] = useState(false);
   const [savedError, setSavedError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [expandedLibraryIds, setExpandedLibraryIds] = useState<Set<string>>(new Set());
 
   // RecipeDetailPage resolves /recipes/:id?scope= through the diary store, which
   // hydrates only on scope changes or when the diary page mounts: warm it up here
@@ -70,28 +63,6 @@ export default function RecipesPage() {
   useEffect(() => {
     void hydrateDinnerDiaryStore();
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const capturedScope = activeScope;
-
-    setLibraryRecipes([]);
-    setLibraryError(null);
-    setLibraryLoading(true);
-    void (async (): Promise<void> => {
-      try {
-        const recipes = await readSavedRecipes(capturedScope);
-        if (cancelled || getActiveDataScope() !== capturedScope) return;
-        setLibraryRecipes([...recipes].sort(newestFirst));
-      } catch {
-        if (!cancelled) setLibraryError('Non è stato possibile caricare le tue ricette salvate. Riprova.');
-      } finally {
-        if (!cancelled) setLibraryLoading(false);
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [activeScope]);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,18 +113,9 @@ export default function RecipesPage() {
     [],
   );
 
-  const librarySearchable = useMemo(() => libraryRecipes.map(adaptSavedRecipe), [libraryRecipes]);
   const savedSearchable = useMemo(() => savedRecipes.map(adaptGeneratedRecipe), [savedRecipes]);
   const suggestedSearchable = useMemo(() => suggestedRecipes.map(adaptPantryRecipe), [suggestedRecipes]);
 
-  const filteredLibraryIds = useMemo(
-    () => new Set(searchRecipes(librarySearchable, query).map((item) => item.id)),
-    [librarySearchable, query],
-  );
-  const filteredLibrary = useMemo(
-    () => libraryRecipes.filter((recipe) => filteredLibraryIds.has(recipe.id)),
-    [libraryRecipes, filteredLibraryIds],
-  );
   const filteredSavedIds = useMemo(
     () => new Set(searchRecipes(savedSearchable, query).map((item) => item.id)),
     [savedSearchable, query],
@@ -172,21 +134,11 @@ export default function RecipesPage() {
   );
 
   const isEmptySearch = query.length > 0
-    && filteredLibrary.length === 0
     && filteredSaved.length === 0
     && filteredSuggested.length === 0;
 
   const toggleExpanded = useCallback((id: string): void => {
     setExpandedIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  const toggleLibraryExpanded = useCallback((id: string): void => {
-    setExpandedLibraryIds((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -200,7 +152,7 @@ export default function RecipesPage() {
         <p className="ik-eyebrow">Ricette · {scopeLabel(activeScope)}</p>
         <h1 className="mt-1">Ricette</h1>
         <p className="mt-3 max-w-xl text-base leading-relaxed text-[var(--color-text-muted)]">
-          Le tue ricette salvate, quelle generate con l'AI e il catalogo della casa.
+          Le tue ricette generate con l'AI e il catalogo della casa.
         </p>
       </header>
 
@@ -226,46 +178,6 @@ export default function RecipesPage() {
         </div>
 
         <div className="ik-kitchen-column min-w-0">
-        <PageSection
-          eyebrow="Dal diario"
-          title={LIBRARY_GROUP_LABEL}
-          titleId="library-recipes-title"
-          description="Le ricette che hai salvato dal Diario, disponibili anche offline."
-          action={
-            libraryLoading && (
-              <p role="status" className="text-sm font-semibold text-[var(--color-primary)]">
-                Carico le tue ricette salvate…
-              </p>
-            )
-          }
-          featured
-        >
-          {libraryError !== null && <ErrorBanner message={libraryError} />}
-          {!libraryLoading && libraryError === null && libraryRecipes.length === 0 && (
-            <EmptyState text="Nessuna ricetta salvata ancora." />
-          )}
-          {!libraryLoading && libraryError === null && filteredLibrary.length > 0 && (
-            <div className="grid gap-4 grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
-              {filteredLibrary.map((recipe) => (
-                <RecipeCard
-                  key={recipe.id}
-                  variant="salvata"
-                  title={recipe.title}
-                  description={recipe.description}
-                  ingredients={recipe.ingredients}
-                  showIngredientAmounts
-                  steps={recipe.steps}
-                  isExpanded={expandedLibraryIds.has(recipe.id)}
-                  onToggle={() => toggleLibraryExpanded(recipe.id)}
-                  detailsId={`library-recipe-details-${recipe.id}`}
-                  openHref={`/recipes/${encodeURIComponent(recipe.id)}?scope=${encodeURIComponent(activeScope)}`}
-                  openAriaLabel={`Apri ${recipe.title}`}
-                />
-              ))}
-            </div>
-          )}
-        </PageSection>
-
         <PageSection
           eyebrow="Generate con l'AI"
           title={AI_GROUP_LABEL}

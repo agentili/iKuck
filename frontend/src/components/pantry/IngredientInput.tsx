@@ -100,9 +100,8 @@ export default function IngredientInput({ onAdd, idBase = 'pantry' }: Ingredient
           autoComplete="off"
           className="ik-input min-h-12 flex-1"
         />
-        <button type="submit" className="ik-button-primary inline-flex min-h-12 shrink-0 items-center justify-center gap-2 whitespace-nowrap sm:px-5 sm:text-base">
+        <button type="submit" className="ik-button-primary inline-flex min-h-12 shrink-0 items-center justify-center sm:px-5" aria-label="Aggiungi ingredienti">
           <Plus size={19} aria-hidden="true" />
-          Aggiungi ingredienti
         </button>
       </div>
       <p id={`${idBase}-input-help`} className="text-sm text-[var(--color-text-muted)]">Separa più ingredienti con una virgola. Puoi usare anche le frecce e Invio per scegliere un suggerimento.</p>
