@@ -253,7 +253,7 @@ export default function SavedPage() {
         <p className="ik-eyebrow text-sm font-bold text-[var(--ik-basil-dark)]">
           Ambito: {scopeLabel(activeScope)}
         </p>
-        <h1 className="mt-1 text-[clamp(2.5rem,6vw,3.75rem)] font-black leading-[1.04] tracking-[-0.03em] text-[var(--ik-ink)]">
+        <h1 className="mt-1 text-[clamp(2rem,4.8vw,3rem)] font-black leading-[1.04] tracking-[-0.03em] text-[var(--ik-ink)]">
           Le tue ricette
         </h1>
         <p className="mt-3 max-w-xl text-base leading-relaxed text-[var(--ik-ink-muted)]">

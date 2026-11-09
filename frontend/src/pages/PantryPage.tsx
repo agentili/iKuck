@@ -371,8 +371,8 @@ export default function PantryPage() {
         </button>
         {!sousChef && <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Organizza la tua cucina</p>}
         <h1 className={sousChef
-          ? 'text-3xl font-extrabold leading-tight text-[var(--ik-ink)] sm:text-4xl'
-          : 'mt-1 text-4xl font-black leading-[1.04] text-gray-950 sm:text-6xl'}>La tua dispensa</h1>
+          ? 'text-[1.5rem] font-extrabold leading-tight text-[var(--ik-ink)] sm:text-[1.8rem]'
+          : 'mt-1 text-[1.8rem] font-black leading-[1.04] text-gray-950 sm:text-[3rem]'}>La tua dispensa</h1>
         <p className={sousChef
           ? 'mt-2 max-w-xl text-base leading-relaxed text-[var(--ik-ink-muted)]'
           : 'mt-3 max-w-xl text-base leading-relaxed text-gray-700 sm:text-lg'}>

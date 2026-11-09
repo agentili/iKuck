@@ -206,7 +206,7 @@ export default function HomePage() {
     <main id="main-content" className="ik-page ik-kitchen-page mx-auto min-h-screen w-full max-w-6xl px-4 pb-8 pt-5 sm:px-6 sm:pt-8 lg:px-8">
       <header className="ik-page-intro mb-5 max-w-2xl sm:mb-7">
         <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em] text-[var(--ik-basil-dark)]">Cucina · {activeScope.startsWith('house:') ? 'Casa' : activeScope === 'guest' ? 'dati locali' : 'personale'}</p>
-        <h1 className="mt-1 text-4xl font-black leading-[1.04] text-[var(--ik-ink)] sm:text-5xl">Cucina viva</h1>
+        <h1 className="mt-1 text-[1.8rem] font-black leading-[1.04] text-[var(--ik-ink)] sm:text-[2.4rem]">Cucina viva</h1>
         <p className="mt-3 max-w-xl text-base leading-relaxed text-[var(--ik-ink-muted)]">Aggiungi quello che hai, poi scegli cosa cucinare. La ricerca parte solo quando la avvii.</p>
       </header>
 

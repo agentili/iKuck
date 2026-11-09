@@ -45,7 +45,7 @@ export default function VerifyEmailPage() {
         <p className="ik-eyebrow">Account · Sicurezza</p>
         {state === 'ready' && (
           <>
-            <h1 id="verify-email-title" className="mt-2 text-[clamp(2rem,7vw,3.25rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Conferma la tua email</h1>
+            <h1 id="verify-email-title" className="mt-2 text-[clamp(1.6rem,5.6vw,2.6rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Conferma la tua email</h1>
             <p className="mt-3 text-base leading-relaxed text-[var(--ik-ink-muted)]">Conferma il tuo indirizzo per attivare l’account iKuck.</p>
             <button type="button" onClick={() => { void confirmEmail(); }} className="ik-button-primary mt-6 inline-flex min-h-12 w-full items-center justify-center px-4 py-3 font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)] sm:w-auto">Conferma email</button>
           </>
@@ -53,14 +53,14 @@ export default function VerifyEmailPage() {
         {state === 'loading' && <p role="status" className="mt-2 font-semibold text-[var(--ik-ink-muted)]">Verifica in corso…</p>}
         {state === 'success' && (
           <>
-            <h1 id="verify-email-title" className="mt-2 text-[clamp(2rem,7vw,3.25rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Email verificata</h1>
+            <h1 id="verify-email-title" className="mt-2 text-[clamp(1.6rem,5.6vw,2.6rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Email verificata</h1>
             <p role="status" aria-live="polite" className="mt-3 text-base leading-relaxed text-[var(--ik-ink-muted)]">Il tuo account iKuck è pronto per la sincronizzazione.</p>
             <Link to="/profile" className="ik-button-primary mt-6 inline-flex min-h-12 w-full items-center justify-center px-4 py-3 text-center font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)] sm:w-auto">Vai al tuo profilo</Link>
           </>
         )}
         {state === 'error' && (
           <>
-            <h1 id="verify-email-title" className="mt-2 text-[clamp(2rem,7vw,3.25rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Link non valido</h1>
+            <h1 id="verify-email-title" className="mt-2 text-[clamp(1.6rem,5.6vw,2.6rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Link non valido</h1>
             <p className="mt-3 rounded-[var(--ik-radius-control)] border border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] p-3 font-semibold text-[var(--ik-tomato)]" role="alert">{INVALID_LINK_MESSAGE}</p>
             <Link to="/recipes" className="ik-button-secondary mt-6 inline-flex min-h-12 w-full items-center justify-center border-2 bg-[var(--ik-surface)] px-4 py-3 text-center font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)] sm:w-auto">Torna alle ricette</Link>
           </>

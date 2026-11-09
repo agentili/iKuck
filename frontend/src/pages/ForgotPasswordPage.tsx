@@ -37,7 +37,7 @@ export default function ForgotPasswordPage() {
         {submitted ? (
           <>
             <p className="ik-eyebrow">Account · Recupero</p>
-            <h1 id="forgot-password-title" className="mt-2 text-[clamp(2rem,7vw,3.25rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Controlla la tua email</h1>
+            <h1 id="forgot-password-title" className="mt-2 text-[clamp(1.6rem,5.6vw,2.6rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Controlla la tua email</h1>
             <p role="status" aria-live="polite" className="mt-3 text-base leading-relaxed text-[var(--ik-ink-muted)]">
               Se l'email è registrata, riceverai le istruzioni per recuperare l'account.
             </p>
@@ -48,7 +48,7 @@ export default function ForgotPasswordPage() {
         ) : (
           <>
             <p className="ik-eyebrow">Account · Recupero</p>
-            <h1 id="forgot-password-title" className="mt-2 text-[clamp(2rem,7vw,3.25rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Recupera la password</h1>
+            <h1 id="forgot-password-title" className="mt-2 text-[clamp(1.6rem,5.6vw,2.6rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Recupera la password</h1>
             <p className="mt-3 text-base leading-relaxed text-[var(--ik-ink-muted)]">
               Inserisci la tua email per ricevere un link di recupero.
             </p>

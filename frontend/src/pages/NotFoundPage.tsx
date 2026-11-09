@@ -19,7 +19,7 @@ export default function NotFoundPage({ resource = 'recipe' }: NotFoundPageProps)
       <section aria-labelledby="not-found-title" className="ik-surface ik-profile-surface w-full border-2 p-6 text-center sm:p-10">
         <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[var(--ik-yolk-soft)] text-4xl" aria-hidden="true">🍳</div>
         <p className="ik-eyebrow mt-5">{isRecipe ? 'Catalogo' : 'Percorso non disponibile'}</p>
-        <h1 id="not-found-title" className="mt-1 text-[clamp(2rem,7vw,3.5rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">{isRecipe ? 'Ricetta non trovata' : 'Pagina non trovata'}</h1>
+        <h1 id="not-found-title" className="mt-1 text-[clamp(1.6rem,5.6vw,2.8rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">{isRecipe ? 'Ricetta non trovata' : 'Pagina non trovata'}</h1>
         <p className="mx-auto mt-3 max-w-lg text-base leading-relaxed text-[var(--ik-ink-muted)] sm:text-lg">
           {isRecipe ? 'Questa ricetta non è presente nel catalogo.' : 'L’indirizzo richiesto non corrisponde a una pagina disponibile.'}
         </p>

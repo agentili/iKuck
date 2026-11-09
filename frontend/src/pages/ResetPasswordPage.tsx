@@ -68,14 +68,14 @@ export default function ResetPasswordPage() {
         {completed ? (
           <>
             <p className="ik-eyebrow">Account · Sicurezza</p>
-            <h1 id="reset-password-title" className="mt-2 text-[clamp(2rem,7vw,3.25rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Password aggiornata</h1>
+            <h1 id="reset-password-title" className="mt-2 text-[clamp(1.6rem,5.6vw,2.6rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Password aggiornata</h1>
             <p role="status" aria-live="polite" className="mt-3 text-base leading-relaxed text-[var(--ik-ink-muted)]">Ora puoi accedere al tuo account con la nuova password.</p>
             <Link to="/profile" className="ik-button-primary mt-6 inline-flex min-h-12 w-full items-center justify-center px-4 py-3 text-center font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)] sm:w-auto">Vai all’accesso</Link>
           </>
         ) : (
           <>
             <p className="ik-eyebrow">Account · Sicurezza</p>
-            <h1 id="reset-password-title" className="mt-2 text-[clamp(2rem,7vw,3.25rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Reimposta la password</h1>
+            <h1 id="reset-password-title" className="mt-2 text-[clamp(1.6rem,5.6vw,2.6rem)] font-black leading-tight tracking-[-0.03em] text-[var(--ik-ink)]">Reimposta la password</h1>
             <p className="mt-3 text-base leading-relaxed text-[var(--ik-ink-muted)]">Scegli una nuova password di almeno 12 caratteri.</p>
             {error !== null && <p role="alert" className="mt-4 rounded-[var(--ik-radius-control)] border border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] p-3 font-semibold text-[var(--ik-tomato)]">{error}</p>}
             {isTokenInvalid ? (

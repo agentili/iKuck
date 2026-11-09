@@ -257,7 +257,7 @@ export default function DiscoverPage() {
         <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em]">
           Ambito: {scopeLabel(activeScope)}
         </p>
-        <h1 className="mt-1 text-[clamp(2.5rem,6vw,3.75rem)] font-black leading-[1.04] tracking-[-0.03em] text-[var(--ik-ink)]">Cerca ricette</h1>
+        <h1 className="mt-1 text-[clamp(2rem,4.8vw,3rem)] font-black leading-[1.04] tracking-[-0.03em] text-[var(--ik-ink)]">Cerca ricette</h1>
         <p className="mt-3 max-w-xl text-base leading-relaxed text-[var(--ik-ink-muted)]">
           Cerca per titolo, ingrediente o filtra per categoria.
         </p>
