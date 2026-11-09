@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import css from '../index.css?raw';
 import tailwindConfig from '../../tailwind.config.js?raw';
+import { COLOR_PALETTES } from './colorPalette';
 
 const sources = import.meta.glob('../**/*.{css,ts,tsx}', { eager: true, query: '?raw', import: 'default' }) as Record<string, string>;
 
@@ -25,9 +26,19 @@ describe('semantic UI tokens', () => {
     expect(tailwindConfig).toContain(['DEFAULT: \'r', 'gb(var(--tk-ink) / <alpha-value>)\''].join(''));
   });
 
+  it('defines every selectable palette and routes shared semantic colors through it', () => {
+    for (const palette of COLOR_PALETTES) {
+      expect(css).toContain(`:root[data-palette='${palette.value}']`);
+      expect(css).toContain(`html[data-theme='dark'][data-palette='${palette.value}']`);
+    }
+    expect(css).toContain('html[data-palette][data-theme]');
+    expect(css).toContain('--ik-basil: var(--ik-palette-accent);');
+    expect(css).toContain('--ik-porcelain: var(--ik-palette-page);');
+    expect(css).toContain('--tk-emerald-700: var(--ik-palette-accent-dark-rgb);');
+  });
+
   it('shares semantic overlay and surface primitives across modal variants', () => {
     const modalSources = [
-      '../components/layout/ProfileModal.tsx',
       '../components/recipe/RecipeDetailModal.tsx',
       '../components/pantry/QuickAddIngredientsDialog.tsx',
     ];
@@ -53,7 +64,6 @@ describe('semantic UI tokens', () => {
     const sharedUi = [
       '../components/chat/MessageBubble.tsx',
       '../components/feedback/AppInstallPrompt.tsx',
-      '../components/layout/ProfileModal.tsx',
       '../components/recipe/RecipeDetailModal.tsx',
     ];
     const parallelStatusColors = /(?:bg|text|border)-(?:blue|green|orange)-[0-9]+/;

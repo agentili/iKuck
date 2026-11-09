@@ -13,7 +13,7 @@ const routeCases: Array<{
 }> = [
   {
     path: '/plan',
-    heading: 'Piano',
+    heading: 'Piano settimanale',
     name: 'plan',
     surface: (page) => page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem').first(),
   },

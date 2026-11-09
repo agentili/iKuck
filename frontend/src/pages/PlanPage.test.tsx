@@ -4,15 +4,15 @@ import { describe, expect, it } from 'vitest';
 import PlanPage from './PlanPage';
 
 describe('PlanPage', () => {
-  it('shows four consecutive guest plan days starting tomorrow', async () => {
+  it('shows seven consecutive guest plan days starting tomorrow', async () => {
     render(
       <MemoryRouter initialEntries={['/plan']}>
         <PlanPage />
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(4));
-    expect(screen.getByRole('heading', { level: 1, name: 'Piano' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(7));
+    expect(screen.getByRole('heading', { level: 1, name: 'Piano settimanale' })).toBeInTheDocument();
   });
 
   it('keeps local guest proposals visibly distinct from shared plans', async () => {

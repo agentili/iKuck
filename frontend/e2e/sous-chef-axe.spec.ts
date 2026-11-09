@@ -11,7 +11,7 @@ const offlineResponses = {
 };
 
 const auditedPages = [
-  { path: '/plan', heading: 'Piano', name: 'Piano' },
+  { path: '/plan', heading: 'Piano settimanale', name: 'Piano' },
   { path: '/recipes', heading: 'Ricette', name: 'Ricette' },
 ] as const;
 

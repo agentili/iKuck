@@ -8,7 +8,8 @@ import { importLocalData } from '../sync/syncQueue';
 import GoogleSignInButton from '../components/account/GoogleSignInButton';
 import { appVersion, buildId } from '../version';
 import { hasUnpersistedMotionPreference, isReducedMotionPreference, saveReducedMotionPreference } from '../domain/motionPreference';
-import { type ColorThemePreference, getColorThemePreference, hasUnpersistedColorTheme, saveColorThemePreference, subscribeColorTheme } from '../domain/colorTheme';
+import { applyColorTheme, type ColorThemePreference, getColorThemePreference, hasUnpersistedColorTheme, saveColorThemePreference, subscribeColorTheme } from '../domain/colorTheme';
+import { COLOR_PALETTES, getColorPalettePreference, hasUnpersistedColorPalette, saveColorPalettePreference, subscribeColorPalette, type ColorPalettePreference } from '../domain/colorPalette';
 import ErrorBanner from '../components/ui/ErrorBanner';
 import PageSection from '../components/ui/PageSection';
 import { readMealPlanSnapshot } from '../mealPlan/storage';
@@ -42,6 +43,55 @@ function ThemePreferenceControl() {
       {storageUnavailable
         ? <p role="status" className="mt-2 rounded-xl border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] p-3 text-sm font-semibold text-[var(--ik-warn-ink)]">La scelta vale solo finché l’app resta aperta: questo browser non consente di salvarla.</p>
         : <p className="mt-2 text-sm text-[var(--ik-ink-muted)]">La scelta è conservata solo in questo browser; con Sistema segue il tema del dispositivo.</p>}
+    </section>
+  );
+}
+
+function ColorPaletteControl() {
+  const preference = useSyncExternalStore(subscribeColorPalette, getColorPalettePreference, () => 'basilico');
+  const storageUnavailable = useSyncExternalStore(subscribeColorPalette, hasUnpersistedColorPalette, () => false);
+
+  const choosePalette = (nextPreference: ColorPalettePreference) => {
+    saveColorPalettePreference(nextPreference);
+    applyColorTheme();
+  };
+
+  return (
+    <section aria-labelledby="color-palette-title" className="ik-surface ik-profile-surface mt-5 rounded-3xl border-2 p-5">
+      <h2 id="color-palette-title" className="text-xl font-black text-[var(--ik-ink)]">Palette colori</h2>
+      <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">Scegli i colori di iKuck. La modifica si applica subito.</p>
+      <fieldset role="radiogroup" aria-labelledby="color-palette-title" className="mt-4 grid grid-cols-2 gap-3 border-0 p-0 sm:grid-cols-3 lg:grid-cols-5">
+        {COLOR_PALETTES.map(({ value, label, description }) => (
+          <label
+            key={value}
+            data-palette={value}
+            className="ik-palette-option group relative flex min-h-24 cursor-pointer flex-col justify-between rounded-2xl border-2 border-[var(--ik-border)] bg-[var(--ik-palette-page)] p-3 text-left text-[var(--ik-palette-ink)] transition-colors hover:border-[var(--ik-basil)] has-[:checked]:border-[var(--ik-basil)] has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--ik-focus)]"
+          >
+            <input
+              type="radio"
+              name="color-palette"
+              value={value}
+              checked={preference === value}
+              onChange={() => choosePalette(value)}
+              className="sr-only"
+            />
+            <span className="flex items-center justify-between gap-2">
+              <span className="font-bold">{label}</span>
+              <span aria-hidden="true" className="grid size-5 place-items-center rounded-full bg-[var(--ik-palette-accent)] text-xs font-black text-[var(--ik-palette-page)] opacity-0 group-has-[:checked]:opacity-100">✓</span>
+            </span>
+            <span className="mt-1 text-xs text-[var(--ik-palette-muted-ink)]">{description}</span>
+            <span aria-hidden="true" className="mt-2 flex gap-1.5">
+              <span className="size-3 rounded-full bg-[var(--ik-palette-accent)]" />
+              <span className="size-3 rounded-full bg-[var(--ik-palette-accent-dark)]" />
+              <span className="size-3 rounded-full bg-[var(--ik-palette-soft)]" />
+              <span className="size-3 rounded-full bg-[var(--ik-palette-page)] ring-1 ring-inset ring-[var(--ik-palette-border)]" />
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      {storageUnavailable
+        ? <p role="status" className="mt-3 rounded-xl border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] p-3 text-sm font-semibold text-[var(--ik-warn-ink)]">La palette scelta vale solo finché l’app resta aperta: questo browser non consente di salvarla.</p>
+        : <p className="mt-3 text-sm text-[var(--ik-ink-muted)]">La scelta è conservata solo in questo browser.</p>}
     </section>
   );
 }
@@ -158,6 +208,7 @@ export default function ProfilePage() {
           <div className="mt-6"><AccountPanel /></div>
         </PageSection>
         <ThemePreferenceControl />
+        <ColorPaletteControl />
         <MotionPreferenceControl />
       </main>
     );
@@ -418,6 +469,7 @@ export default function ProfilePage() {
         </div>
       </PageSection>
       <ThemePreferenceControl />
+      <ColorPaletteControl />
       <MotionPreferenceControl />
     </main>
   );

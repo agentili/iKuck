@@ -1,3 +1,5 @@
+import { applyColorPalette } from './colorPalette';
+
 export type ColorThemePreference = 'light' | 'dark' | 'system';
 
 const COLOR_THEME_PREFERENCE_KEY = 'ikuck-color-theme';
@@ -48,8 +50,13 @@ export const applyColorTheme = (): void => {
 
   const theme = resolveColorTheme();
   document.documentElement.dataset.theme = theme;
+  applyColorPalette();
   const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-  if (themeColor) themeColor.content = theme === 'dark' ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
+  if (themeColor) {
+    const paletteColor = window.getComputedStyle(document.documentElement)
+      .getPropertyValue(theme === 'dark' ? '--ik-palette-page' : '--ik-palette-accent').trim();
+    themeColor.content = paletteColor || (theme === 'dark' ? DARK_THEME_COLOR : LIGHT_THEME_COLOR);
+  }
   colorThemeListeners.forEach((listener) => listener());
 };
 

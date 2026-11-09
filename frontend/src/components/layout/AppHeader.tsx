@@ -1,10 +1,8 @@
-import { useSyncExternalStore } from 'react';
-import { BookOpen, ChefHat, Home, Moon, PackageOpen, ShoppingBasket, Sun, UserRound, WifiOff } from 'lucide-react';
+import { BookOpen, ChefHat, Home, PackageOpen, ShoppingBasket, UserRound, WifiOff } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../auth/authStore';
 import { useHouseStore } from '../../house/houseStore';
 import { usePantryCandidatesBadgeStore } from '../../store/pantryCandidatesBadgeStore';
-import { resolveColorTheme, saveColorThemePreference, subscribeColorTheme } from '../../domain/colorTheme';
 
 const primaryLinks = [
   { path: '/', label: 'Cucina', compactLabel: 'Cucina', narrowLabel: 'Cucina', icon: Home },
@@ -24,20 +22,6 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
   const connection = useAuthStore((state) => state.connection);
   const house = useHouseStore((state) => state.state?.house ?? null);
   const pendingCount = usePantryCandidatesBadgeStore((state) => state.pendingCount);
-  const resolvedTheme = useSyncExternalStore(subscribeColorTheme, resolveColorTheme, () => 'light');
-  const toggleTheme = () => {
-    saveColorThemePreference(resolvedTheme === 'dark' ? 'light' : 'dark');
-  };
-  const renderThemeToggle = () => (
-    <button
-      type="button"
-      onClick={toggleTheme}
-      aria-label={resolvedTheme === 'dark' ? 'Attiva tema chiaro' : 'Attiva tema scuro'}
-      className="grid min-h-11 min-w-11 place-items-center rounded-xl text-[var(--ik-ink)] hover:bg-[var(--ik-sage)]"
-    >
-      {resolvedTheme === 'dark' ? <Sun size={19} aria-hidden="true" /> : <Moon size={19} aria-hidden="true" />}
-    </button>
-  );
   const accountStatus = connection === 'offline'
     ? 'Offline'
     : user === null
@@ -61,7 +45,6 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
         <div className="app-mobile-links items-center gap-1">
           <Link to="/profile" aria-label="Profilo" className="grid min-h-11 min-w-11 place-items-center rounded-xl text-[var(--ik-ink)] hover:bg-[var(--ik-sage)]"><UserRound size={19} aria-hidden="true" /></Link>
           <Link to="/house" aria-label="Casa" className="grid min-h-11 min-w-11 place-items-center rounded-xl text-[var(--ik-ink)] hover:bg-[var(--ik-sage)]"><Home size={19} aria-hidden="true" /></Link>
-          {renderThemeToggle()}
         </div>
       </div>
       <nav aria-label="Navigazione principale" className="app-navigation ik-navigation-surface fixed inset-x-0 bottom-0 z-40 border-t border-[var(--ik-border)] bg-[var(--ik-surface)] sm:static sm:ml-auto sm:border-0 sm:bg-transparent">
@@ -115,7 +98,6 @@ export default function AppHeader({ scopeUnverified = false }: AppHeaderProps) {
         <div className="mt-3 flex flex-wrap gap-2">
           <Link to="/profile" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--ik-border)] px-3 py-2 text-sm font-bold text-[var(--ik-ink)] hover:bg-[var(--ik-mist)]"><UserRound size={16} aria-hidden="true" /> Profilo</Link>
           <Link to="/house" className="inline-flex min-h-11 items-center rounded-xl border border-[var(--ik-border)] px-3 py-2 text-sm font-bold text-[var(--ik-ink)] hover:bg-[var(--ik-mist)]">Casa</Link>
-          {renderThemeToggle()}
         </div>
       </div>
     </header>

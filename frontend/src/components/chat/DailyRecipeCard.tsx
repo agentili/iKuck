@@ -7,6 +7,7 @@ import { getDailyRecipe, localDateKey } from '../../storage/dailyRecipeStorage';
 import { hydratePantryStore, usePantryStore } from '../../store/localPantryStore';
 import { hydrateDietProfileStore, useDietProfileStore } from '../../store/dietProfileStore';
 import { getActiveDataScope, subscribeActiveDataScope } from '../../sync/scopeContext';
+import RecipeImage from '../suggestions/RecipeImage';
 
 export function DailyRecipeCard() {
   const scope = useSyncExternalStore((listener) => subscribeActiveDataScope(() => listener()), getActiveDataScope, getActiveDataScope);
@@ -57,17 +58,19 @@ export function DailyRecipeCard() {
         <p className="mt-2 text-sm text-[var(--ik-ink-muted)]" role="status">Nessuna ricetta compatibile disponibile nel catalogo.</p>
       ) : (
         <>
-          <h3 className="mt-1 text-lg font-bold text-[var(--ik-ink)]">{selection.recipe.title}</h3>
+          <RecipeImage recipeId={selection.recipe.id} recipeTitle={selection.recipe.title} />
+          <h3 className="mt-1 text-xl font-bold leading-tight text-[var(--ik-ink)]">{selection.recipe.title}</h3>
           <p className="text-sm text-[var(--ik-ink-muted)]">{selection.recipe.durationMinutes === null ? 'Tempo non disponibile' : `${selection.recipe.durationMinutes} minuti`}</p>
+          <p className="mt-2 text-sm font-semibold text-[var(--ik-basil-dark)]">La proponiamo in base alla tua dispensa e alle tue preferenze.</p>
           {selection.missingIngredientIds.length === 0
-            ? <p className="mt-1 text-sm text-[var(--ik-basil-dark)]">Ingredienti presenti; verifica le quantità.</p>
-            : <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">Ingredienti mancanti: {selection.missingIngredientIds.map((id) => getIngredient(id)?.label ?? id).join(', ')}. Verifica le quantità.</p>}
+            ? <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">Hai gli ingredienti segnalati. Controlla le quantità prima di cucinare.</p>
+            : <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">Da aggiungere: {selection.missingIngredientIds.map((id) => getIngredient(id)?.label ?? id).join(', ')}.</p>}
           {selection.reasons.length > 0 && (
             <p className="mt-1 text-sm text-[var(--ik-warn-ink)]">
-              Proposta alternativa: {selection.reasons.includes('missing') ? 'richiede più di un ingrediente mancante' : ''}{selection.reasons.length > 1 ? '; ' : ''}{selection.reasons.includes('duration') ? 'supera 30 minuti o ha un tempo non disponibile' : ''}.
+              Questa proposta richiede più di un ingrediente mancante o più di 30 minuti.
             </p>
           )}
-          <Link className="mt-2 inline-flex min-h-11 items-center rounded-lg font-semibold text-[var(--ik-basil-dark)] underline underline-offset-2" to={`/recipes/${selection.recipe.id}`}>Vedi ricetta</Link>
+          <Link className="mt-3 inline-flex min-h-11 items-center rounded-xl bg-[var(--ik-basil)] px-4 font-bold text-white hover:bg-[var(--ik-basil-dark)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]" to={`/recipes/${selection.recipe.id}`}>Apri la ricetta</Link>
         </>
       )}
     </section>

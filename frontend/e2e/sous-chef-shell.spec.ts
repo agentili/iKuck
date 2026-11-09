@@ -71,8 +71,9 @@ const horizontalOverflow = (page: Page) =>
     innerWidth: window.innerWidth,
     overflowing: Array.from(document.querySelectorAll<HTMLElement>('body *'))
       .filter((element) => element.getBoundingClientRect().right > window.innerWidth + 1
+        && element.closest('svg') === null
         && element.closest('.chef-chat-quick-navigation') === null)
-      .map((element) => `${element.tagName.toLowerCase()}.${element.className}`.slice(0, 120))
+      .map((element) => `${element.tagName.toLowerCase()}.${typeof element.className === 'string' ? element.className : ''}`.slice(0, 120))
       .slice(0, 5),
   }));
 
@@ -118,23 +119,23 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
     await page.goto('/recipes');
     await bottomNav(page).getByRole('link', { name: 'Chef', exact: true }).click();
     await expect(page).toHaveURL('/');
-    await expect(heading(page, 'Chef')).toBeVisible();
+    await expect(heading(page, 'Cosa cuciniamo oggi?')).toBeVisible();
   });
 
-  test('«Piano» apre la schermata separata e mostra quattro date anche senza capability condivisa', async ({ page }) => {
+  test('«Piano» apre la schermata separata e mostra sette date anche senza capability condivisa', async ({ page }) => {
     await page.goto('/');
     await bottomNav(page).getByRole('link', { name: 'Piano', exact: true }).click();
     await expect(page).toHaveURL('/plan');
     await expect(heading(page, 'Pagina non trovata')).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: 'Piano', exact: true }).first()).toBeVisible();
-    await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(4);
+    await expect(page.getByRole('heading', { name: 'Piano settimanale', exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(7);
     await expect(page.getByText('Condivisione non disponibile')).toBeVisible();
     await expect(page.getByText(/non supporta ancora il piano condiviso/i)).toBeVisible();
   });
 
   test('i link in uscita dal Piano aprono Spesa e riportano a Chef', async ({ page }) => {
     await page.goto('/plan');
-    await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(4);
+    await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(7);
 
     await page.getByRole('link', { name: 'Apri la lista della spesa' }).click();
     await expect(page).toHaveURL('/shopping-list');
@@ -146,12 +147,12 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
     await expect(page).toHaveURL('/plan');
     await page.getByRole('link', { name: 'Torna al Chef' }).click();
     await expect(page).toHaveURL('/');
-    await expect(heading(page, 'Chef')).toBeVisible();
+    await expect(heading(page, 'Cosa cuciniamo oggi?')).toBeVisible();
   });
 
   test('il server legacy non consente di leggere o modificare il piano condiviso', async ({ page }) => {
     await page.goto('/plan');
-    await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(4);
+    await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(7);
     await expect(page.getByRole('button', { name: /cambia ricetta/i })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /aggiorna fuso/i })).toHaveCount(0);
     await expect(page.getByText(/non supporta ancora il piano condiviso/i)).toBeVisible();
@@ -211,7 +212,7 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
   test('la ricetta del giorno di Chef apre il dettaglio reale e il ritorno porta a Chef', async ({ page }) => {
     await page.goto('/');
     const dailyRecipe = page.getByRole('region', { name: 'Ricetta del giorno' });
-    const recipeLink = dailyRecipe.getByRole('link', { name: 'Vedi ricetta' });
+    const recipeLink = dailyRecipe.getByRole('link', { name: 'Apri la ricetta' });
     await expect(recipeLink).toBeVisible();
     await recipeLink.click();
     await expect(page).toHaveURL(/\/recipes\/[^/]+$/);
@@ -221,7 +222,7 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
       .toHaveAttribute('aria-current', 'page');
     await page.getByRole('link', { name: 'Torna a Chef' }).click();
     await expect(page).toHaveURL('/');
-    await expect(heading(page, 'Chef')).toBeVisible();
+    await expect(heading(page, 'Cosa cuciniamo oggi?')).toBeVisible();
   });
 
   test('le voci della nav sono raggiungibili da tastiera (ARIA e focus)', async ({ page }) => {
@@ -235,7 +236,7 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
 
   test('il link salta al contenuto e porta il focus al target stabile', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'Chef', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cosa cuciniamo oggi?', exact: true })).toBeVisible();
 
     const skipLink = page.getByRole('link', { name: 'Vai al contenuto principale' });
     await expect(skipLink).toHaveAttribute('href', '#sous-chef-main-content');
@@ -250,24 +251,21 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
     await expect(page.getByRole('main')).toHaveCount(1);
   });
 
-  test('Menu espone lo stato del dialog e ripristina il focus dopo la chiusura', async ({ page }) => {
+  test('Profilo raccoglie le azioni senza menu duplicato o toggle tema nell’intestazione', async ({ page }) => {
     await page.goto('/');
 
-    const menuButton = page.getByRole('button', { name: 'Menu' });
-    await expect(menuButton).toHaveAttribute('aria-expanded', 'false');
-    await expect(menuButton).toHaveAttribute('aria-haspopup', 'dialog');
-    await menuButton.focus();
-    await page.keyboard.press('Enter');
-
-    const dialog = page.getByRole('dialog', { name: 'Profilo' });
-    await expect(dialog).toBeVisible();
-    await expect(menuButton).toHaveAttribute('aria-expanded', 'true');
-    await expect(page.getByRole('button', { name: 'Chiudi' })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Menu' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Tema (chiaro|scuro)/ })).toHaveCount(0);
+    const profileButton = page.getByRole('button', { name: 'Profilo', exact: true });
+    await profileButton.click();
+    await expect(profileButton).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByRole('link', { name: /^Profilo$/ })).toHaveAttribute('href', '/profile');
+    await expect(page.getByRole('link', { name: /Casa/ })).toHaveAttribute('href', '/house');
+    await expect(page.getByRole('button', { name: /Tema (chiaro|scuro)/ })).toHaveCount(0);
     await page.keyboard.press('Escape');
 
-    await expect(dialog).toHaveCount(0);
-    await expect(menuButton).toHaveAttribute('aria-expanded', 'false');
-    await expect(menuButton).toBeFocused();
+    await expect(profileButton).toHaveAttribute('aria-expanded', 'false');
+    await expect(profileButton).toBeFocused();
   });
 
   test('la shell mantiene un solo h1 per la pagina Chef su desktop', async ({ page }) => {
@@ -275,7 +273,7 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
     await page.goto('/');
 
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
-    await expect(page.getByRole('heading', { level: 1, name: 'Chef', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Cosa cuciniamo oggi?', exact: true })).toBeVisible();
   });
 
   test('la nav espone aria-current sulla destinazione attiva', async ({ page }) => {
@@ -296,12 +294,10 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
 
   test('Casa è raggiungibile dal menu account della shell Sous Chef', async ({ page }) => {
     await page.goto('/');
-    const menuButton = page.getByRole('button', { name: 'Menu' });
-    await expect(menuButton).toBeVisible();
-    await menuButton.click();
-    const dialog = page.getByRole('dialog', { name: 'Profilo' });
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole('link', { name: /casa/i }).click();
+    const profileButton = page.getByRole('button', { name: 'Profilo', exact: true });
+    await profileButton.click();
+    await expect(profileButton).toHaveAttribute('aria-expanded', 'true');
+    await page.getByRole('link', { name: /Casa/ }).click();
     await expect(page).toHaveURL('/house');
     await expect(heading(page, 'La mia casa')).toBeVisible();
   });
@@ -321,7 +317,7 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
     await expect(heading(page, 'La tua dispensa')).toBeVisible();
     await page.getByRole('button', { name: /indietro/i }).click();
     await expect(page).toHaveURL('/');
-    await expect(heading(page, 'Chef')).toBeVisible();
+    await expect(heading(page, 'Cosa cuciniamo oggi?')).toBeVisible();
   });
 
   test('320px: cinque voci visibili e nessun clipping orizzontale', async ({ page }) => {
@@ -481,23 +477,22 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
 
     await page.setViewportSize({ width: 320, height: 800 });
     await page.goto('/');
-    await expect(heading(page, 'Chef')).toBeVisible();
-    await expect(page.getByText('Chat AI non disponibile. La chat AI è stata rinviata.', { exact: true })).toBeVisible();
+    await expect(heading(page, 'Cosa cuciniamo oggi?')).toBeVisible();
+    await expect(page.getByText('Chat AI non disponibile. La chat AI è stata rinviata.', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('textbox')).toHaveCount(0);
     await expect(page.getByRole('log')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Invia messaggio' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Idea per cena' })).toHaveCount(0);
 
-    const shortcuts = page.getByRole('group', { name: 'Risposte rapide' });
+    const shortcuts = page.getByRole('group', { name: 'Prosegui in cucina' });
     const destinations = [
-      ['Ricette', '/recipes'],
+      ['Ricettario', '/recipes'],
       ['Dispensa', '/pantry'],
-      ['Spesa', '/shopping-list'],
-      ['Casa', '/house'],
-      ['Cucina viva', '/cucina'],
+      ['Lista della spesa Bring', '/shopping-list'],
+      ['Piano settimanale', '/plan'],
     ] as const;
     for (const [label, destination] of destinations) {
-      const link = shortcuts.getByRole('link', { name: label, exact: true });
+      const link = shortcuts.getByRole('link', { name: new RegExp(label) });
       await expect(link).toBeVisible();
       await expect(link).toHaveAttribute('href', destination);
     }
@@ -508,7 +503,7 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
       content: document.documentElement.scrollWidth,
     }));
     expect(geometry.content, `overflow at 320px/200% text: ${JSON.stringify(geometry)}`).toBeLessThanOrEqual(geometry.viewport);
-    await shortcuts.getByRole('link', { name: 'Dispensa', exact: true }).click();
+    await shortcuts.getByRole('link', { name: /Dispensa/ }).click();
     await expect(page).toHaveURL('/pantry');
     await expect(heading(page, 'La tua dispensa')).toBeVisible();
     expect(aiRequests).toEqual([]);
@@ -517,8 +512,8 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
   test('Chef destination links activate from the keyboard', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 800 });
     await page.goto('/');
-    const shortcuts = page.getByRole('group', { name: 'Risposte rapide' });
-    const pantryLink = shortcuts.getByRole('link', { name: 'Dispensa', exact: true });
+    const shortcuts = page.getByRole('group', { name: 'Prosegui in cucina' });
+    const pantryLink = shortcuts.getByRole('link', { name: /Dispensa/ });
     await expect(pantryLink).toBeVisible();
     await pantryLink.focus();
     await page.keyboard.press('Enter');

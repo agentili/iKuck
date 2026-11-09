@@ -10,6 +10,7 @@ import {
   kitchenHeading,
   kitchenNavigationLabel,
   kitchenPath,
+  landingHeading,
   openPantryInventory,
 } from './helpers/appMode';
 
@@ -55,11 +56,11 @@ type AuditedPage = {
 };
 
 const auditedPages: AuditedPage[] = [
-  ...(isSousChefBuild ? [{ path: '/', heading: 'Chef', name: 'chef', auth: false }] : []),
+  ...(isSousChefBuild ? [{ path: '/', heading: landingHeading, name: 'chef', auth: false }] : []),
   { path: kitchenPath, heading: kitchenHeading, name: 'home', auth: false },
   { path: '/recipes', heading: 'Ricette', name: 'recipes-library', auth: false },
   { path: '/pantry', heading: 'La tua dispensa', name: 'pantry', auth: false },
-  ...(isSousChefBuild ? [{ path: '/plan', heading: 'Piano', name: 'plan', auth: false }] : []),
+  ...(isSousChefBuild ? [{ path: '/plan', heading: 'Piano settimanale', name: 'plan', auth: false }] : []),
   { path: '/shopping-list', heading: 'Lista della spesa', name: 'shopping-list', auth: false },
   { path: '/dinner-diary', heading: 'Diario delle cene', name: 'dinner-diary', auth: true },
   { path: '/activity', heading: 'La tua attività', name: 'activity', auth: false },
@@ -258,17 +259,17 @@ test('keeps focus indicators visible for links, controls and summaries', async (
   }
 });
 
-test('Chef shortcuts are keyboard reachable with visible focus while AI chat is deferred', async ({ page }) => {
+test('Chef cooking destinations are keyboard reachable with visible focus', async ({ page }) => {
   test.skip(!isSousChefBuild, 'Richiede il build Sous Chef.');
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Chef', exact: true })).toBeVisible();
-  await expect(page.getByText('Chat AI non disponibile. La chat AI è stata rinviata.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: landingHeading, exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Ricetta del giorno' })).toBeVisible();
   await expect(page.getByRole('log')).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Messaggio per Chef' })).toHaveCount(0);
 
-  const shortcuts = page.getByRole('group', { name: 'Risposte rapide' });
-  const recipesLink = shortcuts.getByRole('link', { name: 'Ricette', exact: true });
-  const pantryLink = shortcuts.getByRole('link', { name: 'Dispensa', exact: true });
+  const shortcuts = page.getByRole('group', { name: 'Prosegui in cucina' });
+  const recipesLink = shortcuts.getByRole('link', { name: /Ricettario/ });
+  const pantryLink = shortcuts.getByRole('link', { name: /Dispensa/ });
   let recipesLinkReceivedKeyboardFocus = false;
   for (let step = 0; step < 30; step += 1) {
     if (await recipesLink.evaluate((element) => element === document.activeElement)) {
@@ -277,7 +278,7 @@ test('Chef shortcuts are keyboard reachable with visible focus while AI chat is 
     }
     await page.keyboard.press('Tab');
   }
-  expect(recipesLinkReceivedKeyboardFocus, 'Tab deve raggiungere la prima scorciatoia Chef.').toBe(true);
+  expect(recipesLinkReceivedKeyboardFocus, 'Tab deve raggiungere la scorciatoia Ricettario.').toBe(true);
 
   await page.keyboard.press('Tab');
   await expect(pantryLink).toBeFocused();

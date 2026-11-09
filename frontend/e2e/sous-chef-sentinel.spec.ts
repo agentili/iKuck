@@ -98,16 +98,17 @@ test.describe('stato attuale · route condivise (flag ON e OFF)', () => {
     await page.goto('/');
     if (SOUS_CHEF_ON) {
       // Shell Sous-Chef: header semplificato + bottom nav, nessun header legacy.
-      await expect(page.getByRole('button', { name: 'Menu' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Profilo' })).toBeVisible();
       await expect(bottomNav(page).getByRole('link', { name: 'Chef' })).toBeVisible();
-      await expect(page.getByRole('group', { name: 'Risposte rapide' })).toBeVisible();
+      await expect(heading(page, 'Cosa cuciniamo oggi?')).toBeVisible();
+      await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toBeVisible();
       await expect(page.getByRole('link', { name: 'Cucina', exact: true })).toHaveCount(0);
     } else {
       // Shell legacy: AppHeader con le cinque voci, nessuna bottom nav.
       await expect(page.getByRole('link', { name: 'Cucina', exact: true })).toBeVisible();
       await expect(page.getByRole('navigation', { name: 'Navigazione principale' })).toBeVisible();
       await expect(heading(page, 'Cucina viva')).toBeVisible();
-      await expect(page.getByRole('group', { name: 'Risposte rapide' })).toHaveCount(0);
+      await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toHaveCount(0);
     }
   });
 });
@@ -132,7 +133,7 @@ test.describe('stato attuale · flag OFF (shell legacy)', () => {
     await expect(page.getByRole('link', { name: 'Cucina', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Profilo' }).first()).toBeVisible();
     await expect(page.getByRole('link', { name: 'Casa' }).first()).toBeVisible();
-    await expect(page.getByRole('group', { name: 'Risposte rapide' })).toHaveCount(0);
+    await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toHaveCount(0);
   });
 
   for (const link of legacyLinks) {
@@ -167,8 +168,8 @@ test.describe('stato attuale · flag ON (shell Sous-Chef)', () => {
 
   test('shell: header semplificato e bottom nav, nessun header legacy', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('button', { name: 'Menu' })).toBeVisible();
-    await expect(page.getByRole('group', { name: 'Risposte rapide' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Profilo' })).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toBeVisible();
     await expect(bottomNav(page).getByRole('link', { name: 'Chef' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Cucina', exact: true })).toHaveCount(0);
   });
@@ -195,28 +196,28 @@ test.describe('stato attuale · flag ON (shell Sous-Chef)', () => {
     await page.goto('/discover');
     await bottomNav(page).getByRole('link', { name: 'Chef' }).click();
     await expect(page).toHaveURL('/');
-    await expect(heading(page, 'Chef')).toBeVisible();
-    await expect(page.getByText('Chat AI non disponibile. La chat AI è stata rinviata.', { exact: true })).toBeVisible();
-    await expect(page.getByRole('group', { name: 'Risposte rapide' })).toBeVisible();
+    await expect(heading(page, 'Cosa cuciniamo oggi?')).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Ricetta del giorno' })).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toBeVisible();
   });
 
-  test('scorciatoia «Spesa» apre la lista spesa reale', async ({ page }) => {
+  test('scorciatoia «Lista della spesa Bring» apre la lista spesa reale', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('group', { name: 'Risposte rapide' }).getByRole('link', { name: 'Spesa', exact: true }).click();
+    await page.getByRole('group', { name: 'Prosegui in cucina' }).getByRole('link', { name: /Lista della spesa Bring/ }).click();
     await expect(page).toHaveURL('/shopping-list');
     await expect(heading(page, 'Lista della spesa')).toBeVisible();
   });
 
-  test('scorciatoia «Casa» apre la casa reale', async ({ page }) => {
+  test('scorciatoia «Ricettario» apre il catalogo ricette', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('group', { name: 'Risposte rapide' }).getByRole('link', { name: 'Casa', exact: true }).click();
-    await expect(page).toHaveURL('/house');
-    await expect(heading(page, 'La mia casa')).toBeVisible();
+    await page.getByRole('group', { name: 'Prosegui in cucina' }).getByRole('link', { name: /Ricettario/ }).click();
+    await expect(page).toHaveURL('/recipes');
+    await expect(heading(page, 'Ricette')).toBeVisible();
   });
 
   test('scorciatoia Chef «Dispensa» apre la dispensa reale (/pantry)', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('group', { name: 'Risposte rapide' }).getByRole('link', { name: 'Dispensa', exact: true }).click();
+    await page.getByRole('group', { name: 'Prosegui in cucina' }).getByRole('link', { name: /Dispensa/ }).click();
     await expect(page).toHaveURL('/pantry');
     await expect(heading(page, 'La tua dispensa')).toBeVisible();
   });
@@ -228,26 +229,26 @@ test.describe('stato attuale · flag ON (shell Sous-Chef)', () => {
     await expect(heading(page, 'Il tuo profilo')).toBeVisible();
   });
 
-  test('Chef clearly defers AI chat and does not mount a composer', async ({ page }) => {
+  test('Chef shows a local recipe and cooking destinations without mounting a chat composer', async ({ page }) => {
     await page.goto('/');
-    await expect(heading(page, 'Chef')).toBeVisible();
-    await expect(page.getByText('Chat AI non disponibile. La chat AI è stata rinviata.', { exact: true })).toBeVisible();
+    await expect(heading(page, 'Cosa cuciniamo oggi?')).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Ricetta del giorno' })).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toBeVisible();
     await expect(page.getByPlaceholder(/Chiedimi una ricetta/i)).toHaveCount(0);
     await expect(page.getByRole('log')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Invia messaggio' })).toHaveCount(0);
   });
 
-  test('Chef navigation destinations remain distinct from AI chat', async ({ page }) => {
+  test('Chef destination cards open the current cooking routes', async ({ page }) => {
     await page.goto('/');
-    const shortcuts = page.getByRole('group', { name: 'Risposte rapide' });
+    const shortcuts = page.getByRole('group', { name: 'Prosegui in cucina' });
     for (const [label, path] of [
-      ['Ricette', '/recipes'],
+      ['Piano settimanale', '/plan'],
+      ['Ricettario', '/recipes'],
       ['Dispensa', '/pantry'],
-      ['Spesa', '/shopping-list'],
-      ['Casa', '/house'],
-      ['Cucina viva', '/cucina'],
+      ['Lista della spesa Bring', '/shopping-list'],
     ]) {
-      await expect(shortcuts.getByRole('link', { name: label, exact: true })).toHaveAttribute('href', path);
+      await expect(shortcuts.getByRole('link', { name: new RegExp(label) })).toHaveAttribute('href', path);
     }
   });
 });
@@ -284,14 +285,14 @@ test.describe('verifica funzionale · T02/T03/T05', () => {
 
   test('[T03] la scorciatoia «Dispensa» porta alla dispensa reale', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('group', { name: 'Risposte rapide' }).getByRole('link', { name: 'Dispensa', exact: true }).click();
+    await page.getByRole('group', { name: 'Prosegui in cucina' }).getByRole('link', { name: /Dispensa/ }).click();
     await expect(page).toHaveURL('/pantry');
     await expect(heading(page, 'La tua dispensa')).toBeVisible();
   });
 
   test('[T05] le scorciatoie Chef sono raggiungibili col puntatore senza overlay', async ({ page }) => {
     await page.goto('/');
-    const pantryLink = page.getByRole('group', { name: 'Risposte rapide' }).getByRole('link', { name: 'Dispensa', exact: true });
+    const pantryLink = page.getByRole('group', { name: 'Prosegui in cucina' }).getByRole('link', { name: /Dispensa/ });
     await expect(pantryLink).toBeVisible();
     await pantryLink.click();
     await expect(page).toHaveURL('/pantry');

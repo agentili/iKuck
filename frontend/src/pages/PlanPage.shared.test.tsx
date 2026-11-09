@@ -14,7 +14,7 @@ import { useHouseStore } from '../house/houseStore';
 import { RECIPES } from '../domain/recipes';
 import { ApiClientError } from '../api/apiClient';
 import { deleteLocalDatabase, readQueueValues } from '../storage/indexedDb';
-import { getNextFourCivilDates } from '../mealPlan/dates';
+import { getNextSevenCivilDates } from '../mealPlan/dates';
 import type { MealPlanApi } from '../mealPlan/api';
 
 const user = { id: 'user-1', email: 'user@example.test', emailVerifiedAt: '2026-10-01T00:00:00.000Z' };
@@ -44,8 +44,8 @@ const deferred = <T,>() => {
 
 const setupExistingSharedPlan = () => {
   const dates = [...new Set([
-    ...getNextFourCivilDates(new Date(), 'Europe/Rome'),
-    ...getNextFourCivilDates(new Date(), 'America/New_York'),
+    ...getNextSevenCivilDates(new Date(), 'Europe/Rome'),
+    ...getNextSevenCivilDates(new Date(), 'America/New_York'),
   ])];
   const statesByScope = new Map<string, Map<string, PlanState>>();
   for (const [scope, offset] of [['house:house-1', 0], ['house:house-2', 7]] as const) {
@@ -82,7 +82,7 @@ describe('PlanPage shared mode', () => {
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
     expect(await screen.findByText(/salvato su questo dispositivo/i)).toBeVisible();
-    expect(await screen.findAllByRole('listitem')).toHaveLength(4);
+    expect(await screen.findAllByRole('listitem')).toHaveLength(7);
     expect(screen.getByRole('link', { name: 'Apri la lista della spesa' })).toHaveAttribute('href', '/shopping-list');
     expect(screen.getByRole('link', { name: 'Torna al Chef' })).toHaveAttribute('href', '/');
   });
@@ -145,7 +145,7 @@ describe('PlanPage shared mode', () => {
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
     expect(await screen.findByText(/fuso provvisorio/i)).toBeVisible();
-    expect(screen.getAllByRole('listitem')).toHaveLength(4);
+    expect(screen.getAllByRole('listitem')).toHaveLength(7);
     expect(screen.getByText(/non vengono letti o modificati/i)).toBeVisible();
     expect(screen.queryAllByRole('button', { name: /cambia ricetta/i })).toHaveLength(0);
     expect(read).not.toHaveBeenCalled();
@@ -186,8 +186,8 @@ describe('PlanPage shared mode', () => {
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
     await waitFor(() => expect(screen.getByText('Condiviso con la Casa')).toBeVisible());
-    expect(screen.getAllByRole('listitem')).toHaveLength(4);
-    expect(send).toHaveBeenCalledTimes(4);
+    expect(screen.getAllByRole('listitem')).toHaveLength(7);
+    expect(send).toHaveBeenCalledTimes(7);
     expect(send.mock.calls.every(([command]) => command.action === 'auto_create' && command.baseRevision === null)).toBe(true);
     expect(read.mock.calls[0]?.[0]).toBe('house:house-1');
     await expect(readMealPlanOutbox(['house:house-1'])).resolves.toEqual([]);
@@ -252,7 +252,7 @@ describe('PlanPage shared mode', () => {
     const secondRow = (await screen.findAllByRole('listitem'))[0];
     await waitFor(() => expect(within(secondRow).getByText(replacement.title)).toBeVisible());
     expect(read.mock.calls.some(([scope]) => scope === 'house:house-1')).toBe(true);
-    expect(send).toHaveBeenCalledTimes(5);
+    expect(send).toHaveBeenCalledTimes(8);
   });
 
   it('does not start a rendered action from the previous session after an account swap in the same house', async () => {
@@ -437,7 +437,7 @@ describe('PlanPage shared mode', () => {
 
   it('keeps a conflict retry queued in the old scope when its network response arrives after switching houses', async () => {
     const { statesByScope, setTimeZone } = setupExistingSharedPlan();
-    const date = getNextFourCivilDates(new Date(), 'Europe/Rome')[0]!;
+    const date = getNextSevenCivilDates(new Date(), 'Europe/Rome')[0]!;
     const current = statesByScope.get('house:house-1')!.get(date)!;
     const conflictCommand: PlanCommand = {
       version: 2,

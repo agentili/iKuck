@@ -1,29 +1,19 @@
 import { memo, useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { UserRound, Moon, Sun, Menu } from 'lucide-react';
+import { UserRound } from 'lucide-react';
 import { useAuthStore } from '../../auth/authStore';
 import { useHouseStore } from '../../house/houseStore';
-import { resolveColorTheme, saveColorThemePreference, subscribeColorTheme } from '../../domain/colorTheme';
-import { useSyncExternalStore } from 'react';
 import { isSimplifiedHeader } from '../../config/features';
 
-interface SimplifiedHeaderProps {
-  isMenuOpen?: boolean;
-  onMenuClick?: () => void;
-}
-
-export const SimplifiedHeader = memo(({ isMenuOpen = false, onMenuClick }: SimplifiedHeaderProps) => {
+export const SimplifiedHeader = memo(() => {
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
   const connection = useAuthStore((state) => state.connection);
   const house = useHouseStore((state) => state.state?.house ?? null);
-  const resolvedTheme = useSyncExternalStore(subscribeColorTheme, resolveColorTheme, () => 'light');
   
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
-  const toggleTheme = () => saveColorThemePreference(resolvedTheme === 'dark' ? 'light' : 'dark');
-
   // Close profile menu on outside click
   useEffect(() => {
     if (!isProfileOpen) return;
@@ -61,19 +51,8 @@ export const SimplifiedHeader = memo(({ isMenuOpen = false, onMenuClick }: Simpl
   return (
     <header className="ik-app-header sous-chef-header fixed top-0 left-0 right-0 z-40 border-b border-[var(--ik-border)]" role="banner">
       <div className="sous-chef-header-inner mx-auto flex items-center justify-between gap-3 px-4 py-3 max-w-xl">
-        {/* Left: Logo + Menu button */}
+        {/* Left: Logo */}
         <div className="sous-chef-header-leading flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onMenuClick}
-            className="sous-chef-header-menu-button p-2 rounded-xl text-[var(--ik-ink)] hover:bg-[var(--ik-sage)] transition-colors"
-            aria-label="Menu"
-            aria-haspopup="dialog"
-            aria-expanded={isMenuOpen}
-            aria-controls={isMenuOpen ? 'profile-modal' : undefined}
-          >
-            <Menu className="sous-chef-header-menu-icon w-6 h-6" aria-hidden="true" />
-          </button>
           <Link to="/" aria-label="iKuck" className="shrink-0 text-xl font-black tracking-tight text-[var(--ik-basil-dark)]">
             iKuck
           </Link>
@@ -89,18 +68,8 @@ export const SimplifiedHeader = memo(({ isMenuOpen = false, onMenuClick }: Simpl
           </span>
         </div>
 
-        {/* Right: Theme + Profile */}
+        {/* Right: Profile */}
         <div className="sous-chef-header-actions flex items-center gap-2">
-          {/* Theme Toggle */}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            aria-label={resolvedTheme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}
-            className="sous-chef-header-icon-button grid min-h-10 min-w-10 place-items-center rounded-xl text-[var(--ik-ink)] hover:bg-[var(--ik-sage)] transition-colors"
-          >
-            {resolvedTheme === 'dark' ? <Sun className="sous-chef-header-action-icon w-5 h-5" aria-hidden="true" /> : <Moon className="sous-chef-header-action-icon w-5 h-5" aria-hidden="true" />}
-          </button>
-
           {/* Profile Menu */}
           <div className="relative" ref={profileRef}>
             <button
@@ -140,14 +109,6 @@ export const SimplifiedHeader = memo(({ isMenuOpen = false, onMenuClick }: Simpl
                     <span className="w-5 h-5">🏠</span>
                     Casa
                   </Link>
-                  <button
-                    type="button"
-                    onClick={toggleTheme}
-                    className="flex items-center gap-3 w-full px-4 py-2 text-sm font-medium text-[var(--ik-ink)] hover:bg-[var(--ik-sage)] text-left"
-                  >
-                    {resolvedTheme === 'dark' ? <Sun className="w-5 h-5" aria-hidden="true" /> : <Moon className="w-5 h-5" aria-hidden="true" />}
-                    {resolvedTheme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}
-                  </button>
                   {user && (
                     <button
                       type="button"

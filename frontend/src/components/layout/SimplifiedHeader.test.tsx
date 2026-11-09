@@ -16,11 +16,13 @@ describe('SimplifiedHeader', () => {
     useAuthStore.setState({ user: null, connection: 'unknown' });
   });
 
-  it('renders semantic shared chrome and a toggleable profile disclosure', async () => {
+  it('renders one profile disclosure without duplicate menu or theme controls', async () => {
     const user = userEvent.setup();
     render(<MemoryRouter><SimplifiedHeader /></MemoryRouter>);
 
     expect(screen.getByRole('banner')).toHaveClass('ik-app-header');
+    expect(screen.queryByRole('button', { name: 'Menu' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Tema (chiaro|scuro)/ })).not.toBeInTheDocument();
     const profileButton = screen.getByRole('button', { name: 'Profilo' });
     expect(profileButton).toHaveAttribute('aria-expanded', 'false');
     await user.click(profileButton);
@@ -30,6 +32,7 @@ describe('SimplifiedHeader', () => {
     expect(menu).toHaveClass('bg-[var(--ik-porcelain)]', 'border-[var(--ik-sage)]');
     expect(screen.getByRole('link', { name: /^Profilo$/ })).toHaveAttribute('href', '/profile');
     expect(screen.getByRole('link', { name: /Casa/ })).toHaveAttribute('href', '/house');
+    expect(screen.queryByRole('button', { name: /Tema (chiaro|scuro)/ })).not.toBeInTheDocument();
   });
 
   it('closes the profile disclosure with Escape and restores focus to its trigger', async () => {
