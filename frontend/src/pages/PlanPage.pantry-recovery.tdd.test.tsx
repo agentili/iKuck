@@ -318,7 +318,7 @@ describe('PlanPage pantry and recovery', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/conflitti di migrazione/i);
     const planList = screen.getByRole('list', { name: 'Pasti da domani' });
     const firstRow = within(planList).getAllByRole('listitem')[0]!;
-    const replaceButton = within(firstRow).getByRole('button', { name: /cambia ricetta/i });
+    const replaceButton = within(firstRow).getByRole('button', { name: /modifica ricetta/i });
     expect(replaceButton).toBeEnabled();
 
     await userInput.click(replaceButton);
@@ -340,7 +340,7 @@ describe('PlanPage pantry and recovery', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Non è stato possibile verificare i conflitti di migrazione');
     expect(screen.getByText('Pasta tonno e pomodoro')).toBeVisible();
-    expect(screen.queryByRole('button', { name: /cambia ricetta/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /modifica ricetta/i })).not.toBeInTheDocument();
   });
 
   it('does not publish recovery data after an in-flight request belongs to an old session and house scope', async () => {
