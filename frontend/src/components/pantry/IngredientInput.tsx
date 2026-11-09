@@ -11,6 +11,7 @@ interface IngredientInputProps {
 
 export default function IngredientInput({ onAdd, idBase = 'pantry' }: IngredientInputProps) {
   const pantryEntry = isSousChef() && idBase === 'pantry';
+  const iconOnlyAdd = idBase === 'pantry';
   const [value, setValue] = useState('');
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
@@ -79,7 +80,7 @@ export default function IngredientInput({ onAdd, idBase = 'pantry' }: Ingredient
       <label htmlFor={`${idBase}-input`} className={`block text-sm font-semibold ${pantryEntry ? 'text-[var(--ik-ink)]' : 'text-gray-700'}`}>
         Ingredienti presenti
       </label>
-      <div className={`ik-ingredient-entry flex gap-3 ${pantryEntry ? 'min-w-0 flex-col sm:flex-row' : ''}`}>
+      <div className={`ik-ingredient-entry flex gap-3 ${iconOnlyAdd ? 'min-w-0 flex-row items-center' : pantryEntry ? 'min-w-0 flex-col sm:flex-row' : ''}`}>
         <input
           id={`${idBase}-input`}
           role="combobox"
@@ -104,11 +105,17 @@ export default function IngredientInput({ onAdd, idBase = 'pantry' }: Ingredient
             ? 'border-[var(--ik-border)] bg-[var(--ik-surface)] text-[var(--ik-ink)] focus:border-[var(--ik-basil)] focus:ring-[var(--ik-sage)]'
             : 'border-gray-200 bg-white text-gray-900 focus:border-emerald-600 focus:ring-emerald-100'}`}
         />
-        <button type="submit" className={`ik-button-primary inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-2xl px-3 py-3 text-sm font-semibold transition sm:px-5 sm:text-base ${pantryEntry
-          ? 'w-full min-w-0 whitespace-normal text-center text-[var(--ik-porcelain)] sm:w-auto'
-          : 'whitespace-nowrap bg-emerald-700 text-white hover:bg-emerald-800'}`}>
+        <button
+          type="submit"
+          aria-label={iconOnlyAdd ? 'Aggiungi ingredienti' : undefined}
+          className={`ik-button-primary inline-flex shrink-0 items-center justify-center rounded-xl transition ${iconOnlyAdd
+            ? 'h-12 w-12 min-h-12 min-w-12 p-0'
+            : 'min-h-12 gap-2 rounded-2xl px-3 py-3 text-sm font-semibold sm:px-5 sm:text-base'} ${pantryEntry
+            ? 'text-[var(--ik-porcelain)]'
+            : 'bg-emerald-700 text-white hover:bg-emerald-800'} ${pantryEntry && !iconOnlyAdd ? 'w-full min-w-0 whitespace-normal text-center sm:w-auto' : ''}`}
+        >
           <Plus size={19} aria-hidden="true" />
-          Aggiungi ingredienti
+          {!iconOnlyAdd && 'Aggiungi ingredienti'}
         </button>
       </div>
       <p id={`${idBase}-input-help`} className={`text-sm ${pantryEntry ? 'text-[var(--ik-ink-muted)]' : 'text-gray-600'}`}>Separa più ingredienti con una virgola. Puoi usare anche le frecce e Invio per scegliere un suggerimento.</p>
