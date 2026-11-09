@@ -98,7 +98,7 @@ export default function ShoppingListPage() {
           <ArrowLeft size={18} aria-hidden="true" /> {sousChef ? 'Torna a Chef' : 'Torna alle ricette'}
         </Link>
         {sousChef && (providerChecking || currentProviderError !== null || source === 'bring') && (
-          <h1 className="mt-2 text-3xl font-extrabold leading-tight text-[var(--ik-ink)] sm:text-4xl">Spesa</h1>
+          <h1 className="mt-2 text-[1.5rem] font-extrabold leading-tight text-[var(--ik-ink)] sm:text-[1.8rem]">Spesa</h1>
         )}
       </header>
       <div className={sousChef ? 'min-w-0' : 'mt-6'}>

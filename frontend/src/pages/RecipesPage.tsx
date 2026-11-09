@@ -212,7 +212,7 @@ export default function RecipesPage() {
         <p className="ik-eyebrow text-sm font-bold uppercase tracking-[0.14em]">
           Ricette · {scopeLabel(activeScope)}
         </p>
-        <h1 className="mt-1 text-[clamp(2.5rem,6vw,3.75rem)] font-black leading-[1.04] tracking-[-0.03em] text-[var(--ik-ink)]">Ricette</h1>
+        <h1 className="mt-1 text-[clamp(2rem,4.8vw,3rem)] font-black leading-[1.04] tracking-[-0.03em] text-[var(--ik-ink)]">Ricette</h1>
         <p className="mt-3 max-w-xl text-base leading-relaxed text-[var(--ik-ink-muted)]">
           Le tue ricette salvate, quelle generate con l’AI e il catalogo della casa.
         </p>

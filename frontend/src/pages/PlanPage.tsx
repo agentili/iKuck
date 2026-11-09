@@ -811,7 +811,7 @@ export default function PlanPage() {
     <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-3xl px-4 pb-8 pt-5 text-[var(--ik-ink)] sm:px-6 sm:pt-8 lg:px-8">
       <header className="ik-page-intro mb-5 max-w-2xl sm:mb-7">
         <p className="ik-eyebrow text-sm font-bold">Una ricetta al giorno</p>
-        <h1 className="mt-1 text-[clamp(2.5rem,6vw,3.75rem)] font-black leading-[1.04] tracking-[-0.03em] text-[var(--ik-ink)]">Piano settimanale</h1>
+        <h1 className="mt-1 text-[clamp(2rem,4.8vw,3rem)] font-black leading-[1.04] tracking-[-0.03em] text-[var(--ik-ink)]">Piano settimanale</h1>
         <p className="mt-3 max-w-xl text-base leading-relaxed text-[var(--ik-ink-muted)]">Organizza i prossimi sette giorni e cambia le ricette quando vuoi.</p>
       </header>
 

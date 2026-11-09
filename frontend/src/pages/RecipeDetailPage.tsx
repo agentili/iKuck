@@ -311,7 +311,7 @@ export default function RecipeDetailPage() {
         <RecipeImage recipeId={recipe.id} recipeTitle={recipe.title} variant="detail" />
         <div className="max-w-3xl">
           <p className="font-bold text-[var(--ik-recipe-category)]">{CATEGORY_LABELS[recipe.category]}</p>
-          <h1 className="mt-2 text-4xl font-black leading-tight tracking-tight text-[var(--ik-porcelain)] sm:text-5xl lg:text-6xl">{recipe.title}</h1>
+          <h1 className="mt-2 text-[1.8rem] font-black leading-tight tracking-tight text-[var(--ik-porcelain)] sm:text-[2.4rem] lg:text-[3rem]">{recipe.title}</h1>
           <p className="mt-3 max-w-2xl text-base leading-relaxed text-[var(--ik-porcelain)] sm:text-lg">{recipe.description}</p>
           <dl className="mt-5 grid gap-2 sm:grid-cols-3">
             <div className="flex min-h-11 items-center gap-2 rounded-[var(--ik-radius-pill)] border border-[var(--ik-border-strong)] bg-[var(--ik-sage)] px-3 py-2 text-sm font-semibold text-[var(--ik-ink)]">
