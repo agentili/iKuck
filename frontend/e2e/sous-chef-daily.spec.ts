@@ -8,7 +8,7 @@ test('daily recipe is from the real catalog and survives offline reload', async 
   await page.goto('/');
   const card = page.getByRole('region', { name: 'Ricetta del giorno' });
   await expect(card).toBeVisible();
-  const link = card.getByRole('link', { name: /vedi ricetta/i });
+  const link = card.getByRole('link', { name: /apri la ricetta/i });
   const href = await link.getAttribute('href');
   expect(href).toMatch(/^\/recipes\/[a-z][a-z0-9-]+$/);
   await expect.poll(async () => page.evaluate(() => new Promise<string>((resolve, reject) => {
@@ -24,7 +24,7 @@ test('daily recipe is from the real catalog and survives offline reload', async 
   await page.waitForFunction(() => 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null);
   await context.setOffline(true);
   await page.reload();
-  await expect(card.getByRole('link', { name: /vedi ricetta/i })).toHaveAttribute('href', href!);
+  await expect(card.getByRole('link', { name: /apri la ricetta/i })).toHaveAttribute('href', href!);
   await context.setOffline(false);
   assertOfflineBackendClean(page);
 });

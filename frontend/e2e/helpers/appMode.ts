@@ -4,7 +4,7 @@ const runtime = globalThis as typeof globalThis & { process?: { env?: Record<str
 export const isSousChefBuild = runtime.process?.env?.VITE_SOUS_CHEF === 'true';
 export const kitchenPath = isSousChefBuild ? '/cucina' : '/';
 export const kitchenHeading = 'Cucina viva';
-export const landingHeading = isSousChefBuild ? 'Chef' : kitchenHeading;
+export const landingHeading = isSousChefBuild ? 'Cosa cuciniamo oggi?' : kitchenHeading;
 export const kitchenNavigationLabel = isSousChefBuild ? 'Chef' : 'Cucina';
 
 export const goToKitchen = async (page: Page): Promise<void> => {
