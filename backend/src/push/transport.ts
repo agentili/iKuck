@@ -1,4 +1,4 @@
-import webpush from 'web-push';
+import { sendNotification } from 'web-push';
 import type { PushSubscriptionInput, WeeklyPushPayload } from '@ikuck/shared/contracts';
 import { allowedPushEndpoint } from './validation.js';
 
@@ -6,7 +6,7 @@ export type PushTransport = (subscription: PushSubscriptionInput, payload: Weekl
 export function createPushTransport(subject: string, publicKey: string, privateKey: string): PushTransport {
   return async (subscription, payload) => {
     if (!allowedPushEndpoint(subscription.endpoint)) throw new Error('push_endpoint_invalid');
-    await webpush.sendNotification(subscription, JSON.stringify(payload), {
+    await sendNotification(subscription, JSON.stringify(payload), {
       vapidDetails: { subject, publicKey, privateKey }, timeout: 10_000,
       TTL: Math.max(0, Math.min(7200, Math.floor((Date.parse(payload.expiresAt) - Date.now()) / 1000))),
       urgency: 'normal',

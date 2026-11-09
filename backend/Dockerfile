@@ -7,6 +7,7 @@ COPY shared /app/shared
 RUN npm ci
 
 COPY backend/tsconfig.json ./
+COPY backend/scripts ./scripts
 COPY backend/src ./src
 RUN npm run build
 
