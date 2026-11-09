@@ -53,6 +53,8 @@ test('persists the selected dark theme across reloads', async ({ page }) => {
 });
 
 test('offers ten color palettes and keeps the selected palette across reloads and dark mode', async ({ page }) => {
+  // This workflow audits every route in both themes as well as all ten palettes.
+  test.slow();
   await page.emulateMedia({ colorScheme: 'light' });
   await page.goto('/profile');
 

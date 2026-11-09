@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, ShoppingCart } from 'lucide-react';
 import type { DietProfile, PlanCommand, PlanState, SyncMutationScope } from '@ikuck/shared/contracts';
 import { ApiClientError } from '../api/apiClient';
@@ -16,7 +16,9 @@ import { MealPlanUnavailableError, mealPlanApi, type MealPlanApi, type MealPlanR
 import {
   formatCivilDateLong,
   getDeviceTimeZone,
-  getNextSevenCivilDates,
+  getPlanDates,
+  parsePlanWeek,
+  getNextWeekMonday,
   isValidIanaTimeZone,
   selectPlanRecipe,
 } from '../mealPlan';
@@ -163,10 +165,10 @@ const toView = async (
   };
 };
 
-async function loadGuestPlan(now: Date, profile: DietProfile, assertCurrent: () => void): Promise<PlanPageView> {
+async function loadGuestPlan(now: Date, profile: DietProfile, assertCurrent: () => void, week: string | null): Promise<PlanPageView> {
   const timeZone = getDeviceTimeZone();
   if (timeZone === null || !isValidIanaTimeZone(timeZone)) throw new Error('Il fuso orario del dispositivo non è disponibile.');
-  const dates = getNextSevenCivilDates(now, timeZone);
+  const dates = getPlanDates(now, timeZone, week);
   assertCurrent();
   const snapshot = await readMealPlanSnapshot('guest');
   assertCurrent();
@@ -217,11 +219,12 @@ async function loadSharedPlan(input: {
   scope: SyncScope;
   csrfToken: string;
   now: Date;
+  week: string | null;
   profile: DietProfile;
   api: MealPlanApi;
   assertCurrent: () => void;
 }): Promise<PlanPageView> {
-  const { scope, csrfToken, now, profile, api, assertCurrent } = input;
+  const { scope, csrfToken, now, week, profile, api, assertCurrent } = input;
   if (scope === 'guest') throw new Error('L’ambito del piano non è pronto.');
   assertCurrent();
   assertScopeWritable(scope);
@@ -240,7 +243,7 @@ async function loadSharedPlan(input: {
     assertCurrent();
     if (error instanceof MealPlanUnavailableError) {
       const zone = scope.startsWith('house:') ? cached.timeZone?.timeZone ?? deviceTimeZone : deviceTimeZone;
-      const view = await toView(scope, getNextSevenCivilDates(now, zone), zone, 'unsupported', false,
+      const view = await toView(scope, getPlanDates(now, zone, week), zone, 'unsupported', false,
         'Questo server non supporta ancora il piano condiviso. La copia locale, se presente, non è aggiornata né condivisa.', assertCurrent);
       return view;
     }
@@ -251,7 +254,7 @@ async function loadSharedPlan(input: {
     const timeZoneConfirmed = !scope.startsWith('house:') || cachedZone?.timeZone !== null && cachedZone !== null;
     const hasCachedBootstrap = cached.capability !== null && isMealPlanBootstrapComplete(cached, cached.capability);
     if (!hasCachedBootstrap) {
-      return toView(scope, getNextSevenCivilDates(now, zone), zone, 'provisional', false,
+      return toView(scope, getPlanDates(now, zone, week), zone, 'provisional', false,
         'Connessione assente: il bootstrap storico del piano non è completo; i dati condivisi non vengono letti o modificati.', assertCurrent);
     }
     const canEditOffline = timeZoneConfirmed;
@@ -259,7 +262,7 @@ async function loadSharedPlan(input: {
     const message = timeZoneConfirmed
       ? 'Connessione assente: la copia salvata può essere provvisoria. Le nuove scelte restano sul dispositivo finché non vengono confermate dal server.'
       : 'Connessione assente e fuso della Casa non memorizzato: il calendario usa provvisoriamente il fuso del dispositivo. Il piano condiviso non viene letto o modificato.';
-    return toView(scope, getNextSevenCivilDates(now, zone), zone, mode, canEditOffline, message, assertCurrent);
+    return toView(scope, getPlanDates(now, zone, week), zone, mode, canEditOffline, message, assertCurrent);
   }
 
   if (!capabilityReady) throw new MealPlanUnavailableError();
@@ -271,10 +274,10 @@ async function loadSharedPlan(input: {
     if (!isNetworkError(error) || cached.capability === null || !isMealPlanBootstrapComplete(cached, cached.capability)) throw error;
     const zone = scope.startsWith('house:') ? cached.timeZone?.timeZone ?? deviceTimeZone : deviceTimeZone;
     const confirmed = !scope.startsWith('house:') || cached.timeZone?.timeZone !== null && cached.timeZone !== null;
-  return toView(scope, getNextSevenCivilDates(now, zone), zone, 'offline', confirmed,
+  return toView(scope, getPlanDates(now, zone, week), zone, 'offline', confirmed,
       'Il fuso condiviso non è raggiungibile: vengono mostrate le date salvate, non una finestra confermata.', assertCurrent);
   }
-  const dates = getNextSevenCivilDates(now, zoneState.timeZone);
+  const dates = getPlanDates(now, zoneState.timeZone, week);
   if (scope.startsWith('house:') && !zoneState.confirmed) {
     return toView(scope, dates, zoneState.timeZone, 'provisional', false,
       'Il fuso della Casa non è impostato. Le date mostrate usano il fuso del dispositivo e il piano condiviso non viene letto o modificato.', assertCurrent);
@@ -374,6 +377,8 @@ async function loadSharedPlan(input: {
 }
 
 export default function PlanPage() {
+  const [searchParams] = useSearchParams();
+  const week = parsePlanWeek(searchParams.get('week'));
   const user = useAuthStore((state) => state.user);
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const expiresAt = useAuthStore((state) => state.expiresAt);
@@ -417,7 +422,7 @@ export default function PlanPage() {
   const verified = isVerifiedUser(user) && csrfToken !== null;
   const scope: SyncScope = verified ? activeScope : 'guest';
   const api = mealPlanApi;
-  const contextKey = createPlanContextKey({ user, csrfToken, expiresAt }, activeScope, scope, reload, profileState);
+  const contextKey = `${createPlanContextKey({ user, csrfToken, expiresAt }, activeScope, scope, reload, profileState)}:${week ?? "rolling"}`;
   const scopeWritable = useSyncExternalStore(
     subscribeScopeAvailability,
     () => isScopeWritable(scope),
@@ -449,9 +454,9 @@ export default function PlanPage() {
       const currentActiveScope = getActiveDataScope();
       const currentScope = isVerifiedUser(currentAuth.user) && currentAuth.csrfToken !== null
         ? currentActiveScope : 'guest';
-      const currentContextKey = createPlanContextKey(
+      const currentContextKey = `${createPlanContextKey(
         currentAuth, currentActiveScope, currentScope, reload, useDietProfileStore.getState().profile,
-      );
+      )}:${week ?? "rolling"}`;
       return generation.current === capturedGeneration
         && currentContextKey === capturedContextKey
         && viewContextKey === capturedContextToken
@@ -483,9 +488,9 @@ export default function PlanPage() {
       const currentActiveScope = getActiveDataScope();
       const currentScope = isVerifiedUser(currentAuth.user) && currentAuth.csrfToken !== null
         ? currentActiveScope : 'guest';
-      const currentContextKey = createPlanContextKey(
+      const currentContextKey = `${createPlanContextKey(
         currentAuth, currentActiveScope, currentScope, reload, useDietProfileStore.getState().profile,
-      );
+      )}:${week ?? "rolling"}`;
       return !cancelled && generation.current === currentGeneration
         && currentContextKey === contextKey
         && (currentAuth.user?.id ?? null) === sessionUserId
@@ -504,7 +509,7 @@ export default function PlanPage() {
     setFeedback(null);
     setBusyDate(null);
     setSavingTimeZone(false);
-    if (user !== null && (!verified || scope === 'guest')) {
+    if ((week !== null && user === null) || (user !== null && (!verified || scope === 'guest'))) {
       return () => { cancelled = true; };
     }
 
@@ -514,8 +519,8 @@ export default function PlanPage() {
         assertCurrent();
         const profile = useDietProfileStore.getState().profile;
         const loaded = session === null
-          ? await loadGuestPlan(new Date(), profile, assertCurrent)
-          : await loadSharedPlan({ scope, csrfToken: session.csrfToken, now: new Date(), profile, api, assertCurrent });
+          ? await loadGuestPlan(new Date(), profile, assertCurrent, week)
+          : await loadSharedPlan({ scope, csrfToken: session.csrfToken, now: new Date(), week, profile, api, assertCurrent });
         assertCurrent();
         setView(loaded);
       } catch (error) {
@@ -525,7 +530,7 @@ export default function PlanPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [activeScope, api, contextKey, csrfToken, profileState, reload, scope, user, verified]);
+  }, [activeScope, api, contextKey, csrfToken, profileState, reload, scope, user, verified, week]);
 
   const rows = useMemo(() => currentView.dates.map((date) => ({
       date,
@@ -807,12 +812,25 @@ export default function PlanPage() {
       : 'Nessun nuovo ingrediente da aggiungere (già presenti in dispensa o nella lista).');
   };
 
+  if (week !== null && user === null) return (
+    <main id="main-content" className="ik-page mx-auto max-w-3xl p-5">
+      <h1 className="text-3xl font-black">Piano settimanale</h1>
+      <p className="mt-3">Accedi per creare o completare il piano della settimana dal {formatCivilDateLong(week)}.</p>
+      <Link className="inline-flex min-h-11 items-center font-bold underline" to={`/profile?returnTo=${encodeURIComponent(`/plan?week=${week}`)}`}>Accedi e apri il piano</Link>
+    </main>
+  );
+
   return (
     <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-3xl px-4 pb-8 pt-5 text-[var(--ik-ink)] sm:px-6 sm:pt-8 lg:px-8">
       <header className="ik-page-intro mb-5 max-w-2xl sm:mb-7">
         <p className="ik-eyebrow text-sm font-bold">Una ricetta al giorno</p>
-        <h1 className="mt-1 text-[clamp(2rem,4.8vw,3rem)] font-black leading-[1.04] tracking-[-0.03em] text-[var(--ik-ink)]">Piano settimanale</h1>
-        <p className="mt-3 max-w-xl text-base leading-relaxed text-[var(--ik-ink-muted)]">Organizza i prossimi sette giorni e cambia le ricette quando vuoi.</p>
+        <h1 className="mt-1 text-[clamp(2.5rem,6vw,3.75rem)] font-black leading-[1.04] tracking-[-0.03em] text-[var(--ik-ink)]">Piano settimanale</h1>
+        <p className="mt-3 max-w-xl text-base leading-relaxed text-[var(--ik-ink-muted)]">{week ? `Organizza la settimana dal ${formatCivilDateLong(week)}.` : 'Organizza i prossimi sette giorni e cambia le ricette quando vuoi.'}</p>
+        {searchParams.has('week') && week === null && <p role="status">Settimana non valida: sono mostrati i prossimi sette giorni.</p>}
+        <nav aria-label="Periodo del piano" className="mt-3 flex flex-wrap gap-4">
+          <Link to="/plan" className="inline-flex min-h-11 items-center font-bold underline">Prossimi sette giorni</Link>
+          <Link to={`/plan?week=${getNextWeekMonday(new Date(), currentView.timeZone ?? getDeviceTimeZone() ?? 'Europe/Rome')}`} className="inline-flex min-h-11 items-center font-bold underline">Prossima settimana</Link>
+        </nav>
       </header>
 
       <section aria-label="Stato della condivisione" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4">
@@ -849,7 +867,7 @@ export default function PlanPage() {
       {currentView.status === 'blocked' && <p role="status" className="rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-mist)] px-4 py-4 text-[var(--ik-ink-muted)]">Il piano condiviso non è disponibile.</p>}
 
       {currentView.status === 'ready' && (
-        <ol aria-label="Pasti da domani" className="grid gap-3">
+        <ol aria-label={week ? "Pasti della settimana" : "Pasti da domani"} className="grid gap-3">
           {rows.map(({ date, label, state, pending }) => {
             const recipe = state?.recipeId === null || state === null ? undefined : RECIPES.find((candidate) => candidate.id === state.recipeId);
             const rowPending = pending || currentView.mode === 'offline' && state !== null && currentView.overlays[date] !== undefined;

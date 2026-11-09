@@ -38,6 +38,7 @@ const pwaApiResponses: Record<string, OfflineApiResponse> = {
       expiresAt: '2026-10-15T08:00:00.000Z',
     },
   },
+  'GET /v1/push': { json: { enabled: false, publicKey: null, preferencesConfigured: false, preferences: { enabled: false, fridayTime: '19:00', timeZone: 'Europe/Rome' }, effectiveTimeZone: 'Europe/Rome' } },
   'GET /v1/profile': { json: { profile: { displayName: 'PWA' } } },
   'GET /v1/house': { json: null },
   'GET /v1/sync': { json: { changes: [], nextCursor: 0 } },

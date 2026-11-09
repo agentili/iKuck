@@ -47,6 +47,8 @@ test.afterEach(async ({ page }) => {
 });
 
 test('shares confirmed dinner recipes with House members while isolating outsiders, offline records and account changes', async ({ page }) => {
+  // Keep client revisions ordered with the fixture server's September timestamps.
+  await page.clock.setFixedTime(new Date('2026-09-24T10:00:00.000Z'));
   let currentUser: FixtureUser | null = admin;
   let memberAdded = false;
   let apiUnavailable = false;

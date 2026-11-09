@@ -167,3 +167,7 @@ Dopo la prima richiesta esplicita, le proposte del catalogo vengono ricalcolate 
 Le ricette AI sono opzionali, richiedono un account con email verificata e un consenso esplicito salvato sul server. Sono limitate a cinque generazioni per giorno UTC, restano private dell’account e rispettano i filtri dieta/allergeni attivi; la revoca del consenso nasconde la generazione ma non elimina le ricette già salvate. Senza `OPENAI_API_KEY` il provider AI resta disabilitato. La chiave OpenAI resta esclusivamente nel backend e non viene mai salvata nel browser o nei log.
 
 Gli smoke test reali di Resend, USDA e OpenAI non fanno parte della suite ordinaria: vengono eseguiti solo quando le rispettive chiavi sono fornite esplicitamente. I test PostgreSQL/Redis richiedono `INTEGRATION_DATABASE_URL` e `INTEGRATION_REDIS_URL`; senza queste variabili vengono saltati.
+
+### Notifiche push
+
+Il Profilo consente agli account verificati di attivare su ciascun dispositivo il promemoria del venerdì per completare il piano della settimana successiva. Il servizio è disabilitato per default: configurazione VAPID, worker, limiti e verifiche sono descritti in [docs/push-notifications.md](docs/push-notifications.md).

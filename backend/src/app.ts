@@ -1,3 +1,5 @@
+import { PushError } from './push/errors.js';
+import { registerPushRoutes, type PushRouteDependencies } from './routes/push.js';
 import Fastify, { LogController, type FastifyServerOptions } from 'fastify';
 import { AuthServiceError } from './auth/service.js';
 import { AuthRateLimitError } from './auth/rateLimit.js';
@@ -52,6 +54,7 @@ export interface ExtendedPlatformDependencies extends PlatformDependencies {
   recipeNutrition?: RecipeNutritionRouteDependencies;
   aiRecipes?: AiRecipeRouteDependencies;
   chefChat?: ChefChatDependencies;
+  push?: PushRouteDependencies;
   house?: HouseRouteDependencies;
   dinnerDiary?: DinnerDiaryRecipeRouteDependencies;
   dinnerConsumption?: DinnerConsumptionRouteDependencies;
@@ -100,6 +103,7 @@ export const createApp = (
     if (error instanceof SyncPayloadError || error instanceof SyncScopeInvalidError || error instanceof SyncScopeRequiredError || error instanceof SyncMembershipRequiredError || error instanceof SyncDiaryRecipeLimitError || error instanceof DinnerConsumptionInputError || error instanceof DinnerConsumptionConflictError) {
       return reply.code(error.status).send({ code: error.code, message: error.message });
     }
+    if (error instanceof PushError) return reply.code(error.status).send({ code: error.code, message: error.message });
     if (error instanceof BringError) {
       return reply.code(error.status).send({ code: error.code, message: error.message });
     }
@@ -117,6 +121,7 @@ export const createApp = (
     app.register(registerAuthRoutes(dependencies.auth));
     app.register(registerChefChatRoutes(dependencies.chefChat ?? { authService: dependencies.auth.service, appOrigin: dependencies.auth.appOrigin }));
   }
+  if (dependencies.push !== undefined) app.register(registerPushRoutes(dependencies.push));
   if (dependencies.profile !== undefined) app.register(registerProfileRoutes(dependencies.profile));
   if (dependencies.sync !== undefined) {
     app.register(registerSyncRoutes(dependencies.sync));

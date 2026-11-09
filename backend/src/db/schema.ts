@@ -361,3 +361,37 @@ export const dinnerConsumptionReceipts = pgTable('dinner_consumption_receipts', 
   scopeTypeCheck: check('dinner_consumption_scope_type_check', sql`${table.scopeType} in ('user', 'house')`),
   requestDigestCheck: check('dinner_consumption_request_digest_check', sql`${table.requestDigest} ~ '^[0-9a-f]{64}$'`),
 }));
+
+export const pushPreferences = pgTable('push_preferences', {
+  userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  enabled: boolean('enabled').default(false).notNull(),
+  fridayTime: text('friday_time').default('19:00').notNull(),
+  timeZone: text('time_zone').notNull(),
+});
+
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  sessionId: uuid('session_id').notNull().references(() => authSessions.id, { onDelete: 'cascade' }),
+  endpoint: text('endpoint').notNull(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  endpointUnique: uniqueIndex('push_subscriptions_endpoint_unique').on(table.endpoint),
+  userIndex: index('push_subscriptions_user_index').on(table.userId),
+}));
+
+export const pushDeliveries = pgTable('push_deliveries', {
+  subscriptionId: uuid('subscription_id').notNull().references(() => pushSubscriptions.id, { onDelete: 'cascade' }),
+  weekStart: date('week_start', { mode: 'string' }).notNull(),
+  scopeKey: text('scope_key').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).defaultNow().notNull(),
+  attempts: bigint('attempts', { mode: 'number' }).default(0).notNull(),
+  status: text('status').default('pending').notNull(),
+}, (table) => ({
+  primary: primaryKey({ columns: [table.subscriptionId, table.weekStart] }),
+  dueIndex: index('push_deliveries_due_index').on(table.status, table.nextAttemptAt),
+  statusCheck: check('push_deliveries_status_check', sql`${table.status} IN ('pending', 'sent', 'skipped', 'expired')`),
+}));

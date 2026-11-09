@@ -1,5 +1,7 @@
+import { safePushDestination } from '../push/payload';
+import PushSettings from '../push/PushSettings';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiClientError, apiRequest } from '../api/apiClient';
 import { getActiveDataScope, subscribeActiveDataScope, type SyncScope } from '../sync/scopeContext';
 import AccountPanel from '../components/account/AccountPanel';
@@ -129,6 +131,8 @@ const operationError = (error: unknown): string => {
 export default function ProfilePage() {
   const returnLinkLabel = isSousChef() ? 'Torna a Chef' : 'Torna alle ricette';
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const pushReturnTo = safePushDestination(searchParams.get("returnTo"));
   const user = useAuthStore((state) => state.user);
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const logout = useAuthStore((state) => state.logout);
@@ -193,6 +197,8 @@ export default function ProfilePage() {
     return () => { planImportGeneration.current += 1; };
   }, [activeScope, csrfToken, user?.id]);
 
+  if (user !== null && pushReturnTo?.startsWith("/plan?")) return <Navigate to={pushReturnTo} replace />;
+
   if (user === null) {
     return (
       <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-2xl px-4 py-5 sm:px-6 sm:py-8">
@@ -207,6 +213,7 @@ export default function ProfilePage() {
         >
           <div className="mt-6"><AccountPanel /></div>
         </PageSection>
+        <PushSettings />
         <ThemePreferenceControl />
         <ColorPaletteControl />
         <MotionPreferenceControl />
@@ -468,6 +475,7 @@ export default function ProfilePage() {
           )}
         </div>
       </PageSection>
+      <PushSettings />
       <ThemePreferenceControl />
       <ColorPaletteControl />
       <MotionPreferenceControl />

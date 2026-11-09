@@ -11,6 +11,8 @@ export const AUTH_RATE_LIMITS = {
   bringConnect: { windowSeconds: 15 * 60, ipLimit: 30, emailLimit: 10, actorLimit: 10 },
   bringRead: { windowSeconds: 60, ipLimit: 300, emailLimit: 120, actorLimit: 120 },
   bringWrite: { windowSeconds: 60, ipLimit: 120, emailLimit: 60, actorLimit: 60 },
+  pushWrite: { windowSeconds: 60, ipLimit: 120, emailLimit: 30, actorLimit: 30 },
+  pushTest: { windowSeconds: 3600, ipLimit: 30, emailLimit: 5, actorLimit: 5 },
   mealPlanCommand: { windowSeconds: 60, ipLimit: 120, emailLimit: 120, actorLimit: 60 },
 } as const;
 

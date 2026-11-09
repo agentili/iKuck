@@ -118,7 +118,10 @@ export const installOfflineBackend = async (page: Page, options: OfflineBackendO
     state = {
       unexpectedRequests: [],
       connectionRefused: [],
-      responses: new Map([['GET /v1/auth/session', { status: 200, json: { authenticated: false } }]]),
+      responses: new Map<string, OfflineApiResponse>([
+        ['GET /v1/auth/session', { status: 200, json: { authenticated: false } }],
+        ['GET /v1/push', { json: { enabled: false, publicKey: null, preferencesConfigured: false, preferences: { enabled: false, fridayTime: '19:00', timeZone: 'Europe/Rome' }, effectiveTimeZone: 'Europe/Rome' } }],
+      ]),
       serviceWorkers: options.serviceWorkers ?? 'block',
       attachedPages: new WeakSet<Page>(),
       primaryPage: page,

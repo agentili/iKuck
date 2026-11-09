@@ -58,7 +58,9 @@ export default defineConfig({
     VitePWA({
       injectRegister: null,
       registerType: 'prompt',
-      strategies: 'generateSW',
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       includeAssets: [
         'icons/icon-192x192.png',
         'icons/icon-512x512.png',
@@ -166,10 +168,8 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
-        clientsClaim: true,
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,json,png,svg,webp,avif,woff2}'],
-        navigateFallback: '/index.html',
       },
     }),
   ],

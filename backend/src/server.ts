@@ -1,3 +1,5 @@
+import { createPushRepository } from './push/repository.js';
+import { createPushTransport } from './push/transport.js';
 import { pathToFileURL } from 'node:url';
 import { createApp } from './app.js';
 import { createBringGateway } from './bring/gateway.js';
@@ -118,6 +120,12 @@ export const start = async () => {
       bring: { service: bring, authService: auth, appOrigin: config.appOrigin, rateLimiter: authRateLimiter },
       pantryCandidates: { service: pantryCandidates, authService: auth, rateLimiter: authRateLimiter, appOrigin: config.appOrigin },
       s2sDinnerContext,
+      push: {
+        enabled: config.pushEnabled, publicKey: config.pushEnabled ? config.pushVapidPublicKey! : null,
+        repository: createPushRepository(database.db), authService: auth, appOrigin: config.appOrigin,
+        rateLimiter: authRateLimiter,
+        send: config.pushEnabled ? createPushTransport(config.pushVapidSubject!, config.pushVapidPublicKey!, config.pushVapidPrivateKey!) : async () => { throw new Error('push_disabled'); },
+      },
       pantryLots: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       shoppingList: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       activity: { repository: sync, authService: auth, appOrigin: config.appOrigin },
