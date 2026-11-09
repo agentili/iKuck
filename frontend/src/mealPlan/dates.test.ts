@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addCivilDays, formatCivilDate, getCivilDate, getNextFourCivilDates } from './dates';
+import { addCivilDays, formatCivilDate, getCivilDate, getNextSevenCivilDates } from './dates';
 
 describe('meal plan civil dates', () => {
   it('converts an instant using the configured IANA timezone', () => {
@@ -10,14 +10,14 @@ describe('meal plan civil dates', () => {
   });
 
   it.each([
-    ['2026-03-28T23:30:00.000Z', 'Europe/Rome', ['2026-03-30', '2026-03-31', '2026-04-01', '2026-04-02']],
-    ['2026-03-28T23:30:00.000Z', 'America/New_York', ['2026-03-29', '2026-03-30', '2026-03-31', '2026-04-01']],
-    ['2026-03-28T12:00:00.000Z', 'Europe/Rome', ['2026-03-29', '2026-03-30', '2026-03-31', '2026-04-01']],
-    ['2026-10-24T12:00:00.000Z', 'Europe/Rome', ['2026-10-25', '2026-10-26', '2026-10-27', '2026-10-28']],
-    ['2024-02-28T12:00:00.000Z', 'UTC', ['2024-02-29', '2024-03-01', '2024-03-02', '2024-03-03']],
-    ['2026-12-30T12:00:00.000Z', 'UTC', ['2026-12-31', '2027-01-01', '2027-01-02', '2027-01-03']],
-  ] as const)('returns the next four civil days in %s (%s)', (instant, timeZone, expected) => {
-    expect(getNextFourCivilDates(new Date(instant), timeZone)).toEqual(expected);
+    ['2026-03-28T23:30:00.000Z', 'Europe/Rome', ['2026-03-30', '2026-03-31', '2026-04-01', '2026-04-02', '2026-04-03', '2026-04-04', '2026-04-05']],
+    ['2026-03-28T23:30:00.000Z', 'America/New_York', ['2026-03-29', '2026-03-30', '2026-03-31', '2026-04-01', '2026-04-02', '2026-04-03', '2026-04-04']],
+    ['2026-03-28T12:00:00.000Z', 'Europe/Rome', ['2026-03-29', '2026-03-30', '2026-03-31', '2026-04-01', '2026-04-02', '2026-04-03', '2026-04-04']],
+    ['2026-10-24T12:00:00.000Z', 'Europe/Rome', ['2026-10-25', '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31']],
+    ['2024-02-28T12:00:00.000Z', 'UTC', ['2024-02-29', '2024-03-01', '2024-03-02', '2024-03-03', '2024-03-04', '2024-03-05', '2024-03-06']],
+    ['2026-12-30T12:00:00.000Z', 'UTC', ['2026-12-31', '2027-01-01', '2027-01-02', '2027-01-03', '2027-01-04', '2027-01-05', '2027-01-06']],
+  ] as const)('returns the next seven civil days in %s (%s)', (instant, timeZone, expected) => {
+    expect(getNextSevenCivilDates(new Date(instant), timeZone)).toEqual(expected);
   });
 
   it('adds calendar days without adding fixed 24-hour durations', () => {

@@ -97,7 +97,8 @@ describe('DailyRecipeCard', () => {
     expect(region).toHaveClass('rounded-[var(--ik-radius-panel)]', 'bg-[var(--ik-surface)]');
     expect(screen.getByRole('heading', { level: 2, name: 'Ricetta del giorno' })).toBeVisible();
     expect(await screen.findByRole('heading', { level: 3, name: expected.recipe.title })).toBeVisible();
-    const link = screen.getByRole('link', { name: 'Vedi ricetta' });
+    expect(screen.getByRole('figure', { name: `Immagine per ${expected.recipe.title}` })).toBeVisible();
+    const link = screen.getByRole('link', { name: 'Apri la ricetta' });
     expect(link).toHaveAttribute('href', `/recipes/${expected.recipe.id}`);
     expect(screen.getByText(`${expected.recipe.durationMinutes} minuti`)).toBeVisible();
     expect(usePantryStore.getState().pantryItems).toEqual(pantryBefore.pantryItems);

@@ -40,8 +40,8 @@ type DateWindowCase = {
   instant: string;
   timeZone: string;
   today: string;
-  nextFourDays: [string, string, string, string];
-  fifthDay: string;
+  nextSevenDays: [string, string, string, string, string, string, string];
+  eighthDay: string;
 };
 
 const dateWindowCases: DateWindowCase[] = [
@@ -50,61 +50,61 @@ const dateWindowCases: DateWindowCase[] = [
     instant: '2026-03-28T23:30:00Z',
     timeZone: 'Europe/Rome',
     today: '2026-03-29',
-    nextFourDays: ['2026-03-30', '2026-03-31', '2026-04-01', '2026-04-02'],
-    fifthDay: '2026-04-03',
+    nextSevenDays: ['2026-03-30', '2026-03-31', '2026-04-01', '2026-04-02', '2026-04-03', '2026-04-04', '2026-04-05'],
+    eighthDay: '2026-04-06',
   },
   {
     description: 'uses the New York civil date for the same instant near UTC midnight',
     instant: '2026-03-28T23:30:00Z',
     timeZone: 'America/New_York',
     today: '2026-03-28',
-    nextFourDays: ['2026-03-29', '2026-03-30', '2026-03-31', '2026-04-01'],
-    fifthDay: '2026-04-02',
+    nextSevenDays: ['2026-03-29', '2026-03-30', '2026-03-31', '2026-04-01', '2026-04-02', '2026-04-03', '2026-04-04'],
+    eighthDay: '2026-04-05',
   },
   {
-    description: 'keeps four consecutive civil dates across the spring clock change',
+    description: 'keeps seven consecutive civil dates across the spring clock change',
     instant: '2026-03-28T12:00:00Z',
     timeZone: 'Europe/Rome',
     today: '2026-03-28',
-    nextFourDays: ['2026-03-29', '2026-03-30', '2026-03-31', '2026-04-01'],
-    fifthDay: '2026-04-02',
+    nextSevenDays: ['2026-03-29', '2026-03-30', '2026-03-31', '2026-04-01', '2026-04-02', '2026-04-03', '2026-04-04'],
+    eighthDay: '2026-04-05',
   },
   {
-    description: 'keeps four consecutive civil dates across the autumn clock change',
+    description: 'keeps seven consecutive civil dates across the autumn clock change',
     instant: '2026-10-24T12:00:00Z',
     timeZone: 'Europe/Rome',
     today: '2026-10-24',
-    nextFourDays: ['2026-10-25', '2026-10-26', '2026-10-27', '2026-10-28'],
-    fifthDay: '2026-10-29',
+    nextSevenDays: ['2026-10-25', '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31'],
+    eighthDay: '2026-11-01',
   },
   {
     description: 'continues from the end of a month into the following month',
     instant: '2026-01-30T12:00:00Z',
     timeZone: 'UTC',
     today: '2026-01-30',
-    nextFourDays: ['2026-01-31', '2026-02-01', '2026-02-02', '2026-02-03'],
-    fifthDay: '2026-02-04',
+    nextSevenDays: ['2026-01-31', '2026-02-01', '2026-02-02', '2026-02-03', '2026-02-04', '2026-02-05', '2026-02-06'],
+    eighthDay: '2026-02-07',
   },
   {
     description: 'includes leap day when it falls in the next four civil dates',
     instant: '2024-02-28T12:00:00Z',
     timeZone: 'UTC',
     today: '2024-02-28',
-    nextFourDays: ['2024-02-29', '2024-03-01', '2024-03-02', '2024-03-03'],
-    fifthDay: '2024-03-04',
+    nextSevenDays: ['2024-02-29', '2024-03-01', '2024-03-02', '2024-03-03', '2024-03-04', '2024-03-05', '2024-03-06'],
+    eighthDay: '2024-03-07',
   },
   {
     description: 'continues across the end of the year without shifting stored civil dates',
     instant: '2026-12-30T12:00:00Z',
     timeZone: 'UTC',
     today: '2026-12-30',
-    nextFourDays: ['2026-12-31', '2027-01-01', '2027-01-02', '2027-01-03'],
-    fifthDay: '2027-01-04',
+    nextSevenDays: ['2026-12-31', '2027-01-01', '2027-01-02', '2027-01-03', '2027-01-04', '2027-01-05', '2027-01-06'],
+    eighthDay: '2027-01-07',
   },
 ];
 
 describe('guest plan date window', () => {
-  it.each(dateWindowCases)('$description', async ({ instant, timeZone, today, nextFourDays, fifthDay }) => {
+  it.each(dateWindowCases)('$description', async ({ instant, timeZone, today, nextSevenDays, eighthDay }) => {
     vi.stubEnv('TZ', timeZone);
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date(instant));
@@ -113,9 +113,9 @@ describe('guest plan date window', () => {
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
     await expect(screen.queryByText(dateText(today))).not.toBeInTheDocument();
-    for (const date of nextFourDays) {
+    for (const date of nextSevenDays) {
       expect(await screen.findByText(dateText(date))).toBeVisible();
     }
-    expect(screen.queryByText(dateText(fifthDay))).not.toBeInTheDocument();
+    expect(screen.queryByText(dateText(eighthDay))).not.toBeInTheDocument();
   });
 });

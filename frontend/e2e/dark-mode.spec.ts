@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
+import { COLOR_PALETTES } from '../src/domain/colorPalette';
 import {
   goToKitchen,
   isSousChefBuild,
@@ -10,6 +11,7 @@ import {
 } from './helpers/appMode';
 
 const themePreferenceKey = 'ikuck-color-theme';
+const palettePreferenceKey = 'ikuck-color-palette';
 const firstPaintThemeKey = 'ikuck-e2e-first-paint-theme';
 
 const auditedPages = [
@@ -50,6 +52,52 @@ test('persists the selected dark theme across reloads', async ({ page }) => {
   await expect(page.getByRole('radio', { name: 'Scuro' })).toBeChecked();
 });
 
+test('offers ten color palettes and keeps the selected palette across reloads and dark mode', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('/profile');
+
+  const palettes = page.getByRole('radiogroup', { name: 'Palette colori' });
+  await expect(palettes.getByRole('radio')).toHaveCount(10);
+  const accentColors: string[] = [];
+  for (const palette of COLOR_PALETTES) {
+    await palettes.getByText(palette.label, { exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-palette', palette.value);
+    accentColors.push(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ik-basil').trim()));
+  }
+  expect(new Set(accentColors).size).toBe(10);
+  await palettes.getByText('Oceano', { exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-palette', 'oceano');
+  await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), palettePreferenceKey)).toBe('oceano');
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ik-basil').trim()))
+    .toBe('#276285');
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor)).toBe('rgb(245, 250, 252)');
+  const lightAudit = await new AxeBuilder({ page }).analyze();
+  expect(lightAudit.violations.map(({ id }) => id)).toEqual([]);
+  for (const route of auditedPages) {
+    await page.goto(route.path);
+    await expect(page.locator('main')).toBeVisible();
+    const routeAudit = await new AxeBuilder({ page }).analyze();
+    expect(routeAudit.violations.map(({ id }) => id), `${route.name} in Oceano light theme`).toEqual([]);
+  }
+
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-palette', 'oceano');
+  await expect(page.getByRole('radio', { name: /Oceano/ })).toBeChecked();
+
+  await page.getByRole('radio', { name: 'Scuro' }).check();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(page.locator('html')).toHaveAttribute('data-palette', 'oceano');
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor)).toBe('rgb(16, 25, 30)');
+  const darkAudit = await new AxeBuilder({ page }).analyze();
+  expect(darkAudit.violations.map(({ id }) => id)).toEqual([]);
+  for (const route of auditedPages) {
+    await page.goto(route.path);
+    await expect(page.locator('main')).toBeVisible();
+    const routeAudit = await new AxeBuilder({ page }).analyze();
+    expect(routeAudit.violations.map(({ id }) => id), `${route.name} in Oceano dark theme`).toEqual([]);
+  }
+});
+
 test('system preference follows dark and light device schemes', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/profile');
@@ -63,20 +111,14 @@ test('system preference follows dark and light device schemes', async ({ page })
   await expectTheme(page, 'light');
 });
 
-test('header quick toggle switches between light and dark', async ({ page }) => {
+test('header leaves theme selection in profile settings', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' });
   await goToKitchen(page);
   await expectTheme(page, 'light');
 
-  const darkToggleName = isSousChefBuild ? 'Tema scuro' : 'Attiva tema scuro';
-  const lightToggleName = isSousChefBuild ? 'Tema chiaro' : 'Attiva tema chiaro';
-  await page.getByRole('button', { name: darkToggleName }).click();
-  await expectTheme(page, 'dark');
-  await expect(page.getByRole('button', { name: lightToggleName })).toBeVisible();
-
-  await page.getByRole('button', { name: lightToggleName }).click();
-  await expectTheme(page, 'light');
-  await expect(page.getByRole('button', { name: darkToggleName })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Attiva tema (chiaro|scuro)|Tema (chiaro|scuro)/ })).toHaveCount(0);
+  await page.goto('/profile');
+  await expect(page.getByRole('radio', { name: 'Scuro' })).toBeVisible();
 });
 
 test('captures desktop screenshots of the four requested dark-theme pages', async ({ page }, testInfo) => {
@@ -139,9 +181,10 @@ test('reapplies dark theme from the service-worker cache while offline without a
   }, firstPaintThemeKey);
 
   await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('/profile');
+  await page.getByRole('radio', { name: 'Scuro' }).check();
   await goToKitchen(page);
   await expect(page.getByRole('heading', { name: kitchenHeading })).toBeVisible();
-  await page.getByRole('button', { name: isSousChefBuild ? 'Tema scuro' : 'Attiva tema scuro' }).click();
   await expectTheme(page, 'dark');
   await page.waitForFunction(() => 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null);
   await page.evaluate((key) => sessionStorage.setItem(key, '[]'), firstPaintThemeKey);

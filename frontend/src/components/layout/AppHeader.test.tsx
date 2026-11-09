@@ -1,6 +1,5 @@
 import { MemoryRouter } from 'react-router-dom';
 import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import AppHeader from './AppHeader';
 import { useAuthStore } from '../../auth/authStore';
@@ -16,17 +15,10 @@ describe('AppHeader', () => {
     usePantryCandidatesBadgeStore.getState().reset();
   });
 
-  it('toggles the resolved theme and exposes the opposite action on mobile and desktop', async () => {
-    const user = userEvent.setup();
+  it('does not duplicate the profile theme setting with header toggle buttons', () => {
     render(<MemoryRouter><AppHeader /></MemoryRouter>);
 
-    const toggleButtons = screen.getAllByRole('button', { name: 'Attiva tema scuro' });
-    expect(toggleButtons).toHaveLength(2);
-    await user.click(toggleButtons[0]);
-
-    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
-    expect(window.localStorage.getItem('ikuck-color-theme')).toBe('dark');
-    expect(screen.getAllByRole('button', { name: 'Attiva tema chiaro' })).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: /Attiva tema/ })).not.toBeInTheDocument();
   });
 
   it('exposes the compact primary navigation and marks the current route', () => {

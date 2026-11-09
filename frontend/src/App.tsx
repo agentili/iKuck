@@ -5,7 +5,6 @@ import { useHouseStore } from './house/houseStore';
 import AppHeader from './components/layout/AppHeader';
 import { BottomNav } from './components/layout/BottomNav';
 import { SimplifiedHeader } from './components/layout/SimplifiedHeader';
-import { ProfileModal } from './components/layout/ProfileModal';
 import HomePage from './pages/HomePage';
 import ChatPage from './pages/ChatPage';
 import DiscoverPage from './pages/DiscoverPage';
@@ -94,7 +93,6 @@ function AppContent() {
   const [scopeReadySessionKey, setScopeReadySessionKey] = useState<string | null>(null);
   const [scopeInitializationFailed, setScopeInitializationFailed] = useState(false);
   const [scopeRetryCount, setScopeRetryCount] = useState(0);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const verifiedSession = user !== null && csrfToken !== null && user.emailVerifiedAt !== '';
   const currentSessionKey = verifiedSession ? `${user.id}:${csrfToken}` : 'guest';
 
@@ -206,7 +204,7 @@ function AppContent() {
             </p>
             <button
               type="button"
-              className="mt-4 min-h-11 rounded-xl bg-emerald-800 px-4 py-2 font-bold text-white hover:bg-emerald-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-800"
+              className="mt-4 min-h-11 rounded-xl bg-[var(--ik-basil-dark)] px-4 py-2 font-bold text-white hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-basil-dark)]"
               onClick={() => {
                 if (housePurgeMarkerUnavailable) window.location.reload();
                 else setScopeRetryCount((count) => count + 1);
@@ -239,18 +237,7 @@ function AppContent() {
             Vai al contenuto principale
           </a>
           {/* Simplified Header */}
-          {isSimplifiedHeader() && (
-            <SimplifiedHeader
-              isMenuOpen={isProfileModalOpen}
-              onMenuClick={() => setIsProfileModalOpen(true)}
-            />
-          )}
-          
-          {/* Profile Modal */}
-          <ProfileModal 
-            isOpen={isProfileModalOpen} 
-            onClose={() => setIsProfileModalOpen(false)} 
-          />
+          {isSimplifiedHeader() && <SimplifiedHeader />}
 
           {/* Main Content with padding for header and bottom nav */}
           <div

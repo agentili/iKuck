@@ -54,9 +54,9 @@ export function addCivilDays(date: string, days: number): string {
   return result;
 }
 
-export function getNextFourCivilDates(instant: Date, timeZone: string): [string, string, string, string] {
+export function getNextSevenCivilDates(instant: Date, timeZone: string): [string, string, string, string, string, string, string] {
   const today = getCivilDate(instant, timeZone);
-  return [1, 2, 3, 4].map((offset) => addCivilDays(today, offset)) as [string, string, string, string];
+  return [1, 2, 3, 4, 5, 6, 7].map((offset) => addCivilDays(today, offset)) as [string, string, string, string, string, string, string];
 }
 
 export function formatCivilDate(date: string): string {

@@ -59,7 +59,7 @@ const auditedPages: AuditedPage[] = [
   { path: kitchenPath, heading: kitchenHeading, name: 'home', auth: false },
   { path: '/recipes', heading: 'Ricette', name: 'recipes-library', auth: false },
   { path: '/pantry', heading: 'La tua dispensa', name: 'pantry', auth: false },
-  ...(isSousChefBuild ? [{ path: '/plan', heading: 'Piano', name: 'plan', auth: false }] : []),
+  ...(isSousChefBuild ? [{ path: '/plan', heading: 'Piano settimanale', name: 'plan', auth: false }] : []),
   { path: '/shopping-list', heading: 'Lista della spesa', name: 'shopping-list', auth: false },
   { path: '/dinner-diary', heading: 'Diario delle cene', name: 'dinner-diary', auth: true },
   { path: '/activity', heading: 'La tua attività', name: 'activity', auth: false },

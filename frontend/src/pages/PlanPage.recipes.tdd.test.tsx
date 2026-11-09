@@ -39,7 +39,7 @@ describe('PlanPage recipe proposals', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findAllByRole('button', { name: /sostituisci|cambia ricetta/i })).toHaveLength(4);
+    expect(await screen.findAllByRole('button', { name: /sostituisci|cambia ricetta/i })).toHaveLength(7);
   });
 
   it('persists a replacement across a page reload', async () => {

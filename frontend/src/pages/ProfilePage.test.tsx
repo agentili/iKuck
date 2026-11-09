@@ -1,5 +1,5 @@
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProfilePage from './ProfilePage';
@@ -69,6 +69,21 @@ describe('ProfilePage', () => {
     act(() => saveColorThemePreference('light'));
     expect(screen.getByRole('radio', { name: 'Chiaro' })).toBeChecked();
     expect(window.localStorage.getItem('ikuck-color-theme')).toBe('light');
+  });
+
+  it('offers ten color palettes and applies the selected palette immediately', async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    const paletteGroup = screen.getByRole('radiogroup', { name: 'Palette colori' });
+    expect(within(paletteGroup).getAllByRole('radio')).toHaveLength(10);
+    expect(within(paletteGroup).getByRole('radio', { name: /Basilico/ })).toBeChecked();
+
+    await user.click(within(paletteGroup).getByRole('radio', { name: /Oceano/ }));
+
+    expect(within(paletteGroup).getByRole('radio', { name: /Oceano/ })).toBeChecked();
+    expect(window.localStorage.getItem('ikuck-color-palette')).toBe('oceano');
+    expect(document.documentElement).toHaveAttribute('data-palette', 'oceano');
   });
 
   it('keeps guest account access explicit without promising an automatic import', () => {

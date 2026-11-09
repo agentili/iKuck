@@ -9,11 +9,11 @@ test('il piano ospite propone ricette reali e conserva una sostituzione dopo il 
   await page.setViewportSize({ width: 390, height: 844 });
   const planResponse = await page.goto('/plan');
   expect(planResponse?.status()).toBe(200);
-  const planHeading = page.getByRole('heading', { name: 'Piano', exact: true });
+  const planHeading = page.getByRole('heading', { name: 'Piano settimanale', exact: true });
   await expect(planHeading).toBeVisible();
 
   const plan = page.getByRole('list', { name: 'Pasti da domani' });
-  await expect(plan.getByRole('listitem')).toHaveCount(4);
+  await expect(plan.getByRole('listitem')).toHaveCount(7);
   await expect(page.getByText(/salvato su questo dispositivo · non condiviso/i)).toBeVisible();
 
   const firstRow = plan.getByRole('listitem').first();
@@ -105,12 +105,12 @@ test('una ricevuta del Piano arrivata dopo il logout conserva la coda account gi
   await page.route('**/v1/auth/logout', (route) => route.fulfill({ status: 204, body: '' }));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/plan');
-  const planHeading = page.getByRole('heading', { name: 'Piano', exact: true });
+  const planHeading = page.getByRole('heading', { name: 'Piano settimanale', exact: true });
   await expect(planHeading).toBeVisible();
 
   const plan = page.getByRole('list', { name: 'Pasti da domani' });
   await expect(page.getByText('Sincronizzato con il tuo account', { exact: true })).toBeVisible();
-  await expect(plan.getByRole('listitem')).toHaveCount(4);
+  await expect(plan.getByRole('listitem')).toHaveCount(7);
   await plan.getByRole('listitem').first().getByRole('button', { name: /cambia ricetta/i }).click();
   const command = await commandStarted;
   expect(command).toMatchObject({ scope: accountScope, action: 'manual_set' });
@@ -136,7 +136,7 @@ test('una ricevuta del Piano arrivata dopo il logout conserva la coda account gi
   await page.getByRole('button', { name: 'Esci' }).click();
   await expect(page.getByText(/Salvato su questo dispositivo · non condiviso/i)).toBeVisible();
   const guestPlan = page.getByRole('list', { name: 'Pasti da domani' });
-  await expect(guestPlan.getByRole('listitem')).toHaveCount(4);
+  await expect(guestPlan.getByRole('listitem')).toHaveCount(7);
   const guestTitle = await guestPlan.getByRole('listitem').first().locator('div p').first().textContent();
   expect(guestTitle).not.toBeNull();
 
@@ -156,7 +156,7 @@ test('il Piano ospite si importa solo su conferma e si riprende dopo la riconnes
   } });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/plan');
-  const planHeading = page.getByRole('heading', { name: 'Piano', exact: true });
+  const planHeading = page.getByRole('heading', { name: 'Piano settimanale', exact: true });
   await expect(planHeading).toBeVisible();
 
   const firstRow = page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem').first();
@@ -372,10 +372,10 @@ test('rimuove il conflitto dal Piano solo dopo retry applicato e verificato dal 
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/plan');
-  const planHeading = page.getByRole('heading', { name: 'Piano', exact: true });
+  const planHeading = page.getByRole('heading', { name: 'Piano settimanale', exact: true });
   await expect(planHeading).toBeVisible();
   const plan = page.getByRole('list', { name: 'Pasti da domani' });
-  await expect(plan.getByRole('listitem')).toHaveCount(4);
+  await expect(plan.getByRole('listitem')).toHaveCount(7);
   await plan.getByRole('listitem').first().getByRole('button', { name: /cambia ricetta/i }).click();
   const conflictRegion = page.getByRole('region', { name: 'Modifiche in conflitto' });
   await expect(conflictRegion).toContainText('non è stata condivisa');

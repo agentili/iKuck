@@ -7,7 +7,7 @@ import PlanPage from './PlanPage';
 import { mealPlanApi } from '../mealPlan/api';
 import type { MealPlanRecoveryConflict, MealPlanRecoveryQuarantine, MealPlanRecoveryResponse } from '../mealPlan/api';
 import { createLocalPlanState, readMealPlanOutbox, saveGuestPlanState } from '../mealPlan/storage';
-import { getDeviceTimeZone, getNextFourCivilDates } from '../mealPlan';
+import { getDeviceTimeZone, getNextSevenCivilDates } from '../mealPlan';
 import { RECIPES } from '../domain/recipes';
 import { useAuthStore } from '../auth/authStore';
 import { useHouseStore } from '../house/houseStore';
@@ -66,7 +66,7 @@ const setupSharedPlan = (scopes: readonly SyncMutationScope[], recipesByScope: P
   const statesByScope = new Map<SyncMutationScope, PlanState[]>();
   for (const scope of scopes) {
     const zone = scope.startsWith('house:') ? 'Europe/Rome' : getDeviceTimeZone() ?? 'UTC';
-    const dates = getNextFourCivilDates(new Date(), zone);
+    const dates = getNextSevenCivilDates(new Date(), zone);
     datesByScope.set(scope, dates);
     statesByScope.set(scope, dates.map((date, index) => createPlanState(
       date,
@@ -136,7 +136,7 @@ const makeRecoveryConflict = (
 
 const prepareGuestPlan = async (): Promise<void> => {
   const timeZone = getDeviceTimeZone() ?? 'UTC';
-  const dates = getNextFourCivilDates(new Date(), timeZone);
+  const dates = getNextSevenCivilDates(new Date(), timeZone);
   await saveGuestPlanState(createLocalPlanState(dates[0]!, 'manual', pastaRecipe.id));
   for (const date of dates.slice(1)) {
     await saveGuestPlanState(createLocalPlanState(date, 'deleted', null));
