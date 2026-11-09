@@ -904,7 +904,7 @@ export default function PlanPage() {
                 {state !== null && currentView.canEdit && (
                   <button
                     type="button"
-                    className="inline-flex min-h-10 w-fit items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border-2 border-[var(--ik-basil)] bg-[var(--ik-surface)] px-3 py-1.5 text-sm font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)] disabled:opacity-60 sm:col-start-3 sm:row-start-2"
+                    className="inline-flex min-h-11 w-fit items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border-2 border-[var(--ik-basil)] bg-[var(--ik-surface)] px-3 py-1.5 text-sm font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)] disabled:opacity-60 sm:col-start-3 sm:row-start-2"
                     aria-label={`Modifica ricetta per ${label}`}
                     disabled={busyDate !== null || !scopeWritable}
                     onClick={() => void chooseReplacement(date, state)}
