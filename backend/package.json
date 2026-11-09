@@ -18,7 +18,8 @@
     "db:migrate:dev": "tsx src/db/migrate.ts",
     "db:cleanup-auth": "node dist/db/cleanupExpiredAuth.js",
     "db:cleanup-bring-candidates": "node dist/db/cleanupBringCandidates.js",
-    "s2s-admin": "node --env-file-if-exists=.env dist/s2s/adminCli.js"
+    "s2s-admin": "node --env-file-if-exists=.env dist/s2s/adminCli.js",
+    "push:worker": "node --env-file-if-exists=.env dist/push/worker.js"
   },
   "dependencies": {
     "@ikuck/shared": "file:../shared",
@@ -30,11 +31,13 @@
     "nodemailer": "^10.1.0",
     "postgres": "^3.4.7",
     "redis": "^5.8.2",
+    "web-push": "^4.0.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.34.0",
     "@types/node": "^24.3.0",
+    "@types/web-push": "^3.6.4",
     "@vitest/coverage-v8": "^4.1.11",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9.34.0",

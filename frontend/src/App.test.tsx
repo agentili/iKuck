@@ -392,6 +392,14 @@ describe('App synchronization lifecycle', () => {
     expect(removeListener).toHaveBeenCalledOnce();
   });
 
+  it('opens notification weeks in both application layouts', async () => {
+    window.history.pushState({}, '', '/plan?week=2030-01-07');
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Piano settimanale' })).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Accedi e apri il piano' })).toHaveAttribute('href', '/profile?returnTo=%2Fplan%3Fweek%3D2030-01-07');
+    window.history.pushState({}, '', '/');
+  });
+
   it('renders an explicit 404 without replacing the requested URL', async () => {
     window.history.pushState({}, '', '/missing-page');
 

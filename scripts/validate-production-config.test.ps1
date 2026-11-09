@@ -61,6 +61,12 @@ OPENAI_MODEL=gpt-5.5
         Write-Host "PASS: $Name"
     }
 
+    Assert-Valid -Name 'push disabled without VAPID keys' -Content ($validConfig + "`nPUSH_ENABLED=false")
+    Assert-Invalid -Name 'push enabled without VAPID keys' -Content ($validConfig + "`nPUSH_ENABLED=true")
+    Assert-Invalid -Name 'invalid push flag' -Content ($validConfig + "`nPUSH_ENABLED=yes")
+    $pushConfig = $validConfig + "`nPUSH_ENABLED=true`nPUSH_VAPID_PUBLIC_KEY=" + ('A' * 87) + "`nPUSH_VAPID_PRIVATE_KEY=" + ('B' * 43) + "`nPUSH_VAPID_SUBJECT=mailto:push@ikuck.it"
+    Assert-Valid -Name 'push configuration' -Content $pushConfig
+    Assert-Invalid -Name 'VAPID private key in sample' -FileName '.env.example' -Content $pushConfig
     Assert-Valid -Name 'valid HTTPS deployment domain' -Content $validConfig
     Assert-Invalid -Name 'unchanged example database password' -Content ($validConfig -replace "(?m)^POSTGRES_PASSWORD=.*$", 'POSTGRES_PASSWORD=replace-with-a-unique-long-database-password')
     Assert-Invalid -Name 'missing database user' -Content ($validConfig -replace "(?m)^POSTGRES_USER=.*\r?\n", '')

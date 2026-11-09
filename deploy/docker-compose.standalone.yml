@@ -81,6 +81,10 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
+      PUSH_ENABLED: ${PUSH_ENABLED:-false}
+      PUSH_VAPID_PUBLIC_KEY: ${PUSH_VAPID_PUBLIC_KEY:-}
+      PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
+      PUSH_VAPID_SUBJECT: ${PUSH_VAPID_SUBJECT:-}
       BRING_ENABLED: ${BRING_ENABLED:-false}
       BRING_TOKEN_ENCRYPTION_KEY: ${BRING_TOKEN_ENCRYPTION_KEY:-}
       BRING_ALLOWED_LIST_IDS: ${BRING_ALLOWED_LIST_IDS:-}
@@ -91,6 +95,38 @@ services:
       timeout: 3s
       retries: 10
       start_period: 20s
+
+  push-worker:
+    stop_grace_period: 30s
+    profiles: ["push"]
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    cpus: "0.50"
+    mem_limit: 256m
+    pids_limit: 100
+    logging: *default-logging
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    command: ["node", "dist/push/worker.js"]
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      APP_ORIGIN: ${APP_ORIGIN:-http://127.0.0.1:8080}
+      DATABASE_URL: postgres://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}
+      REDIS_URL: redis://redis:6379
+      PUSH_ENABLED: ${PUSH_ENABLED:-false}
+      PUSH_VAPID_PUBLIC_KEY: ${PUSH_VAPID_PUBLIC_KEY:-}
+      PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
+      PUSH_VAPID_SUBJECT: ${PUSH_VAPID_SUBJECT:-}
 
   caddy:
     build:

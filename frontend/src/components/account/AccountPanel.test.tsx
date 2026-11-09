@@ -75,6 +75,22 @@ describe('AccountPanel', () => {
     expect(screen.queryByText('a long enough password')).not.toBeInTheDocument();
   });
 
+  it('returns to the notification week after login', async () => {
+    useAuthStore.setState({ login: vi.fn().mockResolvedValue(undefined) });
+    const user = userEvent.setup();
+    render(<MemoryRouter initialEntries={['/profile?returnTo=%2Fplan%3Fweek%3D2030-01-07']}>
+      <Routes>
+        <Route path="/profile" element={<AccountPanel />} />
+        <Route path="/plan" element={<p>Requested weekly plan</p>} />
+      </Routes>
+    </MemoryRouter>);
+    await user.click(screen.getByRole('button', { name: 'Accedi o registrati' }));
+    await user.type(screen.getByLabelText('Email'), 'ale@example.com');
+    await user.type(screen.getByLabelText('Password'), 'a long enough password');
+    await user.click(screen.getByRole('button', { name: 'Accedi al profilo' }));
+    expect(await screen.findByText('Requested weekly plan')).toBeVisible();
+  });
+
   it('navigates to the profile after a verified login succeeds', async () => {
     const login = vi.fn().mockResolvedValue(undefined);
     useAuthStore.setState({ login });

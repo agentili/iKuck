@@ -272,3 +272,29 @@ export interface RecipePreference extends RecipePreferencePayload {
   createdAt: string;
   updatedAt: string;
 }
+
+// Push preferences are account-wide; subscriptions belong to a single browser/session.
+export interface PushPreferences {
+  enabled: boolean;
+  fridayTime: string;
+  timeZone: string;
+}
+export interface PushStatus {
+  preferencesConfigured: boolean;
+  enabled: boolean;
+  publicKey: string | null;
+  preferences: PushPreferences;
+  effectiveTimeZone: string;
+}
+export interface PushSubscriptionInput {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}
+export interface WeeklyPushPayload {
+  accountId: string;
+  title: string;
+  body: string;
+  url: string;
+  tag: string;
+  expiresAt: string;
+}

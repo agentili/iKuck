@@ -1,3 +1,4 @@
+import { clearLocalPush, reconcilePushAccount } from '../push/client';
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 import type { AccountSummary } from '@ikuck/shared/contracts';
 import { ApiClientError, apiRequest, type ApiRequest } from '../api/apiClient';
@@ -94,11 +95,13 @@ export const createAuthStore = (options: AuthStoreOptions | ApiRequest = {}): Au
           await run(async () => {
             const response = await request<SessionResponse>('/v1/auth/session');
             if (response === undefined || !response.authenticated) {
+              await clearLocalPush().catch(() => {});
               clearSession();
               return;
             }
 
             const session = assertAuthenticatedResponse(response);
+            await reconcilePushAccount(session.user.id);
             set(session);
           });
         } catch (error) {
@@ -111,6 +114,7 @@ export const createAuthStore = (options: AuthStoreOptions | ApiRequest = {}): Au
             method: 'POST',
             body: { email, password },
           });
+          await clearLocalPush().catch(() => {});
           set(assertAuthenticatedResponse(response));
         });
       },
@@ -120,6 +124,7 @@ export const createAuthStore = (options: AuthStoreOptions | ApiRequest = {}): Au
             method: 'POST',
             body: { credential },
           });
+          await clearLocalPush().catch(() => {});
           set(assertAuthenticatedResponse(response));
         });
       },
@@ -161,6 +166,7 @@ export const createAuthStore = (options: AuthStoreOptions | ApiRequest = {}): Au
 
         await run(async () => {
           try {
+            await clearLocalPush().catch(() => {});
             await request('/v1/auth/logout', { method: 'POST', csrfToken });
           } finally {
             clearSession();

@@ -31,6 +31,10 @@ export interface AppConfig {
   trustProxy?: string | string[];
   nodeEnvironment: 'development' | 'test' | 'production';
   s2sDinnerContextEnabled: boolean;
+  pushEnabled: boolean;
+  pushVapidPublicKey?: string;
+  pushVapidPrivateKey?: string;
+  pushVapidSubject?: string;
   bringEnabled: boolean;
   bringTokenEncryptionKey?: string;
   bringAllowedListIds: readonly string[];
@@ -109,6 +113,10 @@ const environmentSchema = z.object({
   GEMINI_MODEL: z.string().min(1).default('gemini-3.5-flash-lite'),
   GOOGLE_CLIENT_ID: optionalEnvironmentString(),
   S2S_DINNER_CONTEXT_ENABLED: z.enum(['true', 'false']).default('false'),
+  PUSH_ENABLED: z.enum(['true', 'false']).default('false'),
+  PUSH_VAPID_PUBLIC_KEY: optionalEnvironmentString(),
+  PUSH_VAPID_PRIVATE_KEY: optionalEnvironmentString(),
+  PUSH_VAPID_SUBJECT: optionalEnvironmentString(),
   BRING_ENABLED: z.enum(['true', 'false']).default('false'),
   BRING_TOKEN_ENCRYPTION_KEY: z.preprocess(
     (value) => value === '' ? undefined : value,
@@ -120,6 +128,11 @@ const environmentSchema = z.object({
   ),
   BRING_CANDIDATE_TTL_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
 }).superRefine((value, context) => {
+  if (value.PUSH_ENABLED === 'true') {
+    if (!value.PUSH_VAPID_PUBLIC_KEY || !/^[A-Za-z0-9_-]{87}$/.test(value.PUSH_VAPID_PUBLIC_KEY)) context.addIssue({ code: 'custom', path: ['PUSH_VAPID_PUBLIC_KEY'], message: 'Valid VAPID public key is required' });
+    if (!value.PUSH_VAPID_PRIVATE_KEY || !/^[A-Za-z0-9_-]{43}$/.test(value.PUSH_VAPID_PRIVATE_KEY)) context.addIssue({ code: 'custom', path: ['PUSH_VAPID_PRIVATE_KEY'], message: 'Valid VAPID private key is required' });
+    if (!value.PUSH_VAPID_SUBJECT || !/^(mailto:[^@\s]+@[^@\s]+|https:\/\/[^\s]+)$/.test(value.PUSH_VAPID_SUBJECT)) context.addIssue({ code: 'custom', path: ['PUSH_VAPID_SUBJECT'], message: 'VAPID subject must be mailto or HTTPS' });
+  }
   if (value.BRING_ENABLED === 'true' && value.BRING_TOKEN_ENCRYPTION_KEY === undefined) {
     context.addIssue({ code: 'custom', path: ['BRING_TOKEN_ENCRYPTION_KEY'], message: 'Bring encryption key is required when Bring is enabled' });
   }
@@ -173,6 +186,10 @@ export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
     trustProxy,
     nodeEnvironment: parsed.NODE_ENV,
     s2sDinnerContextEnabled: parsed.S2S_DINNER_CONTEXT_ENABLED === 'true',
+    pushEnabled: parsed.PUSH_ENABLED === 'true',
+    pushVapidPublicKey: parsed.PUSH_VAPID_PUBLIC_KEY,
+    pushVapidPrivateKey: parsed.PUSH_VAPID_PRIVATE_KEY,
+    pushVapidSubject: parsed.PUSH_VAPID_SUBJECT,
     bringEnabled: parsed.BRING_ENABLED === 'true',
     bringTokenEncryptionKey: parsed.BRING_TOKEN_ENCRYPTION_KEY,
     bringAllowedListIds: parseBringAllowedListIds(parsed.BRING_ALLOWED_LIST_IDS) ?? [],

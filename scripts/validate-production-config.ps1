@@ -140,11 +140,24 @@ if ($null -ne $postgresPassword -and $postgresPassword -match '[@:/?#]') {
 }
 
 $sampleFile = [System.IO.Path]::GetFileName($resolvedEnvFile) -match '(?i)\.example$|\.sample$'
-foreach ($providerSecretName in @('RESEND_API_KEY', 'USDA_API_KEY', 'OPENAI_API_KEY')) {
+foreach ($providerSecretName in @('RESEND_API_KEY', 'USDA_API_KEY', 'OPENAI_API_KEY', 'PUSH_VAPID_PRIVATE_KEY')) {
     $providerSecret = Get-Value -Values $values -Name $providerSecretName
     if ($sampleFile -and -not [string]::IsNullOrWhiteSpace($providerSecret)) {
         Add-ValidationError "$providerSecretName must be empty in a committed sample file"
     }
+}
+
+$pushEnabled = Get-Value -Values $values -Name 'PUSH_ENABLED'
+if (-not [string]::IsNullOrWhiteSpace($pushEnabled) -and $pushEnabled -notin @('true', 'false')) {
+    Add-ValidationError 'PUSH_ENABLED must be true or false'
+}
+if ($pushEnabled -eq 'true') {
+    $publicKey = Get-Value -Values $values -Name 'PUSH_VAPID_PUBLIC_KEY'
+    $privateKey = Get-Value -Values $values -Name 'PUSH_VAPID_PRIVATE_KEY'
+    $subject = Get-Value -Values $values -Name 'PUSH_VAPID_SUBJECT'
+    if ($publicKey -notmatch '^[A-Za-z0-9_-]{87}$') { Add-ValidationError 'PUSH_VAPID_PUBLIC_KEY must be a VAPID public key' }
+    if ($privateKey -notmatch '^[A-Za-z0-9_-]{43}$') { Add-ValidationError 'PUSH_VAPID_PRIVATE_KEY must be a VAPID private key' }
+    if ($subject -notmatch '^(mailto:[^@\s]+@[^@\s]+|https://[^\s]+)$') { Add-ValidationError 'PUSH_VAPID_SUBJECT must use mailto or HTTPS' }
 }
 
 $resendKey = Get-Value -Values $values -Name 'RESEND_API_KEY'

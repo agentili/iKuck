@@ -21,6 +21,10 @@ Copia `deploy/.env.example` in `deploy/.env` sul VPS e sostituisci tutti i place
 | `USDA_API_KEY` | no | abilita l'arricchimento nutrizionale USDA |
 | `OPENAI_API_KEY` | no | abilita le ricette AI private |
 | `OPENAI_MODEL` | no | modello OpenAI, default `gpt-5.5` |
+| `PUSH_ENABLED` | no | `false` per default; `true` abilita le API push e richiede VAPID |
+| `PUSH_VAPID_PUBLIC_KEY` | con push | chiave pubblica P-256 base64url |
+| `PUSH_VAPID_PRIVATE_KEY` | con push | chiave privata VAPID; solo server, mai Git |
+| `PUSH_VAPID_SUBJECT` | con push | contatto `mailto:` o URL HTTPS |
 
 In assenza delle variabili provider, il provider corrispondente resta disabilitato e l'app deve continuare a funzionare per gli ospiti. Non inserire normalmente `DATABASE_URL` o `REDIS_URL` nell'env production: Compose li costruisce con gli host privati `postgres` e `redis`. Se vengono presenti in un file operativo, il validator accetta solo quegli host.
 
@@ -34,6 +38,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml co
 ```
 
 Il validator rifiuta valori mancanti o placeholder, domini non validi, password non sicure per la URL PostgreSQL, chiavi provider presenti nei file `.example` e URL database/Redis esterni alla rete privata Compose.
+
+Per i promemoria del venerdì avviare anche il profilo Compose `push` e seguire [il runbook notifiche](push-notifications.md), incluse le prove su staging HTTPS.
 
 ## Header browser e CSP
 

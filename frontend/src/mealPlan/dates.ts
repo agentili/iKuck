@@ -79,3 +79,21 @@ export function formatCivilDateLong(date: string): string {
     timeZone: 'UTC',
   }).format(new Date(`${date}T12:00:00.000Z`));
 }
+
+export function parsePlanWeek(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    assertCivilDate(value);
+    return new Date(`${value}T12:00:00Z`).getUTCDay() === 1 ? value : null;
+  } catch { return null; }
+}
+
+export function getPlanDates(instant: Date, timeZone: string, week: string | null): string[] {
+  return week === null ? getNextSevenCivilDates(instant, timeZone) : Array.from({ length: 7 }, (_, offset) => addCivilDays(week, offset));
+}
+
+export function getNextWeekMonday(instant: Date, timeZone: string): string {
+  const date = getCivilDate(instant, timeZone);
+  const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+  return addCivilDays(date, weekday === 0 ? 1 : 8 - weekday);
+}

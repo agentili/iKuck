@@ -1,5 +1,6 @@
+import { safePushDestination } from '../../push/payload';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LogIn, UserRound } from 'lucide-react';
 import { ApiClientError } from '../../api/apiClient';
 import { useAuthStore } from '../../auth/authStore';
@@ -46,6 +47,8 @@ const errorMessage = (error: unknown): string => {
 
 export default function AccountPanel() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const destination = safePushDestination(new URLSearchParams(location.search).get("returnTo")) ?? "/profile";
   const user = useAuthStore((state) => state.user);
   const connection = useAuthStore((state) => state.connection);
   const isLoading = useAuthStore((state) => state.isLoading);
@@ -80,7 +83,7 @@ export default function AccountPanel() {
     try {
       if (mode === 'login') {
         await login(email, password);
-        navigate('/profile');
+        navigate(destination);
       } else if (mode === 'register') {
         const result = await register(email, password);
         setMessage(result.verificationRequired
@@ -111,7 +114,7 @@ export default function AccountPanel() {
     setError(null);
     try {
       await loginWithGoogle(credential);
-      navigate('/profile');
+      navigate(destination);
     } catch (googleError) {
       setError(errorMessage(googleError));
     }
