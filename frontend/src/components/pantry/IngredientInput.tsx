@@ -80,7 +80,7 @@ export default function IngredientInput({ onAdd, idBase = 'pantry' }: Ingredient
       <label htmlFor={`${idBase}-input`} className={`block text-sm font-semibold ${pantryEntry ? 'text-[var(--ik-ink)]' : 'text-gray-700'}`}>
         Ingredienti presenti
       </label>
-      <div className={`ik-ingredient-entry flex gap-3 ${iconOnlyAdd ? 'min-w-0 flex-row items-center' : pantryEntry ? 'min-w-0 flex-col sm:flex-row' : ''}`}>
+      <div className={`ik-ingredient-entry flex gap-3 ${iconOnlyAdd ? 'ik-ingredient-entry-compact min-w-0 flex-row items-center' : pantryEntry ? 'min-w-0 flex-col sm:flex-row' : ''}`}>
         <input
           id={`${idBase}-input`}
           role="combobox"
