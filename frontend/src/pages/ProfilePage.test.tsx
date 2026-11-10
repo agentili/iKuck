@@ -9,8 +9,6 @@ import { setActiveDataScope, setPersonalDataScope } from '../sync/scopeContext';
 import { saveColorThemePreference } from '../domain/colorTheme';
 import { mealPlanApi } from '../mealPlan/api';
 import { readMealPlanSnapshot, saveGuestPlanState } from '../mealPlan/storage';
-import * as features from '../config/features';
-import * as planStorage from '../mealPlan/storage';
 import * as planService from '../mealPlan/service';
 
 const verifiedUser = {
@@ -112,47 +110,20 @@ describe('ProfilePage', () => {
   });
 
   it('labels the profile return destination as Chef when Sous Chef owns the root route', async () => {
-    const sousChefFlag = vi.spyOn(features, 'isSousChef').mockReturnValue(true);
     useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1', expiresAt: '2026-10-12T10:00:00.000Z' });
     render(<MemoryRouter><ProfilePage /></MemoryRouter>);
 
     await screen.findByRole('heading', { name: 'Il tuo profilo' });
     expect(screen.getByRole('link', { name: /Torna a Chef/i })).toHaveAttribute('href', '/');
-    sousChefFlag.mockRestore();
   });
 
   it('labels the guest profile return destination as Chef in Sous Chef mode', () => {
-    const sousChefFlag = vi.spyOn(features, 'isSousChef').mockReturnValue(true);
     render(<MemoryRouter><ProfilePage /></MemoryRouter>);
 
     expect(screen.getByRole('link', { name: /Torna a Chef/i })).toHaveAttribute('href', '/');
-    sousChefFlag.mockRestore();
-  });
-
-  it('keeps the legacy recipes label for a guest profile when Sous Chef is disabled', () => {
-    const sousChefFlag = vi.spyOn(features, 'isSousChef').mockReturnValue(false);
-    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
-
-    expect(screen.getByRole('link', { name: /Torna alle ricette/i })).toHaveAttribute('href', '/');
-    sousChefFlag.mockRestore();
-  });
-
-  it('keeps the plan import unavailable while the Sous-Chef rollout flag is off', async () => {
-    vi.spyOn(features, 'isSousChef').mockReturnValue(false);
-    await saveGuestPlanState({ date: '2026-11-03', revision: crypto.randomUUID(), serverSequence: 0,
-      kind: 'manual', recipeId: 'guest-pasta' });
-    setActiveDataScope('account:user-1');
-    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
-    const guestRead = vi.spyOn(planStorage, 'readMealPlanSnapshot');
-    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
-
-    await screen.findByRole('heading', { name: 'Il tuo profilo' });
-    await act(async () => { await Promise.all(guestRead.mock.results.map((result) => result.value)); });
-    expect(screen.queryByRole('button', { name: 'Importa Piano ospite' })).not.toBeInTheDocument();
   });
 
   it('requires a separate explicit confirmation before importing guest plan choices', async () => {
-    vi.spyOn(features, 'isSousChef').mockReturnValue(true);
     const user = userEvent.setup();
     const guestPlan = {
       date: '2026-11-03', revision: '223e4567-e89b-42d3-a456-426614174001', serverSequence: 0,
@@ -199,9 +170,10 @@ describe('ProfilePage', () => {
   });
 
   it('requires a new guest-plan confirmation after changing the destination account', async () => {
-    vi.spyOn(features, 'isSousChef').mockReturnValue(true);
-    await saveGuestPlanState({ date: '2026-11-03', revision: crypto.randomUUID(), serverSequence: 0,
-      kind: 'manual', recipeId: 'guest-pasta' });
+    await saveGuestPlanState({
+      date: '2026-11-03', revision: crypto.randomUUID(), serverSequence: 0,
+      kind: 'manual', recipeId: 'guest-pasta'
+    });
     setActiveDataScope('account:user-1');
     useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
     const user = userEvent.setup();
@@ -220,13 +192,16 @@ describe('ProfilePage', () => {
   });
 
   it('does not label a preserved guest source as a completed import', async () => {
-    vi.spyOn(features, 'isSousChef').mockReturnValue(true);
-    await saveGuestPlanState({ date: '2026-11-03', revision: crypto.randomUUID(), serverSequence: 0,
-      kind: 'manual', recipeId: 'guest-pasta' });
+    await saveGuestPlanState({
+      date: '2026-11-03', revision: crypto.randomUUID(), serverSequence: 0,
+      kind: 'manual', recipeId: 'guest-pasta'
+    });
     setActiveDataScope('account:user-1');
     useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
-    vi.spyOn(planService, 'importGuestMealPlan').mockResolvedValue({ queued: 0, acknowledged: 0, conflicts: 0,
-      pending: 0, preservedConflicts: 1 });
+    vi.spyOn(planService, 'importGuestMealPlan').mockResolvedValue({
+      queued: 0, acknowledged: 0, conflicts: 0,
+      pending: 0, preservedConflicts: 1
+    });
     const user = userEvent.setup();
     render(<MemoryRouter><ProfilePage /></MemoryRouter>);
     await user.click(await screen.findByRole('button', { name: 'Importa Piano ospite' }));

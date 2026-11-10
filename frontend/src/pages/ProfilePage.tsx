@@ -16,7 +16,6 @@ import ErrorBanner from '../components/ui/ErrorBanner';
 import PageSection from '../components/ui/PageSection';
 import { readMealPlanSnapshot } from '../mealPlan/storage';
 import { importGuestMealPlan } from '../mealPlan/service';
-import { isSousChef } from '../config/features';
 
 function ThemePreferenceControl() {
   const preference = useSyncExternalStore(subscribeColorTheme, getColorThemePreference, () => 'system');
@@ -129,7 +128,7 @@ const operationError = (error: unknown): string => {
 };
 
 export default function ProfilePage() {
-  const returnLinkLabel = isSousChef() ? 'Torna a Chef' : 'Torna alle ricette';
+  const returnLinkLabel = 'Torna a Chef';
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const pushReturnTo = safePushDestination(searchParams.get("returnTo"));
@@ -173,7 +172,7 @@ export default function ProfilePage() {
   }, [user]);
 
   useEffect(() => {
-    if (user === null || !isSousChef()) return;
+    if (user === null) return;
     let active = true;
     setGuestPlanLoadFailed(false);
     void readMealPlanSnapshot('guest')
@@ -265,7 +264,7 @@ export default function ProfilePage() {
   };
 
   const handlePlanImport = async () => {
-    if (!isSousChef() || !confirmPlanImport || csrfToken === null || activeScope === 'guest' || user.emailVerifiedAt.trim().length === 0) return;
+    if (!confirmPlanImport || csrfToken === null || activeScope === 'guest' || user.emailVerifiedAt.trim().length === 0) return;
     const scope = activeScope;
     const currentUserId = user.id;
     const generation = planImportGeneration.current;
@@ -395,8 +394,8 @@ export default function ProfilePage() {
           <p className="leading-relaxed text-[var(--ik-ink-muted)]">{hasHouse
             ? 'Importa esplicitamente i dati ospite nella Casa attiva. La dispensa ospite viene unita senza duplicare le quantità e rimossa dal dispositivo solo dopo la conferma del server; gli altri dati ospite restano sul dispositivo.'
             : 'Importa esplicitamente i dati ospite nel tuo account. I dati locali resteranno sul dispositivo e non verranno cancellati.'}</p>
-          {isSousChef() && guestPlanLoadFailed && <p role="status" className="rounded-xl border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] p-3 font-semibold text-[var(--ik-warn-ink)]">Non è stato possibile verificare il Piano ospite su questo dispositivo.</p>}
-          {isSousChef() && guestPlanCount !== null && guestPlanCount > 0 && (
+          {guestPlanLoadFailed && <p role="status" className="rounded-xl border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] p-3 font-semibold text-[var(--ik-warn-ink)]">Non è stato possibile verificare il Piano ospite su questo dispositivo.</p>}
+          {guestPlanCount !== null && guestPlanCount > 0 && (
             <section aria-labelledby="guest-plan-import-title" className="grid gap-3 rounded-2xl border border-[var(--ik-border)] bg-[var(--ik-mist)] p-4">
               <div>
                 <h3 id="guest-plan-import-title" className="font-black text-[var(--ik-ink)]">Piano ospite sul dispositivo</h3>

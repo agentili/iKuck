@@ -24,7 +24,6 @@ import NotFoundPage from './NotFoundPage';
 import RecipeNutritionSummary from '../components/diet/RecipeNutritionSummary';
 import RecipeImage from '../components/suggestions/RecipeImage';
 import PageSection from '../components/ui/PageSection';
-import { isSousChef } from '../config/features';
 
 const ratingLabel = (value: number): string => `${value} ${value === 1 ? 'stella' : 'stelle'}`;
 
@@ -112,7 +111,7 @@ const gramsPerServingFromAmount = (amount: string, servings: number | null): num
 export default function RecipeDetailPage() {
   const { recipeId = '' } = useParams();
   const [searchParams] = useSearchParams();
-  const returnLinkLabel = isSousChef() ? 'Torna a Chef' : 'Torna alle ricette';
+  const returnLinkLabel = 'Torna a Chef';
   const requestedScope = searchParams.get('scope');
   const activeScope = getActiveDataScope();
   const savedDiaryRecipes = useDinnerDiaryStore((state) => state.recipes);

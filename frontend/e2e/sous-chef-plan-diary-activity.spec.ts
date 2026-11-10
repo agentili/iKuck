@@ -1,6 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
-import { isSousChefBuild } from './helpers/appMode';
 
 const themePreferenceKey = 'ikuck-color-theme';
 
@@ -52,8 +51,6 @@ const matchesColorToken = async (
   const actual = getComputedStyle(element)[options.property].replace(/\s+/g, '');
   return actual === expected.replace(/\s+/g, '');
 }, { tokenName, property });
-
-test.skip(!isSousChefBuild, 'Richiede la shell Sous Chef.');
 
 test.afterEach(async ({ page }) => {
   assertOfflineBackendClean(page);

@@ -7,9 +7,6 @@ import ShoppingListPage from './ShoppingListPage';
 import { useShoppingListStore } from '../store/shoppingListStore';
 import { useAuthStore } from '../auth/authStore';
 import type { BringStatus } from '@ikuck/shared/bring';
-import { isSousChef } from '../config/features';
-
-vi.mock('../config/features', () => ({ isSousChef: vi.fn(() => false) }));
 
 const hydrateShoppingListStoreMock = vi.hoisted(() => vi.fn());
 const bringApiMocks = vi.hoisted(() => ({
@@ -60,7 +57,6 @@ const setVerifiedSession = (id = 'user-1', csrfToken = 'csrf-1', emailVerifiedAt
 
 describe('ShoppingListPage', () => {
   beforeEach(() => {
-    vi.mocked(isSousChef).mockReturnValue(false);
     hydrateShoppingListStoreMock.mockReset();
     hydrateShoppingListStoreMock.mockResolvedValue(undefined);
     Object.values(bringApiMocks).forEach((mock) => mock.mockReset());
@@ -82,7 +78,6 @@ describe('ShoppingListPage', () => {
   });
 
   it('uses the Sous Chef surface token and main landmark during local hydration', () => {
-    vi.mocked(isSousChef).mockReturnValue(true);
     render(<MemoryRouter><ShoppingListPage /></MemoryRouter>);
 
     const loading = screen.getByRole('status');
@@ -97,12 +92,11 @@ describe('ShoppingListPage', () => {
     render(<MemoryRouter><ShoppingListPage /></MemoryRouter>);
 
     expect(screen.getByRole('heading', { name: 'Lista della spesa' })).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Torna alle ricette' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'Torna a Chef' })).toHaveAttribute('href', '/');
     expect(screen.getByText('La lista è vuota')).toBeVisible();
   });
 
   it('keeps a single list heading and a tokenized source choice in the Sous Chef guest shell', () => {
-    vi.mocked(isSousChef).mockReturnValue(true);
     useShoppingListStore.setState({ hasHydrated: true, items: [] });
     render(<MemoryRouter><ShoppingListPage /></MemoryRouter>);
 
@@ -152,7 +146,6 @@ describe('ShoppingListPage', () => {
   });
 
   it('shows one Sous Chef page heading and the selected Bring! origin for a verified connected account', async () => {
-    vi.mocked(isSousChef).mockReturnValue(true);
     setVerifiedSession();
     bringApiMocks.status.mockResolvedValue(connectedStatus);
     useShoppingListStore.setState({ hasHydrated: true, items: [item] });
@@ -198,7 +191,6 @@ describe('ShoppingListPage', () => {
   });
 
   it.each(['guest', 'unverified', 'missing CSRF'] as const)('keeps the Sous Chef local fallback visible when Bring! access is denied for %s', async (session) => {
-    vi.mocked(isSousChef).mockReturnValue(true);
     if (session === 'unverified') setVerifiedSession('unverified', 'csrf-1', '');
     if (session === 'missing CSRF') {
       setVerifiedSession('verified');
@@ -240,7 +232,6 @@ describe('ShoppingListPage', () => {
   });
 
   it('keeps Sous Chef feedback visible after a manual local choice and ignores a late Bring! answer', async () => {
-    vi.mocked(isSousChef).mockReturnValue(true);
     const user = userEvent.setup();
     const pendingStatus = deferred<BringStatus>();
     bringApiMocks.status.mockReturnValue(pendingStatus.promise);
@@ -276,7 +267,6 @@ describe('ShoppingListPage', () => {
   });
 
   it('offers an explicit offline fallback after a Sous Chef provider error without showing local writes first', async () => {
-    vi.mocked(isSousChef).mockReturnValue(true);
     const user = userEvent.setup();
     setVerifiedSession();
     bringApiMocks.status.mockRejectedValue(new Error('synthetic network failure'));
@@ -324,7 +314,6 @@ describe('ShoppingListPage', () => {
   });
 
   it('does not expose the old Sous Chef Bring! panel while checking the replacement session', async () => {
-    vi.mocked(isSousChef).mockReturnValue(true);
     const firstPageStatus = deferred<BringStatus>();
     const previousPanelStatus = deferred<BringStatus>();
     const nextPageStatus = deferred<BringStatus>();

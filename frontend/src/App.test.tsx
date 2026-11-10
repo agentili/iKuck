@@ -2,7 +2,6 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
-import { isSousChef } from './config/features';
 import { useAuthStore } from './auth/authStore';
 import { useActivityStore } from './store/activityStore';
 import { useShoppingListStore } from './store/shoppingListStore';
@@ -38,7 +37,7 @@ const verifiedUser = {
   emailVerifiedAt: '2026-09-12T10:00:00.000Z',
 };
 
-const getHomeHeading = (): string => (isSousChef() ? 'Chef' : 'Cucina viva');
+const getHomeHeading = (): string => 'Cosa cuciniamo oggi?';
 
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
@@ -135,11 +134,10 @@ describe('App synchronization lifecycle', () => {
     window.history.pushState({}, '', '/pantry');
     window.dispatchEvent(new PopStateEvent('popstate'));
     await screen.findByRole('heading', { name: 'La tua dispensa' });
-    if (isSousChef()) {
-      const inventorySummary = screen.getByText('Inventario', { exact: true });
-      expect(inventorySummary.closest('details')).not.toHaveAttribute('open');
-      await user.click(inventorySummary);
-    }
+
+    const inventorySummary = screen.getByText('Inventario', { exact: true });
+    expect(inventorySummary.closest('details')).not.toHaveAttribute('open');
+    await user.click(inventorySummary);
     expect(screen.getByText('Pasta privata')).toBeVisible();
 
     useAuthStore.setState({ user: { ...verifiedUser, id: 'user-2', email: 'other@example.com' }, csrfToken: 'csrf-2' });
@@ -437,13 +435,9 @@ describe('App synchronization lifecycle', () => {
 
     expect(await screen.findByRole('heading', { name: getHomeHeading() })).toBeVisible();
     expect(screen.queryByLabelText('Ingredienti presenti')).not.toBeInTheDocument();
-    if (isSousChef()) {
-      const quickLinks = screen.getByRole('group', { name: 'Risposte rapide' });
-      expect(within(quickLinks).getByRole('link', { name: 'Dispensa' })).toHaveAttribute('href', '/pantry');
-    } else {
-      expect(screen.getByRole('link', { name: 'Apri tutta la dispensa' })).toHaveAttribute('href', '/pantry');
-      expect(screen.getByRole('button', { name: 'Trova ricette' })).toBeEnabled();
-    }
+
+    const quickLinks = screen.getByRole('group', { name: 'Prosegui in cucina' });
+    expect(within(quickLinks).getByRole('link', { name: /^Dispensa/ })).toHaveAttribute('href', '/pantry');
   });
 
   it.each([

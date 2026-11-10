@@ -41,7 +41,6 @@ export default defineConfig({
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(versionMetadata.version),
     'import.meta.env.VITE_BUILD_ID': JSON.stringify(versionMetadata.buildId),
-    'import.meta.env.VITE_SOUS_CHEF': JSON.stringify(process.env.VITE_SOUS_CHEF ?? 'false'),
   },
   server: {
     host: '127.0.0.1',
@@ -80,67 +79,43 @@ export default defineConfig({
         background_color: '#FAFBF7',
         lang: 'it',
         categories: ['food', 'lifestyle'],
-        shortcuts: process.env.VITE_SOUS_CHEF === 'true'
-          ? [
-              {
-                name: 'Cucina',
-                short_name: 'Cucina',
-                description: 'Cerca ricette con gli ingredienti che hai.',
-                url: '/cucina',
-                icons: [{ src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
-              },
-              {
-                name: 'Piano',
-                short_name: 'Piano',
-                description: 'Piano pasti a 4 giorni.',
-                url: '/plan',
-                icons: [{ src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
-              },
-              {
-                name: 'Ricette',
-                short_name: 'Ricette',
-                description: 'Cerca e salva ricette.',
-                url: '/recipes',
-                icons: [{ src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
-              },
-              {
-                name: 'Dispensa',
-                short_name: 'Dispensa',
-                description: 'Gestisci ingredienti, lotti e scadenze offline.',
-                url: '/pantry',
-                icons: [{ src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
-              },
-              {
-                name: 'Lista della spesa',
-                short_name: 'Spesa',
-                description: 'Apri la lista della spesa offline.',
-                url: '/shopping-list',
-                icons: [{ src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
-              },
-            ]
-          : [
-              {
-                name: 'Dispensa',
-                short_name: 'Dispensa',
-                description: 'Gestisci ingredienti, lotti e scadenze offline.',
-                url: '/pantry',
-                icons: [{ src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
-              },
-              {
-                name: 'Lista della spesa',
-                short_name: 'Spesa',
-                description: 'Apri la lista della spesa offline.',
-                url: '/shopping-list',
-                icons: [{ src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
-              },
-              {
-                name: 'Attività',
-                short_name: 'Attività',
-                description: 'Apri ricette cucinate e preferiti.',
-                url: '/activity',
-                icons: [{ src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
-              },
-            ],
+        shortcuts: [
+          {
+            name: 'Cucina',
+            short_name: 'Cucina',
+            description: 'Cerca ricette con gli ingredienti che hai.',
+            url: '/cucina',
+            icons: [{ src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
+          },
+          {
+            name: 'Piano',
+            short_name: 'Piano',
+            description: 'Piano pasti a 4 giorni.',
+            url: '/plan',
+            icons: [{ src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
+          },
+          {
+            name: 'Ricette',
+            short_name: 'Ricette',
+            description: 'Cerca e salva ricette.',
+            url: '/recipes',
+            icons: [{ src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
+          },
+          {
+            name: 'Dispensa',
+            short_name: 'Dispensa',
+            description: 'Gestisci ingredienti, lotti e scadenze offline.',
+            url: '/pantry',
+            icons: [{ src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
+          },
+          {
+            name: 'Lista della spesa',
+            short_name: 'Spesa',
+            description: 'Apri la lista della spesa offline.',
+            url: '/shopping-list',
+            icons: [{ src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
+          },
+        ],
         icons: [
           {
             src: 'icons/icon-192x192.png',

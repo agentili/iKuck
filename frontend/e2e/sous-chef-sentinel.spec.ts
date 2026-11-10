@@ -5,23 +5,7 @@ import {
   type OfflineApiResponse,
 } from './helpers/backendMode';
 
-/**
- * T01 · Test sentinella flag ON/OFF (Sous-Chef).
- *
- * Il feature flag è definito a build time (vite `define` → import.meta.env.VITE_SOUS_CHEF),
- * quindi questa suite afferma il comportamento della build che alimenta il preview server:
- *
- *   flag OFF (build di default):
- *     npm --prefix frontend run test:e2e -- e2e/sous-chef-sentinel.spec.ts
- *   flag ON:
- *     VITE_SOUS_CHEF=true npm --prefix frontend run test:e2e -- e2e/sous-chef-sentinel.spec.ts
- *
- * La suite afferma le route e i flussi attualmente accettati per entrambe le build.
- * La chat AI è differita; le scorciatoie Chef restano link di navigazione reali.
- * Nessun test è considerato superato se saltato: gli skip vengono riportati come tali.
- */
-
-const SOUS_CHEF_ON = process.env.VITE_SOUS_CHEF === 'true';
+/** Route e flussi della PWA con interfaccia Sous Chef. */
 
 const verifiedSession = {
   authenticated: true,
@@ -65,7 +49,7 @@ const heading = (page: Page, name: string) =>
   page.getByRole('heading', { name, exact: true });
 
 // ---------------------------------------------------------------------------
-// Stato attuale · route condivise (valgono con flag ON e OFF)
+// Stato attuale · route condivise
 // ---------------------------------------------------------------------------
 
 const sharedRoutes = [
@@ -79,7 +63,7 @@ const sharedRoutes = [
   { path: '/recipes/pasta-tonno-pomodoro', heading: 'Pasta tonno e pomodoro' },
 ] as const;
 
-test.describe('stato attuale · route condivise (flag ON e OFF)', () => {
+test.describe('stato attuale · route condivise', () => {
   for (const route of sharedRoutes) {
     test(`${route.path} rende «${route.heading}»`, async ({ page }) => {
       await page.goto(route.path);
@@ -94,78 +78,23 @@ test.describe('stato attuale · route condivise (flag ON e OFF)', () => {
     await expect(page.getByRole('link', { name: 'Torna alla home' })).toBeVisible();
   });
 
-  test('la shell renderizzata corrisponde al flag della build', async ({ page }) => {
+  test('la shell Sous Chef è sempre presente', async ({ page }) => {
     await page.goto('/');
-    if (SOUS_CHEF_ON) {
-      // Shell Sous-Chef: header semplificato + bottom nav, nessun header legacy.
-      await expect(page.getByRole('button', { name: 'Profilo' })).toBeVisible();
-      await expect(bottomNav(page).getByRole('link', { name: 'Chef' })).toBeVisible();
-      await expect(heading(page, 'Cosa cuciniamo oggi?')).toBeVisible();
-      await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toBeVisible();
-      await expect(page.getByRole('link', { name: 'Cucina', exact: true })).toHaveCount(0);
-    } else {
-      // Shell legacy: AppHeader con le cinque voci, nessuna bottom nav.
-      await expect(page.getByRole('link', { name: 'Cucina', exact: true })).toBeVisible();
-      await expect(page.getByRole('navigation', { name: 'Navigazione principale' })).toBeVisible();
-      await expect(heading(page, 'Cucina viva')).toBeVisible();
-      await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toHaveCount(0);
-    }
+
+    // Shell Sous-Chef: header semplificato + bottom nav, nessun header legacy.
+    await expect(page.getByRole('button', { name: 'Profilo' })).toBeVisible();
+    await expect(bottomNav(page).getByRole('link', { name: 'Chef' })).toBeVisible();
+    await expect(heading(page, 'Cosa cuciniamo oggi?')).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Cucina', exact: true })).toHaveCount(0);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Stato attuale · flag OFF (shell legacy)
+// Shell Sous Chef
 // ---------------------------------------------------------------------------
 
-const legacyLinks = [
-  { label: 'Cucina', path: '/', heading: 'Cucina viva' },
-  { label: 'Ricette', path: '/recipes', heading: 'Ricette' },
-  { label: 'Dispensa', path: '/pantry', heading: 'La tua dispensa' },
-  { label: 'Spesa', path: '/shopping-list', heading: 'Lista della spesa' },
-  { label: 'Diario', path: '/dinner-diary', heading: 'Diario delle cene' },
-] as const;
-
-test.describe('stato attuale · flag OFF (shell legacy)', () => {
-  test.skip(SOUS_CHEF_ON, 'build con VITE_SOUS_CHEF=true: la shell legacy non viene montata');
-
-  test('header legacy visibile e nessuna bottom nav', async ({ page }) => {
-    await page.goto('/');
-    await expect(page.getByRole('link', { name: 'Cucina', exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Profilo' }).first()).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Casa' }).first()).toBeVisible();
-    await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toHaveCount(0);
-  });
-
-  for (const link of legacyLinks) {
-    test(`voce «${link.label}» dell'header apre ${link.path}`, async ({ page }) => {
-      await page.goto('/');
-      await page
-        .getByRole('navigation', { name: 'Navigazione principale' })
-        .getByRole('link', { name: link.label, exact: true })
-        .click();
-      await expect(page).toHaveURL(link.path);
-      await expect(heading(page, link.heading)).toBeVisible();
-    });
-  }
-
-  test('/discover non esiste con flag OFF (404)', async ({ page }) => {
-    await page.goto('/discover');
-    await expect(heading(page, 'Pagina non trovata')).toBeVisible();
-  });
-
-  test('/saved non esiste con flag OFF (404)', async ({ page }) => {
-    await page.goto('/saved');
-    await expect(heading(page, 'Pagina non trovata')).toBeVisible();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Stato attuale · flag ON (shell Sous-Chef)
-// ---------------------------------------------------------------------------
-
-test.describe('stato attuale · flag ON (shell Sous-Chef)', () => {
-  test.skip(!SOUS_CHEF_ON, 'build senza VITE_SOUS_CHEF=true: la shell Sous-Chef non viene montata');
-
+test.describe('shell Sous Chef', () => {
   test('shell: header semplificato e bottom nav, nessun header legacy', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Profilo' })).toBeVisible();
@@ -258,8 +187,6 @@ test.describe('stato attuale · flag ON (shell Sous-Chef)', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('verifica funzionale · T02/T03/T05', () => {
-  test.skip(!SOUS_CHEF_ON, 'build senza VITE_SOUS_CHEF=true: la shell Sous-Chef non viene montata');
-
   test('[T02] la bottom nav offre Dispensa · Spesa · Chef · Piano · Ricette', async ({ page }) => {
     await page.goto('/');
     const nav = bottomNav(page);
@@ -278,7 +205,7 @@ test.describe('verifica funzionale · T02/T03/T05', () => {
   // Voce d'ingresso aggiornata da T02: il piano impone «Diario da Ricette»,
   // quindi l'accesso reale viene verificato dalla destinazione /recipes
   // (il click completo è coperto da e2e/sous-chef-shell.spec.ts).
-  test('[T02] il Diario è raggiungibile dalla shell con flag ON', async ({ page }) => {
+  test('[T02] il Diario è raggiungibile dalla shell', async ({ page }) => {
     await page.goto('/recipes');
     await expect(page.locator('a[href="/dinner-diary"]').first()).toBeVisible();
   });

@@ -9,7 +9,6 @@ import { useActivityStore } from '../store/activityStore';
 import { useAuthStore } from '../auth/authStore';
 import { useDinnerDiaryStore } from '../store/dinnerDiaryStore';
 import { getActiveDataScope, setActiveDataScope, setPersonalDataScope } from '../sync/scopeContext';
-import * as features from '../config/features';
 import { deleteLocalDatabase } from '../storage/indexedDb';
 import { readCookEvents } from '../storage/activityStorage';
 import { readDinnerEntries } from '../storage/dinnerDiaryStorage';
@@ -200,19 +199,9 @@ describe('RecipeDetailPage integration', () => {
   });
 
   it('labels the return destination as Chef when Sous Chef owns the root route', () => {
-    const sousChefFlag = vi.spyOn(features, 'isSousChef').mockReturnValue(true);
     renderRoute('/recipes/pollo-al-limone');
 
     expect(screen.getByRole('link', { name: 'Torna a Chef' })).toHaveAttribute('href', '/');
-    sousChefFlag.mockRestore();
-  });
-
-  it('keeps the legacy recipes label when Sous Chef is disabled', () => {
-    const sousChefFlag = vi.spyOn(features, 'isSousChef').mockReturnValue(false);
-    renderRoute('/recipes/pollo-al-limone');
-
-    expect(screen.getByRole('link', { name: 'Torna alle ricette' })).toHaveAttribute('href', '/');
-    sousChefFlag.mockRestore();
   });
 
   it('adds only missing non-optional ingredients to the shopping list', async () => {

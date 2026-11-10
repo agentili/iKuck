@@ -3,7 +3,6 @@ import { assertOfflineBackendClean, installOfflineBackend } from './helpers/back
 import { openShellProfileMenu } from './helpers/appMode';
 
 // These are browser contracts for the Sous Chef build, not production Bring! calls.
-test.skip(process.env.VITE_SOUS_CHEF !== 'true', 'Sous-Chef build required');
 
 const externalRequests = new WeakMap<Page, string[]>();
 test.afterEach(async ({ page }) => {

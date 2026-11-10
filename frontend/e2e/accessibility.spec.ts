@@ -6,7 +6,6 @@ import {
   type OfflineApiResponse,
 } from './helpers/backendMode';
 import {
-  isSousChefBuild,
   kitchenHeading,
   kitchenNavigationLabel,
   kitchenPath,
@@ -56,11 +55,11 @@ type AuditedPage = {
 };
 
 const auditedPages: AuditedPage[] = [
-  ...(isSousChefBuild ? [{ path: '/', heading: landingHeading, name: 'chef', auth: false }] : []),
+  { path: '/', heading: landingHeading, name: 'chef', auth: false },
   { path: kitchenPath, heading: kitchenHeading, name: 'home', auth: false },
   { path: '/recipes', heading: 'Ricette', name: 'recipes-library', auth: false },
   { path: '/pantry', heading: 'La tua dispensa', name: 'pantry', auth: false },
-  ...(isSousChefBuild ? [{ path: '/plan', heading: 'Piano settimanale', name: 'plan', auth: false }] : []),
+  { path: '/plan', heading: 'Piano settimanale', name: 'plan', auth: false },
   { path: '/shopping-list', heading: 'Lista della spesa', name: 'shopping-list', auth: false },
   { path: '/dinner-diary', heading: 'Diario delle cene', name: 'dinner-diary', auth: true },
   { path: '/activity', heading: 'La tua attività', name: 'activity', auth: false },
@@ -260,7 +259,6 @@ test('keeps focus indicators visible for links, controls and summaries', async (
 });
 
 test('Chef cooking destinations are keyboard reachable with visible focus', async ({ page }) => {
-  test.skip(!isSousChefBuild, 'Richiede il build Sous Chef.');
   await page.goto('/');
   await expect(page.getByRole('heading', { name: landingHeading, exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Ricetta del giorno' })).toBeVisible();
@@ -333,9 +331,7 @@ test('keeps primary navigation fixed and touch-friendly on mobile', async ({ pag
   const navigation = page.getByRole('navigation', { name: 'Navigazione principale' });
   expect(await navigation.evaluate((element) => window.getComputedStyle(element).position)).toBe('fixed');
 
-  const navigationLabels = isSousChefBuild
-    ? ['Dispensa', 'Spesa', 'Chef', 'Piano', 'Ricette']
-    : ['Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario'];
+  const navigationLabels = ['Dispensa', 'Spesa', 'Chef', 'Piano', 'Ricette'];
   for (const name of navigationLabels) {
     const box = await navigation.getByRole('link', { name }).boundingBox();
     expect(box, `${name} should have a measurable touch target`).not.toBeNull();
@@ -356,15 +352,15 @@ test('keeps mobile navigation labels concise and on one line', async ({ page }) 
       width: 390,
       height: 844,
       zoom: false,
-      labels: isSousChefBuild ? ['Dispensa', 'Spesa', 'Chef', 'Piano', 'Ricette'] : ['Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario'],
-      accessibleNames: isSousChefBuild ? ['Dispensa', 'Spesa', 'Chef', 'Piano', 'Ricette'] : ['Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario'],
+      labels: ['Dispensa', 'Spesa', 'Chef', 'Piano', 'Ricette'],
+      accessibleNames: ['Dispensa', 'Spesa', 'Chef', 'Piano', 'Ricette'],
     },
     {
       width: 320,
       height: 700,
       zoom: true,
-      labels: isSousChefBuild ? ['Disp.', 'Sp.', 'Chef', 'Pi.', 'Ric.'] : ['Cucina', 'Ric.', 'Disp.', 'Spesa', 'Diario'],
-      accessibleNames: isSousChefBuild ? ['Dispensa', 'Spesa', 'Chef', 'Piano', 'Ricette'] : ['Cucina', 'Ricette', 'Dispensa', 'Spesa', 'Diario'],
+      labels: ['Disp.', 'Sp.', 'Chef', 'Pi.', 'Ric.'],
+      accessibleNames: ['Dispensa', 'Spesa', 'Chef', 'Piano', 'Ricette'],
     },
   ];
 
@@ -423,7 +419,7 @@ test('keeps common mobile actions comfortably tappable', async ({ page }) => {
   expect(detailsBox!.height).toBeGreaterThanOrEqual(44);
 
   await page.goto('/profile');
-  const backLinkName = isSousChefBuild ? /Torna a Chef/ : /Torna alle ricette/;
+  const backLinkName = /Torna a Chef/;
   const backBox = await page.getByRole('link', { name: backLinkName }).boundingBox();
   expect(backBox).not.toBeNull();
   expect(backBox!.height).toBeGreaterThanOrEqual(44);

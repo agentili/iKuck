@@ -1,8 +1,5 @@
 import { expect, test } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
-import { isSousChefBuild } from './helpers/appMode';
-
-test.skip(!isSousChefBuild, 'Piano disponibile solo nella build Sous-Chef');
 
 test('il piano ospite propone ricette reali e conserva una sostituzione dopo il reload', async ({ page }) => {
   await installOfflineBackend(page);

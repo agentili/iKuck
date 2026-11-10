@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuthStore } from './auth/authStore';
 import { useHouseStore } from './house/houseStore';
-import AppHeader from './components/layout/AppHeader';
 import { BottomNav } from './components/layout/BottomNav';
 import { SimplifiedHeader } from './components/layout/SimplifiedHeader';
 import HomePage from './pages/HomePage';
@@ -32,7 +31,6 @@ import { hydrateActivityStore } from './store/activityStore';
 import { hydrateDietProfileStore } from './store/dietProfileStore';
 import { hydratePantryStore } from './store/localPantryStore';
 import { usePantryMergeNoticeStore } from './store/pantryMergeNoticeStore';
-import { isSousChef, isBottomNav, isSimplifiedHeader } from './config/features';
 
 const readVerifiedSession = (): SyncSession | null => {
   const { user, csrfToken } = useAuthStore.getState();
@@ -66,8 +64,6 @@ export default function App() {
 function AppContent() {
   const location = useLocation();
   useEffect(() => {
-    if (!isSousChef()) return;
-
     const focusSkipLinkFirst = (event: KeyboardEvent) => {
       if (event.key !== 'Tab' || event.shiftKey || document.activeElement !== document.body) return;
       const skipLink = document.querySelector<HTMLAnchorElement>('.sous-chef-skip-link');
@@ -193,9 +189,10 @@ function AppContent() {
     && isScopePurgeMarkerUnavailable(currentHouseScope);
   if (verifiedSession && (housePurgeMarkerUnavailable || scopeInitializationFailed)) {
     return (
-      <div className="app-shell min-h-screen">
-        <AppHeader scopeUnverified={scopeInitializationFailed} />
-        <main id="main-content" className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-24 pt-24 sm:px-6 sm:pt-28">
+      <div className="sous-chef-shell min-h-screen bg-[var(--ik-porcelain)]">
+        <a className="sous-chef-skip-link" href="#main-content">Vai al contenuto principale</a>
+        <SimplifiedHeader scopeUnverified={scopeInitializationFailed} />
+        <main id="main-content" tabIndex={-1} className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-24 pt-24 sm:px-6 sm:pt-28">
           <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-950" role="alert">
             <p>
               {housePurgeMarkerUnavailable
@@ -214,6 +211,7 @@ function AppContent() {
             </button>
           </div>
         </main>
+        <BottomNav />
       </div>
     );
   }
@@ -226,96 +224,57 @@ function AppContent() {
   if (!sessionRestored
     || (readySessionKey !== currentSessionKey && !scopeReadyForCurrentSession)
     || visibleScope !== expectedVisibleScope) {
-    return <div className="app-shell min-h-screen" role="status">Caricamento dati…</div>;
+    return <div className="sous-chef-shell min-h-screen bg-[var(--ik-porcelain)]" role="status">Caricamento dati…</div>;
   }
 
-  // Feature flag: SOUS-CHEF UI
-  if (isSousChef()) {
-    return (
-      <div className="sous-chef-shell min-h-screen bg-[var(--ik-porcelain)]">
-          <a className="sous-chef-skip-link" href="#sous-chef-main-content">
-            Vai al contenuto principale
-          </a>
-          {/* Simplified Header */}
-          {isSimplifiedHeader() && <SimplifiedHeader />}
-
-          {/* Main Content with padding for header and bottom nav */}
-          <div
-            className={`sous-chef-main min-h-screen ${
-              isBottomNav() ? 'pb-20' : 'pb-8'
-            } ${
-              isSimplifiedHeader() ? 'pt-16' : 'pt-0'
-            }`}
-          >
-            <div id="sous-chef-main-content" className="sous-chef-main-content" tabIndex={-1}>
-              <Routes>
-                {/* SOUS-CHEF Routes */}
-                <Route path="/" element={<ChatPage />} />
-                <Route path="/cucina" element={<HomePage />} />
-                <Route path="/discover" element={<DiscoverPage />} />
-                <Route path="/saved" element={<SavedPage />} />
-                {/* Reuse the existing local/house Plan implementation. */}
-                <Route path="/plan" element={<PlanPage />} />
-
-                {/* Existing Routes (preserved) */}
-                <Route path="/recipes" element={<RecipesPage />} />
-                <Route path="/recipes/:recipeId" element={<RecipeDetailPage />} />
-                <Route path="/profile" element={<ProfilePage />} />
-                <Route path="/house" element={<HousePage />} />
-                <Route path="/pantry" element={<PantryPage />} />
-                <Route path="/shopping-list" element={<ShoppingListPage />} />
-                <Route path="/activity" element={<ActivityPage />} />
-                <Route path="/dinner-diary" element={<DinnerDiaryPage />} />
-                <Route path="/verify-email" element={<VerifyEmailPage />} />
-                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-                <Route path="/reset-password" element={<ResetPasswordPage />} />
-                <Route path="*" element={<NotFoundPage resource="page" />} />
-              </Routes>
-            </div>
-          </div>
-
-          {/* Bottom Navigation */}
-          {isBottomNav() && <BottomNav />}
-
-          {/* Pantry Merge Notice */}
-          {(pantryMergeSummary !== null || pantryMergeFailed) && (
-            <PantryMergeNotice
-              summary={pantryMergeSummary}
-              guestMergeFailed={pantryMergeFailed}
-              onDismiss={() => usePantryMergeNoticeStore.getState().clear()}
-            />
-          )}
-        </div>
-    );
-  }
-
-  // Legacy UI (original iKuck)
   return (
-    <div className="app-shell min-h-screen">
-        <AppHeader />
-        {(pantryMergeSummary !== null || pantryMergeFailed) && (
-          <PantryMergeNotice
-            summary={pantryMergeSummary}
-            guestMergeFailed={pantryMergeFailed}
-            onDismiss={() => usePantryMergeNoticeStore.getState().clear()}
-          />
-        )}
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/plan" element={<PlanPage />} />
-          <Route path="/recipes" element={<RecipesPage />} />
-          <Route path="/recipes/:recipeId" element={<RecipeDetailPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/house" element={<HousePage />} />
-          <Route path="/pantry" element={<PantryPage />} />
-          <Route path="/shopping-list" element={<ShoppingListPage />} />
-          <Route path="/activity" element={<ActivityPage />} />
-          <Route path="/dinner-diary" element={<DinnerDiaryPage />} />
-          <Route path="/verify-email" element={<VerifyEmailPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route path="*" element={<NotFoundPage resource="page" />} />
-        </Routes>
+    <div className="sous-chef-shell min-h-screen bg-[var(--ik-porcelain)]">
+      <a className="sous-chef-skip-link" href="#sous-chef-main-content">
+        Vai al contenuto principale
+      </a>
+      {/* Simplified Header */}
+      <SimplifiedHeader />
+
+      {/* Main Content with padding for header and bottom nav */}
+      <div className="sous-chef-main min-h-screen pb-20 pt-16">
+        <div id="sous-chef-main-content" className="sous-chef-main-content" tabIndex={-1}>
+          <Routes>
+            {/* SOUS-CHEF Routes */}
+            <Route path="/" element={<ChatPage />} />
+            <Route path="/cucina" element={<HomePage />} />
+            <Route path="/discover" element={<DiscoverPage />} />
+            <Route path="/saved" element={<SavedPage />} />
+            {/* Reuse the existing local/house Plan implementation. */}
+            <Route path="/plan" element={<PlanPage />} />
+
+            {/* Existing Routes (preserved) */}
+            <Route path="/recipes" element={<RecipesPage />} />
+            <Route path="/recipes/:recipeId" element={<RecipeDetailPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/house" element={<HousePage />} />
+            <Route path="/pantry" element={<PantryPage />} />
+            <Route path="/shopping-list" element={<ShoppingListPage />} />
+            <Route path="/activity" element={<ActivityPage />} />
+            <Route path="/dinner-diary" element={<DinnerDiaryPage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="*" element={<NotFoundPage resource="page" />} />
+          </Routes>
+        </div>
+      </div>
+
+      {/* Bottom Navigation */}
+      <BottomNav />
+
+      {/* Pantry Merge Notice */}
+      {(pantryMergeSummary !== null || pantryMergeFailed) && (
+        <PantryMergeNotice
+          summary={pantryMergeSummary}
+          guestMergeFailed={pantryMergeFailed}
+          onDismiss={() => usePantryMergeNoticeStore.getState().clear()}
+        />
+      )}
     </div>
   );
 }

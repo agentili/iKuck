@@ -2,7 +2,6 @@ import { type FormEvent, type KeyboardEvent, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { getAllIngredients, normalizeIngredientName, parseIngredientInput } from '@ikuck/shared/ingredients';
 import type { ParsedIngredient } from '../../domain/types';
-import { isSousChef } from '../../config/features';
 
 interface IngredientInputProps {
   onAdd: (items: ParsedIngredient[]) => void;
@@ -10,7 +9,7 @@ interface IngredientInputProps {
 }
 
 export default function IngredientInput({ onAdd, idBase = 'pantry' }: IngredientInputProps) {
-  const pantryEntry = isSousChef() && idBase === 'pantry';
+  const pantryEntry = idBase === 'pantry';
   const iconOnlyAdd = idBase === 'pantry';
   const [value, setValue] = useState('');
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);

@@ -2,7 +2,6 @@ import { expect, test, type Page } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
 import {
   goToKitchen,
-  isSousChefBuild,
   kitchenHeading,
   landingHeading,
   openPantryInventory,
@@ -198,11 +197,8 @@ test('the core flow works at 320px using only the keyboard', async ({ page }) =>
   await resetPantry(page);
 
   await expect(page.getByLabel('Ingredienti presenti')).toBeVisible();
-  if (isSousChefBuild) {
-    await expect(page.getByRole('button', { name: 'Profilo', exact: true })).toBeVisible();
-  } else {
-    await expect(page.getByRole('link', { name: 'Profilo' })).toBeVisible();
-  }
+
+  await expect(page.getByRole('button', { name: 'Profilo', exact: true })).toBeVisible();
   for (let step = 0; step < 12; step += 1) {
     if (await page.getByLabel('Ingredienti presenti').evaluate((element) => element === document.activeElement)) break;
     await page.keyboard.press('Tab');
@@ -210,11 +206,10 @@ test('the core flow works at 320px using only the keyboard', async ({ page }) =>
   await expect(page.getByLabel('Ingredienti presenti')).toBeFocused();
   await page.keyboard.type('pasta, tonno, passata');
   await page.keyboard.press('Enter');
-  if (isSousChefBuild) {
-    const inventorySummary = page.locator('details').filter({ hasText: 'Inventario' }).locator('summary');
-    await inventorySummary.focus();
-    await page.keyboard.press('Enter');
-  }
+
+  const inventorySummary = page.locator('details').filter({ hasText: 'Inventario' }).locator('summary');
+  await inventorySummary.focus();
+  await page.keyboard.press('Enter');
   await expect(page.getByText('Passata di pomodoro', { exact: true })).toBeVisible();
 
   const recipesLink = page.getByRole('link', { name: 'Vai alle ricette' });
@@ -500,9 +495,7 @@ test('manifest is available and the application works offline after first load',
   expect(manifest.id).toBe('/');
   expect(manifest.start_url).toBe('/');
   expect(manifest.shortcuts.map((shortcut: { url: string }) => shortcut.url)).toEqual(
-    isSousChefBuild
-      ? ['/cucina', '/plan', '/recipes', '/pantry', '/shopping-list']
-      : ['/pantry', '/shopping-list', '/activity'],
+    ['/cucina', '/plan', '/recipes', '/pantry', '/shopping-list'],
   );
   expect(manifest.icons).toEqual(expect.arrayContaining([
     expect.objectContaining({ sizes: '192x192', purpose: 'any' }),

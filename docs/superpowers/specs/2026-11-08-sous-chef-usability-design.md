@@ -1,5 +1,7 @@
 # iKuck Sous Chef usability redesign
 
+> Nota storica: il flag di attivazione descritto in questo documento è stato rimosso. Sous Chef è ora l’unica interfaccia della PWA.
+
 **Status:** Draft for user review
 **Date:** 2026-11-08
 

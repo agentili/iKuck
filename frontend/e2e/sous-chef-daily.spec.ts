@@ -1,8 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
 
-test.skip(process.env.VITE_SOUS_CHEF !== 'true', 'Sous-Chef build required');
-
 test('daily recipe is from the real catalog and survives offline reload', async ({ page, context }) => {
   await installOfflineBackend(page, { serviceWorkers: 'allow' });
   await page.goto('/');

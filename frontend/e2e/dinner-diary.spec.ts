@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
-import { goToKitchen, isSousChefBuild, openShellProfileMenu } from './helpers/appMode';
+import { goToKitchen, openShellProfileMenu } from './helpers/appMode';
 
 const verifiedSession = {
   authenticated: true,
@@ -217,13 +217,10 @@ test('records a dinner, edits and confirms an AI draft, then finds it in recipe 
   await clearLocalDatabase(page);
   await page.reload();
   await expect(page.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();
-  if (isSousChefBuild) {
-    await openShellProfileMenu(page);
-    await expect(page.getByText('Verificato · Personale', { exact: true })).toBeVisible();
-    await openShellProfileMenu(page);
-  } else {
-    await expect.poll(() => page.getByText('Account verificato').evaluateAll((items) => items.some((item) => item.getClientRects().length > 0))).toBe(true);
-  }
+
+  await openShellProfileMenu(page);
+  await expect(page.getByText('Verificato · Personale', { exact: true })).toBeVisible();
+  await openShellProfileMenu(page);
   await page.getByLabel('Ingredienti presenti').fill('pasta, zucchine');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
 
