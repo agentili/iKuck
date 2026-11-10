@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, ShoppingCart } from 'lucide-react';
+import { Pencil, Plus, ShoppingCart, Sparkles } from 'lucide-react';
 import type { DietProfile, PlanCommand, PlanState, SyncMutationScope } from '@ikuck/shared/contracts';
 import { ApiClientError } from '../api/apiClient';
 import { useAuthStore } from '../auth/authStore';
@@ -872,33 +872,44 @@ export default function PlanPage() {
             const recipe = state?.recipeId === null || state === null ? undefined : RECIPES.find((candidate) => candidate.id === state.recipeId);
             const rowPending = pending || currentView.mode === 'offline' && state !== null && currentView.overlays[date] !== undefined;
             return (
-              <li key={date} className="grid gap-3 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4 sm:grid-cols-[minmax(10rem,0.85fr)_minmax(0,1.7fr)_auto] sm:items-center sm:gap-x-4 sm:p-5" data-date={date}>
+              <li key={date} className="grid gap-y-2 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-3 sm:grid-cols-[minmax(10rem,0.85fr)_minmax(0,1.7fr)_auto] sm:items-center sm:gap-x-4 sm:gap-y-1.5 sm:p-4" data-date={date}>
                 <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-3">
                   <time dateTime={date} className="text-sm font-bold capitalize text-[var(--ik-basil-dark)]">{label}</time>
                   <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
-                    {state?.kind === 'automatic' && <span className="rounded-full bg-[var(--ik-mist)] px-2.5 py-1 text-[var(--ik-ink-muted)]">Proposta automatica</span>}
                     {state?.kind === 'manual' && <span className="rounded-full bg-[var(--ik-sage)] px-2.5 py-1 text-[var(--ik-basil-dark)]">Scelta manuale</span>}
                     {state?.kind === 'deleted' && <span className="rounded-full bg-[var(--ik-yolk-soft)] px-2.5 py-1 text-[var(--ik-warn-ink)]">Pasto rimosso</span>}
                     {rowPending && <span className="rounded-full bg-[var(--ik-yolk-soft)] px-2.5 py-1 text-[var(--ik-warn-ink)]">In attesa di conferma · non condivisa</span>}
                   </div>
                 </div>
                 <div className="min-w-0 sm:col-span-2">
-                  {recipe !== undefined ? <p className="text-lg font-bold leading-snug text-[var(--ik-ink)]">{recipe.title}</p>
-                    : state?.kind === 'deleted' ? <p className="font-semibold text-[var(--ik-ink)]">Pasto rimosso</p>
-                      : state !== null ? <p className="font-semibold text-[var(--ik-ink)]">Ricetta non più disponibile nel catalogo</p>
-                        : <p className="text-[var(--ik-ink-muted)]">Nessuna ricetta compatibile al momento</p>}
-                  {recipe?.durationMinutes !== null && recipe?.durationMinutes !== undefined
-                    && <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">{recipe.durationMinutes} minuti</p>}
+                  <div className="flex min-w-0 items-start gap-2.5">
+                    {state?.kind === 'automatic' && (
+                      <span
+                        role="img"
+                        aria-label="Proposta automatica"
+                        title="Proposta automatica"
+                        className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--ik-mist)] text-[var(--ik-basil-dark)]"
+                      >
+                        <Sparkles size={18} strokeWidth={2.2} aria-hidden="true" />
+                      </span>
+                    )}
+                    <div className="min-w-0">
+                      {recipe !== undefined ? <p className="text-lg font-bold leading-snug text-[var(--ik-ink)]">{recipe.title}</p>
+                        : state?.kind === 'deleted' ? <p className="font-semibold text-[var(--ik-ink)]">Pasto rimosso</p>
+                          : state !== null ? <p className="font-semibold text-[var(--ik-ink)]">Ricetta non più disponibile nel catalogo</p>
+                            : <p className="text-[var(--ik-ink-muted)]">Nessuna ricetta compatibile al momento</p>}
+                    </div>
+                  </div>
                 </div>
                 {state !== null && currentView.canEdit && (
                   <button
                     type="button"
-                    className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border-2 border-[var(--ik-basil)] bg-[var(--ik-surface)] px-3 py-2 text-sm font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)] disabled:opacity-60 sm:col-start-3 sm:row-start-2 sm:w-auto"
-                    aria-label={`Cambia ricetta per ${label}`}
+                    className="inline-flex min-h-11 w-fit items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border-2 border-[var(--ik-basil)] bg-[var(--ik-surface)] px-3 py-1.5 text-sm font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)] disabled:opacity-60 sm:col-start-3 sm:row-start-2"
+                    aria-label={`Modifica ricetta per ${label}`}
                     disabled={busyDate !== null || !scopeWritable}
                     onClick={() => void chooseReplacement(date, state)}
                   >
-                    {busyDate === date ? 'Salvataggio…' : 'Cambia ricetta'}
+                    {busyDate === date ? 'Salvataggio…' : <><Pencil size={15} aria-hidden="true" /> Modifica</>}
                   </button>
                 )}
               </li>

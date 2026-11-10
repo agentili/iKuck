@@ -39,7 +39,7 @@ describe('PlanPage recipe proposals', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findAllByRole('button', { name: /sostituisci|cambia ricetta/i })).toHaveLength(7);
+    expect(await screen.findAllByRole('button', { name: /modifica ricetta/i })).toHaveLength(7);
   });
 
   it('persists a replacement across a page reload', async () => {
@@ -50,7 +50,7 @@ describe('PlanPage recipe proposals', () => {
     const firstRow = await screen.findAllByRole('listitem').then((items) => items[0]);
     const originalTitle = within(firstRow).getByText((text) => compatibleTitles.includes(text)).textContent;
 
-    await user.click(within(firstRow).getByRole('button', { name: /cambia ricetta/i }));
+    await user.click(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
     await waitFor(() => {
       const title = within(firstRow).getByText((text) => compatibleTitles.includes(text)).textContent;
       expect(title).not.toBe(originalTitle);

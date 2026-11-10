@@ -640,11 +640,11 @@ html[data-theme='dark'] .ik-recipe-hero {
     padding: 0;
   }
 
-  .ik-ingredient-entry {
+  .ik-ingredient-entry:not(.ik-ingredient-entry-compact) {
     flex-direction: column;
   }
 
-  .ik-ingredient-entry > button {
+  .ik-ingredient-entry:not(.ik-ingredient-entry-compact) > button {
     width: 100%;
     white-space: normal;
   }

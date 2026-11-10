@@ -111,7 +111,7 @@ describe('PlanPage shared mode', () => {
       return request;
     });
 
-    await userEvent.setup().click(within(firstRow).getByRole('button', { name: /cambia ricetta/i }));
+    await userEvent.setup().click(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
     await transactionRead.promise;
     get.mockRestore();
 
@@ -132,7 +132,7 @@ describe('PlanPage shared mode', () => {
     await waitFor(() => expect(screen.getByText(/non supporta ancora il piano condiviso/i)).toBeVisible());
     expect(read).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
-    expect(screen.queryAllByRole('button', { name: /cambia ricetta/i })).toHaveLength(0);
+    expect(screen.queryAllByRole('button', { name: /modifica ricetta/i })).toHaveLength(0);
     await expect(readMealPlanOutbox(['house:house-1'])).resolves.toEqual([]);
   });
 
@@ -147,7 +147,7 @@ describe('PlanPage shared mode', () => {
     expect(await screen.findByText(/fuso provvisorio/i)).toBeVisible();
     expect(screen.getAllByRole('listitem')).toHaveLength(7);
     expect(screen.getByText(/non vengono letti o modificati/i)).toBeVisible();
-    expect(screen.queryAllByRole('button', { name: /cambia ricetta/i })).toHaveLength(0);
+    expect(screen.queryAllByRole('button', { name: /modifica ricetta/i })).toHaveLength(0);
     expect(read).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
   });
@@ -230,7 +230,7 @@ describe('PlanPage shared mode', () => {
     await waitFor(() => expect(screen.getByText('Condiviso con la Casa')).toBeVisible());
     const firstRow = screen.getAllByRole('listitem')[0];
     const originalTitle = RECIPES.find((recipe) => recipe.id === current.get(firstRow.getAttribute('data-date')!)?.recipeId)!.title;
-    await userInput.click(within(firstRow).getByRole('button', { name: /cambia ricetta/i }));
+    await userInput.click(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
     await waitFor(() => {
       const state = current.get(firstRow.getAttribute('data-date')!);
       expect(state?.kind).toBe('manual');
@@ -260,7 +260,7 @@ describe('PlanPage shared mode', () => {
     const deviceId = vi.spyOn(syncQueue, 'getDeviceId').mockResolvedValue('device-test');
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
     const firstRow = (await screen.findAllByRole('listitem'))[0]!;
-    const changeButton = within(firstRow).getByRole('button', { name: /cambia ricetta/i });
+    const changeButton = within(firstRow).getByRole('button', { name: /modifica ricetta/i });
     deviceId.mockClear();
 
     act(() => {
@@ -285,7 +285,7 @@ describe('PlanPage shared mode', () => {
 
     const firstRow = (await screen.findAllByRole('listitem'))[0]!;
     getDeviceId.mockImplementationOnce(() => deviceId.promise);
-    await userInput.click(within(firstRow).getByRole('button', { name: /cambia ricetta/i }));
+    await userInput.click(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
     await waitFor(() => expect(getDeviceId).toHaveBeenCalledTimes(2));
 
     setTimeZone({ timeZone: 'America/New_York', revision: '123e4567-e89b-42d3-a456-426614174001' });
@@ -321,7 +321,7 @@ describe('PlanPage shared mode', () => {
     const oldZone = await screen.findByText(/Fuso: Europe\/Rome/);
     expect(oldZone).toBeVisible();
     const firstRow = screen.getAllByRole('listitem')[0]!;
-    await userInput.click(within(firstRow).getByRole('button', { name: /cambia ricetta/i }));
+    await userInput.click(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
     const command = await sendStarted.promise;
     await waitFor(async () => expect(await readMealPlanOutbox(['house:house-1'])).toHaveLength(1));
 
@@ -364,7 +364,7 @@ describe('PlanPage shared mode', () => {
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
     expect(await screen.findByText(/Fuso: Europe\/Rome/)).toBeVisible();
-    await userInput.click(within(screen.getAllByRole('listitem')[0]!).getByRole('button', { name: /cambia ricetta/i }));
+    await userInput.click(within(screen.getAllByRole('listitem')[0]!).getByRole('button', { name: /modifica ricetta/i }));
     const command = await sendStarted.promise;
     await waitFor(async () => expect(await readMealPlanOutbox(['house:house-1'])).toHaveLength(1));
 
@@ -418,7 +418,7 @@ describe('PlanPage shared mode', () => {
     });
 
     try {
-      await userInput.click(within(firstRow).getByRole('button', { name: /cambia ricetta/i }));
+      await userInput.click(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
       await queueWriteReached.promise;
       put.mockRestore();
 

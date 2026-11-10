@@ -160,6 +160,12 @@ test('new pantry item survives reload when IndexedDB write fails but localStorag
   });
   await addItem('pasta');
   await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
+  // Rendering is optimistic; wait for the successful fallback write before reloading.
+  await expect.poll(async () => page.evaluate(() => {
+    const raw = localStorage.getItem('ikuck-pantry-v1');
+    if (raw === null) return [];
+    return JSON.parse(raw).state.pantryItems.map((item: { id: string }) => item.id);
+  })).toEqual(expect.arrayContaining(['tomato', 'pasta']));
   await page.reload();
   await expect(page.getByText('Pomodoro', { exact: true })).toBeVisible();
   await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
