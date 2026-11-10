@@ -59,7 +59,6 @@ const sharedRoutes = [
   { path: '/activity', heading: 'La tua attività' },
   { path: '/profile', heading: 'Il tuo profilo' },
   { path: '/house', heading: 'La mia casa' },
-  { path: '/dinner-diary', heading: 'Diario delle cene' },
   { path: '/recipes/pasta-tonno-pomodoro', heading: 'Pasta tonno e pomodoro' },
 ] as const;
 
@@ -84,8 +83,8 @@ test.describe('stato attuale · route condivise', () => {
     // Shell Sous-Chef: header semplificato + bottom nav, nessun header legacy.
     await expect(page.getByRole('button', { name: 'Profilo' })).toBeVisible();
     await expect(bottomNav(page).getByRole('link', { name: 'Chef' })).toBeVisible();
-    await expect(heading(page, 'Cosa cuciniamo oggi?')).toBeVisible();
-    await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toBeVisible();
+    await expect(heading(page, 'Oggi lo chef propone...')).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Cucina', exact: true })).toHaveCount(0);
   });
 });
@@ -98,7 +97,7 @@ test.describe('shell Sous Chef', () => {
   test('shell: header semplificato e bottom nav, nessun header legacy', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Profilo' })).toBeVisible();
-    await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toHaveCount(0);
     await expect(bottomNav(page).getByRole('link', { name: 'Chef' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Cucina', exact: true })).toHaveCount(0);
   });
@@ -125,28 +124,28 @@ test.describe('shell Sous Chef', () => {
     await page.goto('/discover');
     await bottomNav(page).getByRole('link', { name: 'Chef' }).click();
     await expect(page).toHaveURL('/');
-    await expect(heading(page, 'Cosa cuciniamo oggi?')).toBeVisible();
+    await expect(heading(page, 'Oggi lo chef propone...')).toBeVisible();
     await expect(page.getByRole('region', { name: 'Ricetta del giorno' })).toBeVisible();
-    await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toHaveCount(0);
   });
 
-  test('scorciatoia «Lista della spesa Bring» apre la lista spesa reale', async ({ page }) => {
+  test('voce «Spesa» apre la lista spesa reale', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('group', { name: 'Prosegui in cucina' }).getByRole('link', { name: /Lista della spesa Bring/ }).click();
+    await page.getByRole('navigation', { name: 'Navigazione principale' }).getByRole('link', { name: /^Spesa$/ }).click();
     await expect(page).toHaveURL('/shopping-list');
     await expect(heading(page, 'Lista della spesa')).toBeVisible();
   });
 
-  test('scorciatoia «Ricettario» apre il catalogo ricette', async ({ page }) => {
+  test('voce «Ricette» apre il catalogo ricette', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('group', { name: 'Prosegui in cucina' }).getByRole('link', { name: /Ricettario/ }).click();
+    await page.getByRole('navigation', { name: 'Navigazione principale' }).getByRole('link', { name: /^Ricette$/ }).click();
     await expect(page).toHaveURL('/recipes');
     await expect(heading(page, 'Ricette')).toBeVisible();
   });
 
-  test('scorciatoia Chef «Dispensa» apre la dispensa reale (/pantry)', async ({ page }) => {
+  test('voce «Dispensa» apre la dispensa reale (/pantry)', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('group', { name: 'Prosegui in cucina' }).getByRole('link', { name: /Dispensa/ }).click();
+    await page.getByRole('navigation', { name: 'Navigazione principale' }).getByRole('link', { name: /Dispensa/ }).click();
     await expect(page).toHaveURL('/pantry');
     await expect(heading(page, 'La tua dispensa')).toBeVisible();
   });
@@ -160,22 +159,22 @@ test.describe('shell Sous Chef', () => {
 
   test('Chef shows a local recipe and cooking destinations without mounting a chat composer', async ({ page }) => {
     await page.goto('/');
-    await expect(heading(page, 'Cosa cuciniamo oggi?')).toBeVisible();
+    await expect(heading(page, 'Oggi lo chef propone...')).toBeVisible();
     await expect(page.getByRole('region', { name: 'Ricetta del giorno' })).toBeVisible();
-    await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Prosegui in cucina' })).toHaveCount(0);
     await expect(page.getByPlaceholder(/Chiedimi una ricetta/i)).toHaveCount(0);
     await expect(page.getByRole('log')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Invia messaggio' })).toHaveCount(0);
   });
 
-  test('Chef destination cards open the current cooking routes', async ({ page }) => {
+  test('Chef bottom navigation links open the current cooking routes', async ({ page }) => {
     await page.goto('/');
-    const shortcuts = page.getByRole('group', { name: 'Prosegui in cucina' });
+    const shortcuts = page.getByRole('navigation', { name: 'Navigazione principale' });
     for (const [label, path] of [
-      ['Piano settimanale', '/plan'],
-      ['Ricettario', '/recipes'],
+      ['Piano', '/plan'],
+      ['Ricette', '/recipes'],
       ['Dispensa', '/pantry'],
-      ['Lista della spesa Bring', '/shopping-list'],
+      ['Spesa', '/shopping-list'],
     ]) {
       await expect(shortcuts.getByRole('link', { name: new RegExp(label) })).toHaveAttribute('href', path);
     }
@@ -202,24 +201,17 @@ test.describe('verifica funzionale · T02/T03/T05', () => {
     await expect(page.locator('#main-content')).toBeVisible();
   });
 
-  // Voce d'ingresso aggiornata da T02: il piano impone «Diario da Ricette»,
-  // quindi l'accesso reale viene verificato dalla destinazione /recipes
-  // (il click completo è coperto da e2e/sous-chef-shell.spec.ts).
-  test('[T02] il Diario è raggiungibile dalla shell', async ({ page }) => {
-    await page.goto('/recipes');
-    await expect(page.locator('a[href="/dinner-diary"]').first()).toBeVisible();
-  });
 
-  test('[T03] la scorciatoia «Dispensa» porta alla dispensa reale', async ({ page }) => {
+  test('[T03] la voce «Dispensa» porta alla dispensa reale', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('group', { name: 'Prosegui in cucina' }).getByRole('link', { name: /Dispensa/ }).click();
+    await page.getByRole('navigation', { name: 'Navigazione principale' }).getByRole('link', { name: /Dispensa/ }).click();
     await expect(page).toHaveURL('/pantry');
     await expect(heading(page, 'La tua dispensa')).toBeVisible();
   });
 
-  test('[T05] le scorciatoie Chef sono raggiungibili col puntatore senza overlay', async ({ page }) => {
+  test('[T05] le voci della bottom nav sono raggiungibili col puntatore senza overlay', async ({ page }) => {
     await page.goto('/');
-    const pantryLink = page.getByRole('group', { name: 'Prosegui in cucina' }).getByRole('link', { name: /Dispensa/ });
+    const pantryLink = page.getByRole('navigation', { name: 'Navigazione principale' }).getByRole('link', { name: /Dispensa/ });
     await expect(pantryLink).toBeVisible();
     await pantryLink.click();
     await expect(page).toHaveURL('/pantry');

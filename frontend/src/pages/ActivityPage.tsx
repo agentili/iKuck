@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import ActivityPanel from '../components/activity/ActivityPanel';
-import DiaryNavigation from '../components/layout/DiaryNavigation';
 import { hydrateActivityStore, useActivityStore } from '../store/activityStore';
 
 export default function ActivityPage() {
@@ -25,7 +24,6 @@ export default function ActivityPage() {
 
   return (
     <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-4xl px-4 pb-8 pt-5 text-[var(--ik-ink)] sm:px-6 sm:pt-8 lg:px-8">
-      <DiaryNavigation />
       <ActivityPanel events={events} preferences={preferences} onRemoveEvent={removeCookEvent} onRestoreEvent={restoreCookEvent} onClearActivity={clearActivity} />
     </main>
   );

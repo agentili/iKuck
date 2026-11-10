@@ -23,6 +23,14 @@ const generatedRecipe: GeneratedRecipe = {
 };
 
 describe('AI recipe API', () => {
+  it('sends a dish title without inventing pantry ingredients', async () => {
+    const request = vi.fn().mockResolvedValue({ recipe: generatedRecipe }) as unknown as ApiRequest;
+    await expect(generateAiRecipe({ dishTitle: 'Ceci al forno', ingredients: [], constraints: [] }, profile, 'csrf-token', request)).resolves.toEqual(generatedRecipe);
+    expect(request).toHaveBeenCalledWith('/v1/ai-recipes', {
+      method: 'POST', csrfToken: 'csrf-token', body: { dishTitle: 'Ceci al forno', ingredients: [], constraints: [], dietProfile: profile },
+    });
+  });
+
   it('uses the server-selected provider for Dinner consent status and update', async () => {
     const consentStatus = { consent: { enabled: true, updatedAt: '2026-09-13T12:00:00.000Z' }, selectedProvider: 'gemini' as const };
     const request = vi.fn()

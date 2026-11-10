@@ -67,6 +67,7 @@ export interface NutritionProvider {
 }
 
 export interface RecipeGenerationRequest {
+  dishTitle?: string;
   ingredients: string[];
   constraints: string[];
   dietProfile?: DietProfilePayload;

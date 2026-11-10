@@ -346,3 +346,35 @@ test('offline: catalogo consultabile, gruppo salvate in errore non bloccante', a
   await context.setOffline(true);
   await expect(page.getByRole('heading', { name: 'Pasta tonno e pomodoro' })).toBeVisible();
 });
+
+
+test('crea una ricetta AI dal titolo e la aggiunge alla raccolta solo dopo il salvataggio', async ({ page }) => {
+  const recipe = { ...savedRecipes[0], id: 'title-generated-orata', title: 'Orata al cartoccio' };
+  const submissions: Array<{ path: string; body: Record<string, unknown> }> = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'POST' && path.startsWith('/v1/ai-recipes')) {
+      submissions.push({ path, body: request.postDataJSON() as Record<string, unknown> });
+    }
+  });
+  await installVerifiedBackend(page, {
+    'GET /v1/ai-recipes/consent': { json: { consent: { enabled: true, homeProvider: 'openai', updatedAt: '2026-11-10T10:00:00.000Z' }, selectedProvider: 'openai' } },
+    'POST /v1/ai-recipes': { status: 201, json: { recipe } },
+    'POST /v1/ai-recipes/save': { status: 201, json: { recipe } },
+  });
+  await page.goto('/recipes');
+  const panel = page.getByRole('region', { name: 'Ricette AI private' });
+  const generate = panel.getByRole('button', { name: 'Genera ricetta AI' });
+  await expect(generate).toBeDisabled();
+  await panel.getByRole('textbox', { name: 'Titolo del piatto', exact: true }).fill('  Orata al cartoccio  ');
+  await generate.click();
+  await expect(panel.getByRole('heading', { name: recipe.title })).toBeVisible();
+  expect(submissions).toHaveLength(1);
+  expect(submissions[0].body).toMatchObject({ dishTitle: recipe.title, ingredients: [], dietProfile: { diet: 'omnivore' } });
+  const library = page.getByRole('region', { name: 'Le tue ricette AI' });
+  await expect(library.getByRole('heading', { name: recipe.title })).toHaveCount(0);
+  await panel.getByRole('button', { name: 'Salva ricetta' }).click();
+  await expect(library.getByRole('heading', { name: recipe.title })).toBeVisible();
+  await expect(panel.getByRole('heading', { name: recipe.title })).toHaveCount(0);
+  expect(submissions.map(({ path }) => path)).toEqual(['/v1/ai-recipes', '/v1/ai-recipes/save']);
+});

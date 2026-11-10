@@ -83,8 +83,8 @@ describe('PlanPage shared mode', () => {
 
     expect(await screen.findByText(/salvato su questo dispositivo/i)).toBeVisible();
     expect(await screen.findAllByRole('listitem')).toHaveLength(7);
-    expect(screen.getByRole('link', { name: 'Apri la lista della spesa' })).toHaveAttribute('href', '/shopping-list');
-    expect(screen.getByRole('link', { name: 'Torna al Chef' })).toHaveAttribute('href', '/');
+    expect(screen.queryByRole('link', { name: 'Apri la lista della spesa' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Torna al Chef' })).not.toBeInTheDocument();
   });
 
   it('aborts a guest recipe change when the account changes during the native IndexedDB read', async () => {

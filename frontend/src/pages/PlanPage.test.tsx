@@ -26,14 +26,14 @@ describe('PlanPage', () => {
     expect(screen.queryByText(/piano condiviso/i)).not.toBeInTheDocument();
   });
 
-  it('offers real exits to Chef and the existing shopping list', () => {
+  it('does not duplicate navigation links at the bottom', () => {
     render(
       <MemoryRouter initialEntries={['/plan']}>
         <PlanPage />
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('link', { name: /torna al chef/i })).toHaveAttribute('href', '/');
-    expect(screen.getByRole('link', { name: /lista della spesa/i })).toHaveAttribute('href', '/shopping-list');
+    expect(screen.queryByRole('link', { name: /torna al chef/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /lista della spesa/i })).not.toBeInTheDocument();
   });
 });

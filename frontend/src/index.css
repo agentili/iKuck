@@ -1039,24 +1039,6 @@ html[data-motion='reduced'] *::after {
   padding-block: 0.25rem;
 }
 
-@media (max-width: 639px) {
-  .chef-chat-quick-navigation {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-  }
-
-  .chef-chat-quick-navigation > a {
-    min-height: 44px;
-    padding-block: 4px;
-  }
-
-  .chef-chat-quick-navigation > a {
-    scroll-margin-block-end: calc(var(--ik-nav-height) + env(safe-area-inset-bottom) + 1rem);
-  }
-
-}
-
 @media (min-width: 361px) and (max-width: 420px) {
   .ik-bottom-nav-label {
     font-size: clamp(11px, 0.5rem, 16px);

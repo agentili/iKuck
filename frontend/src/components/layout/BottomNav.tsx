@@ -27,7 +27,7 @@ const isCurrentDestination = (pathname: string, path: string): boolean => {
   if (path === '/') return currentPath === '/' || currentPath === '/cucina';
   if (path === '/recipes') {
     return currentPath === '/recipes'
-      || ['/discover', '/saved', '/dinner-diary', '/activity'].includes(currentPath)
+      || ['/discover', '/saved', '/activity'].includes(currentPath)
       || /^\/recipes\/[^/]+$/.test(currentPath);
   }
   return currentPath === path;

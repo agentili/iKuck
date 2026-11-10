@@ -91,6 +91,7 @@ const generate = (
   app: ReturnType<typeof createApp>,
   input: Partial<{
     dietProfile: DietProfilePayload;
+    dishTitle: string;
     ingredients: string[];
     existingRecipes: Array<{ title: string; ingredients: Array<{ name: string; amount: string }> }>;
   }> = {},
@@ -99,6 +100,7 @@ const generate = (
   url: '/v1/ai-recipes',
   headers,
   payload: {
+    ...(input.dishTitle === undefined ? {} : { dishTitle: input.dishTitle }),
     ingredients: input.ingredients ?? ['Ceci', 'Pomodoro'],
     constraints: ['Una sola padella'],
     dietProfile: input.dietProfile ?? profile,
@@ -480,6 +482,36 @@ describe('AI recipe routes', () => {
 
     expect(response.statusCode).toBe(403);
     expect(response.json()).toMatchObject({ code: 'ai_consent_required' });
+    expect(provider.generate).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('generates from a trimmed dish title without pantry ingredients', async () => {
+    const provider = { generate: vi.fn().mockResolvedValue(generatedDraft) };
+    const { app } = createAiApp({ provider });
+    await consent(app, true);
+    const result = await generate(app, { dishTitle: '  Ceci croccanti  ', ingredients: [] });
+    expect(result.statusCode).toBe(201);
+    expect(provider.generate).toHaveBeenCalledWith(expect.objectContaining({ dishTitle: 'Ceci croccanti', ingredients: [], dietProfile: profile }));
+    expect((await app.inject({ method: 'GET', url: '/v1/ai-recipes', headers })).json().recipes).toEqual([]);
+    await app.close();
+  });
+
+  it('requires a nonblank bounded title or at least one ingredient', async () => {
+    const provider = { generate: vi.fn().mockResolvedValue(generatedDraft) };
+    const { app } = createAiApp({ provider });
+    await consent(app, true);
+    for (const input of [{ ingredients: [] }, { ingredients: [], dishTitle: '   ' }, { ingredients: [], dishTitle: 'x'.repeat(241) }]) {
+      expect((await generate(app, input)).statusCode).toBe(400);
+    }
+    expect(provider.generate).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('keeps consent mandatory for generation from a dish title', async () => {
+    const provider = { generate: vi.fn().mockResolvedValue(generatedDraft) };
+    const { app } = createAiApp({ provider });
+    expect((await generate(app, { dishTitle: 'Ceci croccanti', ingredients: [] })).statusCode).toBe(403);
     expect(provider.generate).not.toHaveBeenCalled();
     await app.close();
   });

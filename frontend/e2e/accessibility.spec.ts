@@ -61,7 +61,6 @@ const auditedPages: AuditedPage[] = [
   { path: '/pantry', heading: 'La tua dispensa', name: 'pantry', auth: false },
   { path: '/plan', heading: 'Piano settimanale', name: 'plan', auth: false },
   { path: '/shopping-list', heading: 'Lista della spesa', name: 'shopping-list', auth: false },
-  { path: '/dinner-diary', heading: 'Diario delle cene', name: 'dinner-diary', auth: true },
   { path: '/activity', heading: 'La tua attività', name: 'activity', auth: false },
   { path: '/profile', heading: 'Il tuo profilo', name: 'profile', auth: true },
   // HousePage senza casa non rende un h1: si verifica la presenza del main.
@@ -137,12 +136,6 @@ test('profile passes the critical and serious axe gate', async ({ page }) => {
   await auditPage(page, 'profile');
 });
 
-test('dinner diary passes the critical and serious axe gate', async ({ page }) => {
-  await installVerifiedBackend(page);
-  await page.goto('/dinner-diary');
-  await expect(page.getByRole('heading', { name: 'Diario delle cene' })).toBeVisible();
-  await auditPage(page, 'dinner diary');
-});
 
 test('shopping list passes the critical and serious axe gate', async ({ page }) => {
   await page.goto('/shopping-list');
@@ -265,20 +258,18 @@ test('Chef cooking destinations are keyboard reachable with visible focus', asyn
   await expect(page.getByRole('log')).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Messaggio per Chef' })).toHaveCount(0);
 
-  const shortcuts = page.getByRole('group', { name: 'Prosegui in cucina' });
-  const recipesLink = shortcuts.getByRole('link', { name: /Ricettario/ });
+  const shortcuts = page.getByRole('navigation', { name: 'Navigazione principale' });
   const pantryLink = shortcuts.getByRole('link', { name: /Dispensa/ });
-  let recipesLinkReceivedKeyboardFocus = false;
+  let pantryLinkReceivedKeyboardFocus = false;
   for (let step = 0; step < 30; step += 1) {
-    if (await recipesLink.evaluate((element) => element === document.activeElement)) {
-      recipesLinkReceivedKeyboardFocus = true;
+    if (await pantryLink.evaluate((element) => element === document.activeElement)) {
+      pantryLinkReceivedKeyboardFocus = true;
       break;
     }
     await page.keyboard.press('Tab');
   }
-  expect(recipesLinkReceivedKeyboardFocus, 'Tab deve raggiungere la scorciatoia Ricettario.').toBe(true);
+  expect(pantryLinkReceivedKeyboardFocus, 'Tab deve raggiungere la voce Dispensa.').toBe(true);
 
-  await page.keyboard.press('Tab');
   await expect(pantryLink).toBeFocused();
   const focusStyle = await pantryLink.evaluate((element) => {
     const style = window.getComputedStyle(element);

@@ -16,6 +16,8 @@ import ErrorBanner from '../components/ui/ErrorBanner';
 import EmptyState from '../components/ui/EmptyState';
 import PageSection from '../components/ui/PageSection';
 import RecipeCard from '../components/ui/RecipeCard';
+import AiRecipePanel from '../components/ai/AiRecipePanel';
+import { hydrateDietProfileStore, useDietProfileStore } from '../store/dietProfileStore';
 
 const LIBRARY_GROUP_LABEL = 'Le tue ricette salvate';
 const AI_GROUP_LABEL = 'Le tue ricette AI';
@@ -54,6 +56,8 @@ const newestFirst = (
 );
 
 export default function RecipesPage() {
+  const dietProfile = useDietProfileStore((state) => state.profile);
+  const dietReady = useDietProfileStore((state) => state.hasHydrated);
   const user = useAuthStore((state) => state.user);
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const activeScope = useSyncExternalStore(
@@ -76,11 +80,12 @@ export default function RecipesPage() {
   const [expandedLibraryIds, setExpandedLibraryIds] = useState<Set<string>>(new Set());
 
   // RecipeDetailPage resolves /recipes/:id?scope= through the diary store, which
-  // hydrates only on scope changes or when the diary page mounts: warm it up here
+  // needs hydration before opening saved recipes: warm it up here
   // so «Apri ricetta» never lands on a not-found page straight from this list.
   useEffect(() => {
     void hydrateDinnerDiaryStore();
-  }, []);
+    void hydrateDietProfileStore();
+  }, [activeScope]);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,7 +142,7 @@ export default function RecipesPage() {
           return;
         }
 
-        setSavedRecipes([...recipes].sort(newestFirst));
+        setSavedRecipes((current) => [...new Map([...recipes, ...current].map((recipe) => [recipe.id, recipe])).values()].sort(newestFirst));
       } catch (loadError: unknown) {
         if (!cancelled) setSavedError(errorMessage(loadError));
       } finally {
@@ -215,28 +220,21 @@ export default function RecipesPage() {
         <p className="mt-3 max-w-xl text-base leading-relaxed text-[var(--ik-ink-muted)]">
           Le tue ricette salvate, quelle generate con l’AI e il catalogo della casa.
         </p>
-        <nav aria-label="Altre sezioni di Ricette" className="mt-4 flex flex-wrap gap-2">
-          <Link
-            to="/discover"
-            className="inline-flex min-h-11 items-center rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-porcelain)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:border-[var(--ik-basil)] hover:bg-[var(--ik-mist)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]"
-          >
-            Cerca ricette
-          </Link>
-          <Link
-            to="/saved"
-            className="inline-flex min-h-11 items-center rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-porcelain)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:border-[var(--ik-basil)] hover:bg-[var(--ik-mist)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]"
-          >
-            Ricette salvate
-          </Link>
-          {/* Keep the diary reachable without taking a primary navigation slot. */}
-          <Link
-            to="/dinner-diary"
-            className="inline-flex min-h-11 items-center rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-porcelain)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:border-[var(--ik-basil)] hover:bg-[var(--ik-mist)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]"
-          >
-            Diario delle cene
-          </Link>
-        </nav>
+
       </header>
+
+      <div className="mb-6">
+        <AiRecipePanel
+          key={`${activeScope}:${userId ?? 'guest'}`}
+          generationMode="title"
+          generationReady={dietReady}
+          ingredients={[]}
+          dietProfile={dietProfile}
+          user={user}
+          csrfToken={csrfToken}
+          onRecipeSaved={(recipe) => setSavedRecipes((current) => [recipe, ...current.filter((item) => item.id !== recipe.id)])}
+        />
+      </div>
 
       <div className="ik-kitchen-layout ik-kitchen-layout--two-columns mt-4">
         <div className="ik-kitchen-column min-w-0">
@@ -261,11 +259,11 @@ export default function RecipesPage() {
 
         <div className="ik-kitchen-column min-w-0">
         <PageSection
-          eyebrow="Dal diario"
+          eyebrow="La tua raccolta"
           title={LIBRARY_GROUP_LABEL}
           titleId="library-recipes-title"
           className={PAGE_SECTION_CLASS}
-          description="Le ricette che hai salvato dal Diario, disponibili anche offline."
+          description="Le tue ricette salvate, disponibili anche offline."
           action={
             libraryLoading && (
               <p role="status" className="text-sm font-semibold text-emerald-900">

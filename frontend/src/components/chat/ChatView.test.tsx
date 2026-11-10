@@ -1,5 +1,5 @@
 import { MemoryRouter } from 'react-router-dom';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatView } from './ChatView';
 
@@ -46,24 +46,6 @@ const consentGranted = {
 
 const renderChef = () => render(<MemoryRouter><ChatView /></MemoryRouter>);
 
-const quickNavigationDestinations = [
-  { label: 'Piano settimanale', path: '/plan' },
-  { label: 'Ricettario', path: '/recipes' },
-  { label: 'Dispensa', path: '/pantry' },
-  { label: 'Lista della spesa Bring', path: '/shopping-list' },
-] as const;
-
-const expectQuickNavigationGroup = () => {
-  const group = screen.getByRole('group', { name: 'Prosegui in cucina' });
-  const links = within(group).getAllByRole('link');
-  expect(links).toHaveLength(quickNavigationDestinations.length);
-
-  for (const destination of quickNavigationDestinations) {
-    expect(within(group).getByRole('link', { name: new RegExp(destination.label) }))
-      .toHaveAttribute('href', destination.path);
-  }
-};
-
 describe('Chef landing page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -79,13 +61,14 @@ describe('Chef landing page', () => {
     Element.prototype.scrollIntoView = vi.fn();
   });
 
-  it('explains the daily cooking goal and links to the main cooking tasks', () => {
+  it('shows the daily proposal without duplicate cooking navigation', () => {
     renderChef();
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Cosa cuciniamo oggi?' })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 1, name: 'Oggi lo chef propone...' })).toBeVisible();
     expect(screen.getByText('Trova una ricetta adatta alla tua dispensa e organizza i pasti della settimana.')).toBeVisible();
     expect(screen.getByText('Proposta locale')).toBeVisible();
-    expectQuickNavigationGroup();
+    expect(screen.queryByRole('group', { name: 'Prosegui in cucina' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
     expect(screen.queryByText('Chat AI non disponibile. La chat AI è stata rinviata.', { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Messaggio per Chef' })).not.toBeInTheDocument();
     expect(screen.queryByRole('log')).not.toBeInTheDocument();
@@ -95,7 +78,7 @@ describe('Chef landing page', () => {
     expect(chatState.sendMessage).not.toHaveBeenCalled();
   });
 
-  it('keeps the daily proposal and cooking destinations available to a guest while offline', () => {
+  it('keeps the daily proposal available to a guest while offline', () => {
     authState.user = null;
     authState.csrfToken = null;
     authState.connection = 'offline';
@@ -104,9 +87,10 @@ describe('Chef landing page', () => {
     chatState.hasHydrated = false;
     renderChef();
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Cosa cuciniamo oggi?' })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 1, name: 'Oggi lo chef propone...' })).toBeVisible();
     expect(screen.getByText('Proposta locale')).toBeVisible();
-    expectQuickNavigationGroup();
+    expect(screen.queryByRole('group', { name: 'Prosegui in cucina' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Messaggio per Chef' })).not.toBeInTheDocument();
     expect(chatState.loadConsentStatus).not.toHaveBeenCalled();
   });

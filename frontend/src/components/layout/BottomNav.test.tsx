@@ -100,7 +100,7 @@ describe('BottomNav (shell Sous-Chef)', () => {
     },
   );
 
-  it.each(['/discover', '/saved', '/dinner-diary', '/activity', '/activity/', '/recipes/pasta-tonno-pomodoro'])(
+  it.each(['/discover', '/saved', '/activity', '/activity/', '/recipes/pasta-tonno-pomodoro'])(
     'keeps Ricette current on its secondary route %s', (path) => {
       render(
         <MemoryRouter initialEntries={[path]}>
@@ -132,6 +132,7 @@ describe('BottomNav (shell Sous-Chef)', () => {
     '/recipes-archive',
     '/discover-more',
     '/saved-items',
+    '/dinner-diary',
     '/dinner-diary-old',
   ])('does not mark a destination for a similar prefix: %s', (path) => {
     render(

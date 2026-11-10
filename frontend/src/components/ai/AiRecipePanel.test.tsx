@@ -1,11 +1,9 @@
-import { MemoryRouter } from 'react-router-dom';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { AccountSummary, DietProfilePayload, GeneratedRecipe } from '@ikuck/shared/contracts';
 import { ApiClientError } from '../../api/apiClient';
 import AiRecipePanel from './AiRecipePanel';
-import DinnerDiaryPage from '../../pages/DinnerDiaryPage';
 import { useAuthStore } from '../../auth/authStore';
 import { useDinnerDiaryStore } from '../../store/dinnerDiaryStore';
 import { setActiveDataScope } from '../../sync/scopeContext';
@@ -100,6 +98,41 @@ describe('AiRecipePanel', () => {
     useAuthStore.setState({ user: null, csrfToken: null });
     useDinnerDiaryStore.setState({ hasHydrated: true, entries: [], recipes: [], drafts: [], error: null });
     setActiveDataScope('guest');
+  });
+
+  it('generates from a title without pantry ingredients and saves only on request', async () => {
+    vi.mocked(fetchAiConsentStatus).mockResolvedValue({ consent: { enabled: true, homeProvider: 'openai', updatedAt: '2026-09-13T12:00:00.000Z' }, selectedProvider: 'openai' });
+    vi.mocked(generateAiRecipe).mockResolvedValue(recipe);
+    vi.mocked(saveAiRecipe).mockResolvedValue(recipe);
+    const onRecipeSaved = vi.fn();
+    const userEvents = userEvent.setup();
+    renderPanel({ generationMode: 'title', ingredients: [], onRecipeSaved });
+    const generate = await screen.findByRole('button', { name: 'Genera ricetta AI' });
+    await waitFor(() => expect(screen.getByLabelText('Titolo del piatto')).not.toBeDisabled());
+    expect(generate).toBeDisabled();
+    await userEvents.type(screen.getByLabelText('Titolo del piatto'), '  Ceci croccanti  ');
+    await waitFor(() => expect(generate).toBeEnabled());
+    await userEvents.click(generate);
+    expect(generateAiRecipe).toHaveBeenCalledWith({ dishTitle: 'Ceci croccanti', ingredients: [], constraints: [], existingRecipes: [] }, profile, 'csrf-token');
+    expect(await screen.findByRole('heading', { name: recipe.title })).toBeVisible();
+    expect(saveAiRecipe).not.toHaveBeenCalled();
+    expect(onRecipeSaved).not.toHaveBeenCalled();
+    await userEvents.click(screen.getByRole('button', { name: 'Salva ricetta' }));
+    await waitFor(() => expect(onRecipeSaved).toHaveBeenCalledWith(recipe));
+    expect(screen.queryByRole('heading', { name: recipe.title })).not.toBeInTheDocument();
+  });
+
+  it('does not generate from a title until consent and diet hydration are ready', async () => {
+    const userEvents = userEvent.setup();
+    const view = renderPanel({ generationMode: 'title', ingredients: [], generationReady: false });
+    await userEvents.type(screen.getByLabelText('Titolo del piatto'), 'Risotto ai funghi');
+    expect(screen.getByRole('button', { name: 'Genera ricetta AI' })).toBeDisabled();
+    expect(generateAiRecipe).not.toHaveBeenCalled();
+    view.unmount();
+    vi.mocked(fetchAiConsentStatus).mockResolvedValue({ consent: { enabled: true, homeProvider: 'openai', updatedAt: '2026-09-13T12:00:00.000Z' }, selectedProvider: 'openai' });
+    renderPanel({ generationMode: 'title', ingredients: [], generationReady: false });
+    await userEvents.type(screen.getByLabelText('Titolo del piatto'), 'Risotto ai funghi');
+    expect(screen.getByRole('button', { name: 'Genera ricetta AI' })).toBeDisabled();
   });
 
   it('does not show controls or make requests for a guest', () => {
@@ -566,50 +599,6 @@ describe('AiRecipePanel', () => {
     );
   });
 
-  it('invalidates pending Home generation when Dinner revokes consent in the same tab', async () => {
-    const userEvents = userEvent.setup();
-    let resolveGeneration!: (value: GeneratedRecipe) => void;
-    const pendingGeneration = new Promise<GeneratedRecipe>((resolve) => { resolveGeneration = resolve; });
-    const second: GeneratedRecipe = { ...recipe, id: 'recipe-2', title: 'Ceci e finocchio' };
-    const revision = '2026-09-13T12:00:00.000Z';
-    vi.mocked(fetchAiConsentStatus).mockResolvedValue({
-      consent: { enabled: true, homeProvider: 'openai', dinnerProvider: 'openai', updatedAt: revision },
-      selectedProvider: 'openai',
-    });
-    vi.mocked(generateAiRecipe).mockReturnValueOnce(pendingGeneration).mockResolvedValueOnce(second);
-    vi.mocked(updateAiConsent)
-      .mockResolvedValueOnce({ enabled: false, updatedAt: '2026-09-13T12:02:00.000Z' })
-      .mockResolvedValueOnce({ enabled: true, homeProvider: 'openai', updatedAt: '2026-09-13T12:03:00.000Z' });
-    useAuthStore.setState({ user: { ...user, id: user.id } as never, csrfToken: 'csrf-token' });
-    setActiveDataScope('account:user-1');
-    render(
-      <>
-        <AiRecipePanel ingredients={['Ceci', 'Pomodoro']} dietProfile={profile} user={user} csrfToken="csrf-token" />
-        <MemoryRouter><DinnerDiaryPage /></MemoryRouter>
-      </>,
-    );
-
-    const homePanel = screen.getByRole('region', { name: 'Ricette AI private' });
-    const dinnerPanel = await screen.findByRole('region', { name: 'Consenso per ricostruire ricette' });
-    await userEvents.click(await within(homePanel).findByRole('button', { name: 'Genera ricetta AI' }));
-    await userEvents.click(within(dinnerPanel).getByRole('button', { name: /revoca consenso AI globale/i }));
-    await waitFor(() => expect(within(homePanel).getByRole('checkbox')).not.toBeChecked());
-
-    await act(async () => { resolveGeneration(recipe); });
-    expect(localStorage.getItem('ikuck.ai-recipe-proposals:user-1')).toBeNull();
-    expect(within(homePanel).queryByRole('heading', { name: recipe.title })).not.toBeInTheDocument();
-
-    await userEvents.click(within(homePanel).getByRole('checkbox'));
-    await userEvents.click(within(homePanel).getByRole('button', { name: 'Salva consenso' }));
-    await userEvents.click(await within(homePanel).findByRole('button', { name: 'Genera ricetta AI' }));
-    await within(homePanel).findByRole('heading', { name: second.title });
-    expect(generateAiRecipe).toHaveBeenNthCalledWith(
-      2,
-      { ingredients: ['Ceci', 'Pomodoro'], constraints: [], existingRecipes: [] },
-      profile,
-      'csrf-token',
-    );
-  });
 
   it.each([
     { userId: 'user-2', csrfToken: 'csrf-2', label: 'user scope' },

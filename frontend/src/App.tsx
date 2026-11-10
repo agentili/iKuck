@@ -16,7 +16,6 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import ShoppingListPage from './pages/ShoppingListPage';
 import ActivityPage from './pages/ActivityPage';
-import DinnerDiaryPage from './pages/DinnerDiaryPage';
 import RecipesPage from './pages/RecipesPage';
 import PantryPage from './pages/PantryPage';
 import PlanPage from './pages/PlanPage';
@@ -255,7 +254,6 @@ function AppContent() {
             <Route path="/pantry" element={<PantryPage />} />
             <Route path="/shopping-list" element={<ShoppingListPage />} />
             <Route path="/activity" element={<ActivityPage />} />
-            <Route path="/dinner-diary" element={<DinnerDiaryPage />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
