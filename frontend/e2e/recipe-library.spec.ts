@@ -335,12 +335,11 @@ test('offline: catalogo consultabile, gruppo salvate in errore non bloccante', a
   await expect(page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' })).toBeVisible();
 
   // Il gruppo salvate è in stato d'errore ma non blocca la pagina.
-  await expect(page.getByRole('alert')).toBeVisible();
-  await expect(
-    page.getByText(
-      'Servizio non raggiungibile: le ricette AI restano disponibili solo online.',
-    ),
-  ).toBeVisible();
+  const savedRecipesAlert = page.getByRole('region', { name: 'Le tue ricette AI', exact: true }).getByRole('alert');
+  await expect(savedRecipesAlert).toBeVisible();
+  await expect(savedRecipesAlert).toHaveText(
+    'Servizio non raggiungibile: le ricette AI restano disponibili solo online.',
+  );
   await expect(page.getByRole('heading', { name: 'Orata al forno' })).toHaveCount(0);
 
   await context.setOffline(true);

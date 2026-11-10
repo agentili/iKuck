@@ -96,7 +96,7 @@ describe('DailyRecipeCard', () => {
 
     const region = screen.getByRole('region', { name: 'Ricetta del giorno' });
     expect(region).toHaveClass('rounded-[var(--ik-radius-panel)]', 'bg-[var(--ik-surface)]');
-    expect(await screen.findByRole('heading', { level: 3, name: expected.recipe.title })).toBeVisible();
+    expect(await screen.findByRole('heading', { level: 2, name: expected.recipe.title })).toBeVisible();
     expect(screen.queryByRole('figure')).not.toBeInTheDocument();
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
     expect(screen.getByText(`${expected.recipe.durationMinutes} minuti`)).toBeVisible();

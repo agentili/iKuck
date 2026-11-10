@@ -55,7 +55,7 @@ export function DailyRecipeCard() {
       ) : (
         <details key={`${scope}:${date}:${selection.recipe.id}`}>
           <summary className="min-h-11 cursor-pointer rounded-lg text-[var(--ik-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]">
-            <h3 className="inline text-xl font-bold leading-tight">{selection.recipe.title}</h3>
+            <h2 className="inline text-xl font-bold leading-tight">{selection.recipe.title}</h2>
             <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">{selection.recipe.durationMinutes === null ? 'Tempo non disponibile' : `${selection.recipe.durationMinutes} minuti`}</p>
             {selection.missingIngredientIds.length > 0 && (
               <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">Da aggiungere: {selection.missingIngredientIds.map((id) => getIngredient(id)?.label ?? id).join(', ')}.</p>
@@ -65,7 +65,7 @@ export function DailyRecipeCard() {
             <p>{selection.recipe.description}</p>
             {selection.recipe.servings !== null && <p>{selection.recipe.servings} porzioni</p>}
             <div>
-              <h4 className="mb-2 font-bold">Ingredienti</h4>
+              <h3 className="mb-2 font-bold">Ingredienti</h3>
               <ul className="list-disc space-y-1 pl-5">
                 {selection.recipe.ingredients.map((ingredient) => (
                   <li key={ingredient.ingredientId}>
@@ -75,7 +75,7 @@ export function DailyRecipeCard() {
               </ul>
             </div>
             <div>
-              <h4 className="mb-2 font-bold">Procedimento</h4>
+              <h3 className="mb-2 font-bold">Procedimento</h3>
               <ol className="list-decimal space-y-2 pl-5">
                 {selection.recipe.steps.map((step, index) => <li key={index}>{step}</li>)}
               </ol>

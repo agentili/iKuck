@@ -7,7 +7,7 @@ test('daily recipe is from the real catalog and survives offline reload', async 
   await page.goto('/');
   const card = page.getByRole('region', { name: 'Ricetta del giorno' });
   await expect(card).toBeVisible();
-  const title = card.getByRole('heading', { level: 3 });
+  const title = card.getByRole('heading', { level: 2 });
   await expect(title).toBeVisible();
   const recipeTitle = await title.innerText();
   const recipe = RECIPES.find((candidate) => candidate.title === recipeTitle);
