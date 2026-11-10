@@ -63,20 +63,9 @@ Run Docker integration and standalone environments with dedicated Compose projec
 - Backend: `cd backend && npm run dev` — requires Node ≥24, loads `backend/.env` if present, serves `http://127.0.0.1:3000`; `GET /healthz` is the readiness endpoint. `npm run build` emits to `dist/`; apply migrations with `npm run db:migrate` after building.
 - Full local stack: `docker compose -f compose.dev.yml up --build` (API on :3000, PostgreSQL, Redis).
 
-## Exact commands (verified from package.json)
+## Task-specific context
 
-```powershell
-npm --prefix frontend run dev
-npm --prefix frontend run build
-npm --prefix frontend run lint
-npm --prefix frontend run test
-npm --prefix backend run dev
-npm --prefix backend run build
-npm --prefix backend run lint
-npm --prefix backend run test
-npm --prefix backend run test:integration
-npm run verify
-```
+Start with [`docs/agent/README.md`](docs/agent/README.md) and open **only** the relevant product, data, AI, verification or operations guide. These guides point to the source of truth; historical monolithic skill guidance was removed. If instructions conflict with code or an approved decision, check the discrepancy instead of silently picking one.
 
 ## Change conventions
 
