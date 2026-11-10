@@ -53,7 +53,7 @@ describe('hardcoded color guard', () => {
   it('scans the layout and dialog component sources', () => {
     const sourcePaths = Object.keys(SOURCE_FILES);
 
-    expect(sourcePaths.some((path) => path.endsWith('AppHeader.tsx'))).toBe(true);
+    expect(sourcePaths.some((path) => path.endsWith('SimplifiedHeader.tsx'))).toBe(true);
     expect(sourcePaths.some((path) => path.endsWith('QuickAddIngredientsDialog.tsx'))).toBe(true);
   });
 

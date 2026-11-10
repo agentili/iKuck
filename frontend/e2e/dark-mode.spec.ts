@@ -4,7 +4,6 @@ import { assertOfflineBackendClean, installOfflineBackend } from './helpers/back
 import { COLOR_PALETTES } from '../src/domain/colorPalette';
 import {
   goToKitchen,
-  isSousChefBuild,
   kitchenHeading,
   kitchenPath,
   landingHeading,
@@ -15,7 +14,7 @@ const palettePreferenceKey = 'ikuck-color-palette';
 const firstPaintThemeKey = 'ikuck-e2e-first-paint-theme';
 
 const auditedPages = [
-  ...(isSousChefBuild ? [{ path: '/', heading: landingHeading, name: 'chef' }] : []),
+  { path: '/', heading: landingHeading, name: 'chef' },
   { path: kitchenPath, heading: kitchenHeading, name: 'home' },
   { path: '/shopping-list', heading: 'Lista della spesa', name: 'shopping-list' },
   { path: '/recipes/pasta-tonno-pomodoro', heading: 'Pasta tonno e pomodoro', name: 'recipe-detail' },

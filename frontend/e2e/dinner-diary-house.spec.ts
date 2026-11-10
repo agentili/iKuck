@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { PantryLot } from '@ikuck/shared/contracts';
 import { planPantryConsumption, type DinnerConsumptionCommand } from '@ikuck/shared/pantryConsumption';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
-import { goToKitchen, isSousChefBuild, openPantryInventory, openShellProfileMenu } from './helpers/appMode';
+import { goToKitchen, openPantryInventory, openShellProfileMenu } from './helpers/appMode';
 
 interface FixtureUser {
   id: string;
@@ -643,11 +643,8 @@ test('shares confirmed dinner recipes with House members while isolating outside
   await expect(page.getByRole('article').filter({ hasText: staleResponseText })).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await delayedConsumptionStarted;
-  if (isSousChefBuild) {
-    await openShellProfileMenu(page);
-  } else {
-    await page.getByRole('link', { name: 'Profilo', exact: true }).first().click();
-  }
+
+  await openShellProfileMenu(page);
   await page.getByRole('button', { name: 'Esci' }).click();
   await expect.poll(() => currentUser).toBeNull();
   delayedConsumptionControl.release?.();

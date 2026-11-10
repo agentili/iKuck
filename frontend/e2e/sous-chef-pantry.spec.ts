@@ -1,8 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
 
-test.skip(process.env.VITE_SOUS_CHEF !== 'true', 'Sous-Chef build required');
-
 test('pantry entry and keyboard inventory fit at 320px and 390px with enlarged text', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
   await installOfflineBackend(page, { serviceWorkers: 'allow' });

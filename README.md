@@ -2,6 +2,10 @@
 
 iKuck suggerisce ricette semplici usando gli ingredienti presenti in dispensa. Puoi usarlo come ospite, senza account e anche offline: la dispensa resta sul dispositivo. Se registri un account, verifichi l’email e accedi, puoi importare esplicitamente la dispensa e sincronizzarla tra i tuoi dispositivi.
 
+## Interfaccia PWA
+
+Sous Chef è l’unica interfaccia della PWA: la pagina iniziale (`/`) ospita Chef e la navigazione principale offre Dispensa, Spesa, Chef, Piano e Ricette. La ricerca con gli ingredienti resta disponibile su `/cucina`. Non occorre alcun flag di attivazione; la precedente variabile `VITE_SOUS_CHEF` è stata rimossa e non ha più effetto. Le funzioni locali restano disponibili offline; le richieste AI richiedono i relativi prerequisiti.
+
 ## Come funziona
 
 1. Inserisci gli alimenti presenti, separandoli con una virgola o premendo Invio.

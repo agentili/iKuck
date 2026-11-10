@@ -5,7 +5,6 @@ import { useSyncExternalStore } from 'react';
 import type { GeneratedRecipe } from '@ikuck/shared/contracts';
 import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { ApiClientError } from '../api/apiClient';
-import { isSousChef } from '../config/features';
 import { fetchAiRecipes } from '../ai/aiRecipeApi';
 import { useAuthStore } from '../auth/authStore';
 import { adaptPantryRecipe, adaptGeneratedRecipe, adaptSavedRecipe, searchRecipes } from '../domain/recipeSearch';
@@ -216,29 +215,27 @@ export default function RecipesPage() {
         <p className="mt-3 max-w-xl text-base leading-relaxed text-[var(--ik-ink-muted)]">
           Le tue ricette salvate, quelle generate con l’AI e il catalogo della casa.
         </p>
-        {isSousChef() && (
-          <nav aria-label="Altre sezioni di Ricette" className="mt-4 flex flex-wrap gap-2">
-            <Link
-              to="/discover"
-              className="inline-flex min-h-11 items-center rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-porcelain)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:border-[var(--ik-basil)] hover:bg-[var(--ik-mist)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]"
-            >
-              Cerca ricette
-            </Link>
-            <Link
-              to="/saved"
-              className="inline-flex min-h-11 items-center rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-porcelain)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:border-[var(--ik-basil)] hover:bg-[var(--ik-mist)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]"
-            >
-              Ricette salvate
-            </Link>
-            {/* Keep the diary reachable without taking a primary navigation slot. */}
-            <Link
-              to="/dinner-diary"
-              className="inline-flex min-h-11 items-center rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-porcelain)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:border-[var(--ik-basil)] hover:bg-[var(--ik-mist)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]"
-            >
-              Diario delle cene
-            </Link>
-          </nav>
-        )}
+        <nav aria-label="Altre sezioni di Ricette" className="mt-4 flex flex-wrap gap-2">
+          <Link
+            to="/discover"
+            className="inline-flex min-h-11 items-center rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-porcelain)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:border-[var(--ik-basil)] hover:bg-[var(--ik-mist)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]"
+          >
+            Cerca ricette
+          </Link>
+          <Link
+            to="/saved"
+            className="inline-flex min-h-11 items-center rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-porcelain)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:border-[var(--ik-basil)] hover:bg-[var(--ik-mist)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]"
+          >
+            Ricette salvate
+          </Link>
+          {/* Keep the diary reachable without taking a primary navigation slot. */}
+          <Link
+            to="/dinner-diary"
+            className="inline-flex min-h-11 items-center rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-porcelain)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:border-[var(--ik-basil)] hover:bg-[var(--ik-mist)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]"
+          >
+            Diario delle cene
+          </Link>
+        </nav>
       </header>
 
       <div className="ik-kitchen-layout ik-kitchen-layout--two-columns mt-4">

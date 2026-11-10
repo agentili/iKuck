@@ -3,14 +3,17 @@ import { Link, useLocation } from 'react-router-dom';
 import { UserRound } from 'lucide-react';
 import { useAuthStore } from '../../auth/authStore';
 import { useHouseStore } from '../../house/houseStore';
-import { isSimplifiedHeader } from '../../config/features';
 
-export const SimplifiedHeader = memo(() => {
+interface SimplifiedHeaderProps {
+  scopeUnverified?: boolean;
+}
+
+export const SimplifiedHeader = memo(({ scopeUnverified = false }: SimplifiedHeaderProps) => {
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
   const connection = useAuthStore((state) => state.connection);
   const house = useHouseStore((state) => state.state?.house ?? null);
-  
+
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
@@ -43,10 +46,8 @@ export const SimplifiedHeader = memo(() => {
       : user.emailVerifiedAt.trim() === ''
         ? 'Non verificato'
         : 'Verificato';
-  
-  const scopeLabel = house === null ? 'Personale' : `Casa · ${house.name}`;
 
-  if (!isSimplifiedHeader()) return null;
+  const scopeLabel = scopeUnverified ? 'Ambito da verificare' : house === null ? 'Personale' : `Casa · ${house.name}`;
 
   return (
     <header className="ik-app-header sous-chef-header fixed top-0 left-0 right-0 z-40 border-b border-[var(--ik-border)]" role="banner">
@@ -58,13 +59,15 @@ export const SimplifiedHeader = memo(() => {
           </Link>
         </div>
 
+        {scopeUnverified && <span role="status" className="text-sm font-semibold text-[var(--ik-ink-muted)]">Ambito da verificare</span>}
+
         {/* Center: Page title (optional) */}
         <div className="flex-1 text-center hidden sm:block">
           <span aria-hidden="true" className="text-sm font-semibold text-[var(--ik-ink-muted)] truncate">
-            {location.pathname === '/' ? 'Chef' : 
-             location.pathname.startsWith('/discover') ? 'Cerca' :
-             location.pathname.startsWith('/plan') ? 'Piano' :
-             location.pathname.startsWith('/saved') ? 'Salvate' : 'iKuck'}
+            {location.pathname === '/' ? 'Chef' :
+              location.pathname.startsWith('/discover') ? 'Cerca' :
+                location.pathname.startsWith('/plan') ? 'Piano' :
+                  location.pathname.startsWith('/saved') ? 'Salvate' : 'iKuck'}
           </span>
         </div>
 

@@ -2,11 +2,6 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
 
-const nodeEnvironment = (globalThis as typeof globalThis & {
-  process?: { env?: Record<string, string | undefined> };
-}).process?.env;
-test.skip(nodeEnvironment?.VITE_SOUS_CHEF !== 'true', 'Sous-Chef build required');
-
 test.afterEach(async ({ page }) => {
   assertOfflineBackendClean(page);
 });

@@ -49,9 +49,8 @@ describe('semantic UI tokens', () => {
     expect(css).toContain('.ik-modal-surface');
   });
 
-  it('shares the semantic navigation surface across both shells', () => {
+  it('uses the semantic navigation surface in the app shell', () => {
     const navigationSources = [
-      '../components/layout/AppHeader.tsx',
       '../components/layout/BottomNav.tsx',
     ];
     expect(navigationSources.filter((path) => !sources[path]?.includes('ik-navigation-surface'))).toEqual([]);

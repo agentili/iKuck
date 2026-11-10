@@ -16,11 +16,6 @@ vi.mock('../ai/aiRecipeApi', () => ({
   fetchAiRecipes: vi.fn(),
 }));
 
-const sousChefFlag = vi.hoisted(() => ({ enabled: true }));
-vi.mock('../config/features', () => ({
-  isSousChef: () => sousChefFlag.enabled,
-}));
-
 // The diary store is only needed by the page to hydrate RecipeDetailPage data:
 // keep the real store (and its scope subscriptions) out of these render tests.
 vi.mock('../store/dinnerDiaryStore', () => ({
@@ -165,7 +160,6 @@ const setVerifiedSession = (): void => {
 beforeEach((): void => {
   vi.mocked(fetchAiRecipes).mockReset();
   vi.mocked(hydrateDinnerDiaryStore).mockClear();
-  sousChefFlag.enabled = true;
   useAuthStore.setState({ user: null, csrfToken: null, expiresAt: null });
   setActiveDataScope('guest');
 });
@@ -208,14 +202,6 @@ describe('RecipesPage', () => {
     expect(search).toHaveClass('focus-visible:outline-[var(--ik-focus)]');
     expect(navigation.querySelector('a')).toHaveClass('focus-visible:outline-[var(--ik-focus)]');
     expect(screen.getByRole('main')).toHaveClass('ik-recipes-page');
-  });
-
-  it('mantiene la navigazione secondaria dietro il flag Sous Chef', () => {
-    sousChefFlag.enabled = false;
-
-    renderPage();
-
-    expect(screen.queryByRole('navigation', { name: 'Altre sezioni di Ricette' })).not.toBeInTheDocument();
   });
 
   it('renderizza i tre gruppi con le badge di fonte per una sessione verificata', async () => {

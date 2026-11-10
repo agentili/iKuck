@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
-import { isSousChefBuild, openShellProfileMenu } from './helpers/appMode';
+import { openShellProfileMenu } from './helpers/appMode';
 
 type AccountKey = 'a' | 'b';
 type BringState = 'purchase' | 'recently';
@@ -603,13 +603,10 @@ test('reconnects with a fresh remote session after Bring expires', async ({ page
   await page.getByRole('combobox', { name: 'Lista Bring!' }).selectOption(LIST_TWO);
   await expect(page.getByText('Il collegamento è scaduto. Ricollega Bring!.')).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'Lista Bring!' })).toHaveCount(0);
-  if (isSousChefBuild) {
-    await openShellProfileMenu(page);
-    await expect(page.getByText('Verificato · Personale', { exact: true })).toBeVisible();
-    await openShellProfileMenu(page);
-  } else {
-    await expect.poll(() => page.getByRole('banner').getByText('Account verificato').evaluateAll((items) => items.some((item) => item.getClientRects().length > 0))).toBe(true);
-  }
+
+  await openShellProfileMenu(page);
+  await expect(page.getByText('Verificato · Personale', { exact: true })).toBeVisible();
+  await openShellProfileMenu(page);
   await expect(page.getByText('Ospite · dati locali')).toHaveCount(0);
   expect(backend.logoutPrincipals).toEqual([]);
   expect(backend.bringRequests.every((request) => request.principal === 'a')).toBe(true);
@@ -653,7 +650,7 @@ test('bootstraps account B after logout without a held Bring response', async ({
   });
   await page.getByRole('button', { name: /Esci$/ }).click();
   expect((await logoutResponse).status()).toBe(204);
-  if (isSousChefBuild) await openShellProfileMenu(page);
+  await openShellProfileMenu(page);
   await page.getByRole('link', { name: 'Profilo', exact: true }).click({ timeout: 5000 });
   await expect(page.getByRole('button', { name: 'Accedi o registrati' })).toBeVisible();
   const afterLogout = await diagnostics.snapshot();
@@ -772,15 +769,10 @@ test('does not apply account A items after the session switches to account B', a
   await page.waitForFunction(() => (window as typeof window & { __bringFetchGate?: BringFetchGate }).__bringFetchGate?.itemsResponseHeld === true);
 
   try {
-    if (isSousChefBuild) {
-      await openShellProfileMenu(page);
-    } else {
-      await page.getByRole('link', { name: 'Profilo', exact: true }).click();
-    }
+    await openShellProfileMenu(page);
     await page.getByRole('button', { name: /Esci$/ }).click();
-    if (isSousChefBuild) {
-      await openShellProfileMenu(page);
-    }
+
+    await openShellProfileMenu(page);
     await page.getByRole('link', { name: 'Profilo', exact: true }).click();
     await page.getByRole('button', { name: 'Accedi o registrati' }).click();
     await page.getByRole('button', { name: 'Accedi', exact: true }).click();
@@ -802,13 +794,10 @@ test('does not apply account A items after the session switches to account B', a
       && request.path === '/v1/house' && request.principal === 'b')).toHaveLength(1);
 
     await expect(page.getByText(ACCOUNT_DATA.b.email, { exact: true })).toBeVisible();
-    if (isSousChefBuild) {
-      await openShellProfileMenu(page);
-      await expect(page.getByText('Verificato · Personale', { exact: true })).toBeVisible();
-      await openShellProfileMenu(page);
-    } else {
-      await expect.poll(() => page.getByRole('banner').getByText('Account verificato').evaluateAll((items) => items.some((item) => item.getClientRects().length > 0))).toBe(true);
-    }
+
+    await openShellProfileMenu(page);
+    await expect(page.getByText('Verificato · Personale', { exact: true })).toBeVisible();
+    await openShellProfileMenu(page);
     await expect(page.getByText('Ospite · dati locali')).toHaveCount(0);
 
     await page.getByRole('link', { name: 'Spesa', exact: true }).click();

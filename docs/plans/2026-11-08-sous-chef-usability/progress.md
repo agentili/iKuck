@@ -1,5 +1,7 @@
 # Sous Chef usability redesign — progress log
 
+> Nota storica: il flag di attivazione descritto in questo documento è stato rimosso. Sous Chef è ora l’unica interfaccia della PWA.
+
 **Started:** 2026-11-08
 **Overall status:** First approved usability pass implemented; preview available
 **Working branch at start:** `main` (`86902ec`, `v1.16.0`)

@@ -1,8 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
 
-test.skip(process.env.VITE_SOUS_CHEF !== 'true', 'Sous-Chef build required');
-
 const chefDestinations = [
   { label: 'Piano settimanale', path: '/plan' },
   { label: 'Ricettario', path: '/recipes' },

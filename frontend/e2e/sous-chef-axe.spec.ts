@@ -2,7 +2,6 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
 
-const SOUS_CHEF_ON = process.env.VITE_SOUS_CHEF === 'true';
 const themePreferenceKey = 'ikuck-color-theme';
 
 const offlineResponses = {
@@ -27,8 +26,6 @@ test.afterEach(async ({ page }) => {
 for (const theme of ['light', 'dark'] as const) {
   for (const route of auditedPages) {
     test(`Sous-Chef ${route.name}: landmark e axe puliti in modalità ${theme}`, async ({ page }) => {
-      test.skip(!SOUS_CHEF_ON, 'Questa variante appartiene alla shell Sous-Chef.');
-
       await page.addInitScript(({ key, preference }) => localStorage.setItem(key, preference), {
         key: themePreferenceKey,
         preference: theme,

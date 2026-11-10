@@ -3,11 +3,6 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BottomNav } from './BottomNav';
 
-// The bottom navigation is controlled by the build-time Sous-Chef flag. This
-// stub exercises both the enabled shell contract and the disabled gate.
-const bottomNavFlag = vi.hoisted(() => ({ enabled: true }));
-vi.mock('../../config/features', () => ({ isBottomNav: () => bottomNavFlag.enabled }));
-
 const expectedDestinations = [
   { label: 'Dispensa', path: '/pantry' },
   { label: 'Spesa', path: '/shopping-list' },
@@ -19,7 +14,6 @@ const expectedDestinations = [
 describe('BottomNav (shell Sous-Chef)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    bottomNavFlag.enabled = true;
   });
 
   it('offers exactly the five T02 destinations, in order', () => {
@@ -128,18 +122,6 @@ describe('BottomNav (shell Sous-Chef)', () => {
 
     expect(screen.getByRole('link', { name: 'Chef' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getAllByRole('link').filter((link) => link.hasAttribute('aria-current'))).toHaveLength(1);
-  });
-
-  it('does not render when the build-time bottom navigation flag is off', () => {
-    bottomNavFlag.enabled = false;
-
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <BottomNav />
-      </MemoryRouter>,
-    );
-
-    expect(screen.queryByRole('navigation', { name: 'Navigazione principale' })).not.toBeInTheDocument();
   });
 
   it.each([

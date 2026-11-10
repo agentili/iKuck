@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_STAPLE_IDS, parseIngredientInput } from '@ikuck/shared/ingredients';
 import { DEFAULT_DIET_PROFILE } from '../domain/dietary';
 import PantryPage from './PantryPage';
-import * as features from '../config/features';
 import { usePantryStore } from '../store/localPantryStore';
 import { useDietProfileStore } from '../store/dietProfileStore';
 import { reportPersistenceMemoryOnly, usePersistenceStatusStore } from '../store/persistenceStatusStore';
@@ -48,7 +47,6 @@ const openDisclosure = async (user: ReturnType<typeof userEvent.setup>, name: st
 };
 
 const openPantryInventory = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
-  if (!features.isSousChef()) return;
   const inventory = screen.getByText('Inventario', { exact: true }).closest('details');
   expect(inventory).not.toHaveAttribute('open');
   await openDisclosure(user, 'Inventario');
@@ -102,7 +100,6 @@ describe('PantryPage', () => {
   });
 
   it('keeps ingredient entry visible and opens a separate inventory in Sous-Chef', async () => {
-    vi.spyOn(features, 'isSousChef').mockReturnValue(true);
     seedPantry('pasta');
     const user = userEvent.setup();
     renderPantry();
@@ -115,7 +112,6 @@ describe('PantryPage', () => {
   });
 
   it('keeps Sous-Chef entry outside the closed inventory and updates its count after keyboard removal', async () => {
-    vi.spyOn(features, 'isSousChef').mockReturnValue(true);
     try {
       const user = userEvent.setup();
       renderPantry();
@@ -148,7 +144,6 @@ describe('PantryPage', () => {
   });
 
   it('keeps persistence retry visible while Sous-Chef inventory is closed', async () => {
-    vi.spyOn(features, 'isSousChef').mockReturnValue(true);
     try {
       const retry = vi.fn(async () => undefined);
       reportPersistenceMemoryOnly('pantry', new Error('IndexedDB unavailable'), retry);
@@ -167,7 +162,6 @@ describe('PantryPage', () => {
   });
 
   it('keeps explicit conflict-copy selection visible outside the closed Sous-Chef inventory', async () => {
-    vi.spyOn(features, 'isSousChef').mockReturnValue(true);
     try {
       const copies = [
         { id: 'indexed-db', label: 'Copia IndexedDB', revision: 42, snapshot: { pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }], stapleIds: [] } },
@@ -194,21 +188,6 @@ describe('PantryPage', () => {
     }
   });
 
-  it('leaves the flag-OFF inventory and entry structure unchanged', () => {
-    vi.spyOn(features, 'isSousChef').mockReturnValue(false);
-    try {
-      seedPantry('pasta');
-      renderPantry();
-      const section = screen.getByRole('region', { name: 'Cosa hai in casa?' });
-      expect(section).toContainElement(screen.getByRole('list', { name: 'La tua dispensa' }));
-      expect(section).toContainElement(screen.getByRole('combobox', { name: 'Ingredienti presenti' }));
-      expect(screen.queryByText('Inventario', { exact: true })).not.toBeInTheDocument();
-      expect(within(section).getByRole('link', { name: 'Vai alle ricette' })).toHaveAttribute('href', '/');
-    } finally {
-      vi.restoreAllMocks();
-    }
-  });
-
   it('shows a dedicated loading state while pantry hydration is pending', () => {
     usePantryStore.setState({ hasHydrated: false });
     renderPantry();
@@ -228,7 +207,7 @@ describe('PantryPage', () => {
     const pantry = screen.getByRole('list', { name: 'La tua dispensa' });
     expect(within(pantry).getByText('Pasta')).toBeVisible();
     expect(within(pantry).getByText('Tonno')).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Vai alle ricette' })).toHaveAttribute('href', features.isSousChef() ? '/cucina' : '/');
+    expect(screen.getByRole('link', { name: 'Vai alle ricette' })).toHaveAttribute('href', '/cucina');
   });
 
   it('does not expose a keyboard-activatable recipe link while the pantry is empty', () => {

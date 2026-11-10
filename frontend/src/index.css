@@ -527,19 +527,6 @@ html[data-theme='dark'] .ik-recipe-hero {
   box-shadow: var(--ik-shadow-navigation);
 }
 
-.app-navigation {
-  padding-bottom: env(safe-area-inset-bottom);
-  box-shadow: var(--ik-shadow-navigation);
-}
-
-.app-navigation-label-compact {
-  display: none;
-}
-
-.app-navigation-label-narrow {
-  display: none;
-}
-
 .app-overlay {
   bottom: calc(var(--ik-nav-height) + var(--ik-space-2) + env(safe-area-inset-bottom));
 }
@@ -554,36 +541,6 @@ html[data-theme='dark'] .ik-recipe-hero {
     overflow-y: auto;
   }
 
-  .app-shell {
-    padding-bottom: calc(max(5rem, 7em) + env(safe-area-inset-bottom));
-  }
-
-  .app-navigation {
-    width: 100vw;
-  }
-
-  .app-navigation > ul {
-    width: 100%;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-
-  .app-navigation a {
-    padding-inline: 0.25rem;
-    font-size: 0.6875rem;
-  }
-
-  .app-navigation-label-full {
-    display: none;
-  }
-
-  .app-navigation-label-compact {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   .ik-page {
     padding-bottom: calc(var(--ik-nav-height) + env(safe-area-inset-bottom) + 2rem);
   }
@@ -594,28 +551,6 @@ html[data-theme='dark'] .ik-recipe-hero {
 }
 
 @media (max-width: 359px) {
-  .app-navigation > ul {
-    column-gap: 0;
-    padding-inline: 0;
-  }
-
-  .app-navigation a {
-    padding-inline: 0;
-    font-size: 0.5625rem;
-  }
-
-  .app-navigation-label-compact {
-    display: none;
-  }
-
-  .app-navigation-label-narrow {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   .sous-chef-header-inner {
     gap: 4px;
     padding-inline: 8px;
@@ -660,132 +595,8 @@ html[data-theme='dark'] .ik-recipe-hero {
 }
 
 @media (min-width: 640px) {
-  .app-navigation {
-    padding-bottom: 0;
-    box-shadow: none;
-  }
-
-  .app-navigation.ik-navigation-surface {
-    border-color: transparent;
-    background-color: transparent;
-    box-shadow: none;
-  }
-
   .app-overlay {
     bottom: 1rem;
-  }
-}
-
-.app-shell {
-  min-height: 100vh;
-  padding-top: 3.5rem;
-}
-
-.app-sidebar {
-  height: 3.5rem;
-}
-
-.app-sidebar-account,
-.app-mobile-scope,
-.app-mobile-links {
-  display: none;
-}
-
-@media (min-width: 768px) {
-  .app-shell {
-    padding-top: 0;
-    padding-left: 16rem;
-  }
-
-  .app-sidebar {
-    width: 16rem;
-    height: 100vh;
-    border-right: 1px solid var(--ik-border);
-    border-bottom: 0;
-  }
-
-  .app-sidebar-brand {
-    min-height: 5rem;
-    justify-content: flex-start;
-  }
-
-  .app-navigation {
-    position: static;
-    width: 100%;
-    margin: 1rem 0 0;
-    padding: 0 0.75rem;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-  }
-
-  .app-navigation > ul {
-    display: grid;
-    max-width: none;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.35rem;
-    padding: 0;
-  }
-
-  .app-navigation a {
-    min-height: 3rem;
-    flex-direction: row;
-    justify-content: flex-start;
-    gap: 0.75rem;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.9375rem;
-    text-align: left;
-  }
-
-  .app-navigation-label-full {
-    display: inline !important;
-    overflow: visible !important;
-  }
-
-  .app-navigation-label-compact,
-  .app-navigation-label-narrow {
-    display: none !important;
-  }
-
-  .app-sidebar-account {
-    display: block;
-  }
-
-  .app-mobile-scope {
-    display: none;
-  }
-}
-
-@media (max-width: 767px) {
-  .app-shell {
-    padding-bottom: calc(max(5rem, 7em) + env(safe-area-inset-bottom));
-  }
-
-  .app-sidebar-account {
-    display: none;
-  }
-
-  .app-navigation {
-    position: fixed;
-    inset-inline: 0;
-    bottom: 0;
-  }
-
-  .app-mobile-scope {
-    display: block;
-    max-width: 25vw;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .app-mobile-links {
-    display: flex;
-    flex-shrink: 0;
-  }
-
-  .app-navigation > ul {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
 

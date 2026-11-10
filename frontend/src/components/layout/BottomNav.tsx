@@ -1,7 +1,6 @@
 import { memo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ChefHat, Calendar, BookOpen, PackageOpen, ShoppingBasket } from 'lucide-react';
-import { isBottomNav } from '../../config/features';
 
 // T02 shell: exactly five destinations with Chef in the centre.
 // «Cerca» and «Salvate» from the prototype are gone: their functionality lives
@@ -36,8 +35,6 @@ const isCurrentDestination = (pathname: string, path: string): boolean => {
 
 export const BottomNav = memo(() => {
   const location = useLocation();
-
-  if (!isBottomNav()) return null;
 
   return (
     <nav

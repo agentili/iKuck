@@ -1,12 +1,10 @@
 import { MemoryRouter } from 'react-router-dom';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { SimplifiedHeader } from './SimplifiedHeader';
 import { useAuthStore } from '../../auth/authStore';
 import { saveColorThemePreference } from '../../domain/colorTheme';
-
-vi.mock('../../config/features', () => ({ isSimplifiedHeader: () => true }));
 
 describe('SimplifiedHeader', () => {
   beforeEach(() => {
@@ -49,5 +47,15 @@ describe('SimplifiedHeader', () => {
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
     expect(profileButton).toHaveAttribute('aria-expanded', 'false');
     expect(profileButton).toHaveFocus();
+  });
+
+  it('shows an unverified scope in the recovery header and profile menu', async () => {
+    render(<MemoryRouter><SimplifiedHeader scopeUnverified /></MemoryRouter>);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Ambito da verificare');
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Profilo' }));
+    expect(screen.getByText('Ospite · Ambito da verificare')).toBeVisible();
+    expect(screen.queryByText(/Personale/)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Casa/ })).toHaveAttribute('href', '/house');
   });
 });

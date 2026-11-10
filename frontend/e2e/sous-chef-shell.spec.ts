@@ -5,24 +5,7 @@ import {
   type OfflineApiResponse,
 } from './helpers/backendMode';
 
-/**
- * T02 · Shell e cinque destinazioni (Sous-Chef).
- *
- * Copre l'accettazione di T02 dal breakdown:
- *  - bottom nav Dispensa · Spesa · Chef (centrale) · Piano · Ricette, tutte con
- *    destinazioni effettive (nessuna route fantasma);
- *  - Casa raggiungibile dal profilo, Diario raggiungibile da Ricette;
- *  - chiusura/ritorno della dispensa anche a ingresso diretto;
- *  - tastiera/ARIA, 320px e zoom 200% senza clipping orizzontale;
- *  - flag OFF senza regressioni (la shell legacy resta identica, /plan resta 404).
- *
- * Il flag è a build time, quindi questa suite afferma la build che alimenta il
- * preview server:
- *   flag OFF (build di default): npm --prefix frontend run test:e2e -- e2e/sous-chef-shell.spec.ts
- *   flag ON:                    VITE_SOUS_CHEF=true npm --prefix frontend run test:e2e -- e2e/sous-chef-shell.spec.ts
- */
-
-const SOUS_CHEF_ON = process.env.VITE_SOUS_CHEF === 'true';
+/** Contratti della shell Sous Chef e navigazione a cinque destinazioni. */
 
 const verifiedSession = {
   authenticated: true,
@@ -78,11 +61,33 @@ const horizontalOverflow = (page: Page) =>
   }));
 
 // ---------------------------------------------------------------------------
-// Flag ON · shell Sous-Chef
+// Shell Sous Chef
 // ---------------------------------------------------------------------------
 
-test.describe('T02 · shell cinque voci (flag ON)', () => {
-  test.skip(!SOUS_CHEF_ON, 'build senza VITE_SOUS_CHEF=true: la shell Sous-Chef non viene montata');
+test.describe('T02 · shell cinque voci', () => {
+  test('mantiene la shell e recupera dopo un errore di verifica della Casa', async ({ page }) => {
+    let houseUnavailable = true;
+    await page.route('**/v1/house', (route) => route.fulfill(houseUnavailable
+      ? { status: 503, json: { code: 'temporary_unavailable' } }
+      : { json: null }));
+    await page.goto('/');
+
+    await expect(page.getByRole('alert')).toContainText('verificare l’ambito della Casa');
+    await expect(page.getByRole('status')).toHaveText('Ambito da verificare');
+    await expect(bottomNav(page).getByRole('link')).toHaveCount(5);
+    await expect(page.getByRole('combobox', { name: 'Ingredienti presenti' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Profilo', exact: true })).toBeVisible();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('link', { name: 'Vai al contenuto principale' })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#main-content')).toBeFocused();
+
+    houseUnavailable = false;
+    await page.getByRole('button', { name: 'Riprova', exact: true }).click();
+    await expect(heading(page, 'Cosa cuciniamo oggi?')).toBeVisible();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(bottomNav(page).getByRole('link')).toHaveCount(5);
+  });
 
   test('la bottom nav offre esattamente le cinque voci T02', async ({ page }) => {
     await page.goto('/');
@@ -625,34 +630,5 @@ test.describe('T02 · shell cinque voci (flag ON)', () => {
         expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth + 1);
       }
     }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Flag OFF · nessuna regressione della shell legacy
-// ---------------------------------------------------------------------------
-
-test.describe('T02 · flag OFF senza regressioni', () => {
-  test.skip(SOUS_CHEF_ON, 'build con VITE_SOUS_CHEF=true: la shell legacy non viene montata');
-
-  test('/plan resta una destinazione assente con flag OFF (nessuna route fantasma)', async ({ page }) => {
-    await page.goto('/plan');
-    await expect(heading(page, 'Pagina non trovata')).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Torna alla home' })).toBeVisible();
-  });
-
-  test('la bottom nav cinque voci non compare con flag OFF', async ({ page }) => {
-    await page.goto('/');
-    await expect(page.getByRole('navigation', { name: 'Navigazione principale' })
-      .getByRole('link', { name: 'Chef', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('link', { name: 'Cucina', exact: true })).toBeVisible();
-  });
-
-  test('la dispensa torna indietro anche con ingresso diretto (flag OFF)', async ({ page }) => {
-    await page.goto('/pantry');
-    await expect(heading(page, 'La tua dispensa')).toBeVisible();
-    await page.getByRole('button', { name: /indietro/i }).click();
-    await expect(page).toHaveURL('/');
-    await expect(heading(page, 'Cucina viva')).toBeVisible();
   });
 });

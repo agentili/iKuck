@@ -1,5 +1,4 @@
 import { expect, test } from '@playwright/test';
-import { isSousChefBuild } from './helpers/appMode';
 import {
   assertOfflineBackendClean,
   installOfflineBackend,
@@ -66,8 +65,6 @@ for (const viewport of [
   { name: 'Pixel 5 a 393px', width: 393, height: 727, zoomText: false },
 ]) {
   test(`layout Discover: contenuto finale non coperto e nessun overflow a ${viewport.name}`, async ({ page }) => {
-    test.skip(!isSousChefBuild, 'Richiede la navigazione mobile Sous Chef');
-
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto('/discover');
     await expect(page.getByRole('heading', { name: 'Cerca ricette', exact: true })).toBeVisible();
