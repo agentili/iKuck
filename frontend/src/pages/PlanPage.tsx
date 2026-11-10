@@ -814,7 +814,7 @@ export default function PlanPage() {
 
   if (week !== null && user === null) return (
     <main id="main-content" className="ik-page mx-auto max-w-3xl p-5">
-      <h1 className="text-3xl font-black">Piano settimanale</h1>
+      <h1 className="text-[1.5rem] font-bold tracking-tight text-[var(--ik-ink)]">Piano settimanale</h1>
       <p className="mt-3">Accedi per creare o completare il piano della settimana dal {formatCivilDateLong(week)}.</p>
       <Link className="inline-flex min-h-11 items-center font-bold underline" to={`/profile?returnTo=${encodeURIComponent(`/plan?week=${week}`)}`}>Accedi e apri il piano</Link>
     </main>
@@ -824,7 +824,7 @@ export default function PlanPage() {
     <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-3xl px-4 pb-8 pt-5 text-[var(--ik-ink)] sm:px-6 sm:pt-8 lg:px-8">
       <header className="ik-page-intro mb-5 max-w-2xl sm:mb-7">
         <p className="ik-eyebrow text-sm font-bold">Una ricetta al giorno</p>
-        <h1 className="mt-1 text-[clamp(2.5rem,6vw,3.75rem)] font-black leading-[1.04] tracking-[-0.03em] text-[var(--ik-ink)]">Piano settimanale</h1>
+        <h1 className="mt-1 text-[1.5rem] font-bold tracking-tight text-[var(--ik-ink)]">Piano settimanale</h1>
         <p className="mt-3 max-w-xl text-base leading-relaxed text-[var(--ik-ink-muted)]">{week ? `Organizza la settimana dal ${formatCivilDateLong(week)}.` : 'Organizza i prossimi sette giorni e cambia le ricette quando vuoi.'}</p>
         {searchParams.has('week') && week === null && <p role="status">Settimana non valida: sono mostrati i prossimi sette giorni.</p>}
         <nav aria-label="Periodo del piano" className="mt-3 flex flex-wrap gap-4">
@@ -1024,10 +1024,6 @@ export default function PlanPage() {
         </section>
       )}
 
-      <div className="mt-5 flex flex-wrap gap-3">
-        <Link to="/shopping-list" className="inline-flex min-h-11 items-center justify-center rounded-xl border-2 border-[var(--ik-basil)] bg-[var(--ik-surface)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)]">Apri la lista della spesa</Link>
-        <Link to="/" className="ik-back-link inline-flex min-h-11 items-center rounded-xl px-3 py-2 font-semibold text-[var(--ik-basil-dark)] underline underline-offset-2">Torna al Chef</Link>
-      </div>
     </main>
   );
 }

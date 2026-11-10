@@ -81,7 +81,7 @@ describe('semantic UI tokens', () => {
   });
 
   it('uses the semantic foreground token for text on yolk surfaces', () => {
-    expect(sources['../pages/DinnerDiaryPage.tsx']).toContain('bg-[var(--ik-yolk)] text-[var(--ik-on-yolk)]');
+    expect(sources['../components/suggestions/SuggestionControls.tsx']).toContain('text-[var(--ik-on-yolk)]');
   });
 
   it('keeps the keyboard focus indicator at least 3:1 against the page in both themes', () => {

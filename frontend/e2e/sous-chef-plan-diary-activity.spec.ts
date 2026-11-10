@@ -17,13 +17,6 @@ const routeCases: Array<{
     surface: (page) => page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem').first(),
   },
   {
-    path: '/dinner-diary',
-    heading: 'Diario delle cene',
-    name: 'dinner-diary',
-    emptyStateText: 'Non hai ancora registrato una cena.',
-    surface: (page) => page.getByRole('region', { name: 'Registra una cena' }),
-  },
-  {
     path: '/activity',
     heading: 'La tua attività',
     name: 'activity',
@@ -58,7 +51,7 @@ test.afterEach(async ({ page }) => {
 
 for (const theme of themes) {
   for (const viewport of viewports) {
-    test(`${theme} ${viewport.name}: Piano, Diario e Attività usano superfici di tema`, async ({ page }, testInfo) => {
+    test(`${theme} ${viewport.name}: Piano e Attività usano superfici di tema`, async ({ page }, testInfo) => {
       await installOfflineBackend(page);
       await page.addInitScript(({ key, value }) => {
         localStorage.setItem(key, value);
@@ -91,17 +84,3 @@ for (const theme of themes) {
     });
   }
 }
-
-test('Diario resta accessibile da Ricette senza occupare una voce della navigazione primaria', async ({ page }) => {
-  await installOfflineBackend(page);
-  await page.goto('/recipes');
-
-  const primaryNavigation = page.getByRole('navigation', { name: 'Navigazione principale' });
-  await expect(primaryNavigation.getByRole('link')).toHaveCount(5);
-  await expect(primaryNavigation.getByRole('link', { name: 'Diario delle cene' })).toHaveCount(0);
-  const diaryLink = page.getByRole('link', { name: 'Diario delle cene' });
-  await expect(diaryLink).toHaveAttribute('href', '/dinner-diary');
-  await diaryLink.click();
-  await expect(page).toHaveURL(/\/dinner-diary$/);
-  await expect(page.getByRole('heading', { name: 'Diario delle cene', exact: true })).toBeVisible();
-});

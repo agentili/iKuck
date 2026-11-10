@@ -86,12 +86,7 @@ test('successful IndexedDB pantry write outranks a stale mirror when mirror upda
       return removeItem.call(this, key);
     };
   });
-  await addItem('pasta');
-  await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
-  await page.reload();
-  await expect(page.getByText('Pomodoro', { exact: true })).toBeVisible();
-  await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
-  const persisted = await page.evaluate(() => new Promise<string | null>((resolve) => {
+  const readPersistedPantry = () => page.evaluate(() => new Promise<string | null>((resolve) => {
     const request = indexedDB.open('ikuck-local-v2');
     request.onsuccess = () => {
       const db = request.result;
@@ -101,7 +96,13 @@ test('successful IndexedDB pantry write outranks a stale mirror when mirror upda
     };
     request.onerror = () => resolve(null);
   }));
-  expect(persisted).toContain('pasta');
+  await addItem('pasta');
+  await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
+  await expect.poll(readPersistedPantry).toContain('pasta');
+  await page.reload();
+  await expect(page.getByText('Pomodoro', { exact: true })).toBeVisible();
+  await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
+  await expect.poll(readPersistedPantry).toContain('pasta');
 });
 test('legacy mirror newer than IndexedDB remains visible when the pending marker is absent', async ({ page }) => {
   await page.addInitScript(async () => {

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { RECIPES } from '../src/domain/recipes';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
 
 test('daily recipe is from the real catalog and survives offline reload', async ({ page, context }) => {
@@ -6,9 +7,11 @@ test('daily recipe is from the real catalog and survives offline reload', async 
   await page.goto('/');
   const card = page.getByRole('region', { name: 'Ricetta del giorno' });
   await expect(card).toBeVisible();
-  const link = card.getByRole('link', { name: /apri la ricetta/i });
-  const href = await link.getAttribute('href');
-  expect(href).toMatch(/^\/recipes\/[a-z][a-z0-9-]+$/);
+  const title = card.getByRole('heading', { level: 2 });
+  await expect(title).toBeVisible();
+  const recipeTitle = await title.innerText();
+  const recipe = RECIPES.find((candidate) => candidate.title === recipeTitle);
+  expect(recipe).toBeDefined();
   await expect.poll(async () => page.evaluate(() => new Promise<string>((resolve, reject) => {
     const request = indexedDB.open('ikuck-local-v2');
     request.onerror = () => reject(request.error);
@@ -18,11 +21,13 @@ test('daily recipe is from the real catalog and survives offline reload', async 
       read.onsuccess = () => { resolve(JSON.stringify(read.result)); db.close(); };
       read.onerror = () => reject(read.error);
     };
-  }))).toContain(href!.split('/').pop()!);
+  }))).toContain(recipe!.id);
   await page.waitForFunction(() => 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null);
   await context.setOffline(true);
   await page.reload();
-  await expect(card.getByRole('link', { name: /apri la ricetta/i })).toHaveAttribute('href', href!);
+  await expect(title).toHaveText(recipeTitle);
+  await card.locator('summary').click();
+  await expect(card.getByRole('heading', { name: 'Procedimento' })).toBeVisible();
   await context.setOffline(false);
   assertOfflineBackendClean(page);
 });

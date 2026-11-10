@@ -1,6 +1,6 @@
 import { ChefHat } from 'lucide-react';
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import DietFiltersPanel from '../components/diet/DietFiltersPanel';
 import IngredientChip from '../components/pantry/IngredientChip';
 import IngredientInput from '../components/pantry/IngredientInput';
@@ -159,16 +159,6 @@ export default function PantryPage() {
   } | null>(null);
   const [archiveRecoveryError, setArchiveRecoveryError] = useState<{ scope: SyncScope; message: string } | null>(null);
   const visibleArchiveRecoveryError = archiveRecoveryError?.scope === activeScope ? archiveRecoveryError.message : null;
-
-  const navigate = useNavigate();
-
-  // T02: leaving the pantry must work on direct entry too, where the document
-  // history has nothing to pop: fall back to the shell home instead of a dead back.
-  const handleBack = (): void => {
-    const historyState = window.history.state as { idx?: number } | null;
-    if ((historyState?.idx ?? 0) > 0) navigate(-1);
-    else navigate('/');
-  };
 
   useEffect(() => {
     void hydratePantryStore();
@@ -356,13 +346,6 @@ export default function PantryPage() {
   return (
     <main id="main-content" className="ik-page mx-auto min-h-screen w-full max-w-6xl px-4 pb-8 pt-5 sm:px-6 sm:pt-8 lg:px-8">
       <header className="ik-page-intro mb-5 max-w-2xl sm:mb-7">
-        <button
-          type="button"
-          onClick={handleBack}
-          className="ik-back-link -ml-2 mb-3 inline-flex min-h-11 items-center rounded-xl px-2 font-semibold underline underline-offset-2 text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)]"
-        >
-          ← Indietro
-        </button>
 
         <h1 className="text-[1.5rem] font-extrabold leading-tight text-[var(--ik-ink)] sm:text-[1.8rem]">La tua dispensa</h1>
         <p className="mt-2 max-w-xl text-base leading-relaxed text-[var(--ik-ink-muted)]">

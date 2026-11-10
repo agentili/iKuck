@@ -6,6 +6,7 @@ import type { AccountSummary, GeneratedRecipe } from '@ikuck/shared/contracts';
 import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { ApiClientError } from '../api/apiClient';
 import RecipesPage from './RecipesPage';
+import AiRecipePanel from '../components/ai/AiRecipePanel';
 import { useAuthStore } from '../auth/authStore';
 import { setActiveDataScope } from '../sync/scopeContext';
 import { fetchAiRecipes } from '../ai/aiRecipeApi';
@@ -15,6 +16,8 @@ import { hydrateDinnerDiaryStore } from '../store/dinnerDiaryStore';
 vi.mock('../ai/aiRecipeApi', () => ({
   fetchAiRecipes: vi.fn(),
 }));
+
+vi.mock('../components/ai/AiRecipePanel', () => ({ default: vi.fn(() => <section aria-label="Creazione ricetta AI">Crea una ricetta con l’AI</section>) }));
 
 // The diary store is only needed by the page to hydrate RecipeDetailPage data:
 // keep the real store (and its scope subscriptions) out of these render tests.
@@ -165,42 +168,34 @@ beforeEach((): void => {
 });
 
 describe('RecipesPage', () => {
-  it('espone Ricerca, Salvate e Diario in una navigazione secondaria con destinazioni reali', () => {
+  it('offers title generation and immediately adds explicitly saved recipes to the library', async () => {
+    setVerifiedSession();
+    vi.mocked(fetchAiRecipes).mockResolvedValue([]);
     renderPage();
-
-    const navigation = screen.getByRole('navigation', { name: 'Altre sezioni di Ricette' });
-    expect(navigation).toHaveAccessibleName('Altre sezioni di Ricette');
-    expect(within(navigation).getByRole('link', { name: 'Cerca ricette' })).toHaveAttribute('href', '/discover');
-    expect(within(navigation).getByRole('link', { name: 'Ricette salvate' })).toHaveAttribute('href', '/saved');
-    expect(within(navigation).getByRole('link', { name: 'Diario delle cene' })).toHaveAttribute('href', '/dinner-diary');
+    await waitFor(() => expect(screen.queryByText('Carico le tue ricette AI…')).not.toBeInTheDocument());
+    const props = vi.mocked(AiRecipePanel).mock.calls.at(-1)?.[0];
+    expect(props).toMatchObject({ generationMode: 'title', ingredients: [], csrfToken: 'csrf-token' });
+    act(() => props?.onRecipeSaved?.(orataRecipe));
+    expect(await screen.findByRole('heading', { name: orataRecipe.title })).toBeVisible();
   });
 
-  it('rende i tre accessi secondari raggiungibili in ordine da tastiera', async () => {
+  it('does not show links to search, saved recipes or the removed diary page', () => {
     renderPage();
-
-    const navigation = screen.getByRole('navigation', { name: 'Altre sezioni di Ricette' });
-    const links = within(navigation).getAllByRole('link');
-    const userEvents = userEvent.setup();
-
-    await userEvents.tab();
-    expect(links[0]).toHaveFocus();
-    await userEvents.tab();
-    expect(links[1]).toHaveFocus();
-    await userEvents.tab();
-    expect(links[2]).toHaveFocus();
+    expect(screen.queryByRole('navigation', { name: 'Altre sezioni di Ricette' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Cerca ricette' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Ricette salvate' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Diario delle cene' })).not.toBeInTheDocument();
   });
 
   it('usa le superfici e l’indicatore di focus semantici per ricerca e navigazione', () => {
     renderPage();
 
-    const navigation = screen.getByRole('navigation', { name: 'Altre sezioni di Ricette' });
     const search = screen.getByRole('searchbox', { name: 'Cerca ricette' });
     const searchRegion = screen.getByRole('region', { name: 'Ricerca tra le ricette' });
 
     expect(searchRegion).toHaveClass('bg-[var(--ik-surface)]');
     expect(search).toHaveClass('ik-input');
     expect(search).toHaveClass('focus-visible:outline-[var(--ik-focus)]');
-    expect(navigation.querySelector('a')).toHaveClass('focus-visible:outline-[var(--ik-focus)]');
     expect(screen.getByRole('main')).toHaveClass('ik-recipes-page');
   });
 

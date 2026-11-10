@@ -12,7 +12,6 @@ import { usePantryMergeNoticeStore } from './store/pantryMergeNoticeStore';
 import { getActiveDataScope, setActiveDataScope, setPersonalDataScope } from './sync/scopeContext';
 import { clearDataScope } from './sync/syncQueue';
 import { isScopeWritable, trackScopedWrite } from './sync/scopeWriteFence';
-import { writeDinnerEntries } from './storage/dinnerDiaryStorage';
 import { PANTRY_STORAGE_KEY, pantryStorage, writePantrySnapshot } from './storage/pantryStorage';
 
 const syncVerifiedSession = vi.hoisted(() => vi.fn().mockResolvedValue(null));
@@ -37,7 +36,7 @@ const verifiedUser = {
   emailVerifiedAt: '2026-09-12T10:00:00.000Z',
 };
 
-const getHomeHeading = (): string => 'Cosa cuciniamo oggi?';
+const getHomeHeading = (): string => 'Oggi lo chef propone...';
 
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
@@ -46,6 +45,17 @@ const deferred = <T,>() => {
 };
 
 describe('App synchronization lifecycle', () => {
+  it('shows not found for the removed dinner diary route', async () => {
+    window.history.pushState({}, '', '/dinner-diary');
+    const { unmount } = render(<App />);
+    try {
+      expect(await screen.findByRole('heading', { name: 'Pagina non trovata' })).toBeVisible();
+    } finally {
+      unmount();
+      window.history.pushState({}, '', '/');
+    }
+  });
+
   beforeEach(() => {
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
       configurable: true,
@@ -81,17 +91,12 @@ describe('App synchronization lifecycle', () => {
     useDinnerDiaryStore.setState({ hasHydrated: true, entries: [], recipes: [], drafts: [], error: null });
   });
 
-  it('hides a revoked House diary immediately while purge waits for a local write', async () => {
+  it('hides a revoked House pantry immediately while purge waits for a local write', async () => {
     const houseScope = 'house:revoked-on-screen' as const;
     const state = {
       house: { id: 'revoked-on-screen', name: 'Casa', createdAt: '2026-09-30T10:00:00.000Z' },
       membership: { role: 'member' as const, joinedAt: '2026-09-30T10:00:00.000Z' }, members: [],
     };
-    await writeDinnerEntries([{
-      id: 'revoked-entry', date: '2026-09-30', text: 'Cena visibile prima della revoca',
-      servings: null, note: null, recipes: [], authorId: verifiedUser.id,
-      createdAt: state.house.createdAt, updatedAt: state.house.createdAt,
-    }], houseScope);
     setActiveDataScope(houseScope);
     setPersonalDataScope(`account:${verifiedUser.id}`);
     useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1' });
@@ -100,16 +105,19 @@ describe('App synchronization lifecycle', () => {
       setPersonalDataScope(`account:${verifiedUser.id}`);
       return { state, mergeSummary: null, guestMergeFailed: false };
     });
-    window.history.pushState({}, '', '/dinner-diary');
+    window.history.pushState({}, '', '/pantry');
     const { unmount } = render(<App />);
-    await screen.findByText('Cena visibile prima della revoca');
+    await screen.findByRole('heading', { name: 'La tua dispensa' });
+    act(() => usePantryStore.setState({ hasHydrated: true, pantryItems: [{ id: 'pasta', label: 'Pasta privata', known: true }] }));
+    await userEvent.click(screen.getByText('Inventario', { exact: true }));
+    expect(screen.getByText('Pasta privata')).toBeVisible();
     let release: (() => void) | undefined;
     const held = new Promise<void>((resolve) => { release = resolve; });
     const pending = trackScopedWrite(houseScope, () => held);
     let complete = false;
     const purging = clearDataScope(houseScope).then(() => { complete = true; });
     try {
-      await waitFor(() => expect(screen.queryByText('Cena visibile prima della revoca')).not.toBeInTheDocument());
+      await waitFor(() => expect(screen.queryByText('Pasta privata')).not.toBeInTheDocument());
       expect(screen.getByRole('status')).toHaveTextContent('Caricamento');
       expect(complete).toBe(false);
     } finally {
@@ -436,8 +444,9 @@ describe('App synchronization lifecycle', () => {
     expect(await screen.findByRole('heading', { name: getHomeHeading() })).toBeVisible();
     expect(screen.queryByLabelText('Ingredienti presenti')).not.toBeInTheDocument();
 
-    const quickLinks = screen.getByRole('group', { name: 'Prosegui in cucina' });
-    expect(within(quickLinks).getByRole('link', { name: /^Dispensa/ })).toHaveAttribute('href', '/pantry');
+    expect(screen.queryByRole('group', { name: 'Prosegui in cucina' })).not.toBeInTheDocument();
+    const navigation = screen.getByRole('navigation', { name: 'Navigazione principale' });
+    expect(within(navigation).getByRole('link', { name: /^Dispensa/ })).toHaveAttribute('href', '/pantry');
   });
 
   it.each([

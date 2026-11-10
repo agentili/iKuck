@@ -2,10 +2,10 @@ import { expect, test } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
 
 const chefDestinations = [
-  { label: 'Piano settimanale', path: '/plan' },
-  { label: 'Ricettario', path: '/recipes' },
+  { label: 'Piano', path: '/plan' },
+  { label: 'Ricette', path: '/recipes' },
   { label: 'Dispensa', path: '/pantry' },
-  { label: 'Lista della spesa Bring', path: '/shopping-list' },
+  { label: 'Spesa', path: '/shopping-list' },
 ] as const;
 
 test('Chef shows the local recipe card and current cooking destinations', async ({ page }) => {
@@ -13,18 +13,18 @@ test('Chef shows the local recipe card and current cooking destinations', async 
   await page.goto('/');
 
   await expect(page.getByRole('region', { name: 'Ricetta del giorno' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Cosa cuciniamo oggi?', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Oggi lo chef propone...', exact: true })).toBeVisible();
   await expect(page.getByPlaceholder(/Chiedimi una ricetta/i)).toHaveCount(0);
   await expect(page.getByRole('log')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Invia messaggio' })).toHaveCount(0);
 
-  const shortcuts = page.getByRole('group', { name: 'Prosegui in cucina' });
+  const shortcuts = page.getByRole('navigation', { name: 'Navigazione principale' });
   for (const destination of chefDestinations) {
     const link = shortcuts.getByRole('link', { name: new RegExp(destination.label) });
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute('href', destination.path);
   }
-  await shortcuts.getByRole('link', { name: /Ricettario/ }).click();
+  await shortcuts.getByRole('link', { name: /^Ricette$/ }).click();
   await expect(page).toHaveURL('/recipes');
   await expect(page.getByRole('heading', { name: 'Ricette', exact: true })).toBeVisible();
 
@@ -43,7 +43,7 @@ test('Chef destinations remain reachable at 320px with 200% text', async ({ page
   }));
   expect(geometry.content, `horizontal overflow at 320px with 200% text: ${JSON.stringify(geometry)}`)
     .toBeLessThanOrEqual(geometry.viewport);
-  const shortcuts = page.getByRole('group', { name: 'Prosegui in cucina' });
+  const shortcuts = page.getByRole('navigation', { name: 'Navigazione principale' });
   const pantryLink = shortcuts.getByRole('link', { name: /Dispensa/ });
   await expect(pantryLink).toBeVisible();
   await pantryLink.click();

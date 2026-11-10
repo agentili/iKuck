@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { Link } from 'react-router-dom';
 import { getIngredient } from '@ikuck/shared/ingredients';
 import { RECIPES } from '../../domain/recipes';
 import { isDailyResultCurrent, type DailyRecipeSelection } from '../../domain/dailyRecipe';
@@ -7,7 +6,6 @@ import { getDailyRecipe, localDateKey } from '../../storage/dailyRecipeStorage';
 import { hydratePantryStore, usePantryStore } from '../../store/localPantryStore';
 import { hydrateDietProfileStore, useDietProfileStore } from '../../store/dietProfileStore';
 import { getActiveDataScope, subscribeActiveDataScope } from '../../sync/scopeContext';
-import RecipeImage from '../suggestions/RecipeImage';
 
 export function DailyRecipeCard() {
   const scope = useSyncExternalStore((listener) => subscribeActiveDataScope(() => listener()), getActiveDataScope, getActiveDataScope);
@@ -44,10 +42,8 @@ export function DailyRecipeCard() {
   return (
     <section
       aria-label="Ricetta del giorno"
-      tabIndex={0}
       className="chef-chat-recipe-card mx-4 my-2 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4 shadow-[var(--ik-shadow-card)]"
     >
-      <h2 className="font-bold text-[var(--ik-ink)]">Ricetta del giorno</h2>
       {visibleState === null ? (
         <p className="mt-2 text-sm text-[var(--ik-ink-muted)]" role="status" aria-live="polite">Caricamento ricetta del giorno…</p>
       ) : visibleState.error ? (
@@ -57,21 +53,35 @@ export function DailyRecipeCard() {
       ) : selection === null ? (
         <p className="mt-2 text-sm text-[var(--ik-ink-muted)]" role="status">Nessuna ricetta compatibile disponibile nel catalogo.</p>
       ) : (
-        <>
-          <RecipeImage recipeId={selection.recipe.id} recipeTitle={selection.recipe.title} />
-          <h3 className="mt-1 text-xl font-bold leading-tight text-[var(--ik-ink)]">{selection.recipe.title}</h3>
-          <p className="text-sm text-[var(--ik-ink-muted)]">{selection.recipe.durationMinutes === null ? 'Tempo non disponibile' : `${selection.recipe.durationMinutes} minuti`}</p>
-          <p className="mt-2 text-sm font-semibold text-[var(--ik-basil-dark)]">La proponiamo in base alla tua dispensa e alle tue preferenze.</p>
-          {selection.missingIngredientIds.length === 0
-            ? <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">Hai gli ingredienti segnalati. Controlla le quantità prima di cucinare.</p>
-            : <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">Da aggiungere: {selection.missingIngredientIds.map((id) => getIngredient(id)?.label ?? id).join(', ')}.</p>}
-          {selection.reasons.length > 0 && (
-            <p className="mt-1 text-sm text-[var(--ik-warn-ink)]">
-              Questa proposta richiede più di un ingrediente mancante o più di 30 minuti.
-            </p>
-          )}
-          <Link className="mt-3 inline-flex min-h-11 items-center rounded-xl bg-[var(--ik-basil)] px-4 font-bold text-white hover:bg-[var(--ik-basil-dark)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]" to={`/recipes/${selection.recipe.id}`}>Apri la ricetta</Link>
-        </>
+        <details key={`${scope}:${date}:${selection.recipe.id}`}>
+          <summary className="min-h-11 cursor-pointer rounded-lg text-[var(--ik-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]">
+            <h2 className="inline text-xl font-bold leading-tight">{selection.recipe.title}</h2>
+            <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">{selection.recipe.durationMinutes === null ? 'Tempo non disponibile' : `${selection.recipe.durationMinutes} minuti`}</p>
+            {selection.missingIngredientIds.length > 0 && (
+              <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">Da aggiungere: {selection.missingIngredientIds.map((id) => getIngredient(id)?.label ?? id).join(', ')}.</p>
+            )}
+          </summary>
+          <div className="mt-4 space-y-4 border-t border-[var(--ik-border)] pt-4 text-sm text-[var(--ik-ink)]">
+            <p>{selection.recipe.description}</p>
+            {selection.recipe.servings !== null && <p>{selection.recipe.servings} porzioni</p>}
+            <div>
+              <h3 className="mb-2 font-bold">Ingredienti</h3>
+              <ul className="list-disc space-y-1 pl-5">
+                {selection.recipe.ingredients.map((ingredient) => (
+                  <li key={ingredient.ingredientId}>
+                    {ingredient.amount} {ingredient.name ?? getIngredient(ingredient.ingredientId)?.label ?? ingredient.ingredientId}{ingredient.optional ? ' (facoltativo)' : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="mb-2 font-bold">Procedimento</h3>
+              <ol className="list-decimal space-y-2 pl-5">
+                {selection.recipe.steps.map((step, index) => <li key={index}>{step}</li>)}
+              </ol>
+            </div>
+          </div>
+        </details>
       )}
     </section>
   );

@@ -2,7 +2,7 @@ import { expect, type Page } from '@playwright/test';
 
 export const kitchenPath = '/cucina';
 export const kitchenHeading = 'Cucina viva';
-export const landingHeading = 'Cosa cuciniamo oggi?';
+export const landingHeading = 'Oggi lo chef propone...';
 export const kitchenNavigationLabel = 'Chef';
 
 export const goToKitchen = async (page: Page): Promise<void> => {
