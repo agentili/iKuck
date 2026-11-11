@@ -4,6 +4,7 @@ import { ApiClientError, apiRequest, type ApiRequest } from '../api/apiClient';
 export interface AiRecipeConsentStatus {
   consent: AiConsent;
   selectedProvider: AiRecipeProvider;
+  selectedImageProvider?: AiRecipeProvider;
 }
 
 export interface AiRecipeGenerationInput {
@@ -28,12 +29,12 @@ export const fetchAiConsentStatus = async (request: ApiRequest = apiRequest): Pr
   if (typeof response !== 'object' || response === null || Array.isArray(response)) {
     throw new ApiClientError(502, 'ai_consent_status_invalid', 'AI consent status is invalid');
   }
-  const candidate = response as { consent?: unknown; selectedProvider?: unknown };
+  const candidate = response as { consent?: unknown; selectedProvider?: unknown; selectedImageProvider?: unknown };
   const consent = candidate.consent;
   if (typeof consent !== 'object' || consent === null || Array.isArray(consent)) {
     throw new ApiClientError(502, 'ai_consent_status_invalid', 'AI consent status is invalid');
   }
-  const candidateConsent = consent as { enabled?: unknown; updatedAt?: unknown; homeProvider?: unknown; dinnerProvider?: unknown };
+  const candidateConsent = consent as { enabled?: unknown; updatedAt?: unknown; homeProvider?: unknown; imagePolicyVersion?: unknown; imageProvider?: unknown; dinnerProvider?: unknown };
   const hasValidHomeProvider = candidateConsent.homeProvider === undefined
     || candidateConsent.homeProvider === 'openai'
     || candidateConsent.homeProvider === 'gemini';
@@ -52,6 +53,8 @@ export const fetchAiConsentStatus = async (request: ApiRequest = apiRequest): Pr
     consent: {
       enabled: candidateConsent.enabled,
       updatedAt: candidateConsent.updatedAt,
+      ...(['openai','gemini'].includes(String(candidateConsent.imageProvider)) ? { imageProvider: candidateConsent.imageProvider as AiRecipeProvider } : {}),
+      ...(candidateConsent.imagePolicyVersion === 'recipe-images-v1' ? { imagePolicyVersion: 'recipe-images-v1' as const } : {}),
       ...(candidateConsent.homeProvider === undefined
         ? {}
         : { homeProvider: candidateConsent.homeProvider as AiRecipeProvider }),
@@ -60,6 +63,7 @@ export const fetchAiConsentStatus = async (request: ApiRequest = apiRequest): Pr
         : { dinnerProvider: candidateConsent.dinnerProvider as AiRecipeProvider }),
     },
     selectedProvider: candidate.selectedProvider,
+    ...(['openai','gemini'].includes(String(candidate.selectedImageProvider)) ? { selectedImageProvider: candidate.selectedImageProvider as AiRecipeProvider } : {}),
   };
 };
 
@@ -74,11 +78,14 @@ export const updateAiConsent = async (
   expectedRevision?: string,
   request: ApiRequest = apiRequest,
   homeProvider?: AiRecipeProvider,
+  includeImages = false,
+  imageProvider?: AiRecipeProvider,
 ): Promise<AiConsent> => {
   const response = await request<ConsentResponse>('/v1/ai-recipes/consent', {
     method: 'PUT',
     body: {
       enabled,
+      ...(enabled && includeImages ? { imagePolicyVersion: 'recipe-images-v1', imageProvider } : {}),
       ...(enabled && homeProvider !== undefined ? { homeProvider } : {}),
       ...(enabled && expectedRevision !== undefined ? { expectedRevision } : {}),
     },

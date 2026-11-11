@@ -281,6 +281,7 @@ export default function RecipesPage() {
               {filteredLibrary.map((recipe) => (
                 <RecipeCard
                   key={recipe.id}
+                  recipeId={recipe.id}
                   variant="salvata"
                   title={recipe.title}
                   description={recipe.description}
@@ -341,6 +342,7 @@ export default function RecipesPage() {
               {filteredSaved.map((recipe) => (
                 <RecipeCard
                   key={recipe.id}
+                  recipeId={recipe.id}
                   variant="ai"
                   title={recipe.title}
                   ingredients={recipe.ingredients}
@@ -376,6 +378,7 @@ export default function RecipesPage() {
               {filteredSuggested.map((recipe) => (
                 <RecipeCard
                   key={recipe.id}
+                  recipeId={recipe.id}
                   variant="catalogo"
                   title={recipe.title}
                   description={recipe.description}

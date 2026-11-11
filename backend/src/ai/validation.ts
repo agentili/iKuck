@@ -48,12 +48,14 @@ const aiConsentObjectSchema = z.object({
   dinnerProvider: z.enum(['openai', 'gemini']).optional(),
   chatProvider: z.enum(['openai', 'gemini']).optional(),
   chatPolicyVersion: z.literal('chef-chat-v1').optional(),
+  imagePolicyVersion: z.literal('recipe-images-v1').optional(),
+  imageProvider: z.enum(['openai', 'gemini']).optional(),
 }).strict();
 
 export const aiConsentSchema = aiConsentObjectSchema.refine((value) =>
   (value.chatProvider === undefined) === (value.chatPolicyVersion === undefined));
 
-export const aiConsentSyncSchema = aiConsentObjectSchema.omit({ homeProvider: true, dinnerProvider: true, chatProvider: true, chatPolicyVersion: true });
+export const aiConsentSyncSchema = aiConsentObjectSchema.omit({ homeProvider: true, dinnerProvider: true, chatProvider: true, chatPolicyVersion: true, imagePolicyVersion: true, imageProvider: true });
 
 export const parseGeneratedRecipeDraft = (value: unknown): GeneratedRecipeDraft | null => {
   const result = generatedRecipeDraftSchema.safeParse(value);

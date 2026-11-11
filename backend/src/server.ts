@@ -1,3 +1,4 @@
+import { imageRoutes } from './recipeImages/routes.js';
 import { createPushRepository } from './push/repository.js';
 import { createPushTransport } from './push/transport.js';
 import { pathToFileURL } from 'node:url';
@@ -147,6 +148,7 @@ export const start = async () => {
       trustProxy: config.trustProxy,
     },
   );
+  await app.register(imageRoutes(database.db, auth, config.appOrigin));
   googleLog = (details, message) => { app.log.error(details, message); };
 
   const shutdown = async () => {

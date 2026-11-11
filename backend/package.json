@@ -19,7 +19,9 @@
     "db:cleanup-auth": "node dist/db/cleanupExpiredAuth.js",
     "db:cleanup-bring-candidates": "node dist/db/cleanupBringCandidates.js",
     "s2s-admin": "node --env-file-if-exists=.env dist/s2s/adminCli.js",
-    "push:worker": "node --env-file-if-exists=.env dist/push/worker.js"
+    "push:worker": "node --env-file-if-exists=.env dist/push/worker.js",
+    "images:worker": "node --env-file-if-exists=.env dist/recipeImages/worker.js",
+    "images:backfill": "tsx scripts/backfill-recipe-images.ts"
   },
   "dependencies": {
     "@ikuck/shared": "file:../shared",
@@ -31,6 +33,7 @@
     "nodemailer": "^10.1.0",
     "postgres": "^3.4.7",
     "redis": "^5.8.2",
+    "sharp": "^0.35.5",
     "web-push": "^4.0.0",
     "zod": "^4.6.7"
   },

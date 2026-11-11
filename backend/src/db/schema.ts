@@ -3,6 +3,7 @@ import type { PantryConsumptionPlan } from '@ikuck/shared/pantryConsumption';
 import type { PlanCommand, PlanResult, PlanState } from '@ikuck/shared/contracts';
 import type { RecentlySnapshotItem } from '../bring/recently.js';
 import {
+  customType,
   bigint,
   boolean,
   check,
@@ -395,3 +396,25 @@ export const pushDeliveries = pgTable('push_deliveries', {
   dueIndex: index('push_deliveries_due_index').on(table.status, table.nextAttemptAt),
   statusCheck: check('push_deliveries_status_check', sql`${table.status} IN ('pending', 'sent', 'skipped', 'expired')`),
 }));
+
+export const recipeImageJobs = pgTable('recipe_image_jobs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  syncItemId: uuid('sync_item_id').references(() => syncItems.id, { onDelete: 'cascade' }).unique(),
+  catalogId: text('catalog_id').unique(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  recipe: jsonb('recipe').notNull(),
+  state: text('state').notNull().default('pending'),
+  attempts: bigint('attempts', { mode: 'number' }).notNull().default(0),
+  availableAt: timestamp('available_at', { withTimezone: true }).defaultNow().notNull(),
+  dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, t => ({ oneSource: check('recipe_image_one_source', sql`(${t.syncItemId} IS NULL) <> (${t.catalogId} IS NULL)`) }));
+export const recipeImageAssets = pgTable('recipe_image_assets', {
+  jobId: uuid('job_id').primaryKey().references(() => recipeImageJobs.id, { onDelete: 'cascade' }),
+  content: customType<{ data: Buffer }>({ dataType: () => 'bytea' })('content').notNull(),
+  hash: text('hash').notNull(), width: bigint('width', { mode: 'number' }).notNull(), height: bigint('height', { mode: 'number' }).notNull(),
+  source: text('source').notNull(), author: text('author').notNull(), sourceUrl: text('source_url').notNull(), license: text('license').notNull(), model: text('model'),
+});
+export const recipeImageQuota = pgTable('recipe_image_quota', {
+  principal: text('principal').notNull(), day: date('day').notNull(), used: bigint('used', { mode: 'number' }).notNull().default(0),
+}, t => ({ key: primaryKey({ columns: [t.principal, t.day] }) }));
