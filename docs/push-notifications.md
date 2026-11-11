@@ -7,12 +7,13 @@ Il clic apre `/plan?week=YYYY-MM-DD` (lunedì); in assenza di accesso il Profilo
 ## Configurazione
 
 1. Applicare le migrazioni con la versione aggiornata dell'API (`npm run build` e `npm run db:migrate` nel backend). Compose production/standalone esegue già le migrazioni prima dell'API.
-2. Generare una coppia VAPID, una sola volta, nell'ambiente operativo: `node --input-type=module -e "import webpush from 'web-push'; console.log(webpush.generateVAPIDKeys())"` dalla directory backend. Conservare la chiave privata nel gestore dei segreti; non copiarla nei log condivisi o in Git.
-3. Impostare per API e worker `PUSH_ENABLED=true`, `PUSH_VAPID_PUBLIC_KEY`, `PUSH_VAPID_PRIVATE_KEY` e `PUSH_VAPID_SUBJECT` (`mailto:` con contatto operativo o URL HTTPS). La configurazione predefinita disabilita le push e non richiede chiavi.
-4. Avviare anche il profilo Compose: `docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml --profile push up -d --build`. Il worker dipende dall'API pronta e dalle migrazioni completate. In sviluppo avviare `npm run push:worker` nel backend dopo il build, con le stesse variabili dell'API.
-5. Servire la PWA su HTTPS. Localhost consente lo sviluppo, ma un indirizzo LAN HTTP non abilita le push. Su iPhone/iPad servono iOS/iPadOS 16.4+ e l'app aggiunta alla schermata Home. Chrome/Chromium, Firefox e Safari usano i servizi autorizzati FCM, Mozilla e Apple; altri endpoint vengono rifiutati.
+2. Generare una coppia VAPID con `webpush.generateVAPIDKeys()` in un flusso operativo fidato che scriva direttamente nel gestore dei segreti, senza stampare i valori nel terminale o nei log. Creare coppie distinte per staging e produzione; non riutilizzare le chiavi tra ambienti.
+3. Conservare una copia di recupero della coppia e del `PUSH_VAPID_SUBJECT` nel gestore delle credenziali dell'operatore. Se non è disponibile, usare solo un file dedicato fuori dal checkout Git, leggibile dall'utente di deploy e con permessi restrittivi (`0600`); non inviare i valori in chat, ticket o log. La chiave privata va solo all'API e al worker; la chiave pubblica può essere restituita dall'API al browser.
+4. Impostare per API e worker `PUSH_ENABLED=true`, `PUSH_VAPID_PUBLIC_KEY`, `PUSH_VAPID_PRIVATE_KEY` e `PUSH_VAPID_SUBJECT` (`mailto:` con contatto operativo o URL HTTPS). La configurazione predefinita disabilita le push e non richiede chiavi.
+5. Prima di modificare un deploy, identificare il progetto Compose effettivo, tutti i file Compose/override, l'env file operativo e i volumi. Validare la configurazione risolta senza stamparne l'output e preservare gli override attivi. Per l'attivazione, aggiornare solo `api` e `push-worker`, uno alla volta; non usare un `up` dell'intero stack come scorciatoia e non ricreare PostgreSQL/Redis. Il worker dipende dall'API pronta e dalle migrazioni completate. In sviluppo avviare `npm run push:worker` nel backend dopo il build, con le stesse variabili dell'API.
+6. Servire la PWA su HTTPS. Localhost consente lo sviluppo, ma un indirizzo LAN HTTP non abilita le push. Su iPhone/iPad servono iOS/iPadOS 16.4+ e l'app aggiunta alla schermata Home. Chrome/Chromium, Firefox e Safari usano i servizi autorizzati FCM, Mozilla e Apple; altri endpoint vengono rifiutati.
 
-La chiave VAPID pubblica viene letta dall'API; non serve ricompilare il frontend per configurarla. La privata resta sul server. La rotazione delle chiavi richiede la riattivazione delle iscrizioni esistenti sui dispositivi.
+La chiave VAPID pubblica viene letta dall'API; non serve ricompilare il frontend per configurarla. La privata resta sul server. Perdere o ruotare la coppia richiede la riattivazione delle iscrizioni esistenti sui dispositivi.
 
 ## API
 
