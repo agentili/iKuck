@@ -234,7 +234,7 @@ test('keeps focus indicators visible for links, controls and summaries', async (
   await page.goto('/shopping-list');
 
   const focusableSelectors = [
-    page.getByRole('link', { name: kitchenNavigationLabel }),
+    page.getByRole('link', { name: kitchenNavigationLabel, exact: true }),
     page.getByLabel('Cosa ti serve?'),
     page.getByRole('button', { name: 'Aggiungi alla lista' }),
     page.getByText('Aggiungi dettagli (facoltativi)'),
