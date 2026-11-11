@@ -68,6 +68,12 @@ services:
       LOG_LEVEL: info
       NODE_ENV: ${NODE_ENV:-development}
       RECIPE_PROVIDER: ${RECIPE_PROVIDER:-openai}
+      RECIPE_IMAGES_ENABLED: ${RECIPE_IMAGES_ENABLED:-false}
+      RECIPE_IMAGE_PROVIDER: ${RECIPE_IMAGE_PROVIDER:-}
+      RECIPE_IMAGE_MODEL: ${RECIPE_IMAGE_MODEL:-}
+      RECIPE_IMAGE_VISION_MODEL: ${RECIPE_IMAGE_VISION_MODEL:-}
+      RECIPE_IMAGE_DAILY_LIMIT: ${RECIPE_IMAGE_DAILY_LIMIT:-5}
+      PEXELS_API_KEY: ${PEXELS_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.5}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
@@ -128,12 +134,50 @@ services:
       PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
       PUSH_VAPID_SUBJECT: ${PUSH_VAPID_SUBJECT:-}
 
+  image-worker:
+    stop_grace_period: 30s
+    profiles: ["images"]
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    cpus: "0.50"
+    mem_limit: 256m
+    pids_limit: 100
+    logging: *default-logging
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    command: ["node", "dist/recipeImages/worker.js"]
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      APP_ORIGIN: ${APP_ORIGIN:-http://127.0.0.1:8080}
+      DATABASE_URL: postgres://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}
+      REDIS_URL: redis://redis:6379
+      RECIPE_IMAGES_ENABLED: ${RECIPE_IMAGES_ENABLED:-false}
+      RECIPE_IMAGE_PROVIDER: ${RECIPE_IMAGE_PROVIDER:-}
+      RECIPE_IMAGE_MODEL: ${RECIPE_IMAGE_MODEL:-}
+      RECIPE_IMAGE_VISION_MODEL: ${RECIPE_IMAGE_VISION_MODEL:-}
+      RECIPE_IMAGE_DAILY_LIMIT: ${RECIPE_IMAGE_DAILY_LIMIT:-5}
+      PEXELS_API_KEY: ${PEXELS_API_KEY:-}
+      RECIPE_PROVIDER: ${RECIPE_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+
   caddy:
     build:
       context: ..
       dockerfile: deploy/Caddy.Dockerfile
       args:
         VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+        VITE_RECIPE_IMAGES_ENABLED: ${RECIPE_IMAGES_ENABLED:-false}
         VITE_BUILD_ID: ${VITE_BUILD_ID:-local}
     restart: unless-stopped
     cpus: "0.50"

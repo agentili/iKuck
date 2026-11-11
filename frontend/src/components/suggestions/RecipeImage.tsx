@@ -1,3 +1,4 @@
+import { useRecipeImage } from '../../ai/recipeImages';
 import { useEffect, useState } from 'react';
 import { RECIPE_IMAGES } from '../../domain/recipeImages';
 
@@ -8,7 +9,8 @@ interface RecipeImageProps {
 }
 
 export default function RecipeImage({ recipeId, recipeTitle, variant = 'card' }: RecipeImageProps) {
-  const asset = RECIPE_IMAGES[recipeId];
+  const remote = useRecipeImage(recipeId);
+  const asset = RECIPE_IMAGES[recipeId] ?? (remote.url && remote.metadata ? { src: remote.url, width: remote.metadata.width, height: remote.metadata.height, alt: `${recipeTitle}: immagine illustrativa`, illustrative: true, author: remote.metadata.author } : undefined);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => setFailed(false), [recipeId]);
@@ -46,9 +48,13 @@ export default function RecipeImage({ recipeId, recipeTitle, variant = 'card' }:
       )}
       {asset !== undefined && !failed ? (
         <figcaption>
-          {asset.illustrative ? 'Foto illustrativa' : 'Foto della ricetta'} · {asset.author} · Unsplash
+          {remote.metadata?.source === 'ai' ? 'Immagine generata con AI' : asset.illustrative ? 'Foto illustrativa' : 'Foto della ricetta'} · {asset.author} · {remote.metadata?.source === 'pexels' ? <a href={remote.metadata.sourceUrl} rel="noopener noreferrer" target="_blank">Pexels</a> : remote.metadata?.source === 'ai' ? 'AI' : 'Unsplash'}
         </figcaption>
       ) : <figcaption>Illustrazione della ricetta</figcaption>}
+      {remote.metadata?.state === 'processing' || remote.metadata?.state === 'pending' ? <p role="status">Immagine in preparazione…</p> : null}
+      {remote.metadata?.state === 'consent_required' && <p>Conferma il consenso AI aggiornato per creare l’immagine.</p>}
+      {remote.metadata?.state === 'quota_exceeded' && <p>Quota immagini raggiunta. Riprova domani.</p>}
+      {(remote.metadata?.state === 'failed' || remote.metadata?.state === 'quota_exceeded') && remote.canRetry && <button type="button" className="ik-button-secondary min-h-11" onClick={() => { void remote.retry().catch(() => undefined); }}>Riprova immagine</button>}
     </figure>
   );
 }

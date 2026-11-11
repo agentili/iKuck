@@ -39,6 +39,10 @@ jobs:
         run: npm run build
       - name: Offline E2E suite
         run: npm run test:e2e
+      - name: Recipe images E2E suite
+        env:
+          VITE_RECIPE_IMAGES_ENABLED: "true"
+        run: npm run test:e2e -- e2e/recipe-images.spec.ts
 
   backend:
     name: Backend checks

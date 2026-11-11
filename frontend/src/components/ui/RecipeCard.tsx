@@ -1,3 +1,4 @@
+import RecipeImage from '../suggestions/RecipeImage';
 import { Link } from 'react-router-dom';
 
 type RecipeCardVariant = 'salvata' | 'ai' | 'catalogo';
@@ -8,6 +9,7 @@ interface RecipeIngredient {
 }
 
 interface RecipeCardProps {
+  recipeId?: string;
   variant: RecipeCardVariant;
   title: string;
   description?: string;
@@ -31,6 +33,7 @@ const VARIANT_STYLE: Record<
 };
 
 export default function RecipeCard({
+  recipeId,
   variant,
   title,
   description,
@@ -50,6 +53,7 @@ export default function RecipeCard({
       className={`rounded-[var(--ik-radius-panel)] border ${style.border} bg-white p-4`}
       style={{ boxShadow: 'var(--ik-shadow-card)' }}
     >
+      {recipeId && <RecipeImage recipeId={recipeId} recipeTitle={title} />}
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-3 mb-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h3 className="text-xl font-black text-gray-950">{title}</h3>

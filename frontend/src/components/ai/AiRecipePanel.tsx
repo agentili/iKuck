@@ -1,3 +1,4 @@
+import RecipeImage from '../suggestions/RecipeImage';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { LockKeyhole, Save, Sparkles, Trash2, X } from 'lucide-react';
 import type { AiConsent, AiRecipeProvider, DietProfilePayload, GeneratedRecipe } from '@ikuck/shared/contracts';
@@ -75,6 +76,7 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
   const userId = user?.id ?? null;
   const [consent, setConsent] = useState<AiConsent | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<AiRecipeProvider | null>(null);
+  const [imageProvider, setImageProvider] = useState<AiRecipeProvider | null>(null);
   const [consentDraft, setConsentDraft] = useState(false);
   const [recipes, setRecipes] = useState<GeneratedRecipe[]>([]);
   const [drafts, setDrafts] = useState<GeneratedRecipe[]>([]);
@@ -156,6 +158,7 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
         consentEpochRef.current = proposalGeneration.epoch;
         setConsent(consentStatus.consent);
         setSelectedProvider(consentStatus.selectedProvider);
+        setImageProvider(consentStatus.selectedImageProvider ?? consentStatus.selectedProvider);
         setConsentDraft(consentStatus.consent.enabled && consentStatus.consent.homeProvider === consentStatus.selectedProvider);
         setRecipes(nextRecipes);
       })
@@ -192,7 +195,9 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
     setIsSaving(true);
     setError(null);
     try {
-      const nextConsent = await updateAiConsent(enabled, csrfToken, consent?.updatedAt, undefined, enabled ? selectedProvider ?? undefined : undefined);
+      const nextConsent = import.meta.env.VITE_RECIPE_IMAGES_ENABLED === 'true'
+        ? await updateAiConsent(enabled, csrfToken, consent?.updatedAt, undefined, enabled ? selectedProvider ?? undefined : undefined, true, imageProvider ?? selectedProvider ?? undefined)
+        : await updateAiConsent(enabled, csrfToken, consent?.updatedAt, undefined, enabled ? selectedProvider ?? undefined : undefined);
       setConsent(nextConsent);
       consentEpochRef.current = nextConsent.enabled && selectedProvider !== null && nextConsent.homeProvider === selectedProvider
         ? captureAiRecipeProposalGeneration(user.id).epoch
@@ -363,6 +368,8 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
             </p>
             {consent.enabled && !homeConsentEnabled && <p className="mt-2 text-xs font-semibold leading-relaxed text-amber-900">Il provider è cambiato o il consenso precedente non specificava il destinatario: non inviamo dati a {selectedProviderLabel} finché non approvi questa scelta.</p>}
             <p className="mt-2 text-xs leading-relaxed text-gray-600">Puoi revocare il consenso in qualsiasi momento. Le ricette già salvate restano visibili finché non le elimini.</p>
+            {import.meta.env.VITE_RECIPE_IMAGES_ENABLED === 'true' && <p className="mt-2 text-sm text-gray-700">Il consenso include l’invio del titolo del piatto a Pexels e di titolo, ingredienti e foto candidate a {imageProvider === 'gemini' ? 'Google Gemini' : 'OpenAI'} per cercare, valutare o generare un’immagine illustrativa delle ricette salvate. Le immagini possono richiedere tempo e sono soggette a quota.</p>}
+            {import.meta.env.VITE_RECIPE_IMAGES_ENABLED === 'true' && homeConsentEnabled && (consent.imagePolicyVersion !== 'recipe-images-v1' || consent.imageProvider !== imageProvider) && <button type="button" onClick={() => void saveConsent(true)} className="ik-button-secondary mt-3 min-h-11">Conferma consenso anche per le immagini</button>}
             {consentDraft !== homeConsentEnabled && (
               <button type="button" onClick={() => void saveConsent()} disabled={isSaving} className="mt-3 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
                 {isSaving ? 'Salvataggio…' : 'Salva consenso'}
@@ -427,6 +434,7 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
             <article key={recipe.id} data-ai-recipe className="rounded-2xl border-2 border-emerald-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
+                  <RecipeImage recipeId={recipe.id} recipeTitle={recipe.title} />
                   <h3 className="text-xl font-black text-gray-950">{recipe.title}</h3>
                   <p className="mt-1 text-sm leading-relaxed text-gray-700">{recipe.description}</p>
                 </div>

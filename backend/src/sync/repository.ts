@@ -255,6 +255,8 @@ export interface AiConsentUpdate {
   dinnerProvider?: AiRecipeProvider | null;
   chatProvider?: AiRecipeProvider | null;
   chatPolicyVersion?: 'chef-chat-v1';
+  imagePolicyVersion?: 'recipe-images-v1';
+  imageProvider?: AiRecipeProvider;
   expectedRevision?: string;
 }
 
@@ -486,6 +488,8 @@ const applyAiConsentUpdate = (
     ...(dinnerProvider === undefined ? {} : { dinnerProvider }),
     ...(chatProvider === undefined ? {} : { chatProvider }),
     ...(chatPolicyVersion === undefined ? {} : { chatPolicyVersion }),
+    ...(enabled && (update.imageProvider ?? current?.imageProvider) ? { imageProvider: update.imageProvider ?? current?.imageProvider } : {}),
+    ...(enabled && (update.imagePolicyVersion ?? current?.imagePolicyVersion) ? { imagePolicyVersion: update.imagePolicyVersion ?? current?.imagePolicyVersion } : {}),
   };
 };
 

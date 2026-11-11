@@ -1,3 +1,4 @@
+import { clearPrivateImages } from '../ai/recipeImageCache';
 import type {
   CookEvent,
   DietProfile,
@@ -140,6 +141,7 @@ export function clearDataScope(scope: SyncScope): Promise<void> {
   // reload, the old House cannot be displayed or reactivated without a retry.
   if (scope.startsWith('house:')) revokeScope(scope);
   const purging = (async () => {
+    if (import.meta.env.VITE_RECIPE_IMAGES_ENABLED === 'true') await clearPrivateImages().catch(() => undefined);
     await clearFunctionalSnapshots(scope);
     await deleteQueueScope(scope);
     await deleteMeta(cursorMetaKey(scope));

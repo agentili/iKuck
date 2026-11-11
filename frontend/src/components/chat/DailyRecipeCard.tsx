@@ -1,3 +1,4 @@
+import RecipeImage from '../suggestions/RecipeImage';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { getIngredient } from '@ikuck/shared/ingredients';
 import { RECIPES } from '../../domain/recipes';
@@ -62,6 +63,7 @@ export function DailyRecipeCard() {
             )}
           </summary>
           <div className="mt-4 space-y-4 border-t border-[var(--ik-border)] pt-4 text-sm text-[var(--ik-ink)]">
+            <RecipeImage recipeId={selection.recipe.id} recipeTitle={selection.recipe.title} />
             <p>{selection.recipe.description}</p>
             {selection.recipe.servings !== null && <p>{selection.recipe.servings} porzioni</p>}
             <div>

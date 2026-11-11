@@ -165,6 +165,8 @@ export interface AiConsent {
   dinnerProvider?: AiRecipeProvider;
   chatProvider?: AiRecipeProvider;
   chatPolicyVersion?: 'chef-chat-v1';
+  imagePolicyVersion?: 'recipe-images-v1';
+  imageProvider?: AiRecipeProvider;
 }
 
 export type AiRecipeProvider = 'openai' | 'gemini';
@@ -297,4 +299,16 @@ export interface WeeklyPushPayload {
   url: string;
   tag: string;
   expiresAt: string;
+}
+
+export type RecipeImageState = 'pending' | 'processing' | 'ready' | 'failed' | 'consent_required' | 'quota_exceeded' | 'disabled';
+export interface RecipeImageMetadata {
+  state: RecipeImageState;
+  url?: string;
+  width?: number;
+  height?: number;
+  source?: 'pexels' | 'ai';
+  author?: string;
+  sourceUrl?: string;
+  license?: string;
 }

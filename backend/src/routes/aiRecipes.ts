@@ -1,3 +1,4 @@
+import { imageConfig } from '../recipeImages/config.js';
 import { randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
@@ -41,6 +42,8 @@ const consentRequestSchema = z.object({
   dinnerProvider: z.enum(['openai', 'gemini']).nullable().optional(),
   chatProvider: z.enum(['openai', 'gemini']).nullable().optional(),
   chatPolicyVersion: z.literal('chef-chat-v1').optional(),
+  imagePolicyVersion: z.literal('recipe-images-v1').optional(),
+  imageProvider: z.enum(['openai', 'gemini']).optional(),
   expectedRevision: z.string().datetime({ offset: true }).optional(),
 }).strict().refine((value) => (
   value.enabled !== undefined || value.homeProvider !== undefined || value.dinnerProvider !== undefined || value.chatProvider !== undefined
@@ -183,7 +186,7 @@ export const registerAiRecipeRoutes = ({
 }: AiRecipeRouteDependencies): FastifyPluginAsync => async (app) => {
   app.get('/v1/ai-recipes/consent', async (request) => {
     const { session } = await requireVerifiedSession(request, authService);
-    return { consent: await readConsent(repository, session.userId), selectedProvider: recipeProvider };
+    return { consent: await readConsent(repository, session.userId), selectedProvider: recipeProvider, ...(imageConfig().enabled ? { selectedImageProvider: imageConfig().provider } : {}) };
   });
 
   app.put('/v1/ai-recipes/consent', async (request) => {
@@ -196,9 +199,12 @@ export const registerAiRecipeRoutes = ({
       || (update.chatProvider !== undefined && update.chatProvider !== null && update.chatProvider !== recipeProvider)) {
       throw new AuthServiceError('ai_provider_mismatch', 409, 'AI consent provider does not match the selected provider');
     }
+    if (update.imagePolicyVersion && update.imageProvider !== imageConfig().provider) {
+      throw new AuthServiceError('ai_provider_mismatch', 409, 'Image consent provider does not match the selected provider');
+    }
     try {
-      const consent = await repository.updateAiConsent(session.userId, update);
-      return { consent, selectedProvider: recipeProvider };
+      const consent = await repository.updateAiConsent(session.userId, { ...update, ...(update.imagePolicyVersion ? { imageProvider: imageConfig().provider } : {}) });
+      return { consent, selectedProvider: recipeProvider, ...(imageConfig().enabled ? { selectedImageProvider: imageConfig().provider } : {}) };
     } catch (error) {
       if (error instanceof AiConsentRevisionRequiredError) {
         throw new AuthServiceError('ai_consent_revision_required', error.status, error.message);
