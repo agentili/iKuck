@@ -4,6 +4,13 @@ import { Pencil, Plus, ShoppingCart, Sparkles } from 'lucide-react';
 import type { DietProfile, PlanCommand, PlanState, SyncMutationScope } from '@ikuck/shared/contracts';
 import { ApiClientError } from '../api/apiClient';
 import { useAuthStore } from '../auth/authStore';
+import PlanRecipeWizard from '../components/mealPlan/PlanRecipeWizard';
+import { hydrateDinnerDiaryStore, useDinnerDiaryStore, savePlanRecipe } from '../store/dinnerDiaryStore';
+import { toDiaryPantryRecipe } from '../domain/diaryRecipes';
+import { generatedToSavedRecipe, planRecipeLibrary } from '../mealPlan/recipeLibrary';
+import { fetchAiRecipes } from '../ai/aiRecipeApi';
+import type { GeneratedRecipe } from '@ikuck/shared/contracts';
+import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { RECIPES } from '../domain/recipes';
 import type { PantryRecipe } from '../domain/types';
 import { getActiveDataScope, subscribeActiveDataScope, type SyncScope } from '../sync/scopeContext';
@@ -390,6 +397,22 @@ export default function PlanPage() {
   const shoppingHasHydrated = useShoppingListStore((state) => state.hasHydrated);
   const houseState = useHouseStore((state) => state.state);
   const activeScope = useSyncExternalStore(subscribeActiveDataScope, getActiveDataScope, getActiveDataScope);
+  const recipeScope: SyncScope = isVerifiedUser(user) && csrfToken !== null ? activeScope : 'guest';
+  const savedRecipes = useDinnerDiaryStore(state => state.recipes);
+  const libraryReady = useDinnerDiaryStore(state => state.hasHydrated);
+  const libraryError = useDinnerDiaryStore(state => state.error);
+  const [generatedRecipes, setGeneratedRecipes] = useState<{ scope: SyncScope; userId: string; recipes: GeneratedRecipe[] } | null>(null);
+  const libraryRecipes = useMemo(() => planRecipeLibrary(recipeScope, savedRecipes, generatedRecipes?.scope === recipeScope && generatedRecipes.userId === user?.id ? generatedRecipes.recipes : []), [recipeScope, savedRecipes, generatedRecipes, user?.id]);
+  const [wizard, setWizard] = useState<{ date: string; label: string; token: string } | null>(null);
+  const wizardOpen = useRef(false);
+  useLayoutEffect(() => { wizardOpen.current = wizard !== null; }, [wizard]);
+  useEffect(() => { void hydrateDinnerDiaryStore(); }, [activeScope]);
+  useEffect(() => {
+    let cancelled = false;
+    if (user && user.emailVerifiedAt && csrfToken) void fetchAiRecipes().then(recipes => { if (!cancelled) setGeneratedRecipes({ scope: activeScope, userId: user.id, recipes }); }).catch(() => { if (!cancelled) setGeneratedRecipes(null); });
+    else setGeneratedRecipes(null);
+    return () => { cancelled = true; };
+  }, [activeScope, user, csrfToken]);
   const [view, setView] = useState<PlanPageView>(() => initialView('guest'));
   const [viewContextKey, setViewContextKey] = useState('');
   const [busyDate, setBusyDate] = useState<string | null>(null);
@@ -401,7 +424,7 @@ export default function PlanPage() {
   const generation = useRef(0);
 
   useEffect(() => {
-    const refresh = (): void => setReload((current) => current + 1);
+    const refresh = (): void => { if (!wizardOpen.current) setReload((current) => current + 1); };
     window.addEventListener('focus', refresh);
     window.addEventListener('online', refresh);
     const poll = window.setInterval(() => {
@@ -430,6 +453,9 @@ export default function PlanPage() {
   );
   const contextToken = `${contextKey}:${generation.current}`;
   const currentView = scopeWritable && view.scope === scope && viewContextKey === contextToken ? view : initialView(scope);
+  useEffect(() => {
+    setWizard(current => current && current.token !== contextToken ? null : current);
+  }, [contextToken]);
   const currentFeedback = feedbackContextKey === contextToken ? feedback : null;
   const publishView = (nextView: PlanPageView): void => {
     setView(nextView);
@@ -542,7 +568,7 @@ export default function PlanPage() {
   const missingIngredients = useMemo(() => {
     if (currentView.status !== 'ready' || !pantryHasHydrated || !shoppingHasHydrated) return [];
     const availableIds = new Set([
-      ...pantryItems.filter((item) => item.known).map((item) => item.id),
+      ...pantryItems.map((item) => item.id),
       ...stapleIds,
     ]);
     const listedIds = new Set(shoppingItems.map((item) => item.ingredientId));
@@ -556,7 +582,7 @@ export default function PlanPage() {
     for (const row of rows) {
       const state = row.state;
       if (state === null || state.recipeId === null) continue;
-      const recipe = RECIPES.find((candidate) => candidate.id === state.recipeId);
+      const recipe = libraryRecipes.find((candidate) => candidate.id === state.recipeId);
       if (!recipe) continue;
       for (const ingredient of recipe.ingredients) {
         if (ingredient.optional || availableIds.has(ingredient.ingredientId)) continue;
@@ -572,6 +598,7 @@ export default function PlanPage() {
     return result;
   }, [
     rows,
+    libraryRecipes,
     currentView.status,
     pantryHasHydrated,
     shoppingHasHydrated,
@@ -594,20 +621,23 @@ export default function PlanPage() {
 
   useLayoutEffect(() => setTimeZoneDraft(currentView.timeZone ?? ''), [currentView.timeZone]);
 
-  const chooseReplacement = async (date: string, currentState: PlanState | null): Promise<void> => {
+  const chooseReplacement = async (date: string, recipe: PantryRecipe, created?: SavedRecipe): Promise<void> => {
     const fence = captureActionFence(view.scope);
-    if (!fence.isCurrent() || busyDate !== null) return;
-    const recipeIdsInOtherDays = rows.filter((row) => row.date !== date)
-      .map((row) => row.state?.recipeId).filter((recipeId): recipeId is string => recipeId !== undefined && recipeId !== null);
-    const excluded = [...recipeIdsInOtherDays, ...(currentState?.recipeId === null || currentState === null ? [] : [currentState.recipeId])];
-    const recipe = selectPlanRecipe({ recipes: RECIPES, profile: profileState, date, excludedRecipeIds: excluded });
-    if (recipe === undefined || recipe.id === currentState?.recipeId) {
-      publishFeedback('Non ci sono altre ricette compatibili da proporre per questo giorno.');
-      return;
+    if (!fence.isCurrent() || busyDate !== null) throw new Error('Il piano è cambiato. Riapri la modifica.');
+    const generated = generatedRecipes?.scope === scope && generatedRecipes.userId === user?.id ? generatedRecipes.recipes.find(candidate => candidate.id === recipe.id) : undefined;
+    if (!created && generated) {
+      created = generatedToSavedRecipe(generated, user?.id ?? null);
+      recipe = toDiaryPantryRecipe({ scope, value: created });
     }
+    let recipeSaved = false;
     setBusyDate(date);
     publishFeedback(null);
     try {
+      if (created) {
+        await savePlanRecipe(view.scope, created, fence.assertCurrent);
+        recipeSaved = true;
+        fence.assertCurrent();
+      }
       if (localCopy) {
         const state = createLocalPlanState(date, 'manual', recipe.id);
         await saveGuestPlanState(state, {}, fence.assertCurrent);
@@ -634,6 +664,7 @@ export default function PlanPage() {
           'Modifica salvata sul dispositivo; non è condivisa finché il server non la conferma.', fence.assertCurrent);
         fence.assertCurrent();
         publishView(optimistic);
+        setWizard(null);
         try {
           await syncPendingMealPlan(view.scope, fence.csrfToken ?? '', api, fence.assertCurrent);
           fence.assertCurrent();
@@ -655,6 +686,8 @@ export default function PlanPage() {
       }
     } catch (error) {
       if (fence.isCurrent()) publishFeedback(error instanceof Error ? error.message : 'La scelta non è stata salvata.');
+      if (recipeSaved) throw new Error('La ricetta è salvata nel ricettario, ma non è stato possibile assegnarla al giorno. Riprova: non verrà duplicata.');
+      throw error;
     } finally {
       if (fence.isCurrent()) setBusyDate(null);
     }
@@ -666,7 +699,7 @@ export default function PlanPage() {
     const conflict = view.conflicts.find((item) => item.id === conflictId);
     if (conflict === undefined || conflict.command.action !== 'manual_set' || view.scope === 'guest' || !view.canEdit) return;
     const recipeId = conflict.command.recipeId;
-    const recipe = RECIPES.find((candidate) => candidate.id === recipeId);
+    const recipe = libraryRecipes.find((candidate) => candidate.id === recipeId);
     if (recipe === undefined) {
       publishFeedback('La ricetta in conflitto non è più disponibile nel catalogo; la copia resta conservata.');
       return;
@@ -726,7 +759,7 @@ export default function PlanPage() {
   ): Promise<void> => {
     const fence = captureActionFence(view.scope);
     if (!fence.isCurrent() || fence.csrfToken === null || recipeId === null) return;
-    const recipe = RECIPES.find((candidate) => candidate.id === recipeId);
+    const recipe = libraryRecipes.find((candidate) => candidate.id === recipeId);
     if (recipe === undefined) {
       publishFeedback('La ricetta non è più disponibile nel catalogo.');
       return;
@@ -793,7 +826,8 @@ export default function PlanPage() {
     const fence = captureActionFence(currentView.scope);
     if (!fence.isCurrent() || !pantryHasHydrated || !shoppingHasHydrated) return;
     const availableIds = new Set([
-      ...usePantryStore.getState().getAvailableIngredientIds(),
+      ...usePantryStore.getState().pantryItems.map(item => item.id),
+      ...usePantryStore.getState().stapleIds,
       ...useShoppingListStore.getState().items.map((item) => item.ingredientId),
     ]);
     const recipeIds = new Set(rows.flatMap((row) => (
@@ -802,7 +836,7 @@ export default function PlanPage() {
     let totalAdded = 0;
     for (const recipeId of recipeIds) {
       if (!fence.isCurrent()) return;
-      const recipe = RECIPES.find((candidate) => candidate.id === recipeId);
+      const recipe = libraryRecipes.find((candidate) => candidate.id === recipeId);
       if (recipe === undefined) continue;
       totalAdded += useShoppingListStore.getState().addMissingRecipeIngredients(recipe, [...availableIds]);
     }
@@ -817,6 +851,7 @@ export default function PlanPage() {
       <h1 className="text-[1.5rem] font-bold tracking-tight text-[var(--ik-ink)]">Piano settimanale</h1>
       <p className="mt-3">Accedi per creare o completare il piano della settimana dal {formatCivilDateLong(week)}.</p>
       <Link className="inline-flex min-h-11 items-center font-bold underline" to={`/profile?returnTo=${encodeURIComponent(`/plan?week=${week}`)}`}>Accedi e apri il piano</Link>
+
     </main>
   );
 
@@ -869,7 +904,7 @@ export default function PlanPage() {
       {currentView.status === 'ready' && (
         <ol aria-label={week ? "Pasti della settimana" : "Pasti da domani"} className="grid gap-3">
           {rows.map(({ date, label, state, pending }) => {
-            const recipe = state?.recipeId === null || state === null ? undefined : RECIPES.find((candidate) => candidate.id === state.recipeId);
+            const recipe = state?.recipeId === null || state === null ? undefined : libraryRecipes.find((candidate) => candidate.id === state.recipeId);
             const rowPending = pending || currentView.mode === 'offline' && state !== null && currentView.overlays[date] !== undefined;
             return (
               <li key={date} className="grid gap-y-2 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-3 sm:grid-cols-[minmax(10rem,0.85fr)_minmax(0,1.7fr)_auto] sm:items-center sm:gap-x-4 sm:gap-y-1.5 sm:p-4" data-date={date}>
@@ -901,13 +936,13 @@ export default function PlanPage() {
                     </div>
                   </div>
                 </div>
-                {state !== null && currentView.canEdit && (
+                {currentView.canEdit && (
                   <button
                     type="button"
                     className="inline-flex min-h-11 w-fit items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border-2 border-[var(--ik-basil)] bg-[var(--ik-surface)] px-3 py-1.5 text-sm font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)] disabled:opacity-60 sm:col-start-3 sm:row-start-2"
                     aria-label={`Modifica ricetta per ${label}`}
                     disabled={busyDate !== null || !scopeWritable}
-                    onClick={() => void chooseReplacement(date, state)}
+                    onClick={() => setWizard({ date, label, token: contextToken })}
                   >
                     {busyDate === date ? 'Salvataggio…' : <><Pencil size={15} aria-hidden="true" /> Modifica</>}
                   </button>
@@ -954,7 +989,7 @@ export default function PlanPage() {
           <h2 className="text-2xl font-black text-[var(--ik-ink)]">Modifiche da rivedere</h2>
           {currentView.conflicts.map((conflict) => {
             const recipeId = conflict.command.action === 'manual_set' ? conflict.command.recipeId : null;
-            const recipe = recipeId === null ? undefined : RECIPES.find((candidate) => candidate.id === recipeId);
+            const recipe = recipeId === null ? undefined : libraryRecipes.find((candidate) => candidate.id === recipeId);
             return (
               <div key={conflict.id} className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-[var(--ik-radius-control)] border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] p-3 text-sm text-[var(--ik-ink)]">
                 <p>{recipe?.title ?? 'Una scelta precedente'} non è stata condivisa; resta conservata su questo dispositivo.</p>
@@ -964,11 +999,11 @@ export default function PlanPage() {
           })}
           {currentView.recoveryConflicts.map((conflict: MealPlanRecoveryConflict) => {
             const recipeId = conflict.originalCommand.action === 'manual_set' ? conflict.originalCommand.recipeId : null;
-            const recipe = recipeId === null ? undefined : RECIPES.find((candidate) => candidate.id === recipeId);
+            const recipe = recipeId === null ? undefined : libraryRecipes.find((candidate) => candidate.id === recipeId);
             const sourceRecipeId = conflict.sourceState?.kind === 'manual' || conflict.sourceState?.kind === 'automatic' ? conflict.sourceState?.recipeId : null;
-            const sourceRecipe = sourceRecipeId === null ? undefined : RECIPES.find((candidate) => candidate.id === sourceRecipeId);
+            const sourceRecipe = sourceRecipeId === null ? undefined : libraryRecipes.find((candidate) => candidate.id === sourceRecipeId);
             const targetRecipeId = conflict.targetStateAtStaging.kind === 'manual' || conflict.targetStateAtStaging.kind === 'automatic' ? conflict.targetStateAtStaging.recipeId : null;
-            const targetRecipe = targetRecipeId === null ? undefined : RECIPES.find((candidate) => candidate.id === targetRecipeId);
+            const targetRecipe = targetRecipeId === null ? undefined : libraryRecipes.find((candidate) => candidate.id === targetRecipeId);
             const originalAction = conflict.originalCommand.action;
             const originalActionLabel = originalAction === 'manual_set'
               ? `Impostato manualmente su ${recipe?.title ?? recipeId}`
@@ -1004,9 +1039,9 @@ export default function PlanPage() {
           })}
           {currentView.recoveryQuarantines.map((quarantine) => {
             const sourceRecipeId = quarantine.sourceSnapshot.state?.kind === 'manual' || quarantine.sourceSnapshot.state?.kind === 'automatic' ? quarantine.sourceSnapshot.state?.recipeId : null;
-            const sourceRecipe = sourceRecipeId === null ? undefined : RECIPES.find((candidate) => candidate.id === sourceRecipeId);
+            const sourceRecipe = sourceRecipeId === null ? undefined : libraryRecipes.find((candidate) => candidate.id === sourceRecipeId);
             const targetRecipeId = quarantine.targetSnapshot.state?.kind === 'manual' || quarantine.targetSnapshot.state?.kind === 'automatic' ? quarantine.targetSnapshot.state?.recipeId : null;
-            const targetRecipe = targetRecipeId === null ? undefined : RECIPES.find((candidate) => candidate.id === targetRecipeId);
+            const targetRecipe = targetRecipeId === null ? undefined : libraryRecipes.find((candidate) => candidate.id === targetRecipeId);
             return (
               <div key={quarantine.planDate} className="mt-3 rounded-[var(--ik-radius-control)] border border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] p-4" role="alert">
                 <div className="flex flex-wrap items-start gap-3 text-sm text-[var(--ik-ink)]">
@@ -1024,6 +1059,13 @@ export default function PlanPage() {
         </section>
       )}
 
+      {wizard && wizard.token === contextToken && currentView.canEdit && scopeWritable && (
+        <PlanRecipeWizard key={`${contextToken}:${wizard.date}`} date={wizard.date} label={wizard.label} scope={view.scope}
+          currentId={(currentView.overlays[wizard.date] ?? currentView.states[wizard.date])?.recipeId ?? null}
+          recipes={libraryRecipes} availableIds={[...new Set([...pantryItems.map(item => item.id), ...stapleIds])]}
+          ready={pantryHasHydrated && libraryReady && !libraryError} loadError={Boolean(libraryError)} onReload={() => { void hydrateDinnerDiaryStore(); }} profile={profileState} user={user} csrfToken={csrfToken}
+          onClose={() => setWizard(null)} onConfirm={(recipe, created) => chooseReplacement(wizard.date, recipe, created)} />
+      )}
     </main>
   );
 }

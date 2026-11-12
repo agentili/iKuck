@@ -1,3 +1,4 @@
+import { choosePlanAlternative, seedPlanPantry } from './helpers/planWizard';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import type { PlanCommand, PlanState, SyncMutationScope } from '@ikuck/shared/contracts';
@@ -185,6 +186,7 @@ test('account Plan outbox survives offline-to-House transition, retries a lost r
     expect(seeded.status()).toBe(200);
 
     const page = await member.newPage();
+    await seedPlanPantry(page, accountScope);
     await page.goto('/plan');
     await expect(page.getByText('Sincronizzato con il tuo account', { exact: true })).toBeVisible();
     const row = page.locator(`[data-date="${date}"]`);
@@ -202,7 +204,7 @@ test('account Plan outbox survives offline-to-House transition, retries a lost r
     await expect(page.getByText('In attesa di conferma · non ancora condiviso', { exact: true })).toBeVisible();
     await expect(row.getByRole('button', { name: /modifica ricetta/i })).toBeVisible();
     await member.setOffline(true);
-    await row.getByRole('button', { name: /modifica ricetta/i }).click();
+    await choosePlanAlternative(page, row.getByRole('button', { name: /modifica ricetta/i }));
     await expect(row.getByText('In attesa di conferma · non condivisa', { exact: true })).toBeVisible();
     const pending = await storedPlanOutbox(page, accountScope);
     expect(pending).toHaveLength(1);
@@ -323,6 +325,7 @@ test('a new member bootstraps 201 historical dates, stays isolated from outsider
     }
     expect((await post(admin, adminSession, '/v1/house/members', { email: memberSession.user.email })).status()).toBe(201);
     const page = await member.newPage();
+    await seedPlanPantry(page, scope);
     const cursors: number[] = [];
     page.on('request', (request) => {
       if (new URL(request.url()).pathname !== '/v1/sync' || request.method() !== 'POST') return;
@@ -352,7 +355,7 @@ test('a new member bootstraps 201 historical dates, stays isolated from outsider
     const firstRow = page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem').first();
     const date = (await firstRow.getAttribute('data-date'))!;
     await member.setOffline(true);
-    await firstRow.getByRole('button', { name: /modifica ricetta/i }).click();
+    await choosePlanAlternative(page, firstRow.getByRole('button', { name: /modifica ricetta/i }));
     await expect(firstRow.getByText('In attesa di conferma · non condivisa', { exact: true })).toBeVisible();
     await expect.poll(async () => (await storedPlan(page, scope))?.overlays[date]?.kind).toBe('manual');
     const offlineChoice = (await storedPlan(page, scope))!.overlays[date]!;
@@ -370,10 +373,11 @@ test('guest import requires confirmation and retries the same operations after a
   try {
     const session = await register(account);
     const page = await guest.newPage();
+    await seedPlanPantry(page);
     await page.goto('/plan');
     const first = page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem').first();
     await expect(first.getByRole('button', { name: /modifica ricetta/i })).toBeVisible();
-    await first.getByRole('button', { name: /modifica ricetta/i }).click();
+    await choosePlanAlternative(page, first.getByRole('button', { name: /modifica ricetta/i }));
     const date = (await first.getAttribute('data-date'))!;
     await expect.poll(async () => (await storedPlan(page, 'guest'))?.states[date]?.kind).toBe('manual');
     const source = (await storedPlan(page, 'guest'))!.states[date]!;

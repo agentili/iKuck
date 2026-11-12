@@ -100,6 +100,21 @@ describe('AiRecipePanel', () => {
     setActiveDataScope('guest');
   });
 
+  it('generates from a dish description and portions without pantry ingredients', async () => {
+    const events = userEvent.setup();
+    vi.mocked(fetchAiConsent).mockResolvedValue({ enabled: true, homeProvider: 'openai', updatedAt: '2026-09-13T12:00:00.000Z' });
+    vi.mocked(generateAiRecipe).mockResolvedValue(recipe);
+    const onRecipeProposed = vi.fn();
+    const constraints = ['Prepara ingredienti e dosi per 4 porzioni.'];
+    renderPanel({ ingredients: [], dishDescription: '  Un risotto cremoso al limone  ', constraints, onRecipeProposed });
+    const generate = await screen.findByRole('button', { name: 'Genera ricetta AI' });
+    await waitFor(() => expect(generate).toBeEnabled());
+    await events.click(generate);
+    await waitFor(() => expect(onRecipeProposed).toHaveBeenCalledWith(recipe));
+    expect(generateAiRecipe).toHaveBeenCalledWith({ dishDescription: 'Un risotto cremoso al limone', ingredients: [], constraints, existingRecipes: [] }, profile, 'csrf-token');
+    expect(saveAiRecipe).not.toHaveBeenCalled();
+  });
+
   it('generates from a title without pantry ingredients and saves only on request', async () => {
     vi.mocked(fetchAiConsentStatus).mockResolvedValue({ consent: { enabled: true, homeProvider: 'openai', updatedAt: '2026-09-13T12:00:00.000Z' }, selectedProvider: 'openai' });
     vi.mocked(generateAiRecipe).mockResolvedValue(recipe);

@@ -203,3 +203,28 @@ registerDinnerDiarySnapshotListener(snapshot => {
   if (!allowedScopes.has(scope)) return;
   useDinnerDiaryStore.setState({ entries: [...values.entries.filter(v => v.scope !== scope), ...attach(scope, snapshot.entries)], recipes: [...values.recipes.filter(v => v.scope !== scope), ...attach(scope, snapshot.recipes)], drafts: values.drafts.filter(v => v.scope !== scope || snapshot.entries.some(e => e.id === v.value.entryId && e.updatedAt === v.value.entryUpdatedAt)) });
 });
+
+// Resolve only after the recipe is durable and its shared mutation is queued.
+export async function savePlanRecipe(scope: SyncScope, recipe: SavedRecipe, assertCurrent: () => void): Promise<void> {
+  assertCurrent();
+  if (!isSavedRecipe(recipe) || !canEdit(scope)) throw new Error('La ricetta non può essere salvata in questo contesto.');
+  const previous = writeChains.get(scope) ?? Promise.resolve();
+  const pending = trackScopedWrite(scope, async (assertWritable) => {
+    await previous;
+    assertCurrent();
+    assertWritable();
+    const recipes = useDinnerDiaryStore.getState().recipes.filter(item => item.scope === scope && item.value.id !== recipe.id).map(item => item.value);
+    await writeSavedRecipes([...recipes, recipe], scope, assertCurrent);
+    assertCurrent();
+    assertWritable();
+    if (scope !== 'guest') await enqueueEntityMutation(scope, 'saved_recipe', recipe.id, 'upsert', recipe);
+    assertCurrent();
+    useDinnerDiaryStore.setState(state => ({ recipes: [...state.recipes.filter(item => !(item.scope === scope && item.value.id === recipe.id)), { scope, value: recipe }] }));
+  });
+  writeChains.set(scope, pending);
+  pendingWrites.add(pending);
+  try { await pending; } finally {
+    pendingWrites.delete(pending);
+    if (writeChains.get(scope) === pending) writeChains.delete(scope);
+  }
+}
