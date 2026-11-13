@@ -49,7 +49,7 @@ for (const viewport of [
     });
 
     await page.goto('/recipes');
-    await expect(page.getByRole('heading', { name: 'Ricette', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Ricette', exact: true, level: 1 })).toBeVisible();
     await page.evaluate(() => {
       document.documentElement.style.fontSize = '200%';
     });

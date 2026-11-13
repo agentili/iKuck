@@ -46,7 +46,7 @@ const bottomNav = (page: Page) =>
   page.getByRole('navigation', { name: 'Navigazione principale' });
 
 const heading = (page: Page, name: string) =>
-  page.getByRole('heading', { name, exact: true });
+  page.getByRole('heading', { name, exact: true, ...(name === 'Ricette' ? { level: 1 } : {}) });
 
 const horizontalOverflow = (page: Page) =>
   page.evaluate(() => ({

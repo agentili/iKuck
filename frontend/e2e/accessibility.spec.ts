@@ -96,8 +96,8 @@ for (const theme of ['light', 'dark'] as const) {
         await page.goto(pageDef.path);
         if (pageDef.heading !== undefined) {
           const heading = pageDef.name === 'chef'
-            ? page.locator('main').getByRole('heading', { name: pageDef.heading, exact: true })
-            : page.getByRole('heading', { name: pageDef.heading, exact: true });
+            ? page.locator('main').getByRole('heading', { name: pageDef.heading, exact: true, ...(pageDef.heading === 'Ricette' ? { level: 1 } : {}) })
+            : page.getByRole('heading', { name: pageDef.heading, exact: true, ...(pageDef.heading === 'Ricette' ? { level: 1 } : {}) });
           await expect(heading).toBeVisible();
         } else {
           await expect(page.locator('main')).toBeVisible();

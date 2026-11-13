@@ -26,7 +26,7 @@ test('Chef shows the local recipe card and current cooking destinations', async 
   }
   await shortcuts.getByRole('link', { name: /^Ricette$/ }).click();
   await expect(page).toHaveURL('/recipes');
-  await expect(page.getByRole('heading', { name: 'Ricette', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ricette', exact: true, level: 1 })).toBeVisible();
 
   assertOfflineBackendClean(page);
 });
