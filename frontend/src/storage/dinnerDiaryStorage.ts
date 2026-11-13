@@ -64,22 +64,24 @@ async function readCollection<T>(databaseKey: string, storageKey: string, scope:
   }
 }
 
-async function writeCollection<T>(databaseKey: string, storageKey: string, values: readonly T[], scope: SyncScope, normalize: (items: readonly unknown[]) => T[]): Promise<void> {
+async function writeCollection<T>(databaseKey: string, storageKey: string, values: readonly T[], scope: SyncScope, normalize: (items: readonly unknown[]) => T[], assertCurrent?: () => void): Promise<void> {
   return trackScopedWrite(scope, async (assertWritable) => {
+    const assertCanWrite = () => { assertCurrent?.(); assertWritable(); };
+    assertCanWrite();
     const serialized = serializeCollection(values, normalize);
     const scopedDbKey = keyFor(scope, databaseKey);
     const scopedStorageKey = keyFor(scope, storageKey);
     if (!isIndexedDbAvailable()) {
-      assertWritable();
+      assertCanWrite();
       window.localStorage.setItem(scopedStorageKey, serialized);
       return;
     }
     try {
-      assertWritable();
-      await writeKeyValue(scopedDbKey, serialized, assertWritable);
-      assertWritable();
+      assertCanWrite();
+      await writeKeyValue(scopedDbKey, serialized, assertCanWrite);
+      assertCanWrite();
     } catch (error) {
-      assertWritable();
+      assertCanWrite();
       window.localStorage.setItem(scopedStorageKey, serialized);
       throw error;
     }
@@ -89,7 +91,7 @@ async function writeCollection<T>(databaseKey: string, storageKey: string, value
 export const readDinnerEntries = (scope: SyncScope = getActiveDataScope()): Promise<DinnerEntry[]> => readCollection(ENTRIES_DATABASE_KEY, ENTRIES_STORAGE_KEY, scope, normalizeEntries);
 export const writeDinnerEntries = (entries: readonly DinnerEntry[], scope: SyncScope): Promise<void> => writeCollection(ENTRIES_DATABASE_KEY, ENTRIES_STORAGE_KEY, entries, scope, normalizeEntries);
 export const readSavedRecipes = (scope: SyncScope = getActiveDataScope()): Promise<SavedRecipe[]> => readCollection(RECIPES_DATABASE_KEY, RECIPES_STORAGE_KEY, scope, normalizeRecipes);
-export const writeSavedRecipes = (recipes: readonly SavedRecipe[], scope: SyncScope): Promise<void> => writeCollection(RECIPES_DATABASE_KEY, RECIPES_STORAGE_KEY, recipes, scope, normalizeRecipes);
+export const writeSavedRecipes = (recipes: readonly SavedRecipe[], scope: SyncScope, assertCurrent?: () => void): Promise<void> => writeCollection(RECIPES_DATABASE_KEY, RECIPES_STORAGE_KEY, recipes, scope, normalizeRecipes, assertCurrent);
 
 export async function readDiaryDraftSets(scope: SyncScope): Promise<DiaryDraftSet[]> {
   return readCollection(DRAFTS_DATABASE_KEY, DRAFTS_STORAGE_KEY, scope, (items) => {

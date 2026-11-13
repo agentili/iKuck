@@ -9,6 +9,7 @@ export interface AiRecipeConsentStatus {
 
 export interface AiRecipeGenerationInput {
   dishTitle?: string;
+  dishDescription?: string;
   ingredients: string[];
   constraints: string[];
   existingRecipes?: Array<{ title: string; ingredients: Array<{ name: string; amount: string }> }>;

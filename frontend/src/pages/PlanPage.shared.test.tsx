@@ -1,3 +1,4 @@
+import { choosePlanRecipe } from '../test/choosePlanRecipe';
 import { MemoryRouter } from 'react-router-dom';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -111,7 +112,7 @@ describe('PlanPage shared mode', () => {
       return request;
     });
 
-    await userEvent.setup().click(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
+    await choosePlanRecipe(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
     await transactionRead.promise;
     get.mockRestore();
 
@@ -224,13 +225,12 @@ describe('PlanPage shared mode', () => {
       current.set(command.date, state);
       return { version: 2, operationId: command.operationId, outcome: 'applied', current: state };
     });
-    const userInput = userEvent.setup();
     const firstDevice = render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
     await waitFor(() => expect(screen.getByText('Condiviso con la Casa')).toBeVisible());
     const firstRow = screen.getAllByRole('listitem')[0];
     const originalTitle = RECIPES.find((recipe) => recipe.id === current.get(firstRow.getAttribute('data-date')!)?.recipeId)!.title;
-    await userInput.click(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
+    await choosePlanRecipe(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
     await waitFor(() => {
       const state = current.get(firstRow.getAttribute('data-date')!);
       expect(state?.kind).toBe('manual');
@@ -280,12 +280,11 @@ describe('PlanPage shared mode', () => {
     const deviceId = deferred<string>();
     const getDeviceId = vi.spyOn(syncQueue, 'getDeviceId').mockResolvedValue('bootstrap-device');
     const send = vi.spyOn(mealPlanApi, 'sendCommand');
-    const userInput = userEvent.setup();
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
     const firstRow = (await screen.findAllByRole('listitem'))[0]!;
     getDeviceId.mockImplementationOnce(() => deviceId.promise);
-    await userInput.click(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
+    await choosePlanRecipe(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
     await waitFor(() => expect(getDeviceId).toHaveBeenCalledTimes(2));
 
     setTimeZone({ timeZone: 'America/New_York', revision: '123e4567-e89b-42d3-a456-426614174001' });
@@ -315,13 +314,12 @@ describe('PlanPage shared mode', () => {
       sendStarted.resolve(command);
       return lateResponse.promise;
     });
-    const userInput = userEvent.setup();
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
     const oldZone = await screen.findByText(/Fuso: Europe\/Rome/);
     expect(oldZone).toBeVisible();
     const firstRow = screen.getAllByRole('listitem')[0]!;
-    await userInput.click(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
+    await choosePlanRecipe(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
     const command = await sendStarted.promise;
     await waitFor(async () => expect(await readMealPlanOutbox(['house:house-1'])).toHaveLength(1));
 
@@ -360,11 +358,10 @@ describe('PlanPage shared mode', () => {
       sendStarted.resolve(command);
       return lateResponse.promise;
     });
-    const userInput = userEvent.setup();
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
     expect(await screen.findByText(/Fuso: Europe\/Rome/)).toBeVisible();
-    await userInput.click(within(screen.getAllByRole('listitem')[0]!).getByRole('button', { name: /modifica ricetta/i }));
+    await choosePlanRecipe(within(screen.getAllByRole('listitem')[0]!).getByRole('button', { name: /modifica ricetta/i }));
     const command = await sendStarted.promise;
     await waitFor(async () => expect(await readMealPlanOutbox(['house:house-1'])).toHaveLength(1));
 
@@ -398,7 +395,6 @@ describe('PlanPage shared mode', () => {
   it('aborts the recipe transaction when house revocation arrives during the native IndexedDB queue write', async () => {
     setupExistingSharedPlan();
     vi.spyOn(syncQueue, 'getDeviceId').mockResolvedValue('device-test');
-    const userInput = userEvent.setup();
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
     const firstRow = (await screen.findAllByRole('listitem'))[0]!;
@@ -418,7 +414,7 @@ describe('PlanPage shared mode', () => {
     });
 
     try {
-      await userInput.click(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
+      await choosePlanRecipe(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
       await queueWriteReached.promise;
       put.mockRestore();
 

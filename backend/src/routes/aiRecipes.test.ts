@@ -92,6 +92,8 @@ const generate = (
   input: Partial<{
     dietProfile: DietProfilePayload;
     dishTitle: string;
+    dishDescription: string;
+    constraints: string[];
     ingredients: string[];
     existingRecipes: Array<{ title: string; ingredients: Array<{ name: string; amount: string }> }>;
   }> = {},
@@ -101,8 +103,9 @@ const generate = (
   headers,
   payload: {
     ...(input.dishTitle === undefined ? {} : { dishTitle: input.dishTitle }),
+    ...(input.dishDescription === undefined ? {} : { dishDescription: input.dishDescription }),
     ingredients: input.ingredients ?? ['Ceci', 'Pomodoro'],
-    constraints: ['Una sola padella'],
+    constraints: input.constraints ?? ['Una sola padella'],
     dietProfile: input.dietProfile ?? profile,
     existingRecipes: input.existingRecipes ?? [],
   },
@@ -497,11 +500,23 @@ describe('AI recipe routes', () => {
     await app.close();
   });
 
+  it('generates from a description and portion constraint without pantry ingredients', async () => {
+    const provider = { generate: vi.fn().mockResolvedValue(generatedDraft) };
+    const { app } = createAiApp({ provider });
+    await consent(app, true);
+    const constraints = ['Prepara ingredienti e dosi per 4 porzioni.'];
+    const result = await generate(app, { dishDescription: '  Un risotto cremoso al limone  ', ingredients: [], constraints });
+    expect(result.statusCode).toBe(201);
+    expect(provider.generate).toHaveBeenCalledWith(expect.objectContaining({ dishDescription: 'Un risotto cremoso al limone', ingredients: [], constraints, dietProfile: profile }));
+    expect((await app.inject({ method: 'GET', url: '/v1/ai-recipes', headers })).json().recipes).toEqual([]);
+    await app.close();
+  });
+
   it('requires a nonblank bounded title or at least one ingredient', async () => {
     const provider = { generate: vi.fn().mockResolvedValue(generatedDraft) };
     const { app } = createAiApp({ provider });
     await consent(app, true);
-    for (const input of [{ ingredients: [] }, { ingredients: [], dishTitle: '   ' }, { ingredients: [], dishTitle: 'x'.repeat(241) }]) {
+    for (const input of [{ ingredients: [] }, { ingredients: [], dishTitle: '   ' }, { ingredients: [], dishTitle: 'x'.repeat(241) }, { ingredients: [], dishDescription: '   ' }, { ingredients: [], dishDescription: 'x'.repeat(241) }]) {
       expect((await generate(app, input)).statusCode).toBe(400);
     }
     expect(provider.generate).not.toHaveBeenCalled();
