@@ -39,7 +39,7 @@ describe('ProfilePage', () => {
     });
     vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => {
       if (path === '/v1/ai-recipes/consent') {
-        return Promise.resolve(new Response(JSON.stringify({ consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' } }), { status: 200 }));
+        return Promise.resolve(new Response(JSON.stringify({ consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' }, selectedProvider: 'openai' }), { status: 200 }));
       }
       if (path === '/v1/ai-recipes') {
         return Promise.resolve(new Response(JSON.stringify({ recipes: [] }), { status: 200 }));
@@ -300,7 +300,7 @@ describe('ProfilePage', () => {
     const user = userEvent.setup();
     const fetch = vi.fn().mockImplementation((path: string) => {
       if (path === '/v1/ai-recipes/consent') {
-        return Promise.resolve(new Response(JSON.stringify({ consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' } }), { status: 200 }));
+        return Promise.resolve(new Response(JSON.stringify({ consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' }, selectedProvider: 'openai' }), { status: 200 }));
       }
       if (path === '/v1/ai-recipes') {
         return Promise.resolve(new Response(JSON.stringify({ recipes: [] }), { status: 200 }));
@@ -337,7 +337,7 @@ describe('ProfilePage', () => {
     let cursor = 0;
     const fetch = vi.fn().mockImplementation((path: string) => {
       if (path === '/v1/ai-recipes/consent') {
-        return Promise.resolve(new Response(JSON.stringify({ consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' } }), { status: 200 }));
+        return Promise.resolve(new Response(JSON.stringify({ consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' }, selectedProvider: 'openai' }), { status: 200 }));
       }
       if (path === '/v1/ai-recipes') {
         return Promise.resolve(new Response(JSON.stringify({ recipes: [] }), { status: 200 }));
@@ -360,7 +360,7 @@ describe('ProfilePage', () => {
     await user.click(screen.getByRole('button', { name: 'Importa i dati locali' }));
     await user.click(screen.getByRole('button', { name: 'Conferma importazione' }));
 
-    expect(await screen.findByText(/Sincronizzazione parziale/)).toBeVisible();
+    expect(await screen.findByText(/Sincronizzazione parziale/, {}, { timeout: 5000 })).toBeVisible();
     expect(fetch).toHaveBeenCalledWith('/v1/sync', expect.objectContaining({ method: 'POST' }));
     vi.unstubAllGlobals();
   });

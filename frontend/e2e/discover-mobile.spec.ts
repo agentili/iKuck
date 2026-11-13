@@ -20,7 +20,7 @@ test('tastiera: ricerca locale e filtro Pesce mostrano risultati e stato selezio
   await page.goto('/discover');
 
   await expect(page.getByRole('heading', { name: 'Cerca ricette', exact: true })).toBeVisible();
-  const catalog = page.getByRole('region', { name: 'Tutte le ricette' });
+  const catalog = page.getByRole('region', { name: 'Ricette', exact: true });
   const search = page.getByRole('searchbox', { name: 'Cerca ricette' });
   await search.focus();
   await search.pressSequentially('limone');
@@ -45,7 +45,7 @@ test('puntatore: ricerca locale e filtro Pesce mostrano risultati e stato selezi
   await page.goto('/discover');
 
   await expect(page.getByRole('heading', { name: 'Cerca ricette', exact: true })).toBeVisible();
-  const catalog = page.getByRole('region', { name: 'Tutte le ricette' });
+  const catalog = page.getByRole('region', { name: 'Ricette', exact: true });
   const search = page.getByRole('searchbox', { name: 'Cerca ricette' });
   await search.click();
   await search.fill('tonno');
@@ -68,7 +68,7 @@ for (const viewport of [
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto('/discover');
     await expect(page.getByRole('heading', { name: 'Cerca ricette', exact: true })).toBeVisible();
-    const catalog = page.getByRole('region', { name: 'Tutte le ricette' });
+    const catalog = page.getByRole('region', { name: 'Ricette', exact: true });
     const finalRecipeLink = catalog.getByRole('link').last();
     await expect(finalRecipeLink).toBeVisible();
 

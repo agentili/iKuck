@@ -99,9 +99,9 @@ describe('DiscoverPage', () => {
     expect(search).toHaveClass('ik-input', 'focus-visible:outline-[var(--ik-focus)]');
     expect(selectedFilter).toHaveClass('min-h-11', 'ik-button-primary', 'focus-visible:outline-[var(--ik-focus)]');
     expect(within(filters).getByRole('button', { name: 'Carne' })).toHaveClass('bg-[var(--ik-sage)]');
-    expect(screen.getByRole('region', { name: 'Ricette salvate' })).toHaveClass('bg-[var(--ik-surface)]');
-    expect(screen.getByRole('region', { name: 'Ricette AI' })).toHaveClass('bg-[var(--ik-surface)]');
-    expect(screen.getByRole('region', { name: 'Tutte le ricette' })).toHaveClass('bg-[var(--ik-surface)]');
+    expect(screen.getByRole('region', { name: 'Ricette' })).toHaveClass('bg-[var(--ik-surface)]');
+    expect(screen.queryByRole('heading', { name: 'Ricette salvate' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Ricette AI' })).not.toBeInTheDocument();
   });
 
   it('searches locally by title and ingredient across Diary, AI and catalog groups', async () => {
@@ -227,7 +227,7 @@ describe('DiscoverPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Minestra locale' })).toBeInTheDocument();
     expect(screen.getByText(/Ambito: dati locali/)).toBeInTheDocument();
-    expect(screen.getByText(/Ricette AI riservate agli account verificati/)).toBeInTheDocument();
+    expect(screen.queryByText(/Ricette AI riservate agli account verificati/)).not.toBeInTheDocument();
     expect(readSavedRecipes).toHaveBeenCalledWith('guest');
     expect(fetchAiRecipes).not.toHaveBeenCalled();
   });

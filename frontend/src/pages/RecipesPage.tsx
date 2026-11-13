@@ -222,6 +222,7 @@ export default function RecipesPage() {
         <AiRecipePanel
           key={`${activeScope}:${userId ?? 'guest'}`}
           generationMode="title"
+          showConsent={false}
           generationReady={dietReady}
           ingredients={[]}
           dietProfile={dietProfile}

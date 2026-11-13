@@ -1,3 +1,6 @@
+import { hashOpaqueToken } from '../auth/tokens.js';
+import { AuthServiceError } from '../auth/service.js';
+import { RECIPES } from '@ikuck/shared/recipeCatalog';
 import Fastify from 'fastify';
 import { imageRoutes } from '../recipeImages/routes.js';
 import type { AuthService } from '../auth/service.js';
@@ -68,6 +71,49 @@ const url = process.env.INTEGRATION_DATABASE_URL;
       const allowed = await app.inject({ url: `/v1/recipe-images/assets/${job.id}`, headers: { cookie: 'ikuck_session=owner' } });
       expect(allowed.statusCode).toBe(200); expect(allowed.headers['cache-control']).toBe('private, no-store'); expect(allowed.rawPayload).toEqual(result.bytes);
     } finally { await app.close(); vi.unstubAllEnvs(); }
+  });
+
+  it('queues missing catalog and own private images with consent, scope isolation and idempotency', async () => {
+    vi.stubEnv('RECIPE_IMAGES_ENABLED','true'); vi.stubEnv('PEXELS_API_KEY','test'); vi.stubEnv('OPENAI_API_KEY','test'); vi.stubEnv('RECIPE_IMAGE_MODEL','test'); vi.stubEnv('RECIPE_IMAGE_VISION_MODEL','test');
+    const otherUser = randomUUID();
+    await db.execute(sql`INSERT INTO users(id,email) VALUES(${otherUser},${`${otherUser}@images.test`})`);
+    const auth = { authenticate: async () => ({ id: 'test', userId, email: 'test@example.com', emailVerifiedAt: new Date(), csrfTokenHash: hashOpaqueToken('csrf'), expiresAt: new Date('2099-01-01') }) } as unknown as AuthService;
+    const app = Fastify();
+    app.setErrorHandler((error, _request, reply) => reply.code(error instanceof AuthServiceError ? error.status : 500).send({ error: error.message }));
+    await app.register(imageRoutes(db,auth,'https://example.com'));
+    const generationCalls = provider.generate.mock.calls.length;
+    const headers = { cookie: 'ikuck_session=owner', origin: 'https://example.com', 'x-csrf-token': 'csrf' };
+    const enqueue = (scope = `account:${userId}`) => app.inject({ method: 'POST', url: '/v1/recipe-images/generate-library', headers, payload: { scope } });
+    try {
+      expect((await app.inject({ method: 'POST', url: '/v1/recipe-images/generate-library', headers: { ...headers, 'x-csrf-token': 'wrong' }, payload: { scope: `account:${userId}` } })).statusCode).toBe(403);
+      expect((await enqueue(`account:${otherUser}`)).statusCode).toBe(403);
+      expect((await enqueue(`house:${randomUUID()}`)).statusCode).toBe(403);
+      await save('ai_consent','profile',{ enabled: false });
+      const denied = await enqueue();
+      expect(denied.statusCode).toBe(403);
+      expect(denied.json()).toEqual({ error: 'ai_image_consent_required' });
+      await save('ai_consent','profile',{ enabled: true, homeProvider: 'openai', imagePolicyVersion: 'recipe-images-v1' });
+      await save('saved_recipe','queue-me',{ title: 'Soup', ingredients: [{ name: 'Carrot' }] });
+      await db.execute(sql`DELETE FROM recipe_image_jobs WHERE user_id=${userId} AND sync_item_id IN (SELECT id FROM sync_items WHERE entity_id='queue-me')`);
+      await db.execute(sql`INSERT INTO sync_items(user_id,scope_type,scope_id,entity_type,entity_id,device_id,payload,client_updated_at,mutation_id) VALUES(${otherUser},'user',${otherUser},'saved_recipe','other','test','{"title":"Other","ingredients":[]}'::jsonb,now(),${randomUUID()})`);
+      await db.execute(sql`UPDATE recipe_image_jobs SET state='quota_exceeded' WHERE user_id=${otherUser}`);
+      const [beforeOther] = await db.execute(sql`SELECT state FROM recipe_image_jobs WHERE user_id=${otherUser}`);
+      const response = await enqueue();
+      expect(response.statusCode).toBe(202);
+      expect(response.json().queued).toBeGreaterThan(0);
+      const catalog = await db.execute(sql`SELECT catalog_id FROM recipe_image_jobs WHERE catalog_id IS NOT NULL`);
+      expect(catalog.map(row => row.catalog_id)).toEqual(expect.arrayContaining(RECIPES.filter(r => r.id !== 'uova-al-pomodoro').map(r => r.id)));
+      const [own] = await db.execute(sql`SELECT j.state FROM recipe_image_jobs j JOIN sync_items s ON s.id=j.sync_item_id WHERE s.entity_id='queue-me' AND j.user_id=${userId}`);
+      expect(own.state).toBe('pending');
+      expect((await enqueue()).json().queued).toBe(0);
+      const [afterOther] = await db.execute(sql`SELECT state FROM recipe_image_jobs WHERE user_id=${otherUser}`);
+      expect(afterOther).toEqual(beforeOther);
+      expect(provider.generate).toHaveBeenCalledTimes(generationCalls);
+    } finally {
+      await app.close(); vi.unstubAllEnvs();
+      await db.execute(sql`DELETE FROM sync_items WHERE scope_id=${otherUser}`);
+      await db.execute(sql`DELETE FROM users WHERE id=${otherUser}`);
+    }
   });
 
 });

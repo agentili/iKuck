@@ -375,3 +375,22 @@ test('crea una ricetta AI dal titolo e la aggiunge alla raccolta solo dopo il sa
   await expect(panel.getByRole('heading', { name: recipe.title })).toHaveCount(0);
   expect(submissions.map(({ path }) => path)).toEqual(['/v1/ai-recipes', '/v1/ai-recipes/save']);
 });
+
+
+test('il consenso AI si gestisce dal profilo e non dalla pagina ricette', async ({ page }) => {
+  await installVerifiedBackend(page, {
+    'GET /v1/profile': { json: { profile: { displayName: 'Ale' } } },
+    'PUT /v1/ai-recipes/consent': { json: { consent: { enabled: true, homeProvider: 'openai', updatedAt: '2026-11-13T12:00:00Z' } } },
+  });
+  await page.goto('/recipes');
+  await expect(page.getByRole('button', { name: 'Genera ricetta AI' })).toBeDisabled();
+  await expect(page.locator('[data-ai-consent]')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Consenso AI nel profilo' }).click();
+  const settings = page.getByRole('region', { name: 'Consenso AI', exact: true });
+  await settings.getByText('Consenso AI per ricette', { exact: false }).click();
+  await settings.getByRole('checkbox', { name: /Acconsento/ }).check();
+  await settings.getByRole('button', { name: 'Salva consenso' }).click();
+  await expect(settings.getByRole('button', { name: 'Revoca consenso AI globale' })).toBeVisible();
+  await expect(settings.getByRole('button', { name: 'Genera ricetta AI' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Genera e salva le immagini delle ricette' })).toBeVisible();
+});

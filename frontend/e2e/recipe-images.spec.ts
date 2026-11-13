@@ -21,3 +21,23 @@ test('catalog image arrives asynchronously with attribution and remains availabl
   await page.goBack();
   await expect(page.getByRole('img', { name: 'Pollo al limone: immagine illustrativa' })).toBeVisible();
 });
+
+
+test('profile explicitly queues and saves recipe library images in the background', async ({ page }) => {
+  await installOfflineBackend(page, { responses: {
+    'GET /v1/auth/session': { json: { authenticated: true, user: { id: 'image-user', email: 'image@example.test', emailVerifiedAt: '2026-11-13T10:00:00Z' }, csrfToken: 'image-csrf', expiresAt: '2099-01-01T00:00:00Z' } },
+    'GET /v1/house': { json: { house: null } },
+    'GET /v1/profile': { json: { profile: { displayName: 'Ale' } } },
+    'GET /v1/sync': { json: { changes: [], nextCursor: 0 } },
+    'POST /v1/sync': { json: { uploaded: 0, downloaded: 0, pending: 0, complete: true } },
+    'GET /v1/ai-recipes/consent': { json: { consent: { enabled: true, homeProvider: 'openai', imagePolicyVersion: 'recipe-images-v1', imageProvider: 'openai', updatedAt: '2026-11-13T10:00:00Z' }, selectedProvider: 'openai', selectedImageProvider: 'openai' } },
+    'POST /v1/recipe-images/generate-library': { status: 202, json: { queued: 3 } },
+  } });
+  await page.goto('/profile');
+  const button = page.getByRole('button', { name: 'Genera e salva le immagini delle ricette' });
+  await expect(button).toBeEnabled();
+  const request = page.waitForRequest(req => req.url().endsWith('/v1/recipe-images/generate-library') && req.method() === 'POST');
+  await button.click();
+  expect((await request).postDataJSON()).toEqual({ scope: 'account:image-user' });
+  await expect(page.getByRole('status').filter({ hasText: '3 immagini accodate' })).toBeVisible();
+});

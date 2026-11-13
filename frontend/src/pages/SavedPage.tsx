@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
-import { Link } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import type { GeneratedRecipe } from '@ikuck/shared/contracts';
 import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
@@ -11,8 +10,6 @@ import { hydrateDinnerDiaryStore } from '../store/dinnerDiaryStore';
 import { getActiveDataScope, subscribeActiveDataScope } from '../sync/scopeContext';
 import RecipeCard from '../components/ui/RecipeCard';
 
-const LIBRARY_GROUP_LABEL = 'Le tue ricette salvate';
-const AI_GROUP_LABEL = 'Le tue ricette AI';
 const INTERACTION_FOCUS_CLASS = [
   '[&_a:focus-visible]:outline',
   '[&_a:focus-visible]:outline-2',
@@ -341,34 +338,17 @@ export default function SavedPage() {
       )}
 
       <div className="space-y-7">
-        <section
-          role="region"
-          aria-labelledby="library-recipes-title"
-          className="space-y-4 border-t border-[var(--ik-border)] pt-5 first:border-t-0 first:pt-0"
-        >
-          <header className="max-w-2xl">
-            <p className="text-sm font-semibold text-[var(--ik-basil-dark)]">Dal Diario</p>
-            <h2 id="library-recipes-title" className="mt-1 text-2xl font-black tracking-[-0.02em] text-[var(--ik-ink)]">
-              {LIBRARY_GROUP_LABEL}
-            </h2>
-            <p className="mt-1 text-sm leading-relaxed text-[var(--ik-ink-muted)]">
-              Ricette salvate nel Diario, disponibili anche offline.
-            </p>
-          </header>
-          {libraryLoading && <p role="status" className="text-sm font-semibold text-[var(--ik-basil-dark)]">Carico le ricette salvate…</p>}
+        <section role="region" aria-labelledby="recipes-title" className="space-y-4">
+          <h2 id="recipes-title" className="text-2xl font-black">Ricette</h2>
+          {libraryLoading && <p role="status">Carico le ricette salvate…</p>}
+          {savedLoading && <p role="status">Carico le ricette AI…</p>}
           {libraryError !== null && <SavedError message={libraryError} />}
-          {!libraryLoading && libraryError === null && filteredLibrary.length === 0 && (
-            <SavedEmptyState text={query.trim().length > 0
-              ? 'Nessuna ricetta del Diario corrisponde alla ricerca.'
-              : activeFilter !== 'all'
-                ? 'Nessuna ricetta salvata nel diario corrisponde al filtro.'
-                : 'Nessuna ricetta salvata nel diario.'} />
-          )}
-          {!libraryLoading && libraryError === null && filteredLibrary.length > 0 && (
-            <div className={RECIPE_GRID_CLASS}>
+          {savedError !== null && <SavedError message={savedError} />}
+          {!libraryLoading && !savedLoading && !hasNoSearchResults && !isEmptyFilter && filteredLibrary.length === 0 && filteredSaved.length === 0 && <SavedEmptyState text={query.trim() ? 'Nessuna ricetta corrisponde alla ricerca.' : 'Nessuna ricetta salvata ancora.'} />}
+          <div className={RECIPE_GRID_CLASS}>
               {filteredLibrary.map((recipe) => (
                 <RecipeCard
-                  key={recipe.id}
+                  key={`filteredLibrary:${recipe.id}`}
                   recipeId={recipe.id}
                   variant="salvata"
                   title={recipe.title}
@@ -383,52 +363,9 @@ export default function SavedPage() {
                   openAriaLabel={`Apri ${recipe.title}`}
                 />
               ))}
-            </div>
-          )}
-        </section>
-
-        <section
-          role="region"
-          aria-labelledby="ai-recipes-title"
-          className="space-y-4 border-t border-[var(--ik-border)] pt-5 first:border-t-0 first:pt-0"
-        >
-          <header className="max-w-2xl">
-            <p className="text-sm font-semibold text-[var(--ik-basil-dark)]">Generate con l’AI</p>
-            <h2 id="ai-recipes-title" className="mt-1 text-2xl font-black tracking-[-0.02em] text-[var(--ik-ink)]">
-              {AI_GROUP_LABEL}
-            </h2>
-            <p className="mt-1 text-sm leading-relaxed text-[var(--ik-ink-muted)]">
-              Le ricette AI salvate sono legate al tuo account verificato.
-            </p>
-          </header>
-          {savedError !== null && <SavedError message={savedError} />}
-          {!verified && (
-            <div className="rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-mist)] p-4 sm:p-5">
-              <h3 className="text-lg font-bold text-[var(--ik-ink)]">Ricette AI riservate agli account verificati</h3>
-              <p className="mt-1 text-sm leading-relaxed text-[var(--ik-ink-muted)]">
-                Accedi con un account verificato per vedere le ricette AI salvate.
-              </p>
-              <Link
-                to="/profile"
-                className="mt-3 inline-flex min-h-11 items-center justify-center rounded-[var(--ik-radius-control)] border border-[var(--ik-basil)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)]"
-              >
-                Accedi al tuo account
-              </Link>
-            </div>
-          )}
-          {verified && savedLoading && <p role="status" className="text-sm font-semibold text-[var(--ik-basil-dark)]">Carico le ricette AI…</p>}
-          {verified && !savedLoading && savedError === null && filteredSaved.length === 0 && (
-            <SavedEmptyState text={query.trim().length > 0
-              ? 'Nessuna ricetta AI corrisponde alla ricerca.'
-              : activeFilter !== 'all'
-                ? 'Nessuna ricetta AI salvata corrisponde al filtro.'
-                : 'Nessuna ricetta AI salvata ancora.'} />
-          )}
-          {verified && !savedLoading && savedError === null && filteredSaved.length > 0 && (
-            <div className={RECIPE_GRID_CLASS}>
               {filteredSaved.map((recipe) => (
                 <RecipeCard
-                  key={recipe.id}
+                  key={`filteredSaved:${recipe.id}`}
                   recipeId={recipe.id}
                   variant="ai"
                   title={recipe.title}
@@ -439,8 +376,7 @@ export default function SavedPage() {
                   detailsId={`saved-recipe-details-${recipe.id}`}
                 />
               ))}
-            </div>
-          )}
+          </div>
         </section>
       </div>
     </main>

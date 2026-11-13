@@ -33,6 +33,10 @@
       "default": "./src/pantryConsumption.ts"
     },
     "./sync-fixtures/valid.json": "./sync-fixtures/valid.json",
-    "./sync-fixtures/invalid.json": "./sync-fixtures/invalid.json"
+    "./sync-fixtures/invalid.json": "./sync-fixtures/invalid.json",
+    "./recipeCatalog": {
+      "types": "./src/recipeCatalog.ts",
+      "default": "./src/recipeCatalog.ts"
+    }
   }
 }
