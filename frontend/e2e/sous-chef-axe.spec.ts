@@ -32,7 +32,7 @@ for (const theme of ['light', 'dark'] as const) {
       });
       await page.goto(route.path);
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-      await expect(page.locator('main').last().getByRole('heading', { name: route.heading, exact: true })).toBeVisible();
+      await expect(page.locator('main').last().getByRole('heading', { name: route.heading, exact: true, ...(route.heading === 'Ricette' ? { level: 1 } : {}) })).toBeVisible();
 
       const results = await new AxeBuilder({ page }).analyze();
       expect({

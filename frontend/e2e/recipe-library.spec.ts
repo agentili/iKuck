@@ -368,7 +368,7 @@ test('crea una ricetta AI dal titolo e la aggiunge alla raccolta solo dopo il sa
   await expect(panel.getByRole('heading', { name: recipe.title })).toBeVisible();
   expect(submissions).toHaveLength(1);
   expect(submissions[0].body).toMatchObject({ dishTitle: recipe.title, ingredients: [], dietProfile: { diet: 'omnivore' } });
-  const library = page.getByRole('region', { name: 'Ricette' });
+  const library = page.getByRole('region', { name: 'Ricette', exact: true });
   await expect(library.getByRole('heading', { name: recipe.title })).toHaveCount(0);
   await panel.getByRole('button', { name: 'Salva ricetta' }).click();
   await expect(library.getByRole('heading', { name: recipe.title })).toBeVisible();
