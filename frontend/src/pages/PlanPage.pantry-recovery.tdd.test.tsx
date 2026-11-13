@@ -1,3 +1,4 @@
+import { choosePlanRecipe } from '../test/choosePlanRecipe';
 import { MemoryRouter } from 'react-router-dom';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -305,7 +306,6 @@ describe('PlanPage pantry and recovery', () => {
     setActiveDataScope('house:house-1');
     useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-token', expiresAt: '2026-12-01T00:00:00.000Z' });
     const { datesByScope, readRecovery } = setupSharedPlan(['house:house-1']);
-    const userInput = userEvent.setup();
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
     expect(await screen.findByText('Condiviso con la Casa')).toBeVisible();
 
@@ -321,7 +321,7 @@ describe('PlanPage pantry and recovery', () => {
     const replaceButton = within(firstRow).getByRole('button', { name: /modifica ricetta/i });
     expect(replaceButton).toBeEnabled();
 
-    await userInput.click(replaceButton);
+    await choosePlanRecipe(replaceButton);
 
     await waitFor(async () => {
       expect(await screen.findByText(/non è ancora condivisa/i)).toBeVisible();

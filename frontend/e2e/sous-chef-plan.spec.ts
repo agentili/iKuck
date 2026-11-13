@@ -1,9 +1,11 @@
+import { choosePlanAlternative, seedPlanPantry } from './helpers/planWizard';
 import { expect, test } from '@playwright/test';
 import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
 
 test('il piano ospite propone ricette reali e conserva una sostituzione dopo il reload', async ({ page }) => {
   await installOfflineBackend(page);
   await page.setViewportSize({ width: 390, height: 844 });
+  await seedPlanPantry(page);
   const planResponse = await page.goto('/plan');
   expect(planResponse?.status()).toBe(200);
   const planHeading = page.getByRole('heading', { name: 'Piano settimanale', exact: true });
@@ -22,7 +24,7 @@ test('il piano ospite propone ricette reali e conserva una sostituzione dopo il 
   const date = await firstRow.getAttribute('data-date');
   expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
-  await firstRow.getByRole('button', { name: /modifica ricetta/i }).click();
+  await choosePlanAlternative(page, firstRow.getByRole('button', { name: /modifica ricetta/i }));
   await expect(recipeTitle).not.toHaveText(originalTitle ?? '');
   const replacementTitle = await recipeTitle.textContent();
   expect(replacementTitle).not.toBeNull();
@@ -102,6 +104,7 @@ test('una ricevuta del Piano arrivata dopo il logout conserva la coda account gi
   });
   await page.route('**/v1/auth/logout', (route) => route.fulfill({ status: 204, body: '' }));
   await page.setViewportSize({ width: 390, height: 844 });
+  await seedPlanPantry(page, accountScope);
   await page.goto('/plan');
   const planHeading = page.getByRole('heading', { name: 'Piano settimanale', exact: true });
   await expect(planHeading).toBeVisible();
@@ -109,7 +112,7 @@ test('una ricevuta del Piano arrivata dopo il logout conserva la coda account gi
   const plan = page.getByRole('list', { name: 'Pasti da domani' });
   await expect(page.getByText('Sincronizzato con il tuo account', { exact: true })).toBeVisible();
   await expect(plan.getByRole('listitem')).toHaveCount(7);
-  await plan.getByRole('listitem').first().getByRole('button', { name: /modifica ricetta/i }).click();
+  await choosePlanAlternative(page, plan.getByRole('listitem').first().getByRole('button', { name: /modifica ricetta/i }));
   const command = await commandStarted;
   expect(command).toMatchObject({ scope: accountScope, action: 'manual_set' });
 
@@ -153,6 +156,7 @@ test('il Piano ospite si importa solo su conferma e si riprende dopo la riconnes
     'GET /v1/ai-recipes': { json: { recipes: [] } },
   } });
   await page.setViewportSize({ width: 390, height: 844 });
+  await seedPlanPantry(page);
   await page.goto('/plan');
   const planHeading = page.getByRole('heading', { name: 'Piano settimanale', exact: true });
   await expect(planHeading).toBeVisible();
@@ -160,7 +164,7 @@ test('il Piano ospite si importa solo su conferma e si riprende dopo la riconnes
   const firstRow = page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem').first();
   const planDate = await firstRow.getAttribute('data-date');
   expect(planDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  await firstRow.getByRole('button', { name: /modifica ricetta/i }).click();
+  await choosePlanAlternative(page, firstRow.getByRole('button', { name: /modifica ricetta/i }));
   await expect.poll(() => page.evaluate(async (date) => {
     const request = indexedDB.open('ikuck-local-v2');
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -369,12 +373,13 @@ test('rimuove il conflitto dal Piano solo dopo retry applicato e verificato dal 
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await seedPlanPantry(page, scope);
   await page.goto('/plan');
   const planHeading = page.getByRole('heading', { name: 'Piano settimanale', exact: true });
   await expect(planHeading).toBeVisible();
   const plan = page.getByRole('list', { name: 'Pasti da domani' });
   await expect(plan.getByRole('listitem')).toHaveCount(7);
-  await plan.getByRole('listitem').first().getByRole('button', { name: /modifica ricetta/i }).click();
+  await choosePlanAlternative(page, plan.getByRole('listitem').first().getByRole('button', { name: /modifica ricetta/i }));
   const conflictRegion = page.getByRole('region', { name: 'Modifiche in conflitto' });
   await expect(conflictRegion).toContainText('non è stata condivisa');
   await expect(page.getByRole('button', { name: 'Riproporre la scelta' })).toBeVisible();

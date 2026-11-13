@@ -58,6 +58,7 @@ const saveRequestSchema = z.object({ recipe: generatedRecipeSchema }).strict();
 
 const generationRequestSchema = z.object({
   dishTitle: z.string().trim().min(1).max(240).optional(),
+  dishDescription: z.string().trim().min(1).max(240).optional(),
   ingredients: z.array(z.string().trim().min(1).max(120)).max(AI_RECIPE_MAX_GENERATION_INGREDIENTS),
   constraints: z.array(z.string().trim().min(1).max(240)).max(20),
   dietProfile: dietProfilePayloadSchema,
@@ -68,7 +69,7 @@ const generationRequestSchema = z.object({
       amount: z.string().trim().min(1).max(80),
     })).max(30),
   })).max(50).optional(),
-}).strict().refine((value) => value.ingredients.length > 0 || value.dishTitle !== undefined);
+}).strict().refine((value) => value.ingredients.length > 0 || value.dishTitle !== undefined || value.dishDescription !== undefined);
 
 const invalidPayload = (): AuthServiceError => new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');
 
@@ -270,6 +271,7 @@ export const registerAiRecipeRoutes = ({
           try {
             return parseGeneratedRecipeDraft(await provider.generate({
               ...(parsed.data.dishTitle === undefined ? {} : { dishTitle: parsed.data.dishTitle }),
+              ...(parsed.data.dishDescription === undefined ? {} : { dishDescription: parsed.data.dishDescription }),
               ingredients: parsed.data.ingredients,
               constraints: parsed.data.constraints,
               dietProfile: parsed.data.dietProfile as DietProfilePayload,

@@ -1,7 +1,7 @@
+import { choosePlanRecipe } from '../test/choosePlanRecipe';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
-import userEvent from '@testing-library/user-event';
 import { DEFAULT_DIET_PROFILE, isRecipeCompatible } from '../domain/dietary';
 import { RECIPES } from '../domain/recipes';
 import PlanPage from './PlanPage';
@@ -43,14 +43,13 @@ describe('PlanPage recipe proposals', () => {
   });
 
   it('persists a replacement across a page reload', async () => {
-    const user = userEvent.setup();
     const compatibleTitles = RECIPES.filter((recipe) => isRecipeCompatible(recipe, DEFAULT_DIET_PROFILE))
       .map((recipe) => recipe.title);
     const view = render(<MemoryRouter><PlanPage /></MemoryRouter>);
     const firstRow = await screen.findAllByRole('listitem').then((items) => items[0]);
     const originalTitle = within(firstRow).getByText((text) => compatibleTitles.includes(text)).textContent;
 
-    await user.click(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
+    await choosePlanRecipe(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
     await waitFor(() => {
       const title = within(firstRow).getByText((text) => compatibleTitles.includes(text)).textContent;
       expect(title).not.toBe(originalTitle);
