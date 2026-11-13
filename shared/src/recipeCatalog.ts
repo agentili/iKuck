@@ -510,4 +510,3 @@ export const RECIPES: readonly CatalogRecipe[] = [
     tags: ['pentola', 'vegetariana'],
   },
 ];
-
