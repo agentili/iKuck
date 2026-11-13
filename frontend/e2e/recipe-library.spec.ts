@@ -96,7 +96,7 @@ test('ricerca «orata»: restano solo le ricette con orata in titolo o ingredien
 }) => {
   await installVerifiedBackend(page);
   await page.goto('/recipes');
-  await expect(page.getByRole('heading', { name: 'Ricette', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ricette', exact: true, level: 1 })).toBeVisible();
 
   // Query vuota: elenco completo di salvate e catalogo.
   await expect(page.getByRole('heading', { name: 'Orata al forno' })).toBeVisible();
@@ -118,7 +118,7 @@ test('ricerca «orata»: restano solo le ricette con orata in titolo o ingredien
 test('ricerca senza match: stato vuoto con CTA «Trova ricette»', async ({ page }) => {
   await installVerifiedBackend(page);
   await page.goto('/recipes');
-  await expect(page.getByRole('heading', { name: 'Ricette', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ricette', exact: true, level: 1 })).toBeVisible();
   await page.getByRole('searchbox', { name: 'Cerca ricette' }).fill('nessuna-corrispondenza');
   await expect(
     page.getByText(
@@ -156,18 +156,16 @@ test('gruppo suggerite: la card apre /recipes/:recipeId', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Pasta tonno e pomodoro' })).toBeVisible();
 });
 
-test('ospite: catalogo visibile, gruppo salvate con CTA accesso', async ({ page }) => {
+test('ospite: catalogo visibile nella raccolta unificata', async ({ page }) => {
   // Nessuna sessione verificata: il backend offline di base risponde authenticated: false
   // e la pagina non chiama fetchAiRecipes.
   await page.goto('/recipes');
-  await expect(page.getByRole('heading', { name: 'Ricette', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Ricette suggerite' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ricette', exact: true, level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ricette', level: 2 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Pasta tonno e pomodoro' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Ricette AI riservate agli account verificati' })).toBeVisible();
-  const accessLink = page.getByRole('link', { name: 'Accedi al tuo account' });
-  await expect(accessLink).toBeVisible();
-  await expect(accessLink).toHaveAttribute('href', '/profile');
+  await expect(page.getByRole('heading', { name: 'Le tue ricette AI' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Le tue ricette salvate' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Mostra dettagli/ })).toHaveCount(0);
 });
 
@@ -182,7 +180,7 @@ for (const theme of ['light', 'dark'] as const) {
     );
     await installVerifiedBackend(page);
     await page.goto('/recipes');
-    await expect(page.getByRole('heading', { name: 'Ricette', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Ricette', exact: true, level: 1 })).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
 
     const results = await new AxeBuilder({ page }).analyze();
@@ -234,7 +232,7 @@ for (const viewportWidth of [320, 390]) {
     const viewportHeight = viewportWidth === 320 ? 740 : 844;
     await page.setViewportSize({ width: viewportWidth, height: viewportHeight });
     await page.goto('/recipes');
-    await expect(page.getByRole('heading', { name: 'Ricette', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Ricette', exact: true, level: 1 })).toBeVisible();
 
     const finalAction = page.getByRole('link', { name: 'Apri Zuppa rustica di verdure' });
     await expect(finalAction).toBeVisible();
@@ -328,14 +326,14 @@ test('offline: catalogo consultabile, gruppo salvate in errore non bloccante', a
   });
   await page.route('**/v1/ai-recipes', (route) => route.abort());
   await page.goto('/recipes');
-  await expect(page.getByRole('heading', { name: 'Ricette', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ricette', exact: true, level: 1 })).toBeVisible();
 
   // Il catalogo statico resta consultabile offline.
   await expect(page.getByRole('heading', { name: 'Pasta tonno e pomodoro' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' })).toBeVisible();
 
   // Il gruppo salvate è in stato d'errore ma non blocca la pagina.
-  const savedRecipesAlert = page.getByRole('region', { name: 'Le tue ricette AI', exact: true }).getByRole('alert');
+  const savedRecipesAlert = page.getByRole('region', { name: 'Ricette', exact: true }).getByRole('alert');
   await expect(savedRecipesAlert).toBeVisible();
   await expect(savedRecipesAlert).toHaveText(
     'Servizio non raggiungibile: le ricette AI restano disponibili solo online.',
@@ -370,7 +368,7 @@ test('crea una ricetta AI dal titolo e la aggiunge alla raccolta solo dopo il sa
   await expect(panel.getByRole('heading', { name: recipe.title })).toBeVisible();
   expect(submissions).toHaveLength(1);
   expect(submissions[0].body).toMatchObject({ dishTitle: recipe.title, ingredients: [], dietProfile: { diet: 'omnivore' } });
-  const library = page.getByRole('region', { name: 'Le tue ricette AI' });
+  const library = page.getByRole('region', { name: 'Ricette' });
   await expect(library.getByRole('heading', { name: recipe.title })).toHaveCount(0);
   await panel.getByRole('button', { name: 'Salva ricetta' }).click();
   await expect(library.getByRole('heading', { name: recipe.title })).toBeVisible();

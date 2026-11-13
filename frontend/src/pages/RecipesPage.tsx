@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { LockKeyhole } from 'lucide-react';
 import { useSyncExternalStore } from 'react';
 import type { GeneratedRecipe } from '@ikuck/shared/contracts';
 import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
@@ -19,9 +17,6 @@ import RecipeCard from '../components/ui/RecipeCard';
 import AiRecipePanel from '../components/ai/AiRecipePanel';
 import { hydrateDietProfileStore, useDietProfileStore } from '../store/dietProfileStore';
 
-const LIBRARY_GROUP_LABEL = 'Le tue ricette salvate';
-const AI_GROUP_LABEL = 'Le tue ricette AI';
-const SUGGESTED_GROUP_LABEL = 'Ricette suggerite';
 const PAGE_SECTION_CLASS = 'bg-[var(--ik-surface)] [&_h2]:text-[2rem] [&_h2]:leading-[1.12] [&_h2]:tracking-[-0.02em]';
 const PAGE_INTERACTION_FOCUS_CLASS = [
   '[&_a:focus-visible]:outline',
@@ -260,27 +255,25 @@ export default function RecipesPage() {
         <div className="ik-kitchen-column min-w-0">
         <PageSection
           eyebrow="La tua raccolta"
-          title={LIBRARY_GROUP_LABEL}
-          titleId="library-recipes-title"
+          title="Ricette"
+          titleId="recipes-title"
           className={PAGE_SECTION_CLASS}
-          description="Le tue ricette salvate, disponibili anche offline."
-          action={
-            libraryLoading && (
-              <p role="status" className="text-sm font-semibold text-emerald-900">
-                Carico le tue ricette salvate…
-              </p>
-            )
-          }
+          description="Tutte le ricette salvate, generate con l’AI e del catalogo in un’unica raccolta."
         >
+          {libraryLoading && <p role="status">Carico le tue ricette salvate…</p>}
+          {savedLoading && <p role="status">Carico le tue ricette AI…</p>}
           {libraryError !== null && <ErrorBanner message={libraryError} />}
-          {!libraryLoading && libraryError === null && libraryRecipes.length === 0 && (
-            <EmptyState text="Nessuna ricetta salvata ancora." />
+          {savedError !== null && <ErrorBanner message={savedError} />}
+          {isEmptySearch && !libraryLoading && !savedLoading && (
+            <EmptyState
+              text={`Nessuna ricetta trovata per «${query}». Prova un altro titolo o ingrediente.`}
+              action={{ label: 'Trova ricette', href: '/', ariaLabel: 'Trova ricette' }}
+            />
           )}
-          {!libraryLoading && libraryError === null && filteredLibrary.length > 0 && (
-            <div className="grid gap-4 grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
+          <div className="grid gap-4 grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
               {filteredLibrary.map((recipe) => (
                 <RecipeCard
-                  key={recipe.id}
+                  key={`library:${recipe.id}`}
                   recipeId={recipe.id}
                   variant="salvata"
                   title={recipe.title}
@@ -295,53 +288,9 @@ export default function RecipesPage() {
                   openAriaLabel={`Apri ${recipe.title}`}
                 />
               ))}
-            </div>
-          )}
-        </PageSection>
-
-        <PageSection
-          eyebrow="Generate con l’AI"
-          title={AI_GROUP_LABEL}
-          titleId="ai-recipes-title"
-          className={PAGE_SECTION_CLASS}
-          action={
-            savedLoading && (
-              <p role="status" className="text-sm font-semibold text-emerald-900">
-                Carico le tue ricette AI…
-              </p>
-            )
-          }
-        >
-          {savedError !== null && <ErrorBanner message={savedError} />}
-          {!verified && (
-            <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50/70 p-5 sm:p-6">
-              <div className="flex items-start gap-3">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-emerald-700 text-white">
-                  <LockKeyhole size={19} aria-hidden="true" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-xl font-black text-gray-950">Ricette AI riservate agli account verificati</h3>
-                  <p className="mt-1 text-sm leading-relaxed text-gray-700">
-                    Le ricette AI richiedono un account verificato: accedi per vedere e gestire le tue ricette salvate.
-                  </p>
-                  <Link
-                    to="/profile"
-                    className="mt-3 inline-flex min-h-11 items-center rounded-xl border-2 border-emerald-700 px-4 py-2 font-bold text-emerald-900 hover:bg-emerald-50"
-                  >
-                    Accedi al tuo account
-                  </Link>
-                </div>
-              </div>
-            </div>
-          )}
-          {verified && !savedLoading && savedError === null && savedRecipes.length === 0 && (
-            <EmptyState text="Nessuna ricetta AI salvata ancora." />
-          )}
-          {verified && !savedLoading && savedError === null && filteredSaved.length > 0 && (
-            <div className="grid gap-4 grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
               {filteredSaved.map((recipe) => (
                 <RecipeCard
-                  key={recipe.id}
+                  key={`ai:${recipe.id}`}
                   recipeId={recipe.id}
                   variant="ai"
                   title={recipe.title}
@@ -352,32 +301,9 @@ export default function RecipesPage() {
                   detailsId={`saved-recipe-details-${recipe.id}`}
                 />
               ))}
-            </div>
-          )}
-        </PageSection>
-
-        <PageSection
-          eyebrow="Catalogo della casa"
-          title={SUGGESTED_GROUP_LABEL}
-          titleId="suggested-recipes-title"
-          className={PAGE_SECTION_CLASS}
-          description="Ricette offline, sempre disponibili."
-        >
-          {isEmptySearch && (
-            <EmptyState
-              text={`Nessuna ricetta trovata per «${query}». Prova un altro titolo o ingrediente.`}
-              action={{
-                label: 'Trova ricette',
-                href: '/',
-                ariaLabel: 'Trova ricette',
-              }}
-            />
-          )}
-          {!isEmptySearch && (
-            <div className="grid gap-4 grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
               {filteredSuggested.map((recipe) => (
                 <RecipeCard
-                  key={recipe.id}
+                  key={`catalog:${recipe.id}`}
                   recipeId={recipe.id}
                   variant="catalogo"
                   title={recipe.title}
@@ -386,8 +312,7 @@ export default function RecipesPage() {
                   openAriaLabel={`Apri ${recipe.title}`}
                 />
               ))}
-            </div>
-          )}
+          </div>
         </PageSection>
         </div>
       </div>

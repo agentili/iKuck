@@ -199,16 +199,18 @@ describe('RecipesPage', () => {
     expect(screen.getByRole('main')).toHaveClass('ik-recipes-page');
   });
 
-  it('renderizza i tre gruppi con le badge di fonte per una sessione verificata', async () => {
+  it('riunisce tutte le fonti in un solo gruppo Ricette', async () => {
     setVerifiedSession();
     vi.mocked(fetchAiRecipes).mockResolvedValue([orataRecipe]);
 
     renderPage();
 
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Orata al forno' })).toBeInTheDocument());
-    expect(screen.getByRole('heading', { name: 'Le tue ricette salvate' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Le tue ricette AI' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Ricette suggerite' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Ricette' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Le tue ricette AI' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Le tue ricette salvate' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Ricette suggerite' })).not.toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Ricette' })).getByText('Orata al forno')).toBeInTheDocument();
     expect(screen.getByText('Pollo al limone')).toBeInTheDocument();
     expect(screen.getByText('AI')).toBeInTheDocument();
     expect(screen.getAllByText('Catalogo').length).toBeGreaterThan(0);
@@ -286,14 +288,11 @@ describe('RecipesPage', () => {
     expect(fetchAiRecipes).toHaveBeenCalledTimes(1);
   });
 
-  it('ospite: catalogo visibile, gruppo salvate con CTA accesso e nessuna chiamata', async () => {
+  it('ospite: raccolta visibile senza sezioni AI separate e nessuna chiamata', async () => {
     renderPage();
 
     expect(screen.getByText('Pollo al limone')).toBeInTheDocument();
-    expect(screen.getByText(/Ricette AI riservate agli account verificati/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Accedi al tuo account' })).toHaveAttribute('href', '/profile');
-    expect(screen.getByRole('heading', { name: 'Le tue ricette salvate' })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText('Nessuna ricetta salvata ancora.')).toBeInTheDocument());
+    expect(screen.getByRole('region', { name: 'Ricette' })).toBeInTheDocument();
     expect(fetchAiRecipes).not.toHaveBeenCalled();
   });
 
@@ -303,7 +302,7 @@ describe('RecipesPage', () => {
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('Nessuna ricetta AI salvata ancora.')).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText('Carico le tue ricette AI…')).not.toBeInTheDocument());
 
     const search = screen.getByLabelText('Cerca ricette');
     const userEvents = userEvent.setup();
