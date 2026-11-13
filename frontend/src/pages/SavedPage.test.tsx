@@ -100,11 +100,8 @@ describe('SavedPage', () => {
     expect(searchRegion).toHaveClass('bg-[var(--ik-surface)]');
     expect(search).toHaveClass('ik-input', 'focus-visible:outline-[var(--ik-focus)]');
     expect(allFilter).toHaveClass('min-h-11', 'ik-button-primary', 'focus-visible:outline-[var(--ik-focus)]');
-    expect(screen.getByRole('region', { name: 'Le tue ricette salvate' }))
-      .toHaveClass('border-[var(--ik-border)]', 'pt-5');
-    expect(screen.getByRole('region', { name: 'Le tue ricette AI' }))
-      .toHaveClass('border-[var(--ik-border)]', 'pt-5');
-    expect(await screen.findByText('Nessuna ricetta salvata nel diario.')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Ricette' })).toBeInTheDocument();
+    expect(await screen.findByText('Nessuna ricetta salvata ancora.')).toBeInTheDocument();
   });
 
   it('keeps guest Diary recipes local and blocks AI reads until verification', async () => {
@@ -114,8 +111,7 @@ describe('SavedPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Pasta al pesto' })).toBeInTheDocument();
     expect(screen.getByText('Ambito: dati locali')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Ricette AI riservate agli account verificati' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Accedi al tuo account' })).toHaveAttribute('href', '/profile');
+    expect(screen.queryByRole('heading', { name: 'Ricette AI riservate agli account verificati' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Apri Pasta al pesto' })).toHaveAttribute(
       'href',
       '/recipes/diary-pesto?scope=guest',
@@ -124,7 +120,7 @@ describe('SavedPage', () => {
     expect(fetchAiRecipes).not.toHaveBeenCalled();
   });
 
-  it('loads the verified account scope, keeps Diary and AI groups separate, sorts and expands details', async () => {
+  it('loads the verified account scope, unifies Diary and AI recipes, sorts and expands details', async () => {
     setVerifiedSession();
     const diaryOlder = makeDiaryRecipe({ id: 'diary-older', title: 'Pasta al pesto', updatedAt: '2026-10-02T10:00:00.000Z' });
     const diaryNewer = makeDiaryRecipe({ id: 'diary-newer', title: 'Risotto alle erbe', updatedAt: '2026-10-05T10:00:00.000Z' });
@@ -137,15 +133,13 @@ describe('SavedPage', () => {
 
     renderSavedRoute();
 
-    const diaryRegion = screen.getByRole('region', { name: 'Le tue ricette salvate' });
-    const aiRegion = screen.getByRole('region', { name: 'Le tue ricette AI' });
+    const diaryRegion = screen.getByRole('region', { name: 'Ricette' });
+    const aiRegion = screen.getByRole('region', { name: 'Ricette' });
     await within(diaryRegion).findByRole('heading', { name: 'Risotto alle erbe' });
     await within(aiRegion).findByRole('heading', { name: 'Verdure speziate' });
 
-    expect(within(diaryRegion).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent))
-      .toEqual(['Risotto alle erbe', 'Pasta al pesto']);
-    expect(within(aiRegion).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent))
-      .toEqual(['Verdure speziate', 'Crema di ceci']);
+    expect(within(diaryRegion).getAllByRole('heading', { level: 3 }).map(heading => heading.textContent))
+      .toEqual(['Risotto alle erbe', 'Pasta al pesto', 'Verdure speziate', 'Crema di ceci']);
     expect(screen.getByText('Ambito: personale')).toBeInTheDocument();
     expect(readSavedRecipes).toHaveBeenCalledWith('account:user-1');
     expect(fetchAiRecipes).toHaveBeenCalledTimes(1);
@@ -196,7 +190,7 @@ describe('SavedPage', () => {
     renderSavedRoute();
 
     expect(await screen.findByRole('heading', { name: 'Pasta al pesto' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Ricette AI riservate agli account verificati' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Ricette AI riservate agli account verificati' })).not.toBeInTheDocument();
     expect(fetchAiRecipes).not.toHaveBeenCalled();
   });
 
@@ -272,8 +266,8 @@ describe('SavedPage', () => {
       resolveAi?.([]);
       await Promise.all([diaryRead, aiRead]);
     });
-    expect(await screen.findByText('Nessuna ricetta salvata nel diario.')).toBeInTheDocument();
-    expect(screen.getByText('Nessuna ricetta AI salvata ancora.')).toBeInTheDocument();
+    expect(await screen.findByText('Nessuna ricetta salvata ancora.')).toBeInTheDocument();
+    expect(screen.queryByText('Nessuna ricetta AI salvata ancora.')).not.toBeInTheDocument();
   });
 
   it('shows source errors without presenting unavailable data as empty', async () => {

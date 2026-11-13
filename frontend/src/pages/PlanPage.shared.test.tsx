@@ -295,7 +295,7 @@ describe('PlanPage shared mode', () => {
       });
       setActiveDataScope('house:house-2');
     });
-    expect(await screen.findByText(/Fuso: America\/New_York/)).toBeVisible();
+    await waitFor(async () => expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York'));
     deviceId.resolve('action-device');
 
     await waitFor(async () => {
@@ -316,8 +316,7 @@ describe('PlanPage shared mode', () => {
     });
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
-    const oldZone = await screen.findByText(/Fuso: Europe\/Rome/);
-    expect(oldZone).toBeVisible();
+    await screen.findAllByRole('listitem');
     const firstRow = screen.getAllByRole('listitem')[0]!;
     await choosePlanRecipe(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
     const command = await sendStarted.promise;
@@ -331,7 +330,7 @@ describe('PlanPage shared mode', () => {
       });
       setActiveDataScope('house:house-2');
     });
-    expect(await screen.findByText(/Fuso: America\/New_York/)).toBeVisible();
+    await waitFor(async () => expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York'));
 
     const previous = statesByScope.get('house:house-1')!.get(command.date)!;
     if (command.action !== 'manual_set') throw new Error('Expected a manual replacement command');
@@ -344,7 +343,7 @@ describe('PlanPage shared mode', () => {
 
     await waitFor(async () => {
       expect(await readMealPlanOutbox(['house:house-1'])).toHaveLength(1);
-      expect(screen.getByText(/Fuso: America\/New_York/)).toBeVisible();
+      expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York');
     });
     expect(await readMealPlanOutbox(['house:house-2'])).toEqual([]);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -360,7 +359,7 @@ describe('PlanPage shared mode', () => {
     });
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
-    expect(await screen.findByText(/Fuso: Europe\/Rome/)).toBeVisible();
+    await screen.findAllByRole('listitem');
     await choosePlanRecipe(within(screen.getAllByRole('listitem')[0]!).getByRole('button', { name: /modifica ricetta/i }));
     const command = await sendStarted.promise;
     await waitFor(async () => expect(await readMealPlanOutbox(['house:house-1'])).toHaveLength(1));
@@ -476,7 +475,7 @@ describe('PlanPage shared mode', () => {
       });
       setActiveDataScope('house:house-2');
     });
-    expect(await screen.findByText(/Fuso: America\/New_York/)).toBeVisible();
+    await waitFor(async () => expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York'));
 
     lateResponse.resolve({
       version: 2,
@@ -488,144 +487,20 @@ describe('PlanPage shared mode', () => {
     await waitFor(async () => {
       expect(await readMealPlanOutbox(['house:house-1'])).toHaveLength(1);
       expect((await readMealPlanSnapshot('house:house-1')).conflicts).toContainEqual(expect.objectContaining({ id: conflictCommand.operationId }));
-      expect(screen.getByText(/Fuso: America\/New_York/)).toBeVisible();
+      expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York');
     });
   });
 
-  it('does not update or persist a house timezone after its session changes during the timezone read', async () => {
-    const { getZone, setTimeZone } = setupExistingSharedPlan();
+  it('keeps the timezone internal and does not expose timezone controls in the plan', async () => {
+    setupExistingSharedPlan();
     useHouseStore.setState({ state: {
       house: { id: 'house-1', name: 'Casa', createdAt: '2026-01-01T00:00:00.000Z' },
-      membership: { role: 'admin', joinedAt: '2026-01-01T00:00:00.000Z' },
-      members: [],
+      membership: { role: 'admin', joinedAt: '2026-01-01T00:00:00.000Z' }, members: [],
     } });
-    const update = vi.spyOn(mealPlanApi, 'updateHouseTimeZone').mockResolvedValue({
-      timeZone: 'America/New_York', revision: '123e4567-e89b-42d3-a456-426614174001',
-    });
-    const pendingRead = deferred<HouseTimeZoneState>();
-    const userInput = userEvent.setup();
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
-
-    const input = await screen.findByRole('textbox', { name: 'Fuso orario della Casa' });
-    await userInput.clear(input);
-    await userInput.type(input, 'America/New_York');
-    getZone.mockImplementationOnce(() => pendingRead.promise);
-    await userInput.click(screen.getByRole('button', { name: 'Aggiorna fuso' }));
-    await waitFor(() => expect(getZone).toHaveBeenCalledTimes(2));
-
-    setTimeZone({ timeZone: 'America/New_York', revision: '123e4567-e89b-42d3-a456-426614174002' });
-    act(() => {
-      useAuthStore.setState({
-        user: { ...user, id: 'user-2', email: 'second@example.test' },
-        csrfToken: 'second-csrf-token',
-      });
-      setActiveDataScope('house:house-2');
-    });
-    expect(await screen.findByText(/Fuso: America\/New_York/)).toBeVisible();
-    pendingRead.resolve({ timeZone: 'Europe/Rome', revision: '123e4567-e89b-42d3-a456-426614174000' });
-
-    await waitFor(async () => {
-      expect(update).not.toHaveBeenCalled();
-      expect((await readMealPlanSnapshot('house:house-1')).timeZone?.timeZone).toBe('Europe/Rome');
-      expect(screen.getByText(/Fuso: America\/New_York/)).toBeVisible();
-    });
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  it('does not commit an updated timezone when the session changes during its IndexedDB write', async () => {
-    const { setTimeZone } = setupExistingSharedPlan();
-    useHouseStore.setState({ state: {
-      house: { id: 'house-1', name: 'Casa', createdAt: '2026-01-01T00:00:00.000Z' },
-      membership: { role: 'admin', joinedAt: '2026-01-01T00:00:00.000Z' },
-      members: [],
-    } });
-    const update = vi.spyOn(mealPlanApi, 'updateHouseTimeZone').mockResolvedValue({
-      timeZone: 'America/New_York', revision: '123e4567-e89b-42d3-a456-426614174001',
-    });
-    let timezoneUpdated = false;
-    const transactionRead = deferred<void>();
-    const originalGet = IDBObjectStore.prototype.get;
-    const get = vi.spyOn(IDBObjectStore.prototype, 'get').mockImplementation(function (this: IDBObjectStore, key) {
-      const request = originalGet.call(this, key);
-      if (timezoneUpdated && this.transaction.mode === 'readwrite'
-        && key === scopeStorageKey('house:house-1', 'meal-plan-v2')) {
-        timezoneUpdated = false;
-        request.addEventListener('success', () => {
-          useAuthStore.setState({
-            user: { ...user, id: 'user-2', email: 'second@example.test' },
-            csrfToken: 'second-csrf-token',
-          });
-          setActiveDataScope('house:house-2');
-          setTimeZone({ timeZone: 'America/New_York', revision: '123e4567-e89b-42d3-a456-426614174002' });
-          useHouseStore.setState({ state: {
-            house: { id: 'house-2', name: 'Altra casa', createdAt: '2026-01-01T00:00:00.000Z' },
-            membership: { role: 'admin', joinedAt: '2026-01-01T00:00:00.000Z' },
-            members: [],
-          } });
-          transactionRead.resolve();
-        }, { once: true });
-      }
-      return request;
-    });
-    update.mockImplementation(async (nextTimeZone) => {
-      timezoneUpdated = true;
-      return { timeZone: nextTimeZone, revision: '123e4567-e89b-42d3-a456-426614174001' };
-    });
-    const userInput = userEvent.setup();
-    render(<MemoryRouter><PlanPage /></MemoryRouter>);
-
-    const input = await screen.findByRole('textbox', { name: 'Fuso orario della Casa' });
-    await userInput.clear(input);
-    await userInput.type(input, 'America/New_York');
-    await userInput.click(screen.getByRole('button', { name: 'Aggiorna fuso' }));
-    await transactionRead.promise;
-    get.mockRestore();
-
-    expect(await screen.findByText(/Fuso: America\/New_York/)).toBeVisible();
-    await waitFor(async () => {
-      expect(update).toHaveBeenCalledTimes(1);
-      expect((await readMealPlanSnapshot('house:house-1')).timeZone).toEqual({
-        timeZone: 'Europe/Rome', revision: '123e4567-e89b-42d3-a456-426614174000',
-      });
-    });
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  it('lets a house admin update the shared IANA timezone with the current revision', async () => {
-    useHouseStore.setState({ state: {
-      house: { id: 'house-1', name: 'Casa', createdAt: '2026-01-01T00:00:00.000Z' },
-      membership: { role: 'admin', joinedAt: '2026-01-01T00:00:00.000Z' },
-      members: [],
-    } });
-    let timeZone: string | null = 'Europe/Rome';
-    let revision: string | null = '123e4567-e89b-42d3-a456-426614174000';
-    vi.spyOn(mealPlanApi, 'getCapabilities').mockResolvedValue({ version: 2, syncReadVersion: 2 });
-    vi.spyOn(mealPlanApi, 'getHouseTimeZone').mockImplementation(async () => ({ timeZone, revision }));
-    const update = vi.spyOn(mealPlanApi, 'updateHouseTimeZone').mockImplementation(async (nextTimeZone) => {
-      timeZone = nextTimeZone;
-      revision = '123e4567-e89b-42d3-a456-426614174001';
-      return { timeZone, revision };
-    });
-    vi.spyOn(mealPlanApi, 'readStates').mockImplementation(async (_scope, dates) => dates.map((date, index) => ({
-      date,
-      state: {
-        date,
-        revision: `0000000${index + 1}-0000-4000-8000-000000000001`,
-        serverSequence: index + 1,
-        kind: 'automatic' as const,
-        recipeId: RECIPES[0].id,
-      },
-    })));
-    const userInput = userEvent.setup();
-    render(<MemoryRouter><PlanPage /></MemoryRouter>);
-
-    const timeZoneInput = await screen.findByRole('textbox', { name: 'Fuso orario della Casa' });
-    await userInput.clear(timeZoneInput);
-    await userInput.type(timeZoneInput, 'America/New_York');
-    expect(timeZoneInput).toHaveValue('America/New_York');
-    await userInput.click(screen.getByRole('button', { name: 'Aggiorna fuso' }));
-
-    await waitFor(() => expect(update).toHaveBeenCalledWith('America/New_York', '123e4567-e89b-42d3-a456-426614174000', 'csrf-token'));
-    await waitFor(() => expect(screen.getByText(/America\/New_York/)).toBeVisible());
+    await screen.findAllByRole('listitem');
+    expect(screen.queryByText(/Fuso:/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Fuso orario della Casa' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Aggiorna fuso' })).not.toBeInTheDocument();
   });
 });

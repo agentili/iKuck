@@ -39,7 +39,6 @@ import {
   isMealPlanBootstrapComplete,
 } from '../mealPlan/storage';
 import { createPlanCommand, queuePlanCommand, syncPendingMealPlan, synchronizeMealPlanScope } from '../mealPlan/service';
-import { useHouseStore } from '../house/houseStore';
 
 interface PlanPageView {
   status: 'loading' | 'ready' | 'blocked' | 'error';
@@ -395,7 +394,6 @@ export default function PlanPage() {
   const pantryHasHydrated = usePantryStore((state) => state.hasHydrated);
   const shoppingItems = useShoppingListStore((state) => state.items);
   const shoppingHasHydrated = useShoppingListStore((state) => state.hasHydrated);
-  const houseState = useHouseStore((state) => state.state);
   const activeScope = useSyncExternalStore(subscribeActiveDataScope, getActiveDataScope, getActiveDataScope);
   const recipeScope: SyncScope = isVerifiedUser(user) && csrfToken !== null ? activeScope : 'guest';
   const savedRecipes = useDinnerDiaryStore(state => state.recipes);
@@ -419,8 +417,6 @@ export default function PlanPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [feedbackContextKey, setFeedbackContextKey] = useState('');
   const [reload, setReload] = useState(0);
-  const [timeZoneDraft, setTimeZoneDraft] = useState('');
-  const [savingTimeZone, setSavingTimeZone] = useState(false);
   const generation = useRef(0);
 
   useEffect(() => {
@@ -534,7 +530,6 @@ export default function PlanPage() {
     setFeedbackContextKey(effectContextToken);
     setFeedback(null);
     setBusyDate(null);
-    setSavingTimeZone(false);
     if ((week !== null && user === null) || (user !== null && (!verified || scope === 'guest'))) {
       return () => { cancelled = true; };
     }
@@ -619,7 +614,6 @@ export default function PlanPage() {
           ? 'Fuso provvisorio · piano condiviso non modificabile'
           : currentView.scope.startsWith('house:') ? 'Condiviso con la Casa' : 'Sincronizzato con il tuo account';
 
-  useLayoutEffect(() => setTimeZoneDraft(currentView.timeZone ?? ''), [currentView.timeZone]);
 
   const chooseReplacement = async (date: string, recipe: PantryRecipe, created?: SavedRecipe): Promise<void> => {
     const fence = captureActionFence(view.scope);
@@ -795,33 +789,6 @@ export default function PlanPage() {
     }
   };
 
-  const changeHouseTimeZone = async (): Promise<void> => {
-    const fence = captureActionFence(view.scope);
-    if (!fence.isCurrent()) return;
-    const nextTimeZone = timeZoneDraft.trim();
-    if (!isValidIanaTimeZone(nextTimeZone)) {
-      publishFeedback('Inserisci un fuso IANA valido, per esempio Europe/Rome.');
-      return;
-    }
-    if (fence.csrfToken === null || !view.scope.startsWith('house:')) return;
-    setSavingTimeZone(true);
-    publishFeedback(null);
-    try {
-      fence.assertCurrent();
-      const current = await api.getHouseTimeZone();
-      fence.assertCurrent();
-      const updated = await api.updateHouseTimeZone(nextTimeZone, current.revision, fence.csrfToken);
-      fence.assertCurrent();
-      await saveMealPlanTimeZone(view.scope, updated, fence.assertCurrent);
-      fence.assertCurrent();
-      setReload((value) => value + 1);
-    } catch {
-      if (fence.isCurrent()) publishFeedback('Il fuso non è stato aggiornato. Ricarica il piano e riprova.');
-    } finally {
-      if (fence.isCurrent()) setSavingTimeZone(false);
-    }
-  };
-
   const addMissingToShoppingList = (): void => {
     const fence = captureActionFence(currentView.scope);
     if (!fence.isCurrent() || !pantryHasHydrated || !shoppingHasHydrated) return;
@@ -870,29 +837,7 @@ export default function PlanPage() {
 
       <section aria-label="Stato della condivisione" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4">
         <p role="status" className="inline-flex min-h-9 items-center rounded-full bg-[var(--ik-mist)] px-3 py-1 text-sm font-semibold text-[var(--ik-ink)]">{currentView.status === 'loading' ? 'Caricamento del piano…' : shareStatus}</p>
-        {currentView.timeZone !== null && <p className="text-sm font-medium text-[var(--ik-ink-muted)]">Fuso: {currentView.timeZone}</p>}
       </section>
-
-      {currentView.status === 'ready' && currentView.scope.startsWith('house:') && houseState?.membership?.role === 'admin' && currentView.canEdit && (
-        <form className="mb-4 flex flex-wrap items-end gap-3 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4" onSubmit={(event) => { event.preventDefault(); void changeHouseTimeZone(); }}>
-          <label className="grid gap-1 text-sm font-semibold text-[var(--ik-ink)]">
-            Fuso orario della Casa
-            <input
-              type="text"
-              name="house-time-zone"
-              autoComplete="off"
-              value={timeZoneDraft}
-              onChange={(event) => setTimeZoneDraft(event.currentTarget.value)}
-              className="ik-input min-h-11 w-full border-2 px-3 py-2 sm:w-56"
-              aria-describedby="house-time-zone-help"
-            />
-          </label>
-          <p id="house-time-zone-help" className="sr-only">Usa un identificativo IANA, per esempio Europe/Rome.</p>
-          <button type="submit" disabled={savingTimeZone || !scopeWritable} className="min-h-11 rounded-xl border-2 border-[var(--ik-basil)] bg-[var(--ik-surface)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)] disabled:opacity-60">
-            {savingTimeZone ? 'Aggiornamento…' : 'Aggiorna fuso'}
-          </button>
-        </form>
-      )}
 
       {currentView.message !== null && <p role="status" className="mb-4 rounded-[var(--ik-radius-panel)] border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] px-4 py-3 text-sm text-[var(--ik-warn-ink)]">{currentView.message}</p>}
       {currentView.status === 'ready' && currentView.recoveryError !== null && <p role="alert" className="mb-4 rounded-[var(--ik-radius-panel)] border border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] px-4 py-3 text-sm text-[var(--ik-tomato)]">{currentView.recoveryError}</p>}

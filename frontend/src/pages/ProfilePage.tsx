@@ -1,4 +1,6 @@
 import { safePushDestination } from '../push/payload';
+import AiRecipePanel from '../components/ai/AiRecipePanel';
+import RecipeImageSettings from '../components/ai/RecipeImageSettings';
 import PushSettings from '../push/PushSettings';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
@@ -474,6 +476,10 @@ export default function ProfilePage() {
           )}
         </div>
       </PageSection>
+      <div id="ai-settings" className="mt-5 space-y-5">
+        <AiRecipePanel key={`${user.id}:${csrfToken}`} settingsOnly generationMode="title" ingredients={[]} dietProfile={{ diet: 'omnivore', excludedAllergens: [], nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null } }} user={user} csrfToken={csrfToken} />
+        <RecipeImageSettings />
+      </div>
       <PushSettings />
       <ThemePreferenceControl />
       <ColorPaletteControl />

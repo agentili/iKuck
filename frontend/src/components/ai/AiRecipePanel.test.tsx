@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -113,6 +114,24 @@ describe('AiRecipePanel', () => {
     await waitFor(() => expect(onRecipeProposed).toHaveBeenCalledWith(recipe));
     expect(generateAiRecipe).toHaveBeenCalledWith({ dishDescription: 'Un risotto cremoso al limone', ingredients: [], constraints, existingRecipes: [] }, profile, 'csrf-token');
     expect(saveAiRecipe).not.toHaveBeenCalled();
+  });
+
+  it('offers consent settings in the profile without fetching or displaying recipe lists', async () => {
+    renderPanel({ settingsOnly: true, generationMode: 'title' });
+    const panel = screen.getByRole('region', { name: 'Consenso AI' });
+    expect(await within(panel).findByRole('checkbox', { name: /acconsento/i })).toBeInTheDocument();
+    expect(within(panel).queryByRole('button', { name: 'Genera ricetta AI' })).not.toBeInTheDocument();
+    expect(fetchAiRecipes).not.toHaveBeenCalled();
+    expect(screen.queryByRole('region', { name: 'Ricette AI private' })).not.toBeInTheDocument();
+  });
+
+  it('links to profile settings and hides consent controls on the recipe page', async () => {
+    render(<MemoryRouter><AiRecipePanel generationMode="title" showConsent={false} ingredients={[]} dietProfile={profile} user={user} csrfToken="csrf-token" /></MemoryRouter>);
+    expect(await screen.findByRole('link', { name: 'Consenso AI nel profilo' })).toHaveAttribute('href', '/profile#ai-settings');
+    await waitFor(() => expect(fetchAiConsentStatus).toHaveBeenCalled());
+    expect(screen.queryByRole('checkbox', { name: /acconsento/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Salva consenso' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Genera ricetta AI' })).toBeDisabled();
   });
 
   it('generates from a title without pantry ingredients and saves only on request', async () => {
