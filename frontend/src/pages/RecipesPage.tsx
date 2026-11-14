@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSyncExternalStore } from 'react';
+import { Link } from 'react-router-dom';
 import type { GeneratedRecipe } from '@ikuck/shared/contracts';
 import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { ApiClientError } from '../api/apiClient';
@@ -7,6 +8,12 @@ import { fetchAiRecipes } from '../ai/aiRecipeApi';
 import { useAuthStore } from '../auth/authStore';
 import { adaptPantryRecipe, adaptGeneratedRecipe, adaptSavedRecipe, searchRecipes } from '../domain/recipeSearch';
 import { RECIPES } from '../domain/recipes';
+import {
+  createAiRecipeCollectionOwner,
+  isCurrentAiRecipeCollectionOwner,
+  isSameAiRecipeCollectionOwner,
+  type AiRecipeCollectionOwner,
+} from '../ai/aiRecipeOwnership';
 import { readSavedRecipes } from '../storage/dinnerDiaryStorage';
 import { hydrateDinnerDiaryStore } from '../store/dinnerDiaryStore';
 import { getActiveDataScope, subscribeActiveDataScope } from '../sync/scopeContext';
@@ -50,6 +57,13 @@ const newestFirst = (
   new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime()
 );
 
+interface SavedAiCollection {
+  owner: AiRecipeCollectionOwner;
+  recipes: GeneratedRecipe[];
+  loading: boolean;
+  error: string | null;
+}
+
 export default function RecipesPage() {
   const dietProfile = useDietProfileStore((state) => state.profile);
   const dietReady = useDietProfileStore((state) => state.hasHydrated);
@@ -63,16 +77,25 @@ export default function RecipesPage() {
 
   const verified = user !== null && user.emailVerifiedAt.trim().length > 0 && csrfToken !== null;
   const userId = user?.id ?? null;
+  const currentAiOwner = useMemo(
+    () => createAiRecipeCollectionOwner(userId, verified, csrfToken, activeScope),
+    [userId, verified, csrfToken, activeScope],
+  );
 
   const [query, setQuery] = useState('');
   const [libraryRecipes, setLibraryRecipes] = useState<SavedRecipe[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryError, setLibraryError] = useState<string | null>(null);
-  const [savedRecipes, setSavedRecipes] = useState<GeneratedRecipe[]>([]);
-  const [savedLoading, setSavedLoading] = useState(false);
-  const [savedError, setSavedError] = useState<string | null>(null);
+  const [savedAiCollection, setSavedAiCollection] = useState<SavedAiCollection | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [expandedLibraryIds, setExpandedLibraryIds] = useState<Set<string>>(new Set());
+
+  const currentSavedAiCollection = isSameAiRecipeCollectionOwner(savedAiCollection?.owner, currentAiOwner)
+    ? savedAiCollection
+    : null;
+  const savedRecipes = useMemo(() => currentSavedAiCollection?.recipes ?? [], [currentSavedAiCollection]);
+  const savedLoading = currentAiOwner !== null && (currentSavedAiCollection?.loading ?? true);
+  const savedError = currentSavedAiCollection?.error ?? null;
 
   // RecipeDetailPage resolves /recipes/:id?scope= through the diary store, which
   // needs hydration before opening saved recipes: warm it up here
@@ -106,47 +129,74 @@ export default function RecipesPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const capturedUserId = userId;
-    const capturedCsrfToken = csrfToken;
-    const capturedVerified = verified;
-    const capturedScope = activeScope;
+    const capturedOwner = currentAiOwner;
+    if (capturedOwner === null || !isCurrentAiRecipeCollectionOwner(capturedOwner)) return undefined;
 
-    setSavedRecipes([]);
-    setSavedError(null);
-    if (!capturedVerified || capturedUserId === null) {
-      setSavedLoading(false);
-      return undefined;
-    }
-
-    setSavedLoading(true);
+    setSavedAiCollection((current) => {
+      if (!isCurrentAiRecipeCollectionOwner(capturedOwner)) return current;
+      if (current !== null && isSameAiRecipeCollectionOwner(current.owner, capturedOwner)) {
+        return { ...current, loading: true, error: null };
+      }
+      return { owner: capturedOwner, recipes: [], loading: true, error: null };
+    });
     void (async (): Promise<void> => {
       try {
         const recipes = await fetchAiRecipes();
-        if (cancelled) return;
-
-        const { user: currentUser, csrfToken: currentToken } = useAuthStore.getState();
-        const stillVerified = currentUser !== null
-          && currentUser.emailVerifiedAt.trim().length > 0
-          && currentToken !== null;
-        if (
-          currentUser?.id !== capturedUserId
-          || currentToken !== capturedCsrfToken
-          || stillVerified !== capturedVerified
-          || getActiveDataScope() !== capturedScope
-        ) {
-          return;
-        }
-
-        setSavedRecipes((current) => [...new Map([...recipes, ...current].map((recipe) => [recipe.id, recipe])).values()].sort(newestFirst));
+        if (cancelled || !isCurrentAiRecipeCollectionOwner(capturedOwner)) return;
+        setSavedAiCollection((current) => {
+          if (!isCurrentAiRecipeCollectionOwner(capturedOwner)) return current;
+          const existingRecipes = current !== null && isSameAiRecipeCollectionOwner(current.owner, capturedOwner)
+            ? current.recipes
+            : [];
+          return {
+            owner: capturedOwner,
+            recipes: [...new Map([...recipes, ...existingRecipes].map((recipe) => [recipe.id, recipe])).values()].sort(newestFirst),
+            loading: false,
+            error: null,
+          };
+        });
       } catch (loadError: unknown) {
-        if (!cancelled) setSavedError(errorMessage(loadError));
+        if (cancelled || !isCurrentAiRecipeCollectionOwner(capturedOwner)) return;
+        setSavedAiCollection((current) => {
+          if (!isCurrentAiRecipeCollectionOwner(capturedOwner)) return current;
+          const existing = current !== null && isSameAiRecipeCollectionOwner(current.owner, capturedOwner)
+            ? current
+            : null;
+          return {
+            owner: capturedOwner,
+            recipes: existing?.recipes ?? [],
+            loading: false,
+            error: errorMessage(loadError),
+          };
+        });
       } finally {
-        if (!cancelled) setSavedLoading(false);
+        if (!cancelled && isCurrentAiRecipeCollectionOwner(capturedOwner)) {
+          setSavedAiCollection((current) => current !== null && isSameAiRecipeCollectionOwner(current.owner, capturedOwner)
+            ? { ...current, loading: false }
+            : current);
+        }
       }
     })();
 
     return () => { cancelled = true; };
-  }, [userId, csrfToken, verified, activeScope]);
+  }, [currentAiOwner]);
+
+  const handleRecipeSaved = useCallback((recipe: GeneratedRecipe): void => {
+    const capturedOwner = currentAiOwner;
+    if (capturedOwner === null || !isCurrentAiRecipeCollectionOwner(capturedOwner)) return;
+    setSavedAiCollection((current) => {
+      if (!isCurrentAiRecipeCollectionOwner(capturedOwner)) return current;
+      const existing = current !== null && isSameAiRecipeCollectionOwner(current.owner, capturedOwner)
+        ? current
+        : null;
+      return {
+        owner: capturedOwner,
+        recipes: [recipe, ...(existing?.recipes ?? []).filter((item) => item.id !== recipe.id)],
+        loading: existing?.loading ?? false,
+        error: existing?.error ?? null,
+      };
+    });
+  }, [currentAiOwner]);
 
   const suggestedRecipes = useMemo(
     () => [...RECIPES].sort((a, b) => a.title.localeCompare(b.title, 'it')),
@@ -183,8 +233,11 @@ export default function RecipesPage() {
   );
 
   const isEmptySearch = query.length > 0
+    && !libraryLoading
+    && libraryError === null
+    && (!verified || (!savedLoading && savedError === null))
     && filteredLibrary.length === 0
-    && filteredSaved.length === 0
+    && (!verified || filteredSaved.length === 0)
     && filteredSuggested.length === 0;
 
   const toggleExpanded = useCallback((id: string): void => {
@@ -227,8 +280,27 @@ export default function RecipesPage() {
           dietProfile={dietProfile}
           user={user}
           csrfToken={csrfToken}
-          onRecipeSaved={(recipe) => setSavedRecipes((current) => [recipe, ...current.filter((item) => item.id !== recipe.id)])}
+          onRecipeSaved={handleRecipeSaved}
         />
+        {!verified && (
+          <aside
+            aria-labelledby="recipes-ai-access-title"
+            className="mt-4 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4 sm:p-5"
+          >
+            <h2 id="recipes-ai-access-title" className="text-xl font-black text-[var(--ik-ink)]">
+              Ricette AI riservate agli account verificati
+            </h2>
+            <p className="mt-1 text-sm leading-relaxed text-[var(--ik-ink-muted)]">
+              Le ricette AI richiedono un account verificato: accedi per vedere e gestire le tue ricette salvate.
+            </p>
+            <Link
+              to="/profile"
+              className="ik-button-secondary mt-3 inline-flex min-h-11 items-center border-2 px-4 py-2 font-bold hover:bg-[var(--ik-mist)]"
+            >
+              Accedi al tuo account
+            </Link>
+          </aside>
+        )}
       </div>
 
       <div className="ik-kitchen-layout ik-kitchen-layout--two-columns mt-4">
@@ -254,9 +326,8 @@ export default function RecipesPage() {
 
         <div className="ik-kitchen-column min-w-0">
         <PageSection
-          eyebrow="La tua raccolta"
-          title="Ricette"
-          titleId="recipes-title"
+          title="La tua raccolta"
+          titleId="recipe-collection-title"
           className={PAGE_SECTION_CLASS}
           description="Tutte le ricette salvate, generate con l’AI e del catalogo in un’unica raccolta."
         >
@@ -264,7 +335,7 @@ export default function RecipesPage() {
           {savedLoading && <p role="status">Carico le tue ricette AI…</p>}
           {libraryError !== null && <ErrorBanner message={libraryError} />}
           {savedError !== null && <ErrorBanner message={savedError} />}
-          {isEmptySearch && !libraryLoading && !savedLoading && (
+          {isEmptySearch && (
             <EmptyState
               text={`Nessuna ricetta trovata per «${query}». Prova un altro titolo o ingrediente.`}
               action={{ label: 'Trova ricette', href: '/', ariaLabel: 'Trova ricette' }}

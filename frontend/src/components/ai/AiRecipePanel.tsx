@@ -1,9 +1,15 @@
 import RecipeImage from '../suggestions/RecipeImage';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { LockKeyhole, Save, Sparkles, Trash2, X } from 'lucide-react';
 import type { AiConsent, AiRecipeProvider, DietProfilePayload, GeneratedRecipe } from '@ikuck/shared/contracts';
 import { ApiClientError } from '../../api/apiClient';
 import { type AuthUser } from '../../auth/authStore';
+import {
+  createAiRecipeCollectionOwner,
+  isSameAiRecipeCollectionOwner,
+  type AiRecipeCollectionOwner,
+} from '../../ai/aiRecipeOwnership';
+import { getActiveDataScope, subscribeActiveDataScope } from '../../sync/scopeContext';
 import { deleteAiRecipe, fetchAiConsentStatus, fetchAiRecipes, generateAiRecipe, saveAiRecipe, updateAiConsent } from '../../ai/aiRecipeApi';
 import {
   AI_RECIPE_PROPOSAL_HISTORY_LIMIT,
@@ -29,6 +35,12 @@ interface AiRecipePanelProps {
   dietProfile: DietProfilePayload;
   user: AuthUser | null;
   csrfToken: string | null;
+}
+
+interface SavedAiCollection {
+  owner: AiRecipeCollectionOwner;
+  recipes: GeneratedRecipe[];
+  pendingDeletes: GeneratedRecipe[];
 }
 
 const errorMessage = (error: unknown): string => {
@@ -78,11 +90,20 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
   const [dishTitle, setDishTitle] = useState('');
   const verified = user !== null && user.emailVerifiedAt.trim().length > 0 && csrfToken !== null;
   const userId = user?.id ?? null;
+  const activeScope = useSyncExternalStore(
+    (listener: () => void) => subscribeActiveDataScope(listener),
+    getActiveDataScope,
+    getActiveDataScope,
+  );
+  const currentAiOwner = useMemo(
+    () => createAiRecipeCollectionOwner(userId, verified, csrfToken, activeScope),
+    [userId, verified, csrfToken, activeScope],
+  );
   const [consent, setConsent] = useState<AiConsent | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<AiRecipeProvider | null>(null);
   const [imageProvider, setImageProvider] = useState<AiRecipeProvider | null>(null);
   const [consentDraft, setConsentDraft] = useState(false);
-  const [recipes, setRecipes] = useState<GeneratedRecipe[]>([]);
+  const [savedAiCollection, setSavedAiCollection] = useState<SavedAiCollection | null>(null);
   const [drafts, setDrafts] = useState<GeneratedRecipe[]>([]);
   const [proposedRecipes, setProposedRecipes] = useState<ProposedAiRecipe[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -90,7 +111,11 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
   const [isGenerating, setIsGenerating] = useState(false);
   const [savingDraftId, setSavingDraftId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pendingDeletes, setPendingDeletes] = useState<GeneratedRecipe[]>([]);
+  const currentSavedAiCollection = isSameAiRecipeCollectionOwner(savedAiCollection?.owner, currentAiOwner)
+    ? savedAiCollection
+    : null;
+  const recipes = currentSavedAiCollection?.recipes ?? [];
+  const pendingDeletes = currentSavedAiCollection?.pendingDeletes ?? [];
   const pantryLabels = normalizedIngredients(ingredients);
   const hasGenerationInput = generationReady && (fromDescription ? dishDescription.trim().length > 0 && dishDescription.trim().length <= 240 : fromTitle ? dishTitle.trim().length > 0 && dishTitle.trim().length <= 240 : pantryLabels.length > 0);
   const selectedProviderLabel = selectedProvider === 'openai'
@@ -103,19 +128,44 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
     && consent.homeProvider === selectedProvider;
   const consentEpochRef = useRef<number | null>(null);
   const mountedRef = useRef(false);
-  const sessionScopeRef = useRef({ userId, csrfToken, verified, generation: 0 });
+  const sessionScopeRef = useRef({ userId, csrfToken, verified, scope: activeScope, generation: 0 });
   const selectedProviderRef = useRef(selectedProvider);
+
+  const isCurrentPanelOwner = (owner: AiRecipeCollectionOwner): boolean => {
+    const current = sessionScopeRef.current;
+    return owner.verified
+      && current.verified
+      && current.userId === owner.userId
+      && current.csrfToken === owner.sessionTokenIdentity
+      && current.scope === owner.scope
+      && getActiveDataScope() === owner.scope;
+  };
+
+  const updateSavedAiCollection = (
+    owner: AiRecipeCollectionOwner,
+    update: (collection: SavedAiCollection) => SavedAiCollection,
+  ): void => {
+    if (!isCurrentPanelOwner(owner)) return;
+    setSavedAiCollection((current) => {
+      if (!isCurrentPanelOwner(owner)) return current;
+      const collection = current !== null && isSameAiRecipeCollectionOwner(current.owner, owner)
+        ? current
+        : { owner, recipes: [], pendingDeletes: [] };
+      return update(collection);
+    });
+  };
 
   useLayoutEffect(() => {
     const previousScope = sessionScopeRef.current;
-    if (previousScope.userId !== userId
+    const sessionChanged = previousScope.userId !== userId
       || previousScope.csrfToken !== csrfToken
-      || previousScope.verified !== verified) {
-      sessionScopeRef.current = { userId, csrfToken, verified, generation: previousScope.generation + 1 };
-      consentEpochRef.current = null;
+      || previousScope.verified !== verified;
+    if (sessionChanged || previousScope.scope !== activeScope) {
+      sessionScopeRef.current = { userId, csrfToken, verified, scope: activeScope, generation: previousScope.generation + 1 };
+      if (sessionChanged) consentEpochRef.current = null;
     }
     selectedProviderRef.current = selectedProvider;
-  }, [userId, csrfToken, verified, selectedProvider]);
+  }, [userId, csrfToken, verified, activeScope, selectedProvider]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -135,23 +185,32 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
   useEffect(() => {
     let cancelled = false;
     const proposalGeneration = userId === null ? null : captureAiRecipeProposalGeneration(userId);
+    const isCurrentSession = (): boolean => {
+      const current = sessionScopeRef.current;
+      return verified
+        && current.verified
+        && current.userId === userId
+        && current.csrfToken !== null
+        && current.csrfToken === csrfToken;
+    };
     consentEpochRef.current = null;
     setConsent(null);
     setSelectedProvider(null);
     setConsentDraft(false);
-    setRecipes([]);
     setDrafts([]);
     setProposedRecipes([]);
     setIsGenerating(false);
     setSavingDraftId(null);
     setError(null);
-    if (!verified || userId === null || proposalGeneration === null) return undefined;
+    if (!verified || userId === null || proposalGeneration === null) {
+      setIsLoading(false);
+      return undefined;
+    }
     setProposedRecipes(loadAiRecipeProposalHistory(proposalGeneration));
 
-    setIsLoading(true);
-    void Promise.all([fetchAiConsentStatus(), fetchAiRecipes()])
-      .then(([consentStatus, nextRecipes]) => {
-        if (cancelled) return;
+    void fetchAiConsentStatus()
+      .then((consentStatus) => {
+        if (cancelled || !isCurrentSession()) return;
         if (!isAiRecipeProposalGenerationCurrent(proposalGeneration)) {
           setConsent(null);
           setSelectedProvider(null);
@@ -164,19 +223,49 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
         setSelectedProvider(consentStatus.selectedProvider);
         setImageProvider(consentStatus.selectedImageProvider ?? consentStatus.selectedProvider);
         setConsentDraft(consentStatus.consent.enabled && consentStatus.consent.homeProvider === consentStatus.selectedProvider);
-        setRecipes(nextRecipes);
       })
       .catch((loadError: unknown) => {
-        if (!cancelled) setError(errorMessage(loadError));
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled && isCurrentSession()) setError(errorMessage(loadError));
       });
 
     return () => {
       cancelled = true;
     };
   }, [verified, userId, csrfToken]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const capturedOwner = currentAiOwner;
+    if (capturedOwner === null || !isCurrentPanelOwner(capturedOwner)) {
+      setIsLoading(false);
+      return undefined;
+    }
+
+    setIsLoading(true);
+    void fetchAiRecipes()
+      .then((nextRecipes) => {
+        if (cancelled || !isCurrentPanelOwner(capturedOwner)) return;
+        setSavedAiCollection((current) => {
+          if (!isCurrentPanelOwner(capturedOwner)) return current;
+          const existing = current !== null && isSameAiRecipeCollectionOwner(current.owner, capturedOwner)
+            ? current
+            : { owner: capturedOwner, recipes: [], pendingDeletes: [] };
+          return {
+            ...existing,
+            owner: capturedOwner,
+            recipes: [...new Map([...nextRecipes, ...existing.recipes].map((recipe) => [recipe.id, recipe])).values()],
+          };
+        });
+      })
+      .catch((loadError: unknown) => {
+        if (!cancelled && isCurrentPanelOwner(capturedOwner)) setError(errorMessage(loadError));
+      })
+      .finally(() => {
+        if (!cancelled && isCurrentPanelOwner(capturedOwner)) setIsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [currentAiOwner]);
 
   if (!verified) {
     return (
@@ -274,16 +363,22 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
   };
 
   const saveDraft = async (recipe: GeneratedRecipe) => {
-    if (csrfToken === null || savingDraftId !== null) return;
+    const saveOwner = currentAiOwner;
+    if (csrfToken === null || savingDraftId !== null || saveOwner === null || !isCurrentPanelOwner(saveOwner)) return;
     const savingScope = sessionScopeRef.current;
-    const isCurrentSave = () => mountedRef.current && sessionScopeRef.current === savingScope;
+    const isCurrentSave = () => mountedRef.current
+      && sessionScopeRef.current === savingScope
+      && isCurrentPanelOwner(saveOwner);
     setSavingDraftId(recipe.id);
     setError(null);
     try {
       const saved = await saveAiRecipe(recipe, csrfToken);
       if (!isCurrentSave()) return;
       setDrafts((current) => current.filter((item) => item.id !== saved.id));
-      setRecipes((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
+      updateSavedAiCollection(saveOwner, (current) => ({
+        ...current,
+        recipes: [saved, ...current.recipes.filter((item) => item.id !== saved.id)],
+      }));
       onRecipeSaved?.(saved);
     } catch (saveError) {
       if (isCurrentSave()) setError(errorMessage(saveError));
@@ -297,29 +392,45 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
     setDrafts((current) => current.filter((item) => item.id !== recipeId));
   };
 
-  const restorePendingDelete = (recipe: GeneratedRecipe) => {
-    setPendingDeletes((current) => current.filter((item) => item.id !== recipe.id));
-    setRecipes((current) => [recipe, ...current.filter((item) => item.id !== recipe.id)]);
+  const restorePendingDelete = (recipe: GeneratedRecipe, owner: AiRecipeCollectionOwner | null) => {
+    if (owner === null) return;
+    updateSavedAiCollection(owner, (current) => ({
+      ...current,
+      pendingDeletes: current.pendingDeletes.filter((item) => item.id !== recipe.id),
+      recipes: [recipe, ...current.recipes.filter((item) => item.id !== recipe.id)],
+    }));
   };
 
-  const finalizeDelete = async (recipe: GeneratedRecipe) => {
-    if (csrfToken === null) return;
-    setPendingDeletes((current) => current.filter((item) => item.id !== recipe.id));
+  const finalizeDelete = async (recipe: GeneratedRecipe, owner: AiRecipeCollectionOwner | null) => {
+    if (owner === null || !isCurrentPanelOwner(owner)) return;
+    updateSavedAiCollection(owner, (current) => ({
+      ...current,
+      pendingDeletes: current.pendingDeletes.filter((item) => item.id !== recipe.id),
+    }));
     setError(null);
     try {
-      await deleteAiRecipe(recipe.id, csrfToken);
+      await deleteAiRecipe(recipe.id, owner.sessionTokenIdentity);
     } catch (deleteError) {
-      setRecipes((current) => [recipe, ...current.filter((item) => item.id !== recipe.id)]);
+      if (!isCurrentPanelOwner(owner)) return;
+      updateSavedAiCollection(owner, (current) => ({
+        ...current,
+        recipes: [recipe, ...current.recipes.filter((item) => item.id !== recipe.id)],
+      }));
       setError(errorMessage(deleteError));
     }
   };
 
   const remove = (recipeId: string) => {
+    const owner = currentAiOwner;
+    if (owner === null || !isCurrentPanelOwner(owner)) return;
     const recipe = recipes.find((item) => item.id === recipeId);
     if (recipe === undefined) return;
     setError(null);
-    setRecipes((current) => current.filter((item) => item.id !== recipeId));
-    setPendingDeletes((current) => [...current.filter((item) => item.id !== recipeId), recipe]);
+    updateSavedAiCollection(owner, (current) => ({
+      ...current,
+      recipes: current.recipes.filter((item) => item.id !== recipeId),
+      pendingDeletes: [...current.pendingDeletes.filter((item) => item.id !== recipeId), recipe],
+    }));
   };
 
   return (
@@ -457,8 +568,8 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
       <UndoToast
         key={recipe.id}
         message={`Ricetta ${recipe.title} rimossa.`}
-        onUndo={() => restorePendingDelete(recipe)}
-        onExpire={() => { void finalizeDelete(recipe); }}
+        onUndo={() => restorePendingDelete(recipe, currentAiOwner)}
+        onExpire={() => { void finalizeDelete(recipe, currentAiOwner); }}
       />
     ))}
     </>
