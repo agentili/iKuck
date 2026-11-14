@@ -161,7 +161,7 @@ test('ospite: catalogo visibile nella raccolta unificata', async ({ page }) => {
   // e la pagina non chiama fetchAiRecipes.
   await page.goto('/recipes');
   await expect(page.getByRole('heading', { name: 'Ricette', exact: true, level: 1 })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Ricette', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'La tua raccolta', level: 2 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Pasta tonno e pomodoro' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Le tue ricette AI' })).toHaveCount(0);
@@ -333,7 +333,7 @@ test('offline: catalogo consultabile, gruppo salvate in errore non bloccante', a
   await expect(page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' })).toBeVisible();
 
   // Il gruppo salvate è in stato d'errore ma non blocca la pagina.
-  const savedRecipesAlert = page.getByRole('region', { name: 'Ricette', exact: true }).getByRole('alert');
+  const savedRecipesAlert = page.getByRole('region', { name: 'La tua raccolta', exact: true }).getByRole('alert');
   await expect(savedRecipesAlert).toBeVisible();
   await expect(savedRecipesAlert).toHaveText(
     'Servizio non raggiungibile: le ricette AI restano disponibili solo online.',
@@ -368,7 +368,7 @@ test('crea una ricetta AI dal titolo e la aggiunge alla raccolta solo dopo il sa
   await expect(panel.getByRole('heading', { name: recipe.title })).toBeVisible();
   expect(submissions).toHaveLength(1);
   expect(submissions[0].body).toMatchObject({ dishTitle: recipe.title, ingredients: [], dietProfile: { diet: 'omnivore' } });
-  const library = page.getByRole('region', { name: 'Ricette', exact: true });
+  const library = page.getByRole('region', { name: 'La tua raccolta', exact: true });
   await expect(library.getByRole('heading', { name: recipe.title })).toHaveCount(0);
   await panel.getByRole('button', { name: 'Salva ricetta' }).click();
   await expect(library.getByRole('heading', { name: recipe.title })).toBeVisible();

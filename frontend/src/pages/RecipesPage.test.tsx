@@ -1,16 +1,19 @@
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { useLayoutEffect, useSyncExternalStore } from 'react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 import type { AccountSummary, GeneratedRecipe } from '@ikuck/shared/contracts';
 import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import { ApiClientError } from '../api/apiClient';
 import RecipesPage from './RecipesPage';
 import AiRecipePanel from '../components/ai/AiRecipePanel';
 import { useAuthStore } from '../auth/authStore';
-import { setActiveDataScope } from '../sync/scopeContext';
+import { getActiveDataScope, setActiveDataScope, subscribeActiveDataScope } from '../sync/scopeContext';
+import type { SyncScope } from '../sync/scopeContext';
 import { fetchAiRecipes } from '../ai/aiRecipeApi';
 import { writeSavedRecipes, clearDinnerDiary } from '../storage/dinnerDiaryStorage';
+import * as dinnerDiaryStorage from '../storage/dinnerDiaryStorage';
 import { hydrateDinnerDiaryStore } from '../store/dinnerDiaryStore';
 
 vi.mock('../ai/aiRecipeApi', () => ({
@@ -143,10 +146,41 @@ const giudiaAiRecipe: GeneratedRecipe = {
   updatedAt: '2026-09-19T12:00:00.000Z',
 };
 
+const pageCommitSnapshots: Array<{
+  userId: string | null;
+  verified: boolean;
+  csrfToken: string | null;
+  scope: SyncScope;
+  bodyText: string;
+}> = [];
+
+function PageCommitProbe() {
+  const currentUser = useAuthStore((state) => state.user);
+  const csrfToken = useAuthStore((state) => state.csrfToken);
+  const activeScope = useSyncExternalStore(
+    (listener: () => void) => subscribeActiveDataScope(listener),
+    getActiveDataScope,
+    getActiveDataScope,
+  );
+  const verified = currentUser !== null && currentUser.emailVerifiedAt.trim().length > 0 && csrfToken !== null;
+
+  useLayoutEffect(() => {
+    pageCommitSnapshots.push({
+      userId: currentUser?.id ?? null,
+      verified,
+      csrfToken,
+      scope: activeScope,
+      bodyText: document.body.textContent ?? '',
+    });
+  }, [currentUser, verified, csrfToken, activeScope]);
+
+  return null;
+}
+
 const renderPage = () => render(
   <MemoryRouter initialEntries={['/recipes']}>
     <Routes>
-      <Route path="/recipes" element={<RecipesPage />} />
+      <Route path="/recipes" element={<><RecipesPage /><PageCommitProbe /></>} />
     </Routes>
   </MemoryRouter>,
 );
@@ -161,13 +195,110 @@ const setVerifiedSession = (): void => {
 };
 
 beforeEach((): void => {
+  pageCommitSnapshots.length = 0;
   vi.mocked(fetchAiRecipes).mockReset();
   vi.mocked(hydrateDinnerDiaryStore).mockClear();
   useAuthStore.setState({ user: null, csrfToken: null, expiresAt: null });
   setActiveDataScope('guest');
 });
 
+afterEach((): void => {
+  vi.restoreAllMocks();
+});
+
 describe('RecipesPage', () => {
+  const ownershipTransitions = [
+    {
+      transition: 'verification is revoked',
+      user: { ...user, emailVerifiedAt: '' },
+      csrfToken: 'csrf-token',
+      scope: 'account:user-1',
+    },
+    {
+      transition: 'the session signs out',
+      user: null,
+      csrfToken: null,
+      scope: 'account:user-1',
+    },
+    {
+      transition: 'the user ID changes',
+      user: { ...user, id: 'user-2' },
+      csrfToken: 'csrf-token',
+      scope: 'account:user-1',
+    },
+    {
+      transition: 'the CSRF session token changes',
+      user,
+      csrfToken: 'csrf-token-2',
+      scope: 'account:user-1',
+    },
+    {
+      transition: 'the active data scope changes',
+      user,
+      csrfToken: 'csrf-token',
+      scope: 'house:house-1',
+    },
+  ] satisfies Array<{
+    transition: string;
+    user: AccountSummary | null;
+    csrfToken: string | null;
+    scope: SyncScope;
+  }>;
+
+  it.each(ownershipTransitions)(
+    'hides a previously loaded private AI card in the committed render when $transition',
+    async ({ user: nextUser, csrfToken: nextCsrfToken, scope: nextScope }) => {
+      setVerifiedSession();
+      vi.mocked(fetchAiRecipes)
+        .mockResolvedValueOnce([orataRecipe])
+        .mockImplementation(() => new Promise<GeneratedRecipe[]>(() => {}));
+
+      renderPage();
+      expect(await screen.findByRole('heading', { name: orataRecipe.title })).toBeVisible();
+
+      const snapshotCount = pageCommitSnapshots.length;
+      act(() => {
+        useAuthStore.setState({ user: nextUser, csrfToken: nextCsrfToken, expiresAt: null });
+        setActiveDataScope(nextScope);
+      });
+
+      const committedRender = pageCommitSnapshots.slice(snapshotCount).at(-1);
+      expect(committedRender).toBeDefined();
+      expect(committedRender).toMatchObject({
+        userId: nextUser?.id ?? null,
+        verified: nextUser !== null && nextUser.emailVerifiedAt.trim().length > 0 && nextCsrfToken !== null,
+        csrfToken: nextCsrfToken,
+        scope: nextScope,
+      });
+      expect(committedRender?.bodyText).not.toContain(orataRecipe.title);
+    },
+  );
+
+  it('ignores a prior-scope in-flight response and displays only the current scope collection', async () => {
+    const staleResponseRecipe = { ...orataRecipe, id: 'stale-account-recipe', title: 'Ricetta account obsoleta' };
+    const houseRecipe = { ...orataRecipe, id: 'house-recipe', title: 'Ricetta della casa attiva' };
+    let resolveStaleResponse!: (recipes: GeneratedRecipe[]) => void;
+    const staleResponse = new Promise<GeneratedRecipe[]>((resolve) => { resolveStaleResponse = resolve; });
+    setVerifiedSession();
+    vi.mocked(fetchAiRecipes)
+      .mockResolvedValueOnce([orataRecipe])
+      .mockReturnValueOnce(staleResponse)
+      .mockResolvedValueOnce([houseRecipe]);
+
+    renderPage();
+    expect(await screen.findByRole('heading', { name: orataRecipe.title })).toBeVisible();
+
+    act(() => useAuthStore.setState({ user, csrfToken: 'rotated-csrf-token', expiresAt: null }));
+    await waitFor(() => expect(fetchAiRecipes).toHaveBeenCalledTimes(2));
+    act(() => setActiveDataScope('house:house-1'));
+
+    await act(async () => { resolveStaleResponse([staleResponseRecipe]); });
+    expect(screen.queryByRole('heading', { name: staleResponseRecipe.title })).not.toBeInTheDocument();
+    await waitFor(() => expect(fetchAiRecipes).toHaveBeenCalledTimes(3));
+    expect(await screen.findByRole('heading', { name: houseRecipe.title })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: orataRecipe.title })).not.toBeInTheDocument();
+  });
+
   it('offers title generation and immediately adds explicitly saved recipes to the library', async () => {
     setVerifiedSession();
     vi.mocked(fetchAiRecipes).mockResolvedValue([]);
@@ -199,6 +330,24 @@ describe('RecipesPage', () => {
     expect(screen.getByRole('main')).toHaveClass('ik-recipes-page');
   });
 
+  it('etichetta la raccolta con un titolo distinto e univoco, mantenendo il nome della ricerca', () => {
+    renderPage();
+
+    const pageTitle = screen.getByRole('heading', { level: 1, name: 'Ricette' });
+    expect(screen.getByRole('region', { name: 'Ricerca tra le ricette' })).toBeInTheDocument();
+    const resultsTitle = screen.queryByRole('heading', { level: 2, name: 'La tua raccolta' });
+    expect(resultsTitle).toBeVisible();
+    if (resultsTitle === null) return;
+
+    const resultsRegion = screen.queryByRole('region', { name: 'La tua raccolta' });
+    const titleId = resultsTitle.getAttribute('id');
+
+    expect(titleId).toBeTruthy();
+    expect(resultsTitle.id).not.toBe(pageTitle.id);
+    expect(resultsRegion).toHaveAttribute('aria-labelledby', titleId);
+    expect(document.querySelectorAll(`[id="${titleId}"]`)).toHaveLength(1);
+  });
+
   it('riunisce tutte le fonti in un solo gruppo Ricette', async () => {
     setVerifiedSession();
     vi.mocked(fetchAiRecipes).mockResolvedValue([orataRecipe]);
@@ -206,11 +355,10 @@ describe('RecipesPage', () => {
     renderPage();
 
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Orata al forno' })).toBeInTheDocument());
-    expect(screen.getByRole('region', { name: 'Ricette' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Le tue ricette AI' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Le tue ricette salvate' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Ricette suggerite' })).not.toBeInTheDocument();
-    expect(within(screen.getByRole('region', { name: 'Ricette' })).getByText('Orata al forno')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'La tua raccolta' })).getByText('Orata al forno')).toBeInTheDocument();
     expect(screen.getByText('Pollo al limone')).toBeInTheDocument();
     expect(screen.getByText('AI')).toBeInTheDocument();
     expect(screen.getAllByText('Catalogo').length).toBeGreaterThan(0);
@@ -288,11 +436,94 @@ describe('RecipesPage', () => {
     expect(fetchAiRecipes).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    {
+      source: 'AI',
+      error: 'Servizio non raggiungibile: le ricette AI restano disponibili solo online.',
+      matchTitle: 'Lasagne al forno',
+      matchQuery: 'lasagne',
+      prepare: async (): Promise<void> => {
+        setVerifiedSession();
+        await clearDinnerDiary('account:user-1');
+        await writeSavedRecipes([savedRecipe()], 'account:user-1');
+        vi.mocked(fetchAiRecipes).mockRejectedValue(new ApiClientError(0, 'network_error', 'down'));
+      },
+    },
+    {
+      source: 'lettura locale',
+      error: 'Non è stato possibile caricare le tue ricette salvate. Riprova.',
+      matchTitle: 'Orata al forno',
+      matchQuery: 'orata',
+      prepare: (): void => {
+        setVerifiedSession();
+        vi.spyOn(dinnerDiaryStorage, 'readSavedRecipes').mockRejectedValue(new Error('IndexedDB unavailable'));
+        vi.mocked(fetchAiRecipes).mockResolvedValue([orataRecipe]);
+      },
+    },
+  ])('mantiene le corrispondenze riuscite e non dichiara vuota la ricerca se fallisce $source', async ({
+    prepare,
+    error,
+    matchTitle,
+    matchQuery,
+  }) => {
+    await prepare();
+    renderPage();
+
+    await screen.findByText(error);
+    await waitFor(() => {
+      expect(screen.queryByText('Carico le tue ricette salvate…')).not.toBeInTheDocument();
+      expect(screen.queryByText('Carico le tue ricette AI…')).not.toBeInTheDocument();
+    });
+
+    const search = screen.getByRole('searchbox', { name: 'Cerca ricette' });
+    const userEvents = userEvent.setup();
+    await userEvents.type(search, matchQuery);
+
+    expect(await screen.findByRole('heading', { name: matchTitle })).toBeVisible();
+    expect(screen.getByText(error)).toBeInTheDocument();
+    expect(screen.queryByText(/Nessuna ricetta trovata/)).not.toBeInTheDocument();
+
+    await userEvents.clear(search);
+    await userEvents.type(search, 'quasar-ricetta-assente-xyz');
+
+    expect(screen.getByText(error)).toBeInTheDocument();
+    expect(screen.queryByText(/Nessuna ricetta trovata/)).not.toBeInTheDocument();
+  });
+
   it('ospite: raccolta visibile senza sezioni AI separate e nessuna chiamata', async () => {
     renderPage();
 
     expect(screen.getByText('Pollo al limone')).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Ricette' })).toBeInTheDocument();
+    expect(fetchAiRecipes).not.toHaveBeenCalled();
+  });
+
+  it('ospite: offre l’accesso al profilo senza effettuare richieste AI', () => {
+    renderPage();
+
+    expect(fetchAiRecipes).not.toHaveBeenCalled();
+    const profileLink = screen.queryByRole('link', { name: 'Accedi al tuo account' });
+    expect(profileLink).toBeVisible();
+    expect(profileLink).toHaveAttribute('href', '/profile');
+  });
+
+  it.each(['ospite', 'sessione non verificata'])('completa la ricerca senza consultare AI quando la sessione è %s', async (sessionState) => {
+    if (sessionState === 'sessione non verificata') {
+      useAuthStore.setState({
+        user: { ...user, emailVerifiedAt: '' },
+        csrfToken: 'csrf-token',
+        expiresAt: '2026-10-20T10:00:00.000Z',
+      });
+      setActiveDataScope('account:user-1');
+    }
+
+    renderPage();
+    await waitFor(() => expect(screen.queryByText('Carico le tue ricette salvate…')).not.toBeInTheDocument());
+    expect(fetchAiRecipes).not.toHaveBeenCalled();
+
+    const userEvents = userEvent.setup();
+    await userEvents.type(screen.getByRole('searchbox', { name: 'Cerca ricette' }), 'quasar-ricetta-assente-xyz');
+
+    expect(await screen.findByText(/Nessuna ricetta trovata/)).toBeVisible();
     expect(fetchAiRecipes).not.toHaveBeenCalled();
   });
 
