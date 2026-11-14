@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { loadConfig } from '../src/config.js';
 import { createDatabase } from '../src/db/client.js';
-import { RECIPES } from '../../frontend/src/domain/recipes.js';
+import { RECIPES } from '@ikuck/shared/recipeCatalog';
 import { getIngredient } from '@ikuck/shared/ingredients';
 // This CLI is run via tsx from the source checkout, never imported by the API build.
 const apply = process.argv.includes('--apply');

@@ -301,7 +301,7 @@ export interface WeeklyPushPayload {
   expiresAt: string;
 }
 
-export type RecipeImageState = 'pending' | 'processing' | 'ready' | 'failed' | 'consent_required' | 'quota_exceeded' | 'disabled';
+export type RecipeImageState = 'missing' | 'pending' | 'processing' | 'ready' | 'failed' | 'consent_required' | 'quota_exceeded' | 'disabled';
 export interface RecipeImageMetadata {
   state: RecipeImageState;
   url?: string;

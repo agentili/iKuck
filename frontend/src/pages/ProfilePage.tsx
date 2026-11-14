@@ -1,3 +1,4 @@
+import RecipeImageGeneration from '../components/recipe/RecipeImageGeneration';
 import { safePushDestination } from '../push/payload';
 import PushSettings from '../push/PushSettings';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -388,6 +389,11 @@ export default function ProfilePage() {
           </label>
           <button type="button" onClick={() => void saveProfile()} disabled={isLoading || csrfToken === null} className="min-h-11 w-full rounded-xl bg-[var(--ik-basil)] px-4 py-2 font-bold text-[var(--ik-porcelain)] hover:bg-[var(--ik-basil-dark)] disabled:opacity-60 sm:w-fit">Salva profilo</button>
         </div>
+
+        <section className="mt-7 border-t border-[var(--ik-border)] pt-6" aria-labelledby="recipe-images-heading">
+          <h2 id="recipe-images-heading" className="text-xl font-black text-[var(--ik-ink)]">Immagini delle ricette</h2>
+          <RecipeImageGeneration />
+        </section>
 
         <div className="mt-7 grid gap-3 border-t border-[var(--ik-border)] pt-6">
           <h2 className="text-xl font-black text-[var(--ik-ink)]">I tuoi dati</h2>

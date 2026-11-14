@@ -1,3 +1,4 @@
+import RecipeImageGeneration from '../recipe/RecipeImageGeneration';
 import { useRecipeImage } from '../../ai/recipeImages';
 import { useEffect, useState } from 'react';
 import { RECIPE_IMAGES } from '../../domain/recipeImages';
@@ -13,10 +14,10 @@ export default function RecipeImage({ recipeId, recipeTitle, variant = 'card' }:
   const asset = RECIPE_IMAGES[recipeId] ?? (remote.url && remote.metadata ? { src: remote.url, width: remote.metadata.width, height: remote.metadata.height, alt: `${recipeTitle}: immagine illustrativa`, illustrative: true, author: remote.metadata.author } : undefined);
   const [failed, setFailed] = useState(false);
 
-  useEffect(() => setFailed(false), [recipeId]);
+  useEffect(() => setFailed(false), [recipeId, remote.url]);
 
   return (
-    <figure className={`ik-recipe-image ik-recipe-image--${variant}`} aria-label={`Immagine per ${recipeTitle}`}>
+    <figure className={`ik-recipe-image ik-recipe-image--${variant} text-[var(--ik-ink)]`} aria-label={`Immagine per ${recipeTitle}`}>
       {asset !== undefined && !failed ? (
         <img
           src={asset.src}
@@ -53,8 +54,10 @@ export default function RecipeImage({ recipeId, recipeTitle, variant = 'card' }:
       ) : <figcaption>Illustrazione della ricetta</figcaption>}
       {remote.metadata?.state === 'processing' || remote.metadata?.state === 'pending' ? <p role="status">Immagine in preparazione…</p> : null}
       {remote.metadata?.state === 'consent_required' && <p>Conferma il consenso AI aggiornato per creare l’immagine.</p>}
-      {remote.metadata?.state === 'quota_exceeded' && <p>Quota immagini raggiunta. Riprova domani.</p>}
-      {(remote.metadata?.state === 'failed' || remote.metadata?.state === 'quota_exceeded') && remote.canRetry && <button type="button" className="ik-button-secondary min-h-11" onClick={() => { void remote.retry().catch(() => undefined); }}>Riprova immagine</button>}
+      {remote.metadata?.state === 'quota_exceeded' && <p>Quota immagini raggiunta. La preparazione riprenderà automaticamente domani.</p>}
+      {variant === 'detail' && asset === undefined && remote.metadata?.state !== 'disabled' && (
+        <RecipeImageGeneration recipeId={recipeId} disabled={remote.metadata?.state === 'pending' || remote.metadata?.state === 'processing' || remote.metadata?.state === 'quota_exceeded'} />
+      )}
     </figure>
   );
 }
