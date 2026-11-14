@@ -8,7 +8,7 @@ export async function runImageTick(db: Database, config: ImageConfig, provider =
   if (!config.enabled) return;
   // An interrupted dispatch may have incurred charges. Quarantine instead of dispatching again.
   await db.execute(sql`UPDATE recipe_image_jobs SET state='failed' WHERE state='processing' AND updated_at < now()-interval '10 minutes'`);
-  const rows = await db.execute(sql`UPDATE recipe_image_jobs SET state='processing', attempts=attempts+1, updated_at=now() WHERE id=(SELECT id FROM recipe_image_jobs WHERE (state='pending' OR (state='quota_exceeded' AND catalog_id IS NOT NULL)) AND available_at<=now() AND (${targetJobId ?? null}::uuid IS NULL OR id=${targetJobId ?? null}::uuid) ORDER BY available_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *`);
+  const rows = await db.execute(sql`UPDATE recipe_image_jobs SET state='processing', attempts=attempts+1, updated_at=now() WHERE id=(SELECT id FROM recipe_image_jobs WHERE (state='pending' OR state='quota_exceeded') AND available_at<=now() AND (${targetJobId ?? null}::uuid IS NULL OR id=${targetJobId ?? null}::uuid) ORDER BY available_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *`);
   const job = rows[0]; if (!job) return;
   const id = String(job.id);
   try {
