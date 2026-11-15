@@ -8,6 +8,9 @@ const temporaryDockerConfigs: string[] = [];
 type ComposeConfig = {
   services: Record<string, {
     ports?: Array<{ target: number; published?: string }>;
+    profiles?: string[];
+    environment?: Record<string, string>;
+    command?: string[];
     build?: { context?: string; dockerfile?: string };
   }>;
 };
@@ -97,6 +100,20 @@ describe('deployment contracts', () => {
 
     expect(readFileSync(resolve(repositoryRoot, 'backend/Dockerfile'), 'utf8')).toContain('COPY shared /app/shared');
     expect(readFileSync(resolve(repositoryRoot, 'deploy/Caddy.Dockerfile'), 'utf8')).toContain('COPY shared /shared');
+  });
+
+  it('includes the image worker in the normal deployed stack with the same image settings as the API', () => {
+    for (const path of ['deploy/docker-compose.production.yml', 'deploy/docker-compose.standalone.yml']) {
+      const compose = readComposeConfig(path);
+      const worker = compose.services['image-worker'];
+      expect(worker).toBeDefined();
+      expect(worker.profiles).toBeUndefined();
+      expect(worker.command).toEqual(['node', 'dist/recipeImages/worker.js']);
+      for (const name of ['RECIPE_IMAGES_ENABLED', 'RECIPE_IMAGE_PROVIDER', 'RECIPE_IMAGE_MODEL', 'RECIPE_IMAGE_VISION_MODEL', 'RECIPE_IMAGE_DAILY_LIMIT', 'PEXELS_API_KEY']) {
+        expect(worker.environment).toHaveProperty(name);
+        expect(worker.environment?.[name]).toEqual(compose.services.api.environment?.[name]);
+      }
+    }
   });
 
   });

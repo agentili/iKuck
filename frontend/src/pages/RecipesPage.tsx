@@ -1,4 +1,3 @@
-import RecipeImageGeneration from '../components/recipe/RecipeImageGeneration';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSyncExternalStore } from 'react';
 import { Link } from 'react-router-dom';
@@ -270,7 +269,6 @@ export default function RecipesPage() {
           Le tue ricette salvate, quelle generate con l’AI e il catalogo della casa.
         </p>
 
-        <RecipeImageGeneration />
       </header>
 
       <div className="mb-6">

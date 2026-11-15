@@ -1,5 +1,5 @@
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, vi } from 'vitest';
 import RecipeDetailPage from './RecipeDetailPage';
@@ -320,7 +320,7 @@ describe('RecipeDetailPage integration', () => {
       connection: 'online',
       isLoading: false,
     });
-    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ nutrition: {
+    const fetch = vi.fn().mockImplementation((path: string) => Promise.resolve(new Response(JSON.stringify(path.startsWith('/v1/recipe-images/') ? { state: 'disabled' } : { nutrition: {
       caloriesPerServing: 410,
       proteinGramsPerServing: 28,
       carbohydrateGramsPerServing: 35,
@@ -328,7 +328,7 @@ describe('RecipeDetailPage integration', () => {
       source: 'usda',
       isComplete: true,
       missingNutrients: [],
-    } }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    } }), { status: 200, headers: { 'content-type': 'application/json' } })));
     vi.stubGlobal('fetch', fetch);
 
     renderRoute('/recipes/pasta-tonno-pomodoro');
@@ -336,18 +336,21 @@ describe('RecipeDetailPage integration', () => {
 
     expect(await screen.findByText('Valori USDA aggiornati')).toBeVisible();
     expect(fetch).toHaveBeenCalledWith('/v1/recipes/nutrition', expect.objectContaining({ method: 'POST', credentials: 'include' }));
-    expect(JSON.parse(fetch.mock.calls[0]?.[1]?.body as string)).toMatchObject({ ingredients: expect.any(Array) });
+    const nutritionRequest = fetch.mock.calls.find(([path]) => path === '/v1/recipes/nutrition');
+    expect(JSON.parse(nutritionRequest?.[1]?.body as string)).toMatchObject({ ingredients: expect.any(Array) });
     vi.unstubAllGlobals();
   });
 
-  it('keeps the guest detail page offline without a USDA action or network request', () => {
+  it('keeps the guest detail page offline without a USDA action or network request', async () => {
+    const connection = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
 
-    renderRoute('/recipes/pasta-tonno-pomodoro');
+    await act(async () => { renderRoute('/recipes/pasta-tonno-pomodoro'); });
 
     expect(screen.queryByRole('button', { name: 'Aggiorna stima USDA' })).not.toBeInTheDocument();
     expect(fetch).not.toHaveBeenCalled();
+    connection.mockRestore();
     vi.unstubAllGlobals();
   });
 });

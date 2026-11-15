@@ -6,7 +6,21 @@ Images are asynchronous and optional. Recipes remain usable while images are pen
 
 Set `RECIPE_IMAGES_ENABLED=true`, `PEXELS_API_KEY`, `RECIPE_IMAGE_MODEL`, and `RECIPE_IMAGE_VISION_MODEL`. Set the appropriate `OPENAI_API_KEY` or `GEMINI_API_KEY`. `RECIPE_IMAGE_PROVIDER` overrides `RECIPE_PROVIDER`; otherwise image generation follows the text provider. Models must support image generation and multimodal evaluation respectively. No provider fallback occurs. `RECIPE_IMAGE_DAILY_LIMIT` defaults to 5 and applies to each user and separately to the catalog principal. Keys remain server-side.
 
-Build the frontend with `VITE_RECIPE_IMAGES_ENABLED=true`. Production and standalone Compose propagate the server flag to this build argument. Start the `images` Compose profile to run `image-worker`, or run `npm --prefix backend run images:worker` after building. Apply database migrations before starting API or worker. The feature defaults to disabled; do not enable without all credentials and model IDs configured.
+The frontend reads image availability from the API at runtime; `VITE_RECIPE_IMAGES_ENABLED` is no longer used. Production and standalone Compose start `image-worker` with the normal stack, without an extra profile. When disabled, the worker stays idle and makes no database or provider calls. Apply database migrations before starting API or worker. The server feature defaults to disabled; set `RECIPE_IMAGES_ENABLED=true` only after configuring all credentials and compatible model IDs. The deployment env examples include the full image configuration block.
+
+## Activating an existing deployment
+
+Updating the code does not change the server’s env file. Use the actual Compose project and env file for the deployed instance. In that file, set `RECIPE_IMAGES_ENABLED=true`, `PEXELS_API_KEY`, `RECIPE_IMAGE_MODEL`, `RECIPE_IMAGE_VISION_MODEL`, and the key for the selected provider (`OPENAI_API_KEY` or `GEMINI_API_KEY`). Model IDs must be chosen from the models available to that provider account; text-only model IDs cannot generate images. Do not paste API keys into Git, terminal output or issue comments.
+
+After a database backup, recreate the API and image worker using that same env file and Compose project. For example, from the checkout with production Compose:
+
+```sh
+docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml up -d --build
+# For standalone, use deploy/.env.standalone and deploy/docker-compose.standalone.yml instead.
+docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml ps api image-worker
+```
+
+The updated Compose files include the worker by default. On older releases with the `images` profile, add `--profile images` before `up`. A false or absent server flag means processing remains disabled; changing only a frontend flag cannot enable it. Check API and worker logs without printing their environment. A worker that exits with a configuration error needs its missing credentials or model IDs corrected before retrying.
 
 ## Initial population
 
@@ -16,7 +30,7 @@ Users confirm the updated AI consent before any private image lookup or generati
 
 ## User controls
 
-The Profile and Recipes pages offer **Genera tutte le immagini**. A single request queues missing catalog images and the current user's saved/generated recipes still accessible in their personal scope or a house they belong to. It does not import guest data or generate images for another author's private recipes. Ready images and pending/processing jobs are preserved. A repeated explicit request can retry failed jobs; it never resets a running or quota-limited job.
+Only the signed-in user’s Profile page offers **Genera tutte le immagini**. The Recipes collection page has no bulk image button. A single request queues missing catalog images and the current user's saved/generated recipes still accessible in their personal scope or a house they belong to. It does not import guest data or generate images for another author's private recipes. Ready images and pending/processing jobs are preserved. A repeated explicit request can retry failed jobs; it never resets a running or quota-limited job.
 
 Recipe detail pages and modals offer **Genera immagine** when the image is missing. Public catalog images require a verified session and CSRF but no private-data consent. Personal images require provider-specific image consent; the UI displays the recipients and asks for explicit confirmation when it is missing. Save a proposed recipe before requesting its image. The UI polls queued image metadata and reports disabled service, quota, consent, or request failures.
 
@@ -30,6 +44,6 @@ PostgreSQL backups include image binaries, jobs and quotas. Monitor `recipe_imag
 
 ## Verification
 
-CI runs the usual offline browser suite with the feature disabled and a dedicated `VITE_RECIPE_IMAGES_ENABLED=true npm run test:e2e -- e2e/recipe-images.spec.ts` pass for image delivery, attribution and offline caching. Provider tests use mocked HTTP, including both generation response formats; they do not incur API costs. Disposable PostgreSQL tests cover queue insertion, consent resume, concurrent workers, binary storage/deletion, quota and access isolation. Real-provider smoke tests require operator-supplied credentials and are not implied by a green mocked suite.
+CI runs the offline browser suite with disabled image API fixtures by default. `npm run test:e2e -- e2e/recipe-images.spec.ts` uses enabled runtime API fixtures to verify image delivery, profile-only bulk generation, single-recipe generation, attribution and offline caching. These tests need no frontend build flag. Provider tests use mocked HTTP, including both generation response formats; they do not incur API costs. Disposable PostgreSQL tests cover queue insertion, consent resume, concurrent workers, binary storage/deletion, quota and access isolation. Real-provider smoke tests require operator-supplied credentials and are not implied by a green mocked suite.
 
 Catalog and private jobs that reach the daily generation cap resume automatically on the next database day; failed dispatches still require an explicit retry. The backfill `--max` is an enqueue bound, while `RECIPE_IMAGE_DAILY_LIMIT` is the paid generation bound. Database sessions should use UTC, matching the default PostgreSQL container.

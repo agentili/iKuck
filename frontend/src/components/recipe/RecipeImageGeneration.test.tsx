@@ -88,17 +88,32 @@ describe('RecipeImageGeneration', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ code: 'images_disabled' }, 503)));
     render(<RecipeImageGeneration recipeId="pollo-al-limone" />);
     await userEvent.click(screen.getByRole('button', { name: 'Genera immagine' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('servizio immagini non è disponibile');
+    expect(await screen.findByRole('alert')).toHaveTextContent('servizio immagini non è attivo sul server');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Genera immagine' })).toBeEnabled());
   });
 
-  it('keeps generation disabled for guests and when the service is switched off', () => {
+  it('keeps generation disabled for guests', () => {
     useAuthStore.setState({ user: null, csrfToken: null });
-    const view = render(<RecipeImageGeneration />);
+    render(<RecipeImageGeneration />);
     expect(screen.getByRole('button')).toBeDisabled();
     expect(screen.getByText(/Accedi con un account verificato/)).toBeInTheDocument();
+  });
+
+  it('uses the runtime service even when the old build flag was disabled', async () => {
     vi.stubEnv('VITE_RECIPE_IMAGES_ENABLED', 'false');
-    view.rerender(<RecipeImageGeneration />);
-    expect(screen.getByText('Il servizio immagini non è attivo.')).toBeInTheDocument();
+    const fetch = vi.fn().mockResolvedValueOnce(json(status())).mockResolvedValueOnce(json({ queued: 1 }, 202));
+    vi.stubGlobal('fetch', fetch);
+    render(<RecipeImageGeneration />);
+    await userEvent.click(screen.getByRole('button', { name: 'Genera tutte le immagini' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Immagine aggiunta alla coda');
+  });
+
+  it('reports an actually disabled backend and does not queue images', async () => {
+    const fetch = vi.fn().mockResolvedValue(json({ ...status(), selectedImageProvider: undefined }));
+    vi.stubGlobal('fetch', fetch);
+    render(<RecipeImageGeneration />);
+    await userEvent.click(screen.getByRole('button', { name: 'Genera tutte le immagini' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Il servizio immagini non è attivo sul server.');
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

@@ -21,6 +21,12 @@ Copia `deploy/.env.example` in `deploy/.env` sul VPS e sostituisci tutti i place
 | `USDA_API_KEY` | no | abilita l'arricchimento nutrizionale USDA |
 | `OPENAI_API_KEY` | no | abilita le ricette AI private |
 | `OPENAI_MODEL` | no | modello OpenAI, default `gpt-5.5` |
+| `RECIPE_IMAGES_ENABLED` | no | `false` per default; `true` abilita le immagini e richiede tutte le variabili seguenti |
+| `RECIPE_IMAGE_PROVIDER` | no | `openai` o `gemini`; se vuota usa `RECIPE_PROVIDER` |
+| `RECIPE_IMAGE_MODEL` | con immagini | modello compatibile con la generazione immagini del provider selezionato |
+| `RECIPE_IMAGE_VISION_MODEL` | con immagini | modello multimodale compatibile con la valutazione delle foto |
+| `PEXELS_API_KEY` | con immagini | chiave Pexels, solo server |
+| `RECIPE_IMAGE_DAILY_LIMIT` | no | limite di generazioni al giorno per utente e catalogo; default `5` |
 | `PUSH_ENABLED` | no | `false` per default; `true` abilita le API push e richiede VAPID |
 | `PUSH_VAPID_PUBLIC_KEY` | con push | chiave pubblica P-256 base64url |
 | `PUSH_VAPID_PRIVATE_KEY` | con push | chiave privata VAPID; solo server, mai Git |
@@ -38,6 +44,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml co
 ```
 
 Il validator rifiuta valori mancanti o placeholder, domini non validi, password non sicure per la URL PostgreSQL, chiavi provider presenti nei file `.example` e URL database/Redis esterni alla rete privata Compose.
+
+Per le immagini configurare anche la chiave del provider selezionato e seguire [il runbook immagini](recipe-images.md#activating-an-existing-deployment). Il worker immagini fa parte dello stack Compose standard e resta inattivo finché `RECIPE_IMAGES_ENABLED` è `false`. Non è necessario ricostruire il frontend per cambiare lo stato del servizio.
 
 Per i promemoria del venerdì avviare anche il profilo Compose `push` e seguire [il runbook notifiche](push-notifications.md), incluse le prove su staging HTTPS.
 
