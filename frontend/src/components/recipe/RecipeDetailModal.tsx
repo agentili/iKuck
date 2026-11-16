@@ -1,3 +1,4 @@
+import RecipeImage from '../suggestions/RecipeImage';
 import { memo, useEffect, useRef, useState } from 'react';
 import { X, ChefHat, Clock, Users, Save, Trash2, Share2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -263,19 +264,9 @@ export const RecipeDetailModal = memo(({
 
         {/* Content */}
         <div className="p-4 pb-20 max-h-[calc(90vh-80px)] overflow-y-auto">
-          {/* Hero Image */}
-          <div className="relative aspect-[16/9] rounded-2xl overflow-hidden mb-4" style={{ backgroundColor: 'var(--ik-sage)' }}>
-            <img
-              src={recipe.image}
-              alt={recipe.title}
-              className="w-full h-full object-cover opacity-90"
-              loading="lazy"
-            />
-            <div className="absolute bottom-3 left-3 right-3 flex flex-wrap gap-1.5">
-              {recipe.tags.map((tag) => (
-                <Tag key={tag} variant="default">{tag}</Tag>
-              ))}
-            </div>
+          <RecipeImage recipeId={recipe.id} recipeTitle={recipe.title} variant="detail" />
+          <div className="mb-4 flex flex-wrap gap-1.5">
+            {recipe.tags.map(tag => <Tag key={tag}>{tag}</Tag>)}
           </div>
 
           {/* Meta Info */}

@@ -1,5 +1,5 @@
-import { MemoryRouter } from 'react-router-dom';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { useLayoutEffect, useSyncExternalStore } from 'react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { AccountSummary, DietProfilePayload, GeneratedRecipe } from '@ikuck/shared/contracts';
@@ -7,7 +7,8 @@ import { ApiClientError } from '../../api/apiClient';
 import AiRecipePanel from './AiRecipePanel';
 import { useAuthStore } from '../../auth/authStore';
 import { useDinnerDiaryStore } from '../../store/dinnerDiaryStore';
-import { setActiveDataScope } from '../../sync/scopeContext';
+import { getActiveDataScope, setActiveDataScope, subscribeActiveDataScope } from '../../sync/scopeContext';
+import type { SyncScope } from '../../sync/scopeContext';
 import {
   deleteAiRecipe,
   fetchAiConsent,
@@ -65,6 +66,68 @@ const renderPanel = (overrides: Partial<React.ComponentProps<typeof AiRecipePane
   />,
 );
 
+const panelCommitSnapshots: Array<{
+  userId: string | null;
+  verified: boolean;
+  csrfToken: string | null;
+  scope: SyncScope;
+  bodyText: string;
+}> = [];
+
+function PanelCommitProbe({
+  userId,
+  verified,
+  csrfToken,
+  scope,
+}: {
+  userId: string | null;
+  verified: boolean;
+  csrfToken: string | null;
+  scope: SyncScope;
+}) {
+  useLayoutEffect(() => {
+    panelCommitSnapshots.push({
+      userId,
+      verified,
+      csrfToken,
+      scope,
+      bodyText: document.body.textContent ?? '',
+    });
+  }, [userId, verified, csrfToken, scope]);
+
+  return null;
+}
+
+function HomeLikeUnkeyedPanel() {
+  const currentUser = useAuthStore((state) => state.user);
+  const csrfToken = useAuthStore((state) => state.csrfToken);
+  const activeScope = useSyncExternalStore(
+    (listener: () => void) => subscribeActiveDataScope(listener),
+    getActiveDataScope,
+    getActiveDataScope,
+  );
+  const verified = currentUser !== null && currentUser.emailVerifiedAt.trim().length > 0 && csrfToken !== null;
+
+  return (
+    <>
+      <AiRecipePanel
+        ingredients={activeScope.startsWith('house:') ? ['Riso', 'Zafferano'] : ['Ceci', 'Pomodoro']}
+        dietProfile={profile}
+        user={currentUser}
+        csrfToken={csrfToken}
+      />
+      <PanelCommitProbe
+        userId={currentUser?.id ?? null}
+        verified={verified}
+        csrfToken={csrfToken}
+        scope={activeScope}
+      />
+    </>
+  );
+}
+
+const renderHomeLikePanel = () => render(<HomeLikeUnkeyedPanel />);
+
 const enableGeneration = async (
   panel: HTMLElement,
   userEvents: ReturnType<typeof userEvent.setup>,
@@ -74,7 +137,113 @@ const enableGeneration = async (
 };
 
 describe('AiRecipePanel', () => {
+  const ownershipTransitions = [
+    {
+      transition: 'verification is revoked',
+      user: { ...user, emailVerifiedAt: '' },
+      csrfToken: 'csrf-token',
+      scope: 'account:user-1',
+    },
+    {
+      transition: 'the session signs out',
+      user: null,
+      csrfToken: null,
+      scope: 'account:user-1',
+    },
+    {
+      transition: 'the user ID changes',
+      user: { ...user, id: 'user-2' },
+      csrfToken: 'csrf-token',
+      scope: 'account:user-1',
+    },
+    {
+      transition: 'the CSRF session token changes',
+      user,
+      csrfToken: 'csrf-token-2',
+      scope: 'account:user-1',
+    },
+    {
+      transition: 'the active data scope changes in Home’s unkeyed panel',
+      user,
+      csrfToken: 'csrf-token',
+      scope: 'house:house-1',
+    },
+  ] satisfies Array<{
+    transition: string;
+    user: AccountSummary | null;
+    csrfToken: string | null;
+    scope: SyncScope;
+  }>;
+
+  it.each(ownershipTransitions)(
+    'hides a previously loaded private AI card in the committed render when $transition',
+    async ({ user: nextUser, csrfToken: nextCsrfToken, scope: nextScope }) => {
+      useAuthStore.setState({ user, csrfToken: 'csrf-token' });
+      setActiveDataScope('account:user-1');
+      vi.mocked(fetchAiConsentStatus)
+        .mockResolvedValueOnce({
+          consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' },
+          selectedProvider: 'openai',
+        })
+        .mockImplementation(() => new Promise(() => {}));
+      vi.mocked(fetchAiRecipes)
+        .mockResolvedValueOnce([recipe])
+        .mockImplementation(() => new Promise<GeneratedRecipe[]>(() => {}));
+
+      renderHomeLikePanel();
+      expect(await screen.findByRole('heading', { name: recipe.title })).toBeVisible();
+
+      const snapshotCount = panelCommitSnapshots.length;
+      act(() => {
+        useAuthStore.setState({ user: nextUser, csrfToken: nextCsrfToken });
+        setActiveDataScope(nextScope);
+      });
+
+      const committedRender = panelCommitSnapshots.slice(snapshotCount).at(-1);
+      expect(committedRender).toBeDefined();
+      expect(committedRender).toMatchObject({
+        userId: nextUser?.id ?? null,
+        verified: nextUser !== null && nextUser.emailVerifiedAt.trim().length > 0 && nextCsrfToken !== null,
+        csrfToken: nextCsrfToken,
+        scope: nextScope,
+      });
+      expect(committedRender?.bodyText).not.toContain(recipe.title);
+    },
+  );
+
+  it('ignores an account response started before Home switches scope and displays the current house response', async () => {
+    const accountRecipe = { ...recipe, id: 'account-recipe', title: 'Ricetta account precedente' };
+    const staleResponseRecipe = { ...recipe, id: 'stale-recipe', title: 'Ricetta della sessione obsoleta' };
+    const houseRecipe = { ...recipe, id: 'house-recipe', title: 'Ricetta della casa corrente' };
+    let resolveStaleResponse!: (recipes: GeneratedRecipe[]) => void;
+    const staleResponse = new Promise<GeneratedRecipe[]>((resolve) => { resolveStaleResponse = resolve; });
+    useAuthStore.setState({ user, csrfToken: 'csrf-token' });
+    setActiveDataScope('account:user-1');
+    vi.mocked(fetchAiConsentStatus).mockResolvedValue({
+      consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' },
+      selectedProvider: 'openai',
+    });
+    vi.mocked(fetchAiRecipes)
+      .mockResolvedValueOnce([accountRecipe])
+      .mockReturnValueOnce(staleResponse)
+      .mockResolvedValueOnce([houseRecipe]);
+
+    renderHomeLikePanel();
+    expect(await screen.findByRole('heading', { name: accountRecipe.title })).toBeVisible();
+
+    act(() => useAuthStore.setState({ user, csrfToken: 'rotated-csrf-token' }));
+    await waitFor(() => expect(fetchAiRecipes).toHaveBeenCalledTimes(2));
+    act(() => setActiveDataScope('house:house-1'));
+
+    await act(async () => { resolveStaleResponse([staleResponseRecipe]); });
+    expect(screen.queryByRole('heading', { name: staleResponseRecipe.title })).not.toBeInTheDocument();
+    await waitFor(() => expect(fetchAiRecipes).toHaveBeenCalledTimes(3));
+    expect(await screen.findByRole('heading', { name: houseRecipe.title })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: accountRecipe.title })).not.toBeInTheDocument();
+  });
+
   beforeEach(() => {
+    panelCommitSnapshots.length = 0;
     localStorage.clear();
     Object.defineProperty(navigator, 'locks', {
       configurable: true,
@@ -114,24 +283,6 @@ describe('AiRecipePanel', () => {
     await waitFor(() => expect(onRecipeProposed).toHaveBeenCalledWith(recipe));
     expect(generateAiRecipe).toHaveBeenCalledWith({ dishDescription: 'Un risotto cremoso al limone', ingredients: [], constraints, existingRecipes: [] }, profile, 'csrf-token');
     expect(saveAiRecipe).not.toHaveBeenCalled();
-  });
-
-  it('offers consent settings in the profile without fetching or displaying recipe lists', async () => {
-    renderPanel({ settingsOnly: true, generationMode: 'title' });
-    const panel = screen.getByRole('region', { name: 'Consenso AI' });
-    expect(await within(panel).findByRole('checkbox', { name: /acconsento/i })).toBeInTheDocument();
-    expect(within(panel).queryByRole('button', { name: 'Genera ricetta AI' })).not.toBeInTheDocument();
-    expect(fetchAiRecipes).not.toHaveBeenCalled();
-    expect(screen.queryByRole('region', { name: 'Ricette AI private' })).not.toBeInTheDocument();
-  });
-
-  it('links to profile settings and hides consent controls on the recipe page', async () => {
-    render(<MemoryRouter><AiRecipePanel generationMode="title" showConsent={false} ingredients={[]} dietProfile={profile} user={user} csrfToken="csrf-token" /></MemoryRouter>);
-    expect(await screen.findByRole('link', { name: 'Consenso AI nel profilo' })).toHaveAttribute('href', '/profile#ai-settings');
-    await waitFor(() => expect(fetchAiConsentStatus).toHaveBeenCalled());
-    expect(screen.queryByRole('checkbox', { name: /acconsento/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Salva consenso' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Genera ricetta AI' })).toBeDisabled();
   });
 
   it('generates from a title without pantry ingredients and saves only on request', async () => {

@@ -3,9 +3,9 @@ export interface CatalogRecipe {
   title: string;
   description: string;
   category: 'meat' | 'fish' | 'eggs' | 'legumes' | 'vegetables';
-  durationMinutes: number;
-  difficulty: 'easy' | 'medium';
-  servings: number;
+  durationMinutes: number | null;
+  difficulty: 'easy' | 'medium' | 'unknown';
+  servings: number | null;
   ingredients: { ingredientId: string; amount: string; optional?: boolean; name?: string }[];
   steps: string[];
   tags: string[];

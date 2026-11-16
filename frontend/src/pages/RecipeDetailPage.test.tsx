@@ -1,5 +1,5 @@
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, vi } from 'vitest';
 import RecipeDetailPage from './RecipeDetailPage';
@@ -311,8 +311,7 @@ describe('RecipeDetailPage integration', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Preferenza salvata.');
   });
 
-  it('lets a verified user replace the catalog estimate with a successful USDA response', async () => {
-    const user = userEvent.setup();
+  it('keeps static nutrition for verified users without an enrichment action or request', async () => {
     useAuthStore.setState({
       user: { id: 'user-1', email: 'user@example.com', emailVerifiedAt: '2026-09-13T12:00:00.000Z' },
       csrfToken: 'csrf-token',
@@ -320,34 +319,29 @@ describe('RecipeDetailPage integration', () => {
       connection: 'online',
       isLoading: false,
     });
-    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ nutrition: {
-      caloriesPerServing: 410,
-      proteinGramsPerServing: 28,
-      carbohydrateGramsPerServing: 35,
-      fatGramsPerServing: 14,
-      source: 'usda',
-      isComplete: true,
-      missingNutrients: [],
-    } }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ state: 'disabled' }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }));
     vi.stubGlobal('fetch', fetch);
 
-    renderRoute('/recipes/pasta-tonno-pomodoro');
-    await user.click(screen.getByRole('button', { name: 'Aggiorna stima USDA' }));
-
-    expect(await screen.findByText('Valori USDA aggiornati')).toBeVisible();
-    expect(fetch).toHaveBeenCalledWith('/v1/recipes/nutrition', expect.objectContaining({ method: 'POST', credentials: 'include' }));
-    expect(JSON.parse(fetch.mock.calls[0]?.[1]?.body as string)).toMatchObject({ ingredients: expect.any(Array) });
+    await act(async () => { renderRoute('/recipes/pasta-tonno-pomodoro'); });
+    expect(screen.queryByRole('button', { name: /Aggiorna stima/ })).not.toBeInTheDocument();
+    expect(screen.getByText('Stima indicativa')).toBeVisible();
+    expect(fetch).toHaveBeenCalled();
+    expect(fetch.mock.calls.every(([path]) => String(path).startsWith('/v1/recipe-images/'))).toBe(true);
     vi.unstubAllGlobals();
   });
 
-  it('keeps the guest detail page offline without a USDA action or network request', () => {
+  it('keeps the guest detail page offline without an enrichment action or network request', async () => {
+    const connection = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
 
-    renderRoute('/recipes/pasta-tonno-pomodoro');
+    await act(async () => { renderRoute('/recipes/pasta-tonno-pomodoro'); });
 
-    expect(screen.queryByRole('button', { name: 'Aggiorna stima USDA' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Aggiorna stima/ })).not.toBeInTheDocument();
     expect(fetch).not.toHaveBeenCalled();
+    connection.mockRestore();
     vi.unstubAllGlobals();
   });
 });

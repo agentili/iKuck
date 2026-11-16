@@ -107,10 +107,10 @@ describe('loadConfig', () => {
       REDIS_URL: 'redis://redis:6379',
       APP_ORIGIN: 'https://app.ikuck.it',
       SMTP_TIMEOUT_MS: '1200',
-      USDA_TIMEOUT_MS: '2400',
+
       OPENAI_TIMEOUT_MS: '3600',
     })).toMatchObject({
-      providers: { smtpTimeoutMs: 1200, usdaTimeoutMs: 2400, openAiTimeoutMs: 3600 },
+      providers: { smtpTimeoutMs: 1200, openAiTimeoutMs: 3600 },
     });
 
     expect(() => loadConfig({
@@ -159,7 +159,7 @@ describe('loadConfig', () => {
       SMTP_USER: '',
       SMTP_PASS: '',
       EMAIL_FROM: '',
-      USDA_API_KEY: '',
+
     });
 
     expect(config.providers).toMatchObject({ openAiModel: 'gpt-5.5' });
@@ -168,7 +168,7 @@ describe('loadConfig', () => {
     expect(config.providers.smtpUser).toBeUndefined();
     expect(config.providers.smtpPass).toBeUndefined();
     expect(config.providers.emailFrom).toBeUndefined();
-    expect(config.providers.usdaApiKey).toBeUndefined();
+
     expect(config.providers.openAiApiKey).toBeUndefined();
   });
 
@@ -193,8 +193,7 @@ describe('loadConfig', () => {
       'smtpPort',
       'smtpTimeoutMs',
       'smtpUser',
-      'usdaApiKey',
-      'usdaTimeoutMs',
+
     ]);
   });
 

@@ -1,11 +1,11 @@
 import { ArrowLeft, ChefHat, Clock, Heart, ShoppingCart, Star, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import type { CookEvent, RecipeNutrition } from '@ikuck/shared/contracts';
+import type { CookEvent } from '@ikuck/shared/contracts';
 import type { DinnerEntry } from '@ikuck/shared/dinnerDiary';
 import type { DinnerConsumptionCommand, DinnerConsumptionIngredient, PantryConsumptionPlan } from '@ikuck/shared/pantryConsumption';
 import { planPantryConsumption } from '@ikuck/shared/pantryConsumption';
-import { ApiClientError, apiRequest } from '../api/apiClient';
+
 import { getIngredient } from '@ikuck/shared/ingredients';
 import { ALLERGEN_LABELS } from '../domain/dietary';
 import { getRecipeMetadata } from '../domain/recipeMetadata';
@@ -59,16 +59,6 @@ const RECIPE_DETAIL_FOCUS_CLASS = [
   '[&_textarea:focus-visible]:outline-[var(--ik-focus)]',
 ].join(' ');
 
-const isRecipeNutrition = (value: unknown): value is RecipeNutrition => {
-  if (typeof value !== 'object' || value === null) return false;
-  const candidate = value as Partial<RecipeNutrition>;
-  return (candidate.source === 'catalog_estimate' || candidate.source === 'usda')
-    && typeof candidate.isComplete === 'boolean'
-    && Array.isArray(candidate.missingNutrients)
-    && candidate.missingNutrients.every((item) => typeof item === 'string')
-    && ['caloriesPerServing', 'proteinGramsPerServing', 'carbohydrateGramsPerServing', 'fatGramsPerServing']
-      .every((key) => candidate[key as keyof RecipeNutrition] === null || typeof candidate[key as keyof RecipeNutrition] === 'number');
-};
 
 const createLocalId = (prefix: string): string => {
   const random = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -101,12 +91,6 @@ const buildConsumptionIngredients = (recipe: PantryRecipe | undefined): DinnerCo
   }))
 );
 
-const gramsPerServingFromAmount = (amount: string, servings: number | null): number | null => {
-  const match = amount.trim().match(/^(\d+(?:[.,]\d+)?)\s*(kg|g)\b/i);
-  if (match === null || servings === null || servings <= 0) return null;
-  const grams = Number(match[1].replace(',', '.')) * (match[2].toLowerCase() === 'kg' ? 1000 : 1);
-  return Number.isFinite(grams) && grams > 0 ? grams / servings : null;
-};
 
 export default function RecipeDetailPage() {
   const { recipeId = '' } = useParams();
@@ -125,9 +109,7 @@ export default function RecipeDetailPage() {
   const [shoppingMessage, setShoppingMessage] = useState<string | null>(null);
   const [activityMessage, setActivityMessage] = useState<string | null>(null);
   const [preferenceMessage, setPreferenceMessage] = useState<string | null>(null);
-  const [nutritionMessage, setNutritionMessage] = useState<string | null>(null);
-  const [nutrition, setNutrition] = useState<RecipeNutrition | null>(metadata?.nutrition ?? null);
-  const [isRefreshingNutrition, setIsRefreshingNutrition] = useState(false);
+
   const [favorite, setFavorite] = useState(false);
   const [rating, setRating] = useState<number | null>(null);
   const [privateNote, setPrivateNote] = useState('');
@@ -147,9 +129,9 @@ export default function RecipeDetailPage() {
   const recordCookEvent = useActivityStore((state) => state.recordCookEvent);
   const setRecipePreference = useActivityStore((state) => state.setRecipePreference);
   const user = useAuthStore((state) => state.user);
-  const csrfToken = useAuthStore((state) => state.csrfToken);
+
   const currentPreference = recipe === undefined ? undefined : preferences.find((item) => item.recipeId === recipe.id);
-  const canRefreshNutrition = user !== null && user.emailVerifiedAt.trim() !== '' && csrfToken !== null;
+
   const missingIngredientIds = recipe === undefined
     ? []
     : recipe.ingredients.filter((item) => !item.optional && !availableIds.includes(item.ingredientId)).map((item) => item.ingredientId);
@@ -169,10 +151,6 @@ export default function RecipeDetailPage() {
     setPrivateNote(currentPreference?.note ?? '');
   }, [currentPreference]);
 
-  useEffect(() => {
-    setNutrition(metadata?.nutrition ?? null);
-    setNutritionMessage(null);
-  }, [metadata, recipeId]);
 
   // Reset the dinner confirmation whenever the shown recipe changes.
   const nextSelectionRecipeId = recipe?.id ?? null;
@@ -269,35 +247,6 @@ export default function RecipeDetailPage() {
     setPreferenceMessage(saved ? 'Preferenza salvata.' : 'Controlla la valutazione inserita.');
   };
 
-  const refreshNutrition = async () => {
-    if (!canRefreshNutrition || csrfToken === null || isRefreshingNutrition) return;
-    setIsRefreshingNutrition(true);
-    setNutritionMessage(null);
-    try {
-      const response = await apiRequest<{ nutrition?: unknown }>('/v1/recipes/nutrition', {
-        method: 'POST',
-        csrfToken,
-        body: {
-          ingredients: recipe.ingredients
-            .filter((item) => !item.optional)
-            .map((item) => ({
-              query: item.name ?? getIngredient(item.ingredientId)?.label ?? item.ingredientId,
-              grams: gramsPerServingFromAmount(item.amount, recipe.servings),
-            })),
-        },
-      });
-      if (!isRecipeNutrition(response?.nutrition)) throw new Error('Invalid nutrition response');
-      setNutrition(response.nutrition);
-      setNutritionMessage('Valori USDA aggiornati.');
-    } catch (error) {
-      setNutrition(metadata?.nutrition ?? null);
-      setNutritionMessage(error instanceof ApiClientError && error.status === 503
-        ? 'La stima USDA non è disponibile in questo momento: resta visibile la stima indicativa.'
-        : 'Non è stato possibile aggiornare i valori: resta visibile la stima indicativa.');
-    } finally {
-      setIsRefreshingNutrition(false);
-    }
-  };
 
   return (
     <main id="main-content" className={`ik-page mx-auto min-h-screen w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8 ${RECIPE_DETAIL_FOCUS_CLASS}`}>
@@ -446,21 +395,14 @@ export default function RecipeDetailPage() {
         </div>
       </section>
 
-      {metadata !== undefined && nutrition !== null && (
+      {metadata !== undefined && (
         <section aria-labelledby="nutrition-title" className="mt-6 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4 sm:p-6">
           <h2 id="nutrition-title" className="text-2xl font-black text-[var(--ik-ink)]">Nutrizione stimata per porzione</h2>
-          <RecipeNutritionSummary nutrition={nutrition} />
+          <RecipeNutritionSummary nutrition={metadata.nutrition} />
           <p className="mt-3 text-sm font-semibold text-[var(--ik-ink-muted)]">
             Allergeni dichiarati: {metadata.allergens.length === 0 ? 'nessuno' : metadata.allergens.map((allergen) => ALLERGEN_LABELS[allergen]).join(', ')}
           </p>
-          {canRefreshNutrition && (
-            <div className="mt-4">
-              <button type="button" onClick={() => { void refreshNutrition(); }} disabled={isRefreshingNutrition} className="ik-button-primary min-h-12 w-full px-4 py-2 text-sm font-bold disabled:cursor-wait disabled:opacity-60 sm:w-auto">
-                {isRefreshingNutrition ? 'Aggiornamento in corso…' : 'Aggiorna stima USDA'}
-              </button>
-              {nutritionMessage !== null && <p role="status" className="mt-2 text-sm font-semibold text-[var(--ik-ink-muted)]">{nutritionMessage}</p>}
-            </div>
-          )}
+
         </section>
       )}
     </main>

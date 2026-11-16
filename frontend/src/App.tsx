@@ -21,6 +21,7 @@ import PantryPage from './pages/PantryPage';
 import PlanPage from './pages/PlanPage';
 import NotFoundPage from './pages/NotFoundPage';
 import PantryMergeNotice from './components/feedback/PantryMergeNotice';
+import LocalStorageRecoveryNotice from './components/feedback/LocalStorageRecoveryNotice';
 import { apiRequest } from './api/apiClient';
 import { initializeSessionScope, listenForReconnect, syncVerifiedSession, type SyncSession } from './sync/syncQueue';
 import { getActiveDataScope, setActiveDataScope, subscribeActiveDataScope } from './sync/scopeContext';
@@ -125,7 +126,7 @@ function AppContent() {
       void syncVerifiedSession(session, {
         isSessionCurrent: () => {
           const current = readVerifiedSession();
-          return current?.userId === session.userId && current.csrfToken === session.csrfToken;
+          return active && current?.userId === session.userId && current.csrfToken === session.csrfToken;
         },
         onMembershipLost: () => {
           if (active) useHouseStore.getState().clear();
@@ -237,6 +238,7 @@ function AppContent() {
       {/* Main Content with padding for header and bottom nav */}
       <div className="sous-chef-main min-h-screen pb-20 pt-16">
         <div id="sous-chef-main-content" className="sous-chef-main-content" tabIndex={-1}>
+          <LocalStorageRecoveryNotice />
           <Routes>
             {/* SOUS-CHEF Routes */}
             <Route path="/" element={<ChatPage />} />

@@ -18,9 +18,14 @@ Copia `deploy/.env.example` in `deploy/.env` sul VPS e sostituisci tutti i place
 | `GEMINI_MODEL` | no | modello Gemini scelto nel piano disponibile |
 | `RESEND_API_KEY` | no | abilita l'invio email solo insieme a un mittente |
 | `RESEND_FROM_EMAIL` | no | mittente verificato Resend; `RESEND_FROM` resta accettato per compatibilità |
-| `USDA_API_KEY` | no | abilita l'arricchimento nutrizionale USDA |
 | `OPENAI_API_KEY` | no | abilita le ricette AI private |
 | `OPENAI_MODEL` | no | modello OpenAI, default `gpt-5.5` |
+| `RECIPE_IMAGES_ENABLED` | no | `false` per default; `true` abilita le immagini e richiede tutte le variabili seguenti |
+| `RECIPE_IMAGE_PROVIDER` | no | `openai` o `gemini`; se vuota usa `RECIPE_PROVIDER` |
+| `RECIPE_IMAGE_MODEL` | con immagini | modello compatibile con la generazione immagini del provider selezionato |
+| `RECIPE_IMAGE_VISION_MODEL` | con immagini | modello multimodale compatibile con la valutazione delle foto |
+| `PEXELS_API_KEY` | con immagini | chiave Pexels, solo server |
+| `RECIPE_IMAGE_DAILY_LIMIT` | no | limite di generazioni al giorno per utente e catalogo; default `5` |
 | `PUSH_ENABLED` | no | `false` per default; `true` abilita le API push e richiede VAPID |
 | `PUSH_VAPID_PUBLIC_KEY` | con push | chiave pubblica P-256 base64url |
 | `PUSH_VAPID_PRIVATE_KEY` | con push | chiave privata VAPID; solo server, mai Git |
@@ -38,6 +43,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml co
 ```
 
 Il validator rifiuta valori mancanti o placeholder, domini non validi, password non sicure per la URL PostgreSQL, chiavi provider presenti nei file `.example` e URL database/Redis esterni alla rete privata Compose.
+
+Per le immagini configurare anche la chiave del provider selezionato e seguire [il runbook immagini](recipe-images.md#activating-an-existing-deployment). Il worker immagini fa parte dello stack Compose standard e resta inattivo finché `RECIPE_IMAGES_ENABLED` è `false`. Non è necessario ricostruire il frontend per cambiare lo stato del servizio.
 
 Per i promemoria del venerdì avviare anche il profilo Compose `push` e seguire [il runbook notifiche](push-notifications.md), incluse le prove su staging HTTPS.
 
@@ -118,7 +125,7 @@ Per il rollback applicativo, conserva il riferimento all'immagine o al commit pr
 
 ## Provider e smoke test
 
-Gli smoke test reali di Resend, USDA e OpenAI sono opt-in e non fanno parte di `npm test`. Devono usare un account, un indirizzo email e dati ricetta usa-e-getta. Non salvare nei report chiavi, token, link di verifica/reset, prompt o contenuti di ricette private.
+Gli smoke test reali di Resend e OpenAI sono opt-in e non fanno parte di `npm test`. Devono usare un account, un indirizzo email e dati ricetta usa-e-getta. Non salvare nei report chiavi, token, link di verifica/reset, prompt o contenuti di ricette private. La nutrizione del catalogo resta una stima statica locale e non richiede provider o smoke test di rete.
 
 Questa guida documenta il contratto e il deployment; il runner degli smoke test e la verifica contro servizi PostgreSQL/Redis usa-e-getta restano attività successive del piano production readiness.
 

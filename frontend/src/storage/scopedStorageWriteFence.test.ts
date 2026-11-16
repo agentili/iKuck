@@ -63,7 +63,8 @@ describe('scoped storage write fences', () => {
     const scope = 'house:storage-fence-shopping' as const;
     const databaseKey = scopeStorageKey(scope, SHOPPING_LIST_DATABASE_KEY);
     const storageKey = scopeStorageKey(scope, SHOPPING_LIST_STORAGE_KEY);
-    await indexedDb.writeKeyValue(databaseKey, 'existing-house-shopping-data');
+    const original = JSON.stringify({ items: [shoppingItem], version: 1 });
+    await indexedDb.writeKeyValue(databaseKey, original);
     window.localStorage.setItem(storageKey, 'existing-house-shopping-mirror');
 
     let releaseWrite!: () => void;
@@ -87,7 +88,7 @@ describe('scoped storage write fences', () => {
       releaseWrite();
 
       await expect(pending).rejects.toMatchObject({ code: 'scope_unverified' });
-      expect(await indexedDb.readKeyValue(databaseKey)).toBe('existing-house-shopping-data');
+      expect(await indexedDb.readKeyValue(databaseKey)).toBe(original);
       expect(window.localStorage.getItem(storageKey)).toBe('existing-house-shopping-mirror');
     } finally {
       releaseWrite();
@@ -100,7 +101,8 @@ describe('scoped storage write fences', () => {
     const scope = 'house:storage-fence-activity' as const;
     const databaseKey = scopeStorageKey(scope, ACTIVITY_DATABASE_KEY);
     const storageKey = scopeStorageKey(scope, ACTIVITY_STORAGE_KEY);
-    await indexedDb.writeKeyValue(databaseKey, 'existing-house-activity-data');
+    const original = JSON.stringify({ items: [cookEvent], version: 1 });
+    await indexedDb.writeKeyValue(databaseKey, original);
     window.localStorage.setItem(storageKey, 'existing-house-activity-mirror');
 
     let releaseWrite!: () => void;
@@ -124,7 +126,7 @@ describe('scoped storage write fences', () => {
       releaseWrite();
 
       await expect(pending).rejects.toMatchObject({ code: 'scope_unverified' });
-      expect(await indexedDb.readKeyValue(databaseKey)).toBe('existing-house-activity-data');
+      expect(await indexedDb.readKeyValue(databaseKey)).toBe(original);
       expect(window.localStorage.getItem(storageKey)).toBe('existing-house-activity-mirror');
     } finally {
       releaseWrite();

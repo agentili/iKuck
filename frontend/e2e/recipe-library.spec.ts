@@ -161,7 +161,7 @@ test('ospite: catalogo visibile nella raccolta unificata', async ({ page }) => {
   // e la pagina non chiama fetchAiRecipes.
   await page.goto('/recipes');
   await expect(page.getByRole('heading', { name: 'Ricette', exact: true, level: 1 })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Ricette', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'La tua raccolta', level: 2 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Pasta tonno e pomodoro' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Le tue ricette AI' })).toHaveCount(0);
@@ -333,7 +333,7 @@ test('offline: catalogo consultabile, gruppo salvate in errore non bloccante', a
   await expect(page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' })).toBeVisible();
 
   // Il gruppo salvate è in stato d'errore ma non blocca la pagina.
-  const savedRecipesAlert = page.getByRole('region', { name: 'Ricette', exact: true }).getByRole('alert');
+  const savedRecipesAlert = page.getByRole('region', { name: 'La tua raccolta', exact: true }).getByRole('alert');
   await expect(savedRecipesAlert).toBeVisible();
   await expect(savedRecipesAlert).toHaveText(
     'Servizio non raggiungibile: le ricette AI restano disponibili solo online.',
@@ -368,29 +368,10 @@ test('crea una ricetta AI dal titolo e la aggiunge alla raccolta solo dopo il sa
   await expect(panel.getByRole('heading', { name: recipe.title })).toBeVisible();
   expect(submissions).toHaveLength(1);
   expect(submissions[0].body).toMatchObject({ dishTitle: recipe.title, ingredients: [], dietProfile: { diet: 'omnivore' } });
-  const library = page.getByRole('region', { name: 'Ricette', exact: true });
+  const library = page.getByRole('region', { name: 'La tua raccolta', exact: true });
   await expect(library.getByRole('heading', { name: recipe.title })).toHaveCount(0);
   await panel.getByRole('button', { name: 'Salva ricetta' }).click();
   await expect(library.getByRole('heading', { name: recipe.title })).toBeVisible();
   await expect(panel.getByRole('heading', { name: recipe.title })).toHaveCount(0);
   expect(submissions.map(({ path }) => path)).toEqual(['/v1/ai-recipes', '/v1/ai-recipes/save']);
-});
-
-
-test('il consenso AI si gestisce dal profilo e non dalla pagina ricette', async ({ page }) => {
-  await installVerifiedBackend(page, {
-    'GET /v1/profile': { json: { profile: { displayName: 'Ale' } } },
-    'PUT /v1/ai-recipes/consent': { json: { consent: { enabled: true, homeProvider: 'openai', updatedAt: '2026-11-13T12:00:00Z' } } },
-  });
-  await page.goto('/recipes');
-  await expect(page.getByRole('button', { name: 'Genera ricetta AI' })).toBeDisabled();
-  await expect(page.locator('[data-ai-consent]')).toHaveCount(0);
-  await page.getByRole('link', { name: 'Consenso AI nel profilo' }).click();
-  const settings = page.getByRole('region', { name: 'Consenso AI', exact: true });
-  await settings.getByText('Consenso AI per ricette', { exact: false }).click();
-  await settings.getByRole('checkbox', { name: /Acconsento/ }).check();
-  await settings.getByRole('button', { name: 'Salva consenso' }).click();
-  await expect(settings.getByRole('button', { name: 'Revoca consenso AI globale' })).toBeVisible();
-  await expect(settings.getByRole('button', { name: 'Genera ricetta AI' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Genera e salva le immagini delle ricette' })).toBeVisible();
 });

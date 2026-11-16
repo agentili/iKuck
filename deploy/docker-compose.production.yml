@@ -86,7 +86,7 @@ services:
       EMAIL_FROM: ${EMAIL_FROM:-}
       S2S_DINNER_CONTEXT_ENABLED: ${S2S_DINNER_CONTEXT_ENABLED:-false}
       TRUST_PROXY: ${TRUST_PROXY:-}
-      USDA_API_KEY: ${USDA_API_KEY:-}
+
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       PUSH_ENABLED: ${PUSH_ENABLED:-false}
       PUSH_VAPID_PUBLIC_KEY: ${PUSH_VAPID_PUBLIC_KEY:-}
@@ -137,7 +137,6 @@ services:
 
   image-worker:
     stop_grace_period: 30s
-    profiles: ["images"]
     build:
       context: ..
       dockerfile: backend/Dockerfile
@@ -178,7 +177,6 @@ services:
       dockerfile: deploy/Caddy.Dockerfile
       args:
         VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-        VITE_RECIPE_IMAGES_ENABLED: ${RECIPE_IMAGES_ENABLED:-false}
         VITE_BUILD_ID: ${VITE_BUILD_ID:-local}
     restart: unless-stopped
     cpus: "0.50"

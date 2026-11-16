@@ -46,11 +46,13 @@ describe('activity storage', () => {
     await expect(readRecipePreferences()).resolves.toEqual([preference]);
   });
 
-  it('normalizes malformed values to empty collections', async () => {
+  it('rejects malformed events and invalid preferences without replacing their snapshots', async () => {
     await writeKeyValue('activity', '{not-json');
     await writeKeyValue('recipe-preferences', JSON.stringify({ items: [{ recipeId: 'recipe-1', rating: 9 }] }));
 
-    await expect(readCookEvents()).resolves.toEqual([]);
-    await expect(readRecipePreferences()).resolves.toEqual([]);
+    await expect(readCookEvents()).rejects.toThrow();
+    await expect(readRecipePreferences()).rejects.toThrow();
+    await expect(writeCookEvents([])).rejects.toThrow();
+    await expect(writeRecipePreferences([])).rejects.toThrow();
   });
 });

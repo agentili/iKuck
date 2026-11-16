@@ -32,7 +32,7 @@ describe('shopping list store', () => {
     setPersonalDataScope('guest');
     await deleteLocalDatabase();
     usePersistenceStatusStore.getState().reset();
-    useShoppingListStore.setState({ hasHydrated: false, items: [] });
+    useShoppingListStore.setState({ hasHydrated: true, hydrationError: false, items: [] });
   });
 
   it('hydrates with an empty guest list', async () => {
@@ -116,6 +116,7 @@ describe('shopping list store', () => {
     const houseScope = 'house:shopping-home' as const;
     setPersonalDataScope(accountScope);
     setActiveDataScope(houseScope);
+    await hydrateShoppingListStore();
 
     const id = useShoppingListStore.getState().addItem({
       ingredientId: 'pasta', label: 'Pasta', quantity: 1, unit: 'pack', note: null,

@@ -1,6 +1,5 @@
+import RecipeImageGeneration from '../components/recipe/RecipeImageGeneration';
 import { safePushDestination } from '../push/payload';
-import AiRecipePanel from '../components/ai/AiRecipePanel';
-import RecipeImageSettings from '../components/ai/RecipeImageSettings';
 import PushSettings from '../push/PushSettings';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
@@ -391,6 +390,11 @@ export default function ProfilePage() {
           <button type="button" onClick={() => void saveProfile()} disabled={isLoading || csrfToken === null} className="min-h-11 w-full rounded-xl bg-[var(--ik-basil)] px-4 py-2 font-bold text-[var(--ik-porcelain)] hover:bg-[var(--ik-basil-dark)] disabled:opacity-60 sm:w-fit">Salva profilo</button>
         </div>
 
+        <section className="mt-7 border-t border-[var(--ik-border)] pt-6" aria-labelledby="recipe-images-heading">
+          <h2 id="recipe-images-heading" className="text-xl font-black text-[var(--ik-ink)]">Immagini delle ricette</h2>
+          <RecipeImageGeneration />
+        </section>
+
         <div className="mt-7 grid gap-3 border-t border-[var(--ik-border)] pt-6">
           <h2 className="text-xl font-black text-[var(--ik-ink)]">I tuoi dati</h2>
           <p className="leading-relaxed text-[var(--ik-ink-muted)]">{hasHouse
@@ -476,10 +480,6 @@ export default function ProfilePage() {
           )}
         </div>
       </PageSection>
-      <div id="ai-settings" className="mt-5 space-y-5">
-        <AiRecipePanel key={`${user.id}:${csrfToken}`} settingsOnly generationMode="title" ingredients={[]} dietProfile={{ diet: 'omnivore', excludedAllergens: [], nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null } }} user={user} csrfToken={csrfToken} />
-        <RecipeImageSettings />
-      </div>
       <PushSettings />
       <ThemePreferenceControl />
       <ColorPaletteControl />

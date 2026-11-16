@@ -29,4 +29,4 @@ export async function clearPrivateImages() {
   try { await new Promise<void>((resolve, reject) => { const tx = db.transaction('images', 'readwrite'); tx.objectStore('images').clear(); tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); }); }
   finally { db.close(); }
 }
-subscribeActiveDataScope(() => { if (import.meta.env.VITE_RECIPE_IMAGES_ENABLED === 'true') void clearPrivateImages().catch(() => undefined); });
+subscribeActiveDataScope(() => { void clearPrivateImages().catch(() => undefined); });

@@ -1,4 +1,5 @@
 import { clearPrivateImages } from '../ai/recipeImageCache';
+import { createSyncScheduler } from './syncScheduler';
 import type {
   CookEvent,
   DietProfile,
@@ -99,6 +100,15 @@ export const getMutationScope = (
 );
 
 const cursorMetaKey = (scope: SyncScope): string => `syncCursor:${scope}`;
+const deferredChangesMetaKey = (scope: SyncScope): string => `syncDeferredChanges:${scope}`;
+
+const changeTargetScope = (mutation: SyncMutation, activeScope: SyncScope, personalScope: SyncScope): SyncScope => (
+  mutation.syncScope?.startsWith('account:') ? personalScope : activeScope
+);
+
+const changeEntityKey = (mutation: SyncMutation, activeScope: SyncScope, personalScope: SyncScope): string => JSON.stringify([
+  changeTargetScope(mutation, activeScope, personalScope), mutation.entityType, mutation.entityId,
+]);
 
 const guestSnapshotFingerprint = (snapshot: PantrySnapshot): string => {
   const normalized = normalizePantrySnapshot(snapshot);
@@ -141,10 +151,11 @@ export function clearDataScope(scope: SyncScope): Promise<void> {
   // reload, the old House cannot be displayed or reactivated without a retry.
   if (scope.startsWith('house:')) revokeScope(scope);
   const purging = (async () => {
-    if (import.meta.env.VITE_RECIPE_IMAGES_ENABLED === 'true') await clearPrivateImages().catch(() => undefined);
+    await clearPrivateImages().catch(() => undefined);
     await clearFunctionalSnapshots(scope);
     await deleteQueueScope(scope);
     await deleteMeta(cursorMetaKey(scope));
+    await deleteMeta(deferredChangesMetaKey(scope));
     await deleteMeta(`${IMPORT_MUTATION_IDS_META_PREFIX}${scope}`);
     if (scope.startsWith('house:')) completeScopePurge(scope);
   })();
@@ -380,6 +391,9 @@ const createImportMutation = async (
   };
 };
 
+const queueListeners = new Set<(scope: SyncScope) => void>();
+const notifyQueued = (scope: SyncScope): void => { queueListeners.forEach(listener => listener(scope)); };
+
 const queueMutationWrite = (scope: SyncScope, mutation: SyncMutation): Promise<void> => {
   const previous = pendingQueueWrites;
   const operation = trackScopedWrite(scope, async (assertWritable) => {
@@ -401,6 +415,7 @@ const queueMutationWrite = (scope: SyncScope, mutation: SyncMutation): Promise<v
 
 export async function enqueueMutation(scope: SyncScope, mutation: SyncMutation): Promise<void> {
   await queueMutationWrite(scope, assertSyncMutation(mutation));
+  notifyQueued(scope);
 }
 
 export function enqueuePantryMutation(
@@ -427,7 +442,7 @@ export function enqueuePantryMutation(
     }, assertWritable);
   });
   pendingQueueWrites = operationPromise.catch(() => undefined);
-  return operationPromise;
+  return operationPromise.then(() => { notifyQueued(scope); });
 }
 
 export function enqueueEntityMutation(
@@ -714,6 +729,27 @@ async function importPendingAccountQueue(
       assertCurrent();
     }
   }
+  // Finalize the source journal only after every import acknowledgement and
+  // captured queue deletion succeeds. Both bootstrap snapshot cleanup and a
+  // House sync retry must not replay functional account rows already migrated.
+  await waitForPendingQueueWrites();
+  assertCurrent();
+  const remaining = await readQueueValues<QueuedMutation>(accountScope);
+  assertCurrent();
+  const changes = await readMeta<SyncChange[]>(deferredChangesMetaKey(accountScope));
+  assertCurrent();
+  if (changes !== null) {
+    const retained = changes.filter((change) => !SHARED_ENTITY_TYPES.has(change.entityType)
+      || change.entityType === MEAL_PLAN_ENTITY_TYPE
+      || remaining.some((mutation) => mutation.entityType === change.entityType && mutation.entityId === change.entityId));
+    if (retained.length !== changes.length) {
+      await trackScopedWrite(accountScope, (assertWritable) => writeMeta(deferredChangesMetaKey(accountScope), retained, () => {
+        assertWritable();
+        assertCurrent();
+      }));
+      assertCurrent();
+    }
+  }
 }
 
 const syncQueueScopes = (accountScope: SyncScope, activeScope: SyncScope): SyncScope[] => (
@@ -735,13 +771,13 @@ export async function readSyncCursor(scope: SyncScope): Promise<number> {
   return cursor ?? 0;
 }
 
-const isMergePreservingPantryItemTombstone = (change: SyncChange): boolean => change.operation === 'delete'
+const isMergePreservingPantryItemTombstone = (change: SyncMutation): boolean => change.operation === 'delete'
   && change.entityType === 'pantry_item'
   && change.deviceId === 'house-pantry-merge'
   && change.syncScope?.startsWith('house:') === true
   && change.mutationId.startsWith('house-pantry-merge:delete:pantry_item:');
 
-const applyChangeToSnapshot = (snapshot: PantrySnapshot, change: SyncChange): PantrySnapshot => {
+const applyChangeToSnapshot = (snapshot: PantrySnapshot, change: SyncMutation): PantrySnapshot => {
   const normalizedSnapshot = normalizePantrySnapshot(snapshot);
 
   if (change.entityType === 'pantry_lot') {
@@ -773,11 +809,12 @@ const applyChangeToSnapshot = (snapshot: PantrySnapshot, change: SyncChange): Pa
   return enabled ? { ...normalizedSnapshot, stapleIds: [...stapleIds, change.entityId] } : { ...normalizedSnapshot, stapleIds };
 };
 
-const applyServerChanges = async (
-  changes: SyncChange[],
+const applySnapshotChanges = async (
+  changes: SyncMutation[],
   activeScope: SyncScope,
   personalScope: SyncScope,
   assertCurrentContext: () => void,
+  publish: (notification: () => void) => void,
 ): Promise<void> => {
   if (changes.length === 0) return;
   const current = async <T>(operation: () => Promise<T>): Promise<T> => {
@@ -795,7 +832,7 @@ const applyServerChanges = async (
   const pantryChanges = changes.filter((change) => change.entityType === 'pantry_item'
     || change.entityType === 'pantry_lot'
     || change.entityType === 'staple_preference');
-  const pantryChangesByScope = new Map<SyncScope, SyncChange[]>();
+  const pantryChangesByScope = new Map<SyncScope, SyncMutation[]>();
   for (const change of pantryChanges) {
     const targetScope = change.syncScope?.startsWith('account:') ? personalScope : activeScope;
     const scopedChanges = pantryChangesByScope.get(targetScope) ?? [];
@@ -811,13 +848,13 @@ const applyServerChanges = async (
     if (targetScope === activeScope) {
       for (const listener of pantrySnapshotListeners) {
         assertCurrentContext();
-        listener(snapshot);
+        publish(() => listener(snapshot));
       }
     }
   }
 
   const shoppingChanges = changes.filter((change) => change.entityType === 'shopping_list_item');
-  const shoppingChangesByScope = new Map<SyncScope, SyncChange[]>();
+  const shoppingChangesByScope = new Map<SyncScope, SyncMutation[]>();
   for (const change of shoppingChanges) {
     const targetScope = change.syncScope?.startsWith('account:') ? personalScope : activeScope;
     const scopedChanges = shoppingChangesByScope.get(targetScope) ?? [];
@@ -833,13 +870,13 @@ const applyServerChanges = async (
     await current(() => writeShoppingList(items, targetScope));
     if (targetScope === activeScope) for (const listener of shoppingListListeners) {
       assertCurrentContext();
-      listener(items);
+      publish(() => listener(items));
     }
   }
 
   const activityChanges = changes.filter((change) => change.entityType === 'cook_event'
     || change.entityType === 'recipe_preference');
-  const activityChangesByScope = new Map<SyncScope, SyncChange[]>();
+  const activityChangesByScope = new Map<SyncScope, SyncMutation[]>();
   for (const change of activityChanges) {
     const targetScope = change.syncScope?.startsWith('account:') ? personalScope : activeScope;
     const scopedChanges = activityChangesByScope.get(targetScope) ?? [];
@@ -868,13 +905,13 @@ const applyServerChanges = async (
       const snapshot = { events, preferences };
       for (const listener of activitySnapshotListeners) {
         assertCurrentContext();
-        listener(snapshot);
+        publish(() => listener(snapshot));
       }
     }
   }
 
   const diaryChanges = changes.filter((change) => change.entityType === 'dinner_entry' || change.entityType === 'saved_recipe');
-  const diaryChangesByScope = new Map<SyncScope, SyncChange[]>();
+  const diaryChangesByScope = new Map<SyncScope, SyncMutation[]>();
   for (const change of diaryChanges) {
     const targetScope = change.syncScope?.startsWith('account:') ? personalScope : activeScope;
     const scopedChanges = diaryChangesByScope.get(targetScope) ?? [];
@@ -904,12 +941,12 @@ const applyServerChanges = async (
     const snapshot = { scope: targetScope, entries, recipes };
     for (const listener of dinnerDiarySnapshotListeners) {
       assertCurrentContext();
-      listener(snapshot);
+      publish(() => listener(snapshot));
     }
   }
 
   const dietProfileChanges = changes.filter((change) => change.entityType === 'diet_profile');
-  const dietChangesByScope = new Map<SyncScope, SyncChange[]>();
+  const dietChangesByScope = new Map<SyncScope, SyncMutation[]>();
   for (const change of dietProfileChanges) {
     const targetScope = change.syncScope?.startsWith('account:') ? personalScope : activeScope;
     const scopedChanges = dietChangesByScope.get(targetScope) ?? [];
@@ -932,9 +969,48 @@ const applyServerChanges = async (
       await current(() => writeDietProfile(profile, targetScope));
       if (targetScope === activeScope) for (const listener of dietProfileSnapshotListeners) {
         assertCurrentContext();
-        listener(profile);
+        publish(() => listener(profile));
       }
     }
+  }
+};
+
+// A successful upload acknowledges only its captured batch, not edits queued while
+// the request was in flight. Reapply those edits (including tombstones) before
+// persistence/publication; never overlay acknowledged values on newer server data.
+const applyServerChanges = async (
+  changes: SyncChange[],
+  acknowledged: readonly QueuedMutation[],
+  awaitingEcho: readonly QueuedMutation[],
+  accountScope: SyncScope,
+  activeScope: SyncScope,
+  personalScope: SyncScope,
+  assertCurrentContext: () => void,
+): Promise<void> => {
+  const acknowledgedIds = new Set(acknowledged.map((mutation) => mutation.mutationId));
+  for (;;) {
+    const queueWrites = pendingQueueWrites;
+    await queueWrites;
+    assertCurrentContext();
+    const pending = [...awaitingEcho, ...(await readPendingSyncMutations(accountScope, activeScope))
+      .filter((mutation) => !acknowledgedIds.has(mutation.mutationId))].sort(compareMutations);
+    assertCurrentContext();
+    if (queueWrites !== pendingQueueWrites) continue;
+    const entityKey = (mutation: SyncMutation): string => changeEntityKey(mutation, activeScope, personalScope);
+    const pendingEntities = new Set(pending.map((mutation) => entityKey(toMutation(mutation))));
+    const reconciled = changes.filter((change) => !pendingEntities.has(entityKey(change)));
+    const notifications: (() => void)[] = [];
+    await applySnapshotChanges([...reconciled, ...pending.map(toMutation)], activeScope, personalScope,
+      assertCurrentContext, (notification) => notifications.push(notification));
+    assertCurrentContext();
+    // Storage writes yield: another local edit may have arrived during apply.
+    // Reconcile again before exposing a snapshot used by subsequent UI actions.
+    if (queueWrites !== pendingQueueWrites) continue;
+    for (const notification of notifications) {
+      assertCurrentContext();
+      notification();
+    }
+    return;
   }
 };
 
@@ -1211,10 +1287,27 @@ export async function syncNow({ fetch, request = apiRequest, session, isSessionC
     let cursor = await current(() => readSyncCursor(cursorScope));
     let uploaded = dinnerConsumptionsUploaded;
     let downloaded = 0;
+    const awaitingEcho = new Map<string, QueuedMutation>();
+    const applicationScopes = new Set([activeScope, personalScope]);
+    const entityKey = (mutation: SyncMutation): string => changeEntityKey(mutation, activeScope, personalScope);
+    const deferredChanges = new Map<string, SyncChange>();
+    for (const scope of applicationScopes) {
+      const changes = await current(() => readMeta<SyncChange[]>(deferredChangesMetaKey(scope)));
+      for (const change of changes ?? []) deferredChanges.set(entityKey(change), change);
+    }
+    const persistDeferredChanges = async (): Promise<void> => {
+      for (const scope of applicationScopes) {
+        const changes = [...deferredChanges.values()]
+          .filter((change) => changeTargetScope(change, activeScope, personalScope) === scope);
+        await current(() => trackScopedWrite(scope, (assertWritable) => (
+          writeMeta(deferredChangesMetaKey(scope), changes, () => { assertWritable(); assertCurrentContext(); })
+        )));
+      }
+    };
 
     for (let page = 0; page < MAX_SYNC_PAGES; page += 1) {
       const queued = await current(() => readPendingSyncMutations(accountScope, activeScope));
-      const batch = queued.slice(0, MAX_MUTATIONS_PER_REQUEST);
+      const batch = queued.filter((mutation) => !awaitingEcho.has(mutation.mutationId)).slice(0, MAX_MUTATIONS_PER_REQUEST);
       const result = await current(() => request<SyncPage>('/v1/sync', {
         method: 'POST',
         csrfToken: session.csrfToken,
@@ -1233,8 +1326,38 @@ export async function syncNow({ fetch, request = apiRequest, session, isSessionC
       ) || (change.syncScope?.startsWith('house:') === true && !SHARED_ENTITY_TYPES.has(change.entityType)))) {
         throw new SyncResponseScopeError();
       }
-      const applying = applyServerChanges(result.changes, activeScope, personalScope, assertCurrentContext);
-      const applicationScopes = new Set([activeScope, personalScope]);
+      // Accepted mutations may be beyond this download page. Keep their local
+      // projection until their echo is read, or the authoritative stream is drained.
+      // Leave them durable in the queue so a failed/limited pull can resume safely.
+      for (const mutation of batch) awaitingEcho.set(mutation.mutationId, mutation);
+      const accepted = [...awaitingEcho.values()];
+      for (const change of result.changes) {
+        const echoed = awaitingEcho.get(change.mutationId);
+        if (echoed === undefined) continue;
+        for (const mutation of awaitingEcho.values()) {
+          if (mutation.scope === echoed.scope && mutation.entityType === echoed.entityType
+            && mutation.entityId === echoed.entityId && compareMutations(mutation, echoed) <= 0) {
+            awaitingEcho.delete(mutation.mutationId);
+          }
+        }
+      }
+      if (!serverHasMore) awaitingEcho.clear();
+      // The server exposes current rows, not an event log: an upload can lose LWW
+      // or be replaced without ever producing an exact echo. Journal remote rows
+      // before applying/advancing the cursor so an overlay cannot forget them.
+      // Keep only the latest real server version per effective scoped identity.
+      for (const change of result.changes) {
+        const key = entityKey(change);
+        const previous = deferredChanges.get(key);
+        if (previous === undefined || previous.serverSequence <= change.serverSequence) {
+          const scope = changeTargetScope(change, activeScope, personalScope);
+          deferredChanges.set(key, { ...change, ...(scope === 'guest' ? {} : { syncScope: scope }) });
+        }
+      }
+      await persistDeferredChanges();
+      const applying = applyServerChanges([...deferredChanges.values()].sort((left, right) => left.serverSequence - right.serverSequence),
+        accepted, [...awaitingEcho.values()],
+        accountScope, activeScope, personalScope, assertCurrentContext);
       for (const scope of applicationScopes) {
         const pending = pendingScopeApplications.get(scope) ?? new Set<Promise<void>>();
         pending.add(applying);
@@ -1253,9 +1376,18 @@ export async function syncNow({ fetch, request = apiRequest, session, isSessionC
       await current(() => trackScopedWrite(cursorScope, (assertWritable) => (
         writeMeta(cursorMetaKey(cursorScope), nextCursor, assertWritable)
       )));
-      for (const mutation of batch) {
+      for (const mutation of accepted.filter((mutation) => !awaitingEcho.has(mutation.mutationId))) {
         await current(() => deleteQueueValue(mutation.mutationId, mutation.scope, assertCurrentContext));
       }
+      // Prune only after snapshot, cursor and captured acknowledgements succeed.
+      // A crash before this checkpoint merely replays an idempotent remote row;
+      // a newer queued local edit still overlays it, including after a reload.
+      const remaining = await current(() => readPendingSyncMutations(accountScope, activeScope));
+      const pendingEntities = new Set(remaining.map((mutation) => entityKey(toMutation(mutation))));
+      for (const key of deferredChanges.keys()) {
+        if (!pendingEntities.has(key)) deferredChanges.delete(key);
+      }
+      await persistDeferredChanges();
 
       uploaded += batch.length;
       downloaded += result.changes.length;
@@ -1319,18 +1451,38 @@ export function listenForReconnect(
   getSession: () => SyncSession | null,
   onMembershipLost?: () => void,
 ): () => void {
-  const onOnline = () => {
-    const session = getSession();
-    if (session === null) return;
-    void syncVerifiedSession(session, {
-      onMembershipLost,
-      isSessionCurrent: () => {
-        const current = getSession();
-        return current?.userId === session.userId && current.csrfToken === session.csrfToken;
-      },
-    });
+  const activeScope = getActiveDataScope();
+  const personalScope = getPersonalDataScope();
+  const original = getSession();
+  let active = true;
+  const isCurrent = (): boolean => {
+    const current = getSession();
+    return active && original !== null && original.emailVerifiedAt !== ''
+      && current?.userId === original.userId && current.csrfToken === original.csrfToken
+      && current.emailVerifiedAt !== '' && getActiveDataScope() === activeScope
+      && getPersonalDataScope() === personalScope && activeScope !== 'guest';
   };
-
+  const scheduler = createSyncScheduler(async () => {
+    const session = getSession();
+    if (session === null) return false;
+    const result = await syncVerifiedSession(session, {
+      onMembershipLost,
+      isSessionCurrent: isCurrent,
+    });
+    return result?.complete === true;
+  }, () => isCurrent() && navigator.onLine && isScopeWritable(activeScope));
+  const onOnline = () => { scheduler.request(); };
+  const onQueued = (scope: SyncScope) => {
+    if (scope === activeScope || scope === personalScope) scheduler.request();
+  };
+  queueListeners.add(onQueued);
   window.addEventListener('online', onOnline);
-  return () => window.removeEventListener('online', onOnline);
+  window.addEventListener('focus', onOnline);
+  return () => {
+    active = false;
+    scheduler.stop();
+    queueListeners.delete(onQueued);
+    window.removeEventListener('online', onOnline);
+    window.removeEventListener('focus', onOnline);
+  };
 }
