@@ -221,7 +221,7 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
         consentEpochRef.current = proposalGeneration.epoch;
         setConsent(consentStatus.consent);
         setSelectedProvider(consentStatus.selectedProvider);
-        setImageProvider(consentStatus.selectedImageProvider ?? consentStatus.selectedProvider);
+        setImageProvider(consentStatus.selectedImageProvider ?? null);
         setConsentDraft(consentStatus.consent.enabled && consentStatus.consent.homeProvider === consentStatus.selectedProvider);
       })
       .catch((loadError: unknown) => {
@@ -288,7 +288,7 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
     setIsSaving(true);
     setError(null);
     try {
-      const nextConsent = import.meta.env.VITE_RECIPE_IMAGES_ENABLED === 'true'
+      const nextConsent = imageProvider !== null
         ? await updateAiConsent(enabled, csrfToken, consent?.updatedAt, undefined, enabled ? selectedProvider ?? undefined : undefined, true, imageProvider ?? selectedProvider ?? undefined)
         : await updateAiConsent(enabled, csrfToken, consent?.updatedAt, undefined, enabled ? selectedProvider ?? undefined : undefined);
       setConsent(nextConsent);
@@ -307,6 +307,7 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
           const latestStatus = await fetchAiConsentStatus();
           setConsent(latestStatus.consent);
           setSelectedProvider(latestStatus.selectedProvider);
+          setImageProvider(latestStatus.selectedImageProvider ?? null);
           setConsentDraft(latestStatus.consent.enabled && latestStatus.consent.homeProvider === latestStatus.selectedProvider);
           setError('Il consenso è cambiato in un’altra scheda. Ho aggiornato lo stato: controlla la scelta prima di salvare di nuovo.');
         } catch {
@@ -484,8 +485,8 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
             </p>
             {consent.enabled && !homeConsentEnabled && <p className="mt-2 text-xs font-semibold leading-relaxed text-amber-900">Il provider è cambiato o il consenso precedente non specificava il destinatario: non inviamo dati a {selectedProviderLabel} finché non approvi questa scelta.</p>}
             <p className="mt-2 text-xs leading-relaxed text-gray-600">Puoi revocare il consenso in qualsiasi momento. Le ricette già salvate restano visibili finché non le elimini.</p>
-            {import.meta.env.VITE_RECIPE_IMAGES_ENABLED === 'true' && <p className="mt-2 text-sm text-gray-700">Il consenso include l’invio del titolo del piatto a Pexels e di titolo, ingredienti e foto candidate a {imageProvider === 'gemini' ? 'Google Gemini' : 'OpenAI'} per cercare, valutare o generare un’immagine illustrativa delle ricette salvate. Le immagini possono richiedere tempo e sono soggette a quota.</p>}
-            {import.meta.env.VITE_RECIPE_IMAGES_ENABLED === 'true' && homeConsentEnabled && (consent.imagePolicyVersion !== 'recipe-images-v1' || consent.imageProvider !== imageProvider) && <button type="button" onClick={() => void saveConsent(true)} className="ik-button-secondary mt-3 min-h-11">Conferma consenso anche per le immagini</button>}
+            {imageProvider !== null && <p className="mt-2 text-sm text-gray-700">Il consenso include l’invio del titolo del piatto a Pexels e di titolo, ingredienti e foto candidate a {imageProvider === 'gemini' ? 'Google Gemini' : 'OpenAI'} per cercare, valutare o generare un’immagine illustrativa delle ricette salvate. Le immagini possono richiedere tempo e sono soggette a quota.</p>}
+            {imageProvider !== null && homeConsentEnabled && (consent.imagePolicyVersion !== 'recipe-images-v1' || consent.imageProvider !== imageProvider) && <button type="button" onClick={() => void saveConsent(true)} className="ik-button-secondary mt-3 min-h-11">Conferma consenso anche per le immagini</button>}
             {consentDraft !== homeConsentEnabled && (
               <button type="button" onClick={() => void saveConsent()} disabled={isSaving} className="mt-3 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
                 {isSaving ? 'Salvataggio…' : 'Salva consenso'}

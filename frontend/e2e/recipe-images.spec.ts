@@ -1,7 +1,5 @@
 import { expect, test } from '@playwright/test';
 import { installOfflineBackend } from './helpers/backendMode';
-const enabled = process.env.VITE_RECIPE_IMAGES_ENABLED === 'true';
-test.skip(!enabled, 'Image feature explicitly enabled in the dedicated browser run');
 test('catalog image arrives asynchronously with attribution and remains available offline', async ({ page, context }) => {
   await installOfflineBackend(page);
   // New read-only image endpoints are explicitly mocked after the context guard.
@@ -22,7 +20,7 @@ test('catalog image arrives asynchronously with attribution and remains availabl
   await expect(page.getByRole('img', { name: 'Pollo al limone: immagine illustrativa' })).toBeVisible();
 });
 
-test('generation buttons work in profile, recipe library and a recipe detail', async ({ page, context }) => {
+test('bulk generation is only in profile and single generation stays in recipe detail', async ({ page, context }) => {
   const consent = { enabled: true, updatedAt: '2026-11-01T00:00:00Z', imageProvider: 'openai', imagePolicyVersion: 'recipe-images-v1' };
   await installOfflineBackend(page, { responses: {
     'GET /v1/auth/session': { json: { authenticated: true, user: { id: 'image-user', email: 'images@example.com', emailVerifiedAt: '2026-11-01T00:00:00Z' }, csrfToken: 'image-csrf', expiresAt: '2099-01-01T00:00:00Z' } },
@@ -52,9 +50,9 @@ test('generation buttons work in profile, recipe library and a recipe detail', a
   await page.getByRole('button', { name: 'Genera tutte le immagini', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: '20 immagini aggiunte alla coda' })).toBeVisible();
   await page.goto('/recipes');
-  await page.getByRole('button', { name: 'Genera tutte le immagini', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: '20 immagini aggiunte alla coda' })).toBeVisible();
-  expect(collectionRequests).toBe(2);
+  await expect(page.getByRole('heading', { name: 'Ricette', exact: true, level: 1 })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Genera tutte le immagini', exact: true })).toHaveCount(0);
+  expect(collectionRequests).toBe(1);
   await page.goto('/recipes/pollo-al-limone');
   await page.getByRole('button', { name: 'Genera immagine', exact: true }).click();
   await expect(page.getByRole('img', { name: 'Pollo al limone: immagine illustrativa' })).toBeVisible();

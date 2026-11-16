@@ -10,7 +10,7 @@ const ready: RecipeImageMetadata = { state: 'ready', url: '/v1/recipe-images/ass
 const createUrl = vi.fn(); const revokeUrl = vi.fn();
 
 beforeEach(async () => {
-  vi.stubEnv('VITE_RECIPE_IMAGES_ENABLED', 'true');
+  vi.stubEnv('VITE_RECIPE_IMAGES_ENABLED', 'false');
   ({ useRecipeImage } = await import('./recipeImages'));
   createUrl.mockReset().mockReturnValue('blob:image'); revokeUrl.mockReset(); request.mockReset();
   Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createUrl });

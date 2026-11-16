@@ -105,6 +105,12 @@ const installContextGuard = async (page: Page, state: OfflineBackendState): Prom
       return;
     }
 
+    // Image availability is read from the API at runtime; offline fixtures default to disabled.
+    if (isSameOrigin && request.method() === 'GET' && /^\/v1\/recipe-images\/[^/]+$/.test(url.pathname)) {
+      await route.fulfill({ json: { state: 'disabled' } });
+      return;
+    }
+
     state.unexpectedRequests.push(description);
     await route.abort('failed');
   });

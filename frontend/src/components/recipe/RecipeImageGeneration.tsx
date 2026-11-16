@@ -26,7 +26,6 @@ function GenerationControl({ recipeId, disabled = false }: Props) {
   const mounted = useRef(true);
   const running = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const enabled = import.meta.env.VITE_RECIPE_IMAGES_ENABLED === 'true';
   const verified = user !== null && user.emailVerifiedAt.trim() !== '' && csrfToken !== null;
   const catalog = recipeId !== undefined && RECIPES.some(recipe => recipe.id === recipeId);
   const scope = getActiveDataScope();
@@ -34,7 +33,7 @@ function GenerationControl({ recipeId, disabled = false }: Props) {
     && useAuthStore.getState().csrfToken === csrfToken && getActiveDataScope() === scope;
 
   const generate = async (authorize = false) => {
-    if (!verified || !enabled || running.current || disabled) return;
+    if (!verified || running.current || disabled) return;
     running.current = true;
     setBusy(true); setMessage(null); setError(null);
     try {
@@ -64,7 +63,7 @@ function GenerationControl({ recipeId, disabled = false }: Props) {
     } catch (cause) {
       if (!isCurrent()) return;
       const code = cause instanceof ApiClientError ? cause.code : '';
-      setError(code === 'images_disabled' ? 'Il servizio immagini non è disponibile in questo momento.'
+      setError(code === 'images_disabled' ? 'Il servizio immagini non è attivo sul server.'
         : code === 'recipe_not_found' ? 'Salva prima la ricetta nel tuo account. Puoi creare immagini solo per le ricette di cui sei autore.'
           : code === 'image_consent_required' || code === 'ai_consent_revision_conflict' ? 'Il consenso è cambiato. Riprova e conferma il consenso aggiornato.'
             : 'Non è stato possibile avviare la creazione delle immagini. Controlla la connessione e riprova.');
@@ -77,11 +76,11 @@ function GenerationControl({ recipeId, disabled = false }: Props) {
   return (
     <div className="my-3 grid gap-3 rounded-xl bg-[var(--ik-mist)] p-3 text-[var(--ik-ink)]">
       {recipeId === undefined && <p className="text-sm">Crea le immagini mancanti del catalogo e delle tue ricette salvate online, anche nella Casa. Le immagini già pronte vengono conservate.</p>}
-      <button type="button" disabled={!enabled || !verified || busy || disabled} onClick={() => void generate()}
+      <button type="button" disabled={!verified || busy || disabled} onClick={() => void generate()}
         className="ik-button-secondary min-h-12 px-4 py-2 font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)] disabled:opacity-60">
         {busy ? 'Avvio in corso…' : recipeId === undefined ? 'Genera tutte le immagini' : 'Genera immagine'}
       </button>
-      {!enabled ? <p className="text-sm">Il servizio immagini non è attivo.</p> : !verified && <p className="text-sm">Accedi con un account verificato per creare le immagini.</p>}
+      {!verified && <p className="text-sm">Accedi con un account verificato per creare le immagini.</p>}
       {consent !== null && <div className="grid gap-3">
         <p className="text-sm">Per creare le immagini, il titolo del piatto viene inviato a Pexels; titolo, ingredienti e foto candidate vengono inviati a {consent.selectedImageProvider === 'gemini' ? 'Google Gemini' : 'OpenAI'} per cercare, valutare o generare immagini illustrative. Puoi revocare il consenso dalle impostazioni AI in Ricette.</p>
         <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} disabled={busy} />Acconsento all’invio dei dati per creare le immagini</label>

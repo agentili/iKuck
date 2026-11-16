@@ -14,4 +14,10 @@ if (config.enabled) {
       if (!stopped) await new Promise(resolve => setTimeout(resolve, 2000));
     }
   } finally { await database.close(); }
+} else {
+  // Keep the default Compose service idle while image processing is disabled.
+  console.info(JSON.stringify({ event: 'recipe_images_disabled' }));
+  const idle = setInterval(() => undefined, 60000);
+  const stop = () => clearInterval(idle);
+  process.once('SIGINT', stop); process.once('SIGTERM', stop);
 }

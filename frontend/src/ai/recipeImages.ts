@@ -5,7 +5,6 @@ import { apiRequest } from '../api/apiClient';
 import { getActiveDataScope, subscribeActiveDataScope } from '../sync/scopeContext';
 import { RECIPES } from '../domain/recipes';
 import { RECIPE_IMAGES } from '../domain/recipeImages';
-const enabled = import.meta.env.VITE_RECIPE_IMAGES_ENABLED === 'true';
 const catalog = new Set(RECIPES.map(r => r.id));
 // Authenticated images never enter the shared HTTP cache.
 const privateCache = new Map<string, { metadata: RecipeImageMetadata; blob: Blob }>();
@@ -15,7 +14,7 @@ export function useRecipeImage(recipeId: string) {
   const [result, setResult] = useState<{ key: string; metadata: RecipeImageMetadata; url?: string }>();
   const key = `${scope}:${recipeId}`;
   useEffect(() => {
-    if (!enabled || RECIPE_IMAGES[recipeId] !== undefined || (!catalog.has(recipeId) && scope === 'guest')) return;
+    if (RECIPE_IMAGES[recipeId] !== undefined || (!catalog.has(recipeId) && scope === 'guest')) return;
     let cancelled = false; let timer: ReturnType<typeof setTimeout>; let objectUrl: string | undefined; let loadSequence = 0;
     const isCatalog = catalog.has(recipeId);
     const path = `/v1/recipe-images/${encodeURIComponent(recipeId)}?kind=${isCatalog ? 'catalog' : 'private'}`;
@@ -29,6 +28,10 @@ export function useRecipeImage(recipeId: string) {
         if (!navigator.onLine && stored) { metadata = stored.metadata; blob = stored.blob; }
         else {
           const cached = !navigator.onLine ? await cache?.match(path) : undefined;
+          if (!navigator.onLine && !cached) {
+            if (isCurrent()) setResult({ key, metadata: { state: 'missing' } });
+            return;
+          }
           metadata = cached ? await cached.json() : await apiRequest<RecipeImageMetadata>(path);
           if (!isCurrent()) return;
           if (metadata.state !== 'ready' || !metadata.url?.startsWith('/v1/recipe-images/assets/')) {
