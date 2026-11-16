@@ -31,7 +31,7 @@ const url = process.env.INTEGRATION_DATABASE_URL;
     await runImageTick();
     let rows = await db.execute(sql`SELECT state FROM recipe_image_jobs WHERE user_id=${userId}`);
     expect(rows[0].state).toBe('consent_required'); expect(provider.search).not.toHaveBeenCalled();
-    await save('ai_consent','profile',{ enabled: true, homeProvider: 'openai', imagePolicyVersion: 'recipe-images-v1' });
+    await save('ai_consent','profile',{ enabled: true, homeProvider: 'openai', imagePolicyVersion: 'recipe-images-v1', imageProvider: 'openai' });
     await Promise.all([runImageTick(),runImageTick()]);
     expect(provider.generate).toHaveBeenCalledTimes(1);
     rows = await db.execute(sql`SELECT a.content,j.state FROM recipe_image_assets a JOIN recipe_image_jobs j ON j.id=a.job_id WHERE j.user_id=${userId}`);
@@ -39,6 +39,26 @@ const url = process.env.INTEGRATION_DATABASE_URL;
     await db.execute(sql`UPDATE sync_items SET deleted=true,payload=NULL WHERE scope_id=${userId} AND entity_id='image-recipe'`);
     expect((await db.execute(sql`SELECT * FROM recipe_image_assets a JOIN recipe_image_jobs j ON j.id=a.job_id WHERE j.user_id=${userId}`)).length).toBe(0);
   });
+  it('does not reuse Home consent as image permission when imageProvider is absent', async () => {
+    const searchesBefore = provider.search.mock.calls.length;
+    const generationsBefore = provider.generate.mock.calls.length;
+    await save('generated_recipe', 'home-only-image-job', { title: 'Home-only image', ingredients: [{ name: 'Riso' }] });
+    await save('ai_consent', 'profile', {
+      enabled: true,
+      homeProvider: 'openai',
+      imagePolicyVersion: 'recipe-images-v1',
+    });
+    const [job] = await db.execute(sql`SELECT id FROM recipe_image_jobs
+      WHERE user_id=${userId}::uuid AND recipe->>'title'='Home-only image'`);
+
+    await tick(db, config, provider, String(job.id));
+
+    const [stored] = await db.execute(sql`SELECT state FROM recipe_image_jobs WHERE id=${String(job.id)}::uuid`);
+    expect(stored.state).toBe('consent_required');
+    expect(provider.search).toHaveBeenCalledTimes(searchesBefore);
+    expect(provider.generate).toHaveBeenCalledTimes(generationsBefore);
+  });
+
   it('does not automatically repeat an ambiguous paid generation', async () => {
     provider.generate.mockRejectedValueOnce(new ImageProviderError(true));
     await save('saved_recipe', 'ambiguous', { title: 'Rice', ingredients: [{ name: 'Rice' }] });

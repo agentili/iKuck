@@ -493,10 +493,17 @@ const applyAiConsentUpdate = (
   };
 };
 
+const hasImageConsentGrant = (update: AiConsentUpdate): boolean => (
+  update.imagePolicyVersion === 'recipe-images-v1'
+  && (update.imageProvider === 'openai' || update.imageProvider === 'gemini')
+);
+
 const isAiConsentGrant = (update: AiConsentUpdate): boolean => update.enabled === true
   || (update.homeProvider !== undefined && update.homeProvider !== null)
   || (update.dinnerProvider !== undefined && update.dinnerProvider !== null)
-  || (update.chatProvider !== undefined && update.chatProvider !== null);
+  || (update.chatProvider !== undefined && update.chatProvider !== null)
+  || update.imageProvider !== undefined
+  || update.imagePolicyVersion !== undefined;
 
 const currentConsentFromItem = (item: StoredSyncItem | null): AiConsent | null => (
   item !== null && !item.deleted && isAiConsent(item.payload) ? item.payload : null
@@ -507,8 +514,12 @@ const consentRevisionFromItem = (item: StoredSyncItem | null, current: AiConsent
 );
 
 const assertCurrentConsentRevision = (update: AiConsentUpdate, currentRevision: string): void => {
+  const requestsImageConsent = update.imageProvider !== undefined || update.imagePolicyVersion !== undefined;
+  if (requestsImageConsent && update.enabled !== false && !hasImageConsentGrant(update)) {
+    throw new AiConsentRevisionRequiredError();
+  }
   if (update.enabled === true && (update.homeProvider === undefined || update.homeProvider === null)
-    && (update.chatProvider === undefined || update.chatProvider === null)) {
+    && (update.chatProvider === undefined || update.chatProvider === null) && !hasImageConsentGrant(update)) {
     throw new AiConsentRevisionRequiredError();
   }
   if (!isAiConsentGrant(update)) return;

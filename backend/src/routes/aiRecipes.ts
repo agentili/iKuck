@@ -200,11 +200,27 @@ export const registerAiRecipeRoutes = ({
       || (update.chatProvider !== undefined && update.chatProvider !== null && update.chatProvider !== recipeProvider)) {
       throw new AuthServiceError('ai_provider_mismatch', 409, 'AI consent provider does not match the selected provider');
     }
-    if (update.imagePolicyVersion && update.imageProvider !== imageConfig().provider) {
-      throw new AuthServiceError('ai_provider_mismatch', 409, 'Image consent provider does not match the selected provider');
+    let selectedImageProvider: AiRecipeProvider | undefined;
+    if ((update.imagePolicyVersion !== undefined || update.imageProvider !== undefined) && update.enabled !== false) {
+      let imageService: ReturnType<typeof imageConfig>;
+      try {
+        imageService = imageConfig();
+      } catch {
+        throw new AuthServiceError('provider_unavailable', 503, 'Recipe image service is unavailable');
+      }
+      if (!imageService.enabled) {
+        throw new AuthServiceError('provider_unavailable', 503, 'Recipe image service is unavailable');
+      }
+      selectedImageProvider = imageService.provider;
+      if (update.imagePolicyVersion !== 'recipe-images-v1' || update.imageProvider !== selectedImageProvider) {
+        throw new AuthServiceError('ai_provider_mismatch', 409, 'Image consent provider does not match the selected provider');
+      }
     }
     try {
-      const consent = await repository.updateAiConsent(session.userId, { ...update, ...(update.imagePolicyVersion ? { imageProvider: imageConfig().provider } : {}) });
+      const consent = await repository.updateAiConsent(session.userId, {
+        ...update,
+        ...(update.imagePolicyVersion && selectedImageProvider ? { imageProvider: selectedImageProvider } : {}),
+      });
       return { consent, selectedProvider: recipeProvider, ...(imageConfig().enabled ? { selectedImageProvider: imageConfig().provider } : {}) };
     } catch (error) {
       if (error instanceof AiConsentRevisionRequiredError) {

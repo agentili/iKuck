@@ -13,9 +13,9 @@ export const catalogImageRecipes = RECIPES.filter(recipe => recipe.id !== 'uova-
 
 export async function hasImageConsent(db: Database, userId: string, config: ImageConfig) {
   const [row] = await db.execute(sql`SELECT payload FROM sync_items WHERE scope_type='user' AND scope_id=${userId} AND entity_type='ai_consent' AND NOT deleted`);
-  const consent = row?.payload as { enabled?: boolean; imagePolicyVersion?: string; imageProvider?: string; homeProvider?: string } | undefined;
+  const consent = row?.payload as { enabled?: boolean; imagePolicyVersion?: string; imageProvider?: string } | undefined;
   return consent?.enabled === true && consent.imagePolicyVersion === 'recipe-images-v1'
-    && (consent.imageProvider ?? consent.homeProvider) === config.provider;
+    && consent.imageProvider === config.provider;
 }
 
 // Never replace ready assets or reset a running dispatch, including concurrent requests.
