@@ -28,7 +28,7 @@ describe('activity store', () => {
     await waitForPendingActivityWrites();
     await deleteLocalDatabase();
     usePersistenceStatusStore.getState().reset();
-    useActivityStore.setState({ hasHydrated: false, events: [], preferences: [] });
+    useActivityStore.setState({ hasHydrated: true, hydrationError: false, events: [], preferences: [] });
     usePantryStore.setState({
       pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
       pantryLots: [],
@@ -75,6 +75,7 @@ describe('activity store', () => {
   it('tracks a queued cook-event persistence callback before its storage write starts', async () => {
     const scope = 'account:activity-pending' as const;
     setActiveDataScope(scope);
+    await hydrateActivityStore();
     const originalWrite = activityStorage.writeCookEvents;
     let release: (() => void) | undefined;
     const paused = new Promise<void>((resolve) => { release = resolve; });
@@ -98,6 +99,7 @@ describe('activity store', () => {
   it('tracks a queued recipe-preference persistence callback before its storage write starts', async () => {
     const scope = 'account:preferences-pending' as const;
     setActiveDataScope(scope);
+    await hydrateActivityStore();
     const originalWrite = activityStorage.writeRecipePreferences;
     let release: (() => void) | undefined;
     const paused = new Promise<void>((resolve) => { release = resolve; });
@@ -256,6 +258,7 @@ describe('activity store', () => {
     const houseScope = 'house:activity-home' as const;
     setPersonalDataScope(accountScope);
     setActiveDataScope(houseScope);
+    await hydrateActivityStore();
     await useActivityStore.getState().recordCookEvent(RECIPES[0]);
     useActivityStore.getState().setRecipePreference(RECIPES[0].id, true, 5, null);
     await waitForPendingActivityWrites();

@@ -19,7 +19,7 @@ import {
   writeQueueValue,
   type SyncScope,
 } from '../storage/indexedDb';
-import { readCookEvents, readRecipePreferences, writeCookEvents, writeRecipePreferences } from '../storage/activityStorage';
+import { activityEventsDatabaseKeyForScope, activityEventsStorageKeyForScope, readCookEvents, readRecipePreferences, serializeCookEventsSnapshot, writeCookEvents, writeRecipePreferences } from '../storage/activityStorage';
 import { clearDinnerDiary, readDiaryDraftSets, readDinnerEntries, readSavedRecipes, writeDiaryDraftSets, writeDinnerEntries, writeSavedRecipes } from '../storage/dinnerDiaryStorage';
 import { PANTRY_STORAGE_KEY, readPantrySnapshot, writePantrySnapshot } from '../storage/pantryStorage';
 import * as pantryStorage from '../storage/pantryStorage';
@@ -40,6 +40,7 @@ import {
   mergeGuestPantryIntoHouse,
   readQueuedMutations,
   readSyncCursor,
+  registerActivitySnapshotListener,
   registerPantrySnapshotListener,
   syncNow,
   syncVerifiedSession,
@@ -2241,6 +2242,60 @@ describe('sync queue', () => {
     await expect(readDinnerConsumptionReceipt(command.operationId, scope)).resolves.toEqual(canonicalReceipt);
     await expect(readDinnerConsumptionOutbox(scope)).resolves.toEqual([]);
     await expect(readQueuedMutations(scope)).resolves.toEqual([]);
+  });
+
+  it('preserves unreadable dinner history, outbox, queue and cursor until sync can reconcile safely', async () => {
+    const scope = accountScope;
+    setActiveDataScope(scope);
+    setPersonalDataScope(scope);
+    const timestamp = '2026-10-07T12:00:00.000Z';
+    const entry: DinnerEntry = { id: 'unreadable-entry', date: '2026-10-07', text: 'Pasta', servings: 2, note: null, recipes: [], authorId: session.userId, createdAt: timestamp, updatedAt: timestamp };
+    const command: DinnerConsumptionCommand = { operationId: 'unreadable-consumption', entryId: entry.id, scope, servings: 2, ingredients: [] };
+    const event: CookEvent = {
+      id: entry.id, recipeId: 'recipe-1', recipeTitle: 'Pasta', servings: 2,
+      cookedAt: entry.createdAt, note: null, createdAt: entry.createdAt, updatedAt: entry.updatedAt,
+    };
+    const oldEvent = { ...event, id: 'old-event' };
+    const committed = await commitDinnerConsumption({ command, entry, cookEvent: event });
+    const raw = serializeCookEventsSnapshot([oldEvent, event]);
+    const key = activityEventsStorageKeyForScope(scope);
+    await indexedDb.deleteKeyValue(activityEventsDatabaseKeyForScope(scope));
+    window.localStorage.setItem(key, raw);
+    await enqueueMutation(scope, { ...sampleMutation('unreadable-dinner-mutation'), entityType: 'dinner_entry', entityId: entry.id, payload: entry });
+    const queueBefore = await readQueuedMutations(scope);
+    const cursorBefore = await readSyncCursor(scope);
+    const published = vi.fn();
+    const unsubscribe = registerActivitySnapshotListener(published);
+    const requestMock = vi.fn(async (path: string) => {
+      if (path === '/v1/dinner-consumption') return { duplicate: true, entry, cookEvent: event, pantrySnapshot: committed.pantrySnapshot, receipt: committed.receipt };
+      if (path === '/v1/sync') return { changes: [], nextCursor: 9 };
+      throw new Error(`Unexpected request ${path}`);
+    });
+    const get = Storage.prototype.getItem;
+    const denied = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, current) {
+      if (current === key) throw new Error('temporary activity read failure');
+      return get.call(this, current);
+    });
+    try {
+      await expect(syncNow({ session, request: requestMock as unknown as ApiRequest })).rejects.toThrow('temporary activity read failure');
+      expect(published).not.toHaveBeenCalled();
+      expect(await readDinnerConsumptionOutbox(scope)).toEqual([committed.outbox]);
+      expect(await readQueuedMutations(scope)).toEqual(queueBefore);
+      expect(await readSyncCursor(scope)).toBe(cursorBefore);
+      expect(requestMock.mock.calls.map(([path]) => path)).toEqual(['/v1/dinner-consumption']);
+    } finally {
+      denied.mockRestore();
+      unsubscribe();
+    }
+    expect(window.localStorage.getItem(key)).toBe(raw);
+    await syncNow({ session, request: requestMock as unknown as ApiRequest });
+    expect(await readCookEvents(scope)).toEqual([oldEvent, event]);
+    expect(await readDinnerConsumptionOutbox(scope)).toEqual([]);
+    expect(await readQueuedMutations(scope)).toEqual([]);
+    expect(await readSyncCursor(scope)).toBe(9);
+    expect(requestMock.mock.calls.map(([path]) => path)).toEqual(['/v1/dinner-consumption', '/v1/dinner-consumption', '/v1/sync']);
+    expect(requestMock.mock.calls[0]).toEqual(requestMock.mock.calls[1]);
+    expect(command.operationId).toBe(committed.outbox.operationId);
   });
 
   it('retains a failed consumption for retry with the same operation ID', async () => {

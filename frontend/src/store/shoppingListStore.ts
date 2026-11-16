@@ -25,6 +25,7 @@ export interface ShoppingListItemPatch {
 }
 
 export interface ShoppingListState {
+  hydrationError: boolean;
   hasHydrated: boolean;
   items: ShoppingListItem[];
   addItem: (input: ShoppingListItemPayload) => string | null;
@@ -87,9 +88,11 @@ const persistAndQueue = (
 };
 
 export const useShoppingListStore = create<ShoppingListState>((set, get) => ({
+  hydrationError: false,
   hasHydrated: false,
   items: [],
   addItem: (input) => {
+    if (!get().hasHydrated || get().hydrationError) return null;
     if (!isValidPayload(input)) return null;
     const now = new Date().toISOString();
     const item: ShoppingListItem = {
@@ -119,6 +122,7 @@ export const useShoppingListStore = create<ShoppingListState>((set, get) => ({
     return added;
   },
   updateItem: (id, patch) => {
+    if (!get().hasHydrated || get().hydrationError) return false;
     const existing = get().items.find((item) => item.id === id);
     if (existing === undefined) return false;
     const next: ShoppingListItem = {
@@ -135,6 +139,7 @@ export const useShoppingListStore = create<ShoppingListState>((set, get) => ({
     return true;
   },
   togglePurchased: (id) => {
+    if (!get().hasHydrated || get().hydrationError) return false;
     const existing = get().items.find((item) => item.id === id);
     if (existing === undefined) return false;
     const updated = { ...existing, purchased: !existing.purchased, updatedAt: new Date().toISOString() };
@@ -144,6 +149,7 @@ export const useShoppingListStore = create<ShoppingListState>((set, get) => ({
     return true;
   },
   removeItem: (id) => {
+    if (!get().hasHydrated || get().hydrationError) return;
     const existing = get().items.find((item) => item.id === id);
     if (existing === undefined) return;
     const items = get().items.filter((item) => item.id !== id);
@@ -151,6 +157,7 @@ export const useShoppingListStore = create<ShoppingListState>((set, get) => ({
     persistAndQueue(items, existing, 'delete');
   },
   restoreItem: (item) => {
+    if (!get().hasHydrated || get().hydrationError) return false;
     if (!isValidPayload(item) || get().items.some((existing) => existing.id === item.id)) return false;
     const items = [...get().items, item];
     set({ items });
@@ -158,6 +165,7 @@ export const useShoppingListStore = create<ShoppingListState>((set, get) => ({
     return true;
   },
   clearPurchased: () => {
+    if (!get().hasHydrated || get().hydrationError) return 0;
     const removed = get().items.filter((item) => item.purchased);
     if (removed.length === 0) return 0;
     const items = get().items.filter((item) => !item.purchased);
@@ -184,7 +192,7 @@ registerShoppingListSnapshotListener((items) => {
 subscribeActiveDataScope(() => {
   hydrationGeneration += 1;
   hydratedScope = null;
-  useShoppingListStore.setState({ hasHydrated: false, items: [] });
+  useShoppingListStore.setState({ hasHydrated: false, hydrationError: false, items: [] });
 });
 
 export async function waitForPendingShoppingListWrites(): Promise<void> {
@@ -196,18 +204,18 @@ export async function hydrateShoppingListStore(): Promise<void> {
   for (;;) {
     const scope = getActiveDataScope();
     const generation = hydrationGeneration;
-    if (useShoppingListStore.getState().hasHydrated && hydratedScope === scope) return;
+    if (useShoppingListStore.getState().hasHydrated && !useShoppingListStore.getState().hydrationError && hydratedScope === scope) return;
     if (hydrationPromise === null) {
       const currentPromise = readShoppingList(scope)
         .then((items) => {
           if (getActiveDataScope() !== scope || hydrationGeneration !== generation) return;
           hydratedScope = scope;
-          useShoppingListStore.setState({ items: normalizeShoppingList(items), hasHydrated: true });
+          useShoppingListStore.setState({ items: normalizeShoppingList(items), hasHydrated: true, hydrationError: false });
         })
         .catch(() => {
           if (getActiveDataScope() !== scope || hydrationGeneration !== generation) return;
           hydratedScope = scope;
-          useShoppingListStore.setState({ items: [], hasHydrated: true });
+          useShoppingListStore.setState({ hasHydrated: true, hydrationError: true });
         })
         .finally(() => {
           hydrationPromise = null;

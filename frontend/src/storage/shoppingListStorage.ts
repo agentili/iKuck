@@ -1,6 +1,7 @@
 import type { ShoppingListItem } from '@ikuck/shared/contracts';
 import { isShoppingListItem } from '../domain/shoppingList';
-import { deleteKeyValue, isIndexedDbAvailable, readKeyValue, writeKeyValue } from './indexedDb';
+import { deleteKeyValue, isIndexedDbAvailable, writeKeyValue } from './indexedDb';
+import { parseCollectionSnapshot, readCollectionSnapshot } from './collectionSnapshot';
 import { getActiveDataScope, scopeStorageKey, type SyncScope } from '../sync/scopeContext';
 import { trackScopedWrite } from '../sync/scopeWriteFence';
 
@@ -32,30 +33,14 @@ const serialize = (items: readonly ShoppingListItem[]): string => JSON.stringify
   version: 1,
 } satisfies PersistedShoppingList);
 
-const parse = (raw: string | null): ShoppingListItem[] => {
-  if (raw === null) return [];
-  try {
-    const parsed = JSON.parse(raw) as Partial<PersistedShoppingList>;
-    return Array.isArray(parsed.items) ? normalizeShoppingList(parsed.items) : [];
-  } catch {
-    return [];
-  }
-};
-
-const readFallback = (scope: SyncScope = getActiveDataScope()): ShoppingListItem[] => parse(window.localStorage.getItem(scopedStorageKey(scope)));
-
 export async function readShoppingList(scope: SyncScope = getActiveDataScope()): Promise<ShoppingListItem[]> {
-  if (!isIndexedDbAvailable()) return readFallback(scope);
-
-  try {
-    return parse(await readKeyValue<string>(scopedDatabaseKey(scope)));
-  } catch {
-    return readFallback(scope);
-  }
+  return normalizeShoppingList(parseCollectionSnapshot(await readCollectionSnapshot(scopedDatabaseKey(scope), scopedStorageKey(scope)), isShoppingListItem));
 }
 
 export async function writeShoppingList(items: readonly ShoppingListItem[], scope: SyncScope = getActiveDataScope()): Promise<void> {
   return trackScopedWrite(scope, async (assertWritable) => {
+    await readShoppingList(scope);
+    assertWritable();
     const serialized = serialize(items);
     if (!isIndexedDbAvailable()) {
       assertWritable();
@@ -68,7 +53,8 @@ export async function writeShoppingList(items: readonly ShoppingListItem[], scop
       assertWritable();
     } catch (error) {
       assertWritable();
-      window.localStorage.setItem(scopedStorageKey(scope), serialized);
+      // Keep both copies unchanged on rejection; the primary remains authoritative.
+      // In particular, never overwrite a recovery mirror changed during the await.
       throw error;
     }
   });

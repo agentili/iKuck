@@ -17,6 +17,28 @@ const clearLocalDatabase = async (page: Page) => {
   }));
 };
 
+const waitForGuestPantryPersistence = async (page: Page, ingredientIds: string[]): Promise<void> => {
+  await expect.poll(() => page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('ikuck-local-v2');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      const raw = await new Promise<unknown>((resolve, reject) => {
+        const request = database.transaction('keyValue', 'readonly').objectStore('keyValue').get('pantry');
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      if (typeof raw !== 'string') return [];
+      const snapshot = JSON.parse(raw) as { state?: { pantryLots?: Array<{ ingredientId: string }> } };
+      return snapshot.state?.pantryLots?.map(lot => lot.ingredientId) ?? [];
+    } finally {
+      database.close();
+    }
+  })).toEqual(expect.arrayContaining(ingredientIds));
+};
+
 test.beforeEach(async ({ context, page }) => {
   await context.clearCookies();
   await installOfflineBackend(page, {
@@ -191,6 +213,7 @@ test('guest pantry survives reload while the API is offline', async ({ page }) =
   await openPantryInventory(page);
   await expect(page.getByText('Pasta', { exact: true })).toBeVisible();
 
+  await waitForGuestPantryPersistence(page, ['pasta', 'tuna']);
   await page.unroute('**/v1/auth/session');
   await page.route('**/v1/auth/session', (route) => route.abort());
   await page.reload();
@@ -199,15 +222,19 @@ test('guest pantry survives reload while the API is offline', async ({ page }) =
 });
 
 test('verified users explicitly import the local pantry into the account', async ({ page }) => {
+  let authenticated = false;
   const syncRequests: Array<{ mutations: unknown[] }> = [];
+  const hasPastaUpload = () => syncRequests.some(({ mutations }) => mutations.some((mutation) => (
+    typeof mutation === 'object' && mutation !== null && 'entityId' in mutation && mutation.entityId === 'pasta'
+  )));
   await page.route('**/v1/auth/session', (route) => route.fulfill({
     status: 200,
-    json: {
+    json: authenticated ? {
       authenticated: true,
       user: verifiedUser,
       csrfToken: 'csrf-1',
       expiresAt: '2026-10-12T10:00:00.000Z',
-    },
+    } : { authenticated: false },
   }));
   await page.route('**/v1/profile', (route) => route.fulfill({
     status: 200,
@@ -225,15 +252,22 @@ test('verified users explicitly import the local pantry into the account', async
   await page.reload();
   await page.getByLabel('Ingredienti presenti').fill('pasta');
   await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  // Wait for the durable guest snapshot, not the optimistic UI, before
+  // navigating into a verified account with a separate data scope.
+  await waitForGuestPantryPersistence(page, ['pasta']);
+  expect(syncRequests).toHaveLength(0);
+  authenticated = true;
   await page.goto('/profile');
   await expect(page.getByRole('heading', { name: 'Il tuo profilo' })).toBeVisible();
+  await expect.poll(() => syncRequests.length).toBeGreaterThan(0);
+  expect(hasPastaUpload()).toBe(false);
 
   await page.getByRole('button', { name: 'Importa i dati locali' }).click();
+  await expect(page.getByRole('button', { name: 'Conferma importazione' })).toBeVisible();
+  expect(hasPastaUpload()).toBe(false);
   await page.getByRole('button', { name: 'Conferma importazione' }).click();
   await expect(page.getByText(/Sincronizzazione completata/)).toBeVisible();
-  expect(syncRequests.some(({ mutations }) => mutations.some((mutation) => (
-    typeof mutation === 'object' && mutation !== null && 'entityId' in mutation && mutation.entityId === 'pasta'
-  )))).toBe(true);
+  await expect.poll(hasPastaUpload).toBe(true);
 });
 
 test('two verified accounts share the house pantry while member authorization stays isolated', async ({ browser, page }) => {
@@ -363,6 +397,7 @@ test('two verified accounts share the house pantry while member authorization st
   await openPantryInventory(memberPage);
   await expect(memberPage.getByText('Pasta', { exact: true })).toBeVisible();
 
+  await waitForGuestPantryPersistence(memberPage, ['pasta']);
   bVerified = true;
   await memberPage.reload();
   await expect(memberPage.getByRole('heading', { name: 'La tua dispensa' })).toBeVisible();

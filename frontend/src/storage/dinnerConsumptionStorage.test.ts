@@ -6,7 +6,7 @@ import { getActiveDataScope, setActiveDataScope, scopeStorageKey } from '../sync
 import { resumeScope, revokeScope } from '../sync/scopeWriteFence';
 import { closeLocalDatabase, deleteLocalDatabase, deleteQueueScope, DINNER_CONSUMPTION_RECORD_STORAGE_PREFIX, LOCAL_STORAGE_JOURNAL_KEY, readQueueValues } from './indexedDb';
 import * as indexedDb from './indexedDb';
-import { dinnerEntriesStorageKeyForScope, readDinnerEntries, serializeDinnerEntriesSnapshot, writeDinnerEntries } from './dinnerDiaryStorage';
+import { dinnerEntriesDatabaseKeyForScope, dinnerEntriesStorageKeyForScope, readDinnerEntries, serializeDinnerEntriesSnapshot, writeDinnerEntries } from './dinnerDiaryStorage';
 import { pantryStorageKeyForScope, readPantrySnapshot, serializePantrySnapshot, writePantrySnapshot } from './pantryStorage';
 import { readCookEvents } from './activityStorage';
 import {
@@ -447,11 +447,17 @@ describe('dinner consumption storage', () => {
       return () => spy.mockRestore();
     };
 
-    const stockPantry = () => writePantrySnapshot({
-      pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
-      stapleIds: ['salt'],
-      pantryLots: [lot('pasta-lot', 'pasta', 500, 'g')],
-    }, 'guest');
+    const stockPantry = async () => {
+      await writePantrySnapshot({
+        pantryItems: [{ id: 'pasta', label: 'Pasta', known: true }],
+        stapleIds: ['salt'],
+        pantryLots: [lot('pasta-lot', 'pasta', 500, 'g')],
+      }, 'guest');
+      // These tests exercise optional mirror maintenance with established IDB
+      // authority; missing primaries require a readable fallback instead.
+      await indexedDb.writeKeyValue(dinnerEntriesDatabaseKeyForScope('guest'), serializeDinnerEntriesSnapshot([]));
+      await indexedDb.writeKeyValue('activity', JSON.stringify({ items: [], version: 1 }));
+    };
 
     const expectCommittedReceipt = async (): Promise<void> => {
       const result = await commitDinnerConsumption({ command, entry, cookEvent: event, updatedAt: timestamp });

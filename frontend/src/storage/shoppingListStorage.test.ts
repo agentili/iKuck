@@ -31,10 +31,13 @@ describe('shopping list storage', () => {
     await expect(readShoppingList()).resolves.toEqual([item]);
   });
 
-  it('ignores malformed or invalid local values instead of exposing them', async () => {
+  it('rejects corrupt data and refuses to overwrite the recoverable raw snapshot', async () => {
     const { writeKeyValue } = await import('./indexedDb');
     await writeKeyValue('shopping-list', '{not-json');
 
-    await expect(readShoppingList()).resolves.toEqual([]);
+    await expect(readShoppingList()).rejects.toThrow();
+    await expect(writeShoppingList([])).rejects.toThrow();
+    const { readKeyValue } = await import('./indexedDb');
+    await expect(readKeyValue('shopping-list')).resolves.toBe('{not-json');
   });
 });
