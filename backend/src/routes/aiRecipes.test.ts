@@ -5,7 +5,7 @@ import { createApp } from '../app.js';
 import type { AuthService } from '../auth/service.js';
 import { hashOpaqueToken } from '../auth/tokens.js';
 import type { GenerationRateLimiter } from '../ai/rateLimit.js';
-import { createMemorySyncRepository } from '../sync/repository.js';
+import { createMemorySyncRepository, DEFAULT_AI_CONSENT_REVISION } from '../sync/repository.js';
 import type { DinnerReconstructionProvider } from '../providers/types.js';
 import type { RecipeGenerationProvider } from '../providers/types.js';
 import { ProviderTimeoutError } from '../providers/types.js';
@@ -264,6 +264,32 @@ describe('AI recipe routes', () => {
           imagePolicyVersion: 'recipe-images-v1',
           imageProvider: 'openai',
           expectedRevision: current.json().consent.updatedAt,
+        },
+      });
+
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toMatchObject({ code: 'provider_unavailable' });
+      await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toBeNull();
+    } finally {
+      await app.close();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('rejects image consent when the enabled image service is incompletely configured', async () => {
+    vi.stubEnv('RECIPE_IMAGES_ENABLED', 'true');
+    vi.stubEnv('RECIPE_IMAGE_PROVIDER', 'openai');
+    vi.stubEnv('RECIPE_IMAGE_MODEL', '');
+    const { app, repository } = createAiApp();
+
+    try {
+      const response = await app.inject({
+        method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+        payload: {
+          enabled: true,
+          imagePolicyVersion: 'recipe-images-v1',
+          imageProvider: 'openai',
+          expectedRevision: DEFAULT_AI_CONSENT_REVISION,
         },
       });
 
