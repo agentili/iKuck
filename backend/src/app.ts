@@ -27,7 +27,7 @@ import { type ShoppingListRouteDependencies, registerShoppingListRoutes } from '
 import { type ActivityRouteDependencies, registerActivityRoutes } from './routes/activity.js';
 import { type RecipePreferenceRouteDependencies, registerRecipePreferenceRoutes } from './routes/recipePreferences.js';
 import { type DietProfileRouteDependencies, registerDietProfileRoutes } from './routes/dietProfile.js';
-import { type RecipeNutritionRouteDependencies, registerRecipeNutritionRoutes } from './routes/recipeNutrition.js';
+
 import { type AiRecipeRouteDependencies, registerAiRecipeRoutes } from './routes/aiRecipes.js';
 import { registerChefChatRoutes, type ChefChatDependencies } from './routes/chefChat.js';
 import { type HouseRouteDependencies, registerHouseRoutes } from './routes/house.js';
@@ -51,7 +51,7 @@ export interface ExtendedPlatformDependencies extends PlatformDependencies {
   activity?: ActivityRouteDependencies;
   recipePreferences?: RecipePreferenceRouteDependencies;
   dietProfile?: DietProfileRouteDependencies;
-  recipeNutrition?: RecipeNutritionRouteDependencies;
+
   aiRecipes?: AiRecipeRouteDependencies;
   chefChat?: ChefChatDependencies;
   push?: PushRouteDependencies;
@@ -132,7 +132,7 @@ export const createApp = (
   if (dependencies.activity !== undefined) app.register(registerActivityRoutes(dependencies.activity));
   if (dependencies.recipePreferences !== undefined) app.register(registerRecipePreferenceRoutes(dependencies.recipePreferences));
   if (dependencies.dietProfile !== undefined) app.register(registerDietProfileRoutes(dependencies.dietProfile));
-  if (dependencies.recipeNutrition !== undefined) app.register(registerRecipeNutritionRoutes(dependencies.recipeNutrition));
+
   if (dependencies.aiRecipes !== undefined) app.register(registerAiRecipeRoutes(dependencies.aiRecipes));
   if (dependencies.house !== undefined) app.register(registerHouseRoutes(dependencies.house));
   if (dependencies.dinnerDiary !== undefined) app.register(registerDinnerDiaryRecipeRoutes(dependencies.dinnerDiary));

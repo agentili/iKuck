@@ -18,7 +18,6 @@ Copia `deploy/.env.example` in `deploy/.env` sul VPS e sostituisci tutti i place
 | `GEMINI_MODEL` | no | modello Gemini scelto nel piano disponibile |
 | `RESEND_API_KEY` | no | abilita l'invio email solo insieme a un mittente |
 | `RESEND_FROM_EMAIL` | no | mittente verificato Resend; `RESEND_FROM` resta accettato per compatibilità |
-| `USDA_API_KEY` | no | abilita l'arricchimento nutrizionale USDA |
 | `OPENAI_API_KEY` | no | abilita le ricette AI private |
 | `OPENAI_MODEL` | no | modello OpenAI, default `gpt-5.5` |
 | `PUSH_ENABLED` | no | `false` per default; `true` abilita le API push e richiede VAPID |
@@ -118,7 +117,7 @@ Per il rollback applicativo, conserva il riferimento all'immagine o al commit pr
 
 ## Provider e smoke test
 
-Gli smoke test reali di Resend, USDA e OpenAI sono opt-in e non fanno parte di `npm test`. Devono usare un account, un indirizzo email e dati ricetta usa-e-getta. Non salvare nei report chiavi, token, link di verifica/reset, prompt o contenuti di ricette private.
+Gli smoke test reali di Resend e OpenAI sono opt-in e non fanno parte di `npm test`. Devono usare un account, un indirizzo email e dati ricetta usa-e-getta. Non salvare nei report chiavi, token, link di verifica/reset, prompt o contenuti di ricette private. La nutrizione del catalogo resta una stima statica locale e non richiede provider o smoke test di rete.
 
 Questa guida documenta il contratto e il deployment; il runner degli smoke test e la verifica contro servizi PostgreSQL/Redis usa-e-getta restano attività successive del piano production readiness.
 
