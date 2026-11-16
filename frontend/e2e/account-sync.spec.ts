@@ -145,6 +145,38 @@ test('keeps the house pantry and guest source when an explicitly requested merge
   expect(preservedGuestLotIdLength).toBe(161);
 });
 
+test('uploads online edits after bootstrap and receives a later remote change without reconnect', async ({ page }) => {
+  test.setTimeout(45_000);
+  await page.route('**/v1/auth/session', route => route.fulfill({ json: {
+    authenticated: true, user: verifiedUser, csrfToken: 'csrf-1', expiresAt: '2026-12-12T10:00:00.000Z',
+  } }));
+  await page.route('**/v1/profile', route => route.fulfill({ json: { profile: { displayName: null } } }));
+  await page.route('**/v1/house', route => route.fulfill({ json: { house: null, membership: null, members: [] } }));
+  let requests = 0;
+  let uploaded = false;
+  let remoteReady = false;
+  await page.route('**/v1/sync', route => {
+    const body = route.request().postDataJSON() as { mutations: Array<{ entityType: string }>; cursor?: number };
+    requests++;
+    uploaded ||= body.mutations.some(mutation => mutation.entityType === 'pantry_lot');
+    const changes = remoteReady && (body.cursor ?? 0) < 1 ? [{
+      mutationId: 'remote-staple', deviceId: 'other-client', syncScope: 'account:user-1',
+      entityType: 'pantry_item', entityId: 'rice', operation: 'upsert',
+      payload: { id: 'rice', label: 'Riso remoto', known: true },
+      clientUpdatedAt: '2026-11-16T00:00:00.000Z', serverSequence: 1,
+    }] : [];
+    return route.fulfill({ json: { changes, nextCursor: remoteReady ? 1 : 0 } });
+  });
+  await page.goto('/pantry');
+  await expect.poll(() => requests).toBeGreaterThan(0);
+  await page.getByLabel('Ingredienti presenti').fill('pasta');
+  await page.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await expect.poll(() => uploaded).toBe(true);
+  remoteReady = true;
+  await openPantryInventory(page);
+  await expect(page.getByText('Riso remoto', { exact: true })).toBeVisible({ timeout: 35_000 });
+});
+
 test('guest pantry survives reload while the API is offline', async ({ page }) => {
   await page.route('**/v1/auth/session', (route) => route.fulfill({
     status: 200,
