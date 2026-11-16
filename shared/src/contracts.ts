@@ -211,7 +211,7 @@ export interface RecipeNutrition {
   proteinGramsPerServing: number | null;
   carbohydrateGramsPerServing: number | null;
   fatGramsPerServing: number | null;
-  source: 'catalog_estimate' | 'usda';
+  source: 'catalog_estimate';
   isComplete: boolean;
   missingNutrients: string[];
 }

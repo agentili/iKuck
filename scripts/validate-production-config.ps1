@@ -140,7 +140,7 @@ if ($null -ne $postgresPassword -and $postgresPassword -match '[@:/?#]') {
 }
 
 $sampleFile = [System.IO.Path]::GetFileName($resolvedEnvFile) -match '(?i)\.example$|\.sample$'
-foreach ($providerSecretName in @('RESEND_API_KEY', 'USDA_API_KEY', 'OPENAI_API_KEY', 'PUSH_VAPID_PRIVATE_KEY')) {
+foreach ($providerSecretName in @('RESEND_API_KEY', 'OPENAI_API_KEY', 'PUSH_VAPID_PRIVATE_KEY')) {
     $providerSecret = Get-Value -Values $values -Name $providerSecretName
     if ($sampleFile -and -not [string]::IsNullOrWhiteSpace($providerSecret)) {
         Add-ValidationError "$providerSecretName must be empty in a committed sample file"

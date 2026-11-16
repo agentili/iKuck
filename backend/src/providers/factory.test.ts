@@ -3,13 +3,9 @@ import { createProviders } from './factory.js';
 import type { SmtpTransportFactory } from './smtp.js';
 
 describe('createProviders', () => {
-  it('returns a typed unavailable error without provider credentials', async () => {
+  it('does not expose a remote nutrition provider', () => {
     const providers = createProviders({ providers: {} });
-
-    await expect(providers.nutrition.lookup({ query: 'tomato' })).rejects.toMatchObject({
-      code: 'provider_unavailable',
-      provider: 'nutrition',
-    });
+    expect(providers).not.toHaveProperty('nutrition');
   });
 
   it('exposes all provider ports without performing network work', async () => {
@@ -26,15 +22,6 @@ describe('createProviders', () => {
     })).rejects.toMatchObject({ provider: 'recipes' });
   });
 
-  it('selects the USDA adapter only when an API key is configured', async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(JSON.stringify({
-      foods: [{ description: 'Tomato', foodNutrients: [{ nutrientId: 1008, value: 18 }] }],
-    })));
-    const providers = createProviders({ providers: { usdaApiKey: 'test-key' } }, { fetch });
-
-    await expect(providers.nutrition.lookup({ query: 'tomato' })).resolves.toMatchObject({ source: 'usda', calories: 18 });
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
 
   it('selects the OpenAI recipe adapter only when its API key is configured', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ output_text: JSON.stringify({

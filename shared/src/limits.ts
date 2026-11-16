@@ -9,8 +9,6 @@ export const AI_RECIPE_MAX_GENERATION_INGREDIENTS = 100;
 /** Maximum number of ingredients allowed in a generated or saved recipe. */
 export const RECIPE_MAX_INGREDIENTS = 30;
 
-/** Maximum number of ingredients accepted by a recipe nutrition lookup request. */
-export const RECIPE_NUTRITION_MAX_INGREDIENTS = 30;
 
 export const DIARY_ID_MAX_LENGTH = 128;
 export const DIARY_TITLE_MAX_LENGTH = 160;
