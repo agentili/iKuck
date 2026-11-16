@@ -132,7 +132,7 @@ export const start = async () => {
       activity: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       recipePreferences: { repository: sync, authService: auth, appOrigin: config.appOrigin },
       dietProfile: { repository: sync, authService: auth, appOrigin: config.appOrigin },
-      recipeNutrition: { provider: providers.nutrition, authService: auth, appOrigin: config.appOrigin },
+
       aiRecipes: {
         provider: providers.recipes,
         dinnerReconstructionProvider: providers.dinnerReconstruction,

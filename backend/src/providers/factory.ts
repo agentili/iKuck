@@ -1,13 +1,13 @@
 import type { AppConfig, ProviderConfig } from '../config.js';
 import { createSmtpEmailProvider, type SmtpTransportFactory } from './smtp.js';
-import { createUsdaNutritionProvider } from './usda.js';
+
 import { createOpenAiRecipeProvider } from './openaiRecipes.js';
 import { createOpenAiDinnerReconstructionProvider } from './openaiDinnerReconstruction.js';
 import { createGeminiDinnerReconstructionProvider } from './geminiDinnerReconstruction.js';
 import { createGeminiRecipeProvider } from './geminiRecipes.js';
 import {
   createUnavailableEmailProvider,
-  createUnavailableNutritionProvider,
+
   createUnavailableRecipeProvider,
   createUnavailableDinnerReconstructionProvider,
   type ProviderUnavailableReason,
@@ -60,9 +60,7 @@ export const createProviders = (
         createTransport: options.createTransport,
       })
       : createUnavailableEmailProvider(emailUnavailableReason(providers)),
-    nutrition: providers.usdaApiKey !== undefined
-      ? createUsdaNutritionProvider({ apiKey: providers.usdaApiKey, fetch: options.fetch, timeoutMs: providers.usdaTimeoutMs })
-      : createUnavailableNutritionProvider(reasonFor(providers.usdaApiKey)),
+
     recipes: providers.recipeProvider === 'gemini'
       ? providers.geminiApiKey !== undefined
         ? createGeminiRecipeProvider({

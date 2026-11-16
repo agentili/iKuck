@@ -1,6 +1,7 @@
 import type { CookEvent, RecipePreference } from '@ikuck/shared/contracts';
 import { isCookEvent, isRecipePreference } from '../domain/activity';
-import { deleteKeyValue, isIndexedDbAvailable, readKeyValue, writeKeyValue } from './indexedDb';
+import { deleteKeyValue, isIndexedDbAvailable, writeKeyValue } from './indexedDb';
+import { parseCollectionSnapshot, readCollectionSnapshot } from './collectionSnapshot';
 import { getActiveDataScope, scopeStorageKey, type SyncScope } from '../sync/scopeContext';
 import { trackScopedWrite } from '../sync/scopeWriteFence';
 
@@ -22,7 +23,7 @@ const normalizeById = <T extends { id: string }>(items: readonly unknown[], guar
 export const normalizeCookEvents = (items: readonly unknown[]): CookEvent[] => normalizeById(items, isCookEvent);
 export const activityEventsDatabaseKeyForScope = (scope: SyncScope): string => scopedKey(ACTIVITY_DATABASE_KEY, scope);
 export const activityEventsStorageKeyForScope = (scope: SyncScope): string => scopedKey(ACTIVITY_STORAGE_KEY, scope);
-export const parseCookEventsSnapshot = (raw: string | null): CookEvent[] => parseCollection(raw, normalizeCookEvents);
+export const parseCookEventsSnapshot = (raw: string | null): CookEvent[] => normalizeCookEvents(parseCollectionSnapshot(raw, isCookEvent));
 export const serializeCookEventsSnapshot = (events: readonly CookEvent[]): string => serializeCollection(events, normalizeCookEvents);
 
 export const normalizeRecipePreferences = (items: readonly unknown[]): RecipePreference[] => {
@@ -33,15 +34,6 @@ export const normalizeRecipePreferences = (items: readonly unknown[]): RecipePre
   return [...unique.values()];
 };
 
-const parseCollection = <T>(raw: string | null, normalize: (items: readonly unknown[]) => T[]): T[] => {
-  if (raw === null) return [];
-  try {
-    const parsed = JSON.parse(raw) as { items?: unknown };
-    return Array.isArray(parsed.items) ? normalize(parsed.items) : [];
-  } catch {
-    return [];
-  }
-};
 
 const serializeCollection = <T>(items: readonly T[], normalize: (values: readonly unknown[]) => T[]): string => JSON.stringify({
   items: normalize(items),
@@ -50,6 +42,9 @@ const serializeCollection = <T>(items: readonly T[], normalize: (values: readonl
 
 const writeCollection = (scope: SyncScope, databaseKey: string, storageKey: string, serialized: string): Promise<void> => (
   trackScopedWrite(scope, async (assertWritable) => {
+    if (databaseKey === ACTIVITY_DATABASE_KEY) await readCookEvents(scope);
+    else await readRecipePreferences(scope);
+    assertWritable();
     if (!isIndexedDbAvailable()) {
       assertWritable();
       window.localStorage.setItem(scopedKey(storageKey, scope), serialized);
@@ -61,19 +56,15 @@ const writeCollection = (scope: SyncScope, databaseKey: string, storageKey: stri
       assertWritable();
     } catch (error) {
       assertWritable();
-      window.localStorage.setItem(scopedKey(storageKey, scope), serialized);
+      // A rejected primary write cannot publish a new fallback or replace any
+      // recovery copy, including one changed by another writer during the await.
       throw error;
     }
   })
 );
 
 export async function readCookEvents(scope: SyncScope = getActiveDataScope()): Promise<CookEvent[]> {
-  if (!isIndexedDbAvailable()) return parseCollection(window.localStorage.getItem(scopedKey(ACTIVITY_STORAGE_KEY, scope)), normalizeCookEvents);
-  try {
-    return parseCollection(await readKeyValue<string>(scopedKey(ACTIVITY_DATABASE_KEY, scope)), normalizeCookEvents);
-  } catch {
-    return parseCollection(window.localStorage.getItem(scopedKey(ACTIVITY_STORAGE_KEY, scope)), normalizeCookEvents);
-  }
+  return parseCookEventsSnapshot(await readCollectionSnapshot(scopedKey(ACTIVITY_DATABASE_KEY, scope), scopedKey(ACTIVITY_STORAGE_KEY, scope)));
 }
 
 export async function writeCookEvents(events: readonly CookEvent[], scope: SyncScope = getActiveDataScope()): Promise<void> {
@@ -86,12 +77,7 @@ export async function clearCookEvents(scope: SyncScope): Promise<void> {
 }
 
 export async function readRecipePreferences(scope: SyncScope = getActiveDataScope()): Promise<RecipePreference[]> {
-  if (!isIndexedDbAvailable()) return parseCollection(window.localStorage.getItem(scopedKey(PREFERENCES_STORAGE_KEY, scope)), normalizeRecipePreferences);
-  try {
-    return parseCollection(await readKeyValue<string>(scopedKey(PREFERENCES_DATABASE_KEY, scope)), normalizeRecipePreferences);
-  } catch {
-    return parseCollection(window.localStorage.getItem(scopedKey(PREFERENCES_STORAGE_KEY, scope)), normalizeRecipePreferences);
-  }
+  return normalizeRecipePreferences(parseCollectionSnapshot(await readCollectionSnapshot(scopedKey(PREFERENCES_DATABASE_KEY, scope), scopedKey(PREFERENCES_STORAGE_KEY, scope)), isRecipePreference));
 }
 
 export async function writeRecipePreferences(preferences: readonly RecipePreference[], scope: SyncScope = getActiveDataScope()): Promise<void> {

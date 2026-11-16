@@ -1,6 +1,6 @@
 import {
   type EmailProvider,
-  type NutritionProvider,
+
   ProviderUnavailableError,
   type RecipeGenerationProvider,
   type DinnerReconstructionProvider,
@@ -14,11 +14,6 @@ export const createUnavailableEmailProvider = (reason: ProviderUnavailableReason
   },
 });
 
-export const createUnavailableNutritionProvider = (reason: ProviderUnavailableReason): NutritionProvider => ({
-  lookup: async () => {
-    throw new ProviderUnavailableError('nutrition', reason);
-  },
-});
 
 export const createUnavailableRecipeProvider = (reason: ProviderUnavailableReason): RecipeGenerationProvider => ({
   generate: async () => {
