@@ -10,11 +10,10 @@ import {
   type AiRecipeCollectionOwner,
 } from '../../ai/aiRecipeOwnership';
 import { getActiveDataScope, subscribeActiveDataScope } from '../../sync/scopeContext';
-import { deleteAiRecipe, fetchAiConsentStatus, fetchAiRecipes, generateAiRecipe, saveAiRecipe, updateAiConsent } from '../../ai/aiRecipeApi';
+import { deleteAiRecipe, fetchAiConsentStatus, fetchAiRecipes, generateAiRecipe, saveAiRecipe } from '../../ai/aiRecipeApi';
 import {
   AI_RECIPE_PROPOSAL_HISTORY_LIMIT,
   captureAiRecipeProposalGeneration,
-  clearAiRecipeProposalHistory,
   isAiRecipeProposalGenerationCurrent,
   loadAiRecipeProposalHistory,
   storeAiRecipeProposalHistory,
@@ -101,13 +100,10 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
   );
   const [consent, setConsent] = useState<AiConsent | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<AiRecipeProvider | null>(null);
-  const [imageProvider, setImageProvider] = useState<AiRecipeProvider | null>(null);
-  const [consentDraft, setConsentDraft] = useState(false);
   const [savedAiCollection, setSavedAiCollection] = useState<SavedAiCollection | null>(null);
   const [drafts, setDrafts] = useState<GeneratedRecipe[]>([]);
   const [proposedRecipes, setProposedRecipes] = useState<ProposedAiRecipe[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [savingDraftId, setSavingDraftId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -177,7 +173,6 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
     return subscribeToAiRecipeProposalRevocation(userId, () => {
       consentEpochRef.current = null;
       setConsent((current) => current === null ? null : { ...current, enabled: false });
-      setConsentDraft(false);
       setProposedRecipes([]);
     });
   }, [verified, userId]);
@@ -196,7 +191,6 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
     consentEpochRef.current = null;
     setConsent(null);
     setSelectedProvider(null);
-    setConsentDraft(false);
     setDrafts([]);
     setProposedRecipes([]);
     setIsGenerating(false);
@@ -214,15 +208,12 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
         if (!isAiRecipeProposalGenerationCurrent(proposalGeneration)) {
           setConsent(null);
           setSelectedProvider(null);
-          setConsentDraft(false);
           setProposedRecipes([]);
           return;
         }
         consentEpochRef.current = proposalGeneration.epoch;
         setConsent(consentStatus.consent);
         setSelectedProvider(consentStatus.selectedProvider);
-        setImageProvider(consentStatus.selectedImageProvider ?? null);
-        setConsentDraft(consentStatus.consent.enabled && consentStatus.consent.homeProvider === consentStatus.selectedProvider);
       })
       .catch((loadError: unknown) => {
         if (!cancelled && isCurrentSession()) setError(errorMessage(loadError));
@@ -277,49 +268,12 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
           <div className="min-w-0 flex-1">
             <h2 className="text-xl font-black text-gray-950">{fromTitle ? 'Crea una ricetta con l’AI' : 'Ricette AI private'}</h2>
             <p className="mt-1 text-sm leading-relaxed text-gray-700">{fromTitle ? 'Scrivi il titolo di un piatto e lascia che l’AI crei ingredienti e procedimento. Accedi con un account verificato per iniziare.' : 'Per ospiti e account non verificati, le ricette AI private restano disattivate: ingredienti, profilo alimentare e ricette non vengono inviati a un provider AI. Dopo la verifica vedrai il destinatario e potrai dare un consenso esplicito.'}</p>
+            <a href="/profile#ai-consent-settings" className="mt-3 inline-flex min-h-11 items-center rounded-xl px-2 py-2 font-bold text-emerald-900 underline underline-offset-2">Apri il Profilo per gestire il consenso AI</a>
           </div>
         </div>
       </section>
     );
   }
-
-  const saveConsent = async (enabled = consentDraft) => {
-    if (csrfToken === null || user === null || (enabled && selectedProvider === null)) return;
-    setIsSaving(true);
-    setError(null);
-    try {
-      const nextConsent = imageProvider !== null
-        ? await updateAiConsent(enabled, csrfToken, consent?.updatedAt, undefined, enabled ? selectedProvider ?? undefined : undefined, true, imageProvider ?? selectedProvider ?? undefined)
-        : await updateAiConsent(enabled, csrfToken, consent?.updatedAt, undefined, enabled ? selectedProvider ?? undefined : undefined);
-      setConsent(nextConsent);
-      consentEpochRef.current = nextConsent.enabled && selectedProvider !== null && nextConsent.homeProvider === selectedProvider
-        ? captureAiRecipeProposalGeneration(user.id).epoch
-        : null;
-      setConsentDraft(nextConsent.enabled && selectedProvider !== null && nextConsent.homeProvider === selectedProvider);
-      if (!nextConsent.enabled) {
-        const cleared = await clearAiRecipeProposalHistory(user.id);
-        setProposedRecipes([]);
-        if (!cleared) setError('Consenso revocato, ma non è stato possibile sincronizzare la revoca della cronologia tra schede. Chiudi le altre schede e ricarica la pagina.');
-      }
-    } catch (saveError) {
-      if (saveError instanceof ApiClientError && saveError.code === 'ai_consent_revision_conflict') {
-        try {
-          const latestStatus = await fetchAiConsentStatus();
-          setConsent(latestStatus.consent);
-          setSelectedProvider(latestStatus.selectedProvider);
-          setImageProvider(latestStatus.selectedImageProvider ?? null);
-          setConsentDraft(latestStatus.consent.enabled && latestStatus.consent.homeProvider === latestStatus.selectedProvider);
-          setError('Il consenso è cambiato in un’altra scheda. Ho aggiornato lo stato: controlla la scelta prima di salvare di nuovo.');
-        } catch {
-          setError('Il consenso è cambiato in un’altra scheda. Aggiorna la pagina e verifica la scelta prima di riprovare.');
-        }
-      } else {
-        setError(errorMessage(saveError));
-      }
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   const generate = async () => {
     if (csrfToken === null || user === null || homeConsentEnabled !== true || !hasGenerationInput || isGenerating) return;
@@ -464,42 +418,16 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
       )}
 
       {consent !== null && selectedProviderLabel !== null && (
-        <details data-ai-consent className="mt-5 rounded-2xl border border-emerald-200 bg-white px-4">
-          <summary className="min-h-11 cursor-pointer py-3 font-bold text-gray-950 focus-visible:rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">
-            Consenso AI per {fromTitle ? 'creare dal titolo' : onRecipeProposed ? 'Piano' : 'Home'} <span className="block pl-5 text-sm font-medium text-gray-700">{homeConsentEnabled ? `Attivo per ${selectedProviderLabel}` : `Da autorizzare per ${selectedProviderLabel}`}</span>
-          </summary>
-          <div className="border-t border-emerald-100 py-4">
-            <label className="flex items-start gap-3 text-sm font-semibold text-gray-800">
-              <input
-                type="checkbox"
-                checked={consentDraft}
-                onChange={(event) => setConsentDraft(event.target.checked)}
-                disabled={isSaving}
-                aria-label={fromDescription ? `Acconsento all’invio a ${selectedProviderLabel} della descrizione del piatto, delle porzioni, del profilo alimentare e dei titoli e ingredienti delle ricette AI salvate o proposte` : fromTitle ? `Acconsento all’invio a ${selectedProviderLabel} del titolo del piatto, del profilo alimentare e dei titoli e ingredienti delle ricette AI salvate o proposte` : `Acconsento all’invio a ${selectedProviderLabel} degli ingredienti della dispensa, del profilo alimentare e dei titoli e ingredienti delle ricette AI salvate o proposte`}
-                className="mt-0.5 h-5 w-5 accent-emerald-700"
-              />
-              <span>Acconsento all’invio a {selectedProviderLabel} dei dati indicati per creare ricette AI.</span>
-            </label>
-            <p className="mt-2 text-xs leading-relaxed text-gray-600">
-              I dati inviati a {selectedProviderLabel}: {fromDescription ? 'descrizione del piatto' : fromTitle ? 'titolo del piatto' : 'nomi degli ingredienti della dispensa'}; profilo alimentare (dieta scelta, allergeni esclusi, calorie massime e proteine minime per porzione); titoli e nomi/quantità degli ingredienti delle ricette AI salvate o già proposte. {constraints.length === 0 ? 'Inviamo anche l’elenco dei vincoli di generazione, attualmente vuoto.' : 'Inviamo anche il numero di porzioni e le indicazioni di generazione inserite.'}
-            </p>
-            {consent.enabled && !homeConsentEnabled && <p className="mt-2 text-xs font-semibold leading-relaxed text-amber-900">Il provider è cambiato o il consenso precedente non specificava il destinatario: non inviamo dati a {selectedProviderLabel} finché non approvi questa scelta.</p>}
-            <p className="mt-2 text-xs leading-relaxed text-gray-600">Puoi revocare il consenso in qualsiasi momento. Le ricette già salvate restano visibili finché non le elimini.</p>
-            {imageProvider !== null && <p className="mt-2 text-sm text-gray-700">Il consenso include l’invio del titolo del piatto a Pexels e di titolo, ingredienti e foto candidate a {imageProvider === 'gemini' ? 'Google Gemini' : 'OpenAI'} per cercare, valutare o generare un’immagine illustrativa delle ricette salvate. Le immagini possono richiedere tempo e sono soggette a quota.</p>}
-            {imageProvider !== null && homeConsentEnabled && (consent.imagePolicyVersion !== 'recipe-images-v1' || consent.imageProvider !== imageProvider) && <button type="button" onClick={() => void saveConsent(true)} className="ik-button-secondary mt-3 min-h-11">Conferma consenso anche per le immagini</button>}
-            {consentDraft !== homeConsentEnabled && (
-              <button type="button" onClick={() => void saveConsent()} disabled={isSaving} className="mt-3 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
-                {isSaving ? 'Salvataggio…' : 'Salva consenso'}
-              </button>
-            )}
-          </div>
-        </details>
-      )}
-
-      {consent?.enabled && (
-        <button type="button" onClick={() => void saveConsent(false)} disabled={isSaving} className="mt-3 min-h-11 rounded-xl border-2 border-rose-300 px-4 py-2 font-bold text-rose-900 disabled:opacity-60">
-          {isSaving ? 'Salvataggio…' : 'Revoca consenso AI globale'}
-        </button>
+        <div data-ai-consent className="mt-5 grid gap-3 rounded-2xl border border-emerald-200 bg-white p-4">
+          <h3 className="font-bold text-gray-950">Consenso AI per {fromTitle ? 'creare dal titolo' : onRecipeProposed ? 'Piano' : 'Home'}</h3>
+          <p role="status" className="text-sm font-semibold text-gray-700">{homeConsentEnabled ? `Attivo per ${selectedProviderLabel}` : `Da autorizzare per ${selectedProviderLabel}`}</p>
+          <p className="text-xs leading-relaxed text-gray-600">
+            I dati che possono essere inviati a {selectedProviderLabel}: {fromDescription ? 'descrizione del piatto' : fromTitle ? 'titolo del piatto' : 'nomi degli ingredienti della dispensa'}; profilo alimentare (dieta scelta, allergeni esclusi, calorie massime e proteine minime per porzione); titoli e nomi/quantità degli ingredienti delle ricette AI salvate o già proposte. {constraints.length === 0 ? 'Inviamo anche l’elenco dei vincoli di generazione, attualmente vuoto.' : 'Inviamo anche il numero di porzioni e le indicazioni di generazione inserite.'}
+          </p>
+          {consent.enabled && !homeConsentEnabled && <p className="text-xs font-semibold leading-relaxed text-amber-900">Il provider è cambiato o il consenso precedente non specificava il destinatario: non inviamo dati a {selectedProviderLabel} finché non approvi questa scelta.</p>}
+          <p className="text-xs leading-relaxed text-gray-600">Le ricette già salvate restano visibili anche quando il consenso non è attivo. Per concedere o revocare il consenso, usa le impostazioni del Profilo.</p>
+          <a href="/profile#ai-consent-settings" className="min-h-11 w-fit rounded-xl px-2 py-2 font-bold text-emerald-900 underline underline-offset-2">Gestisci il consenso AI nel Profilo</a>
+        </div>
       )}
 
       {(homeConsentEnabled || fromTitle || fromDescription) && (

@@ -6,6 +6,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiClientError, apiRequest } from '../api/apiClient';
 import { getActiveDataScope, subscribeActiveDataScope, type SyncScope } from '../sync/scopeContext';
 import AccountPanel from '../components/account/AccountPanel';
+import AiConsentSettings from '../components/ai/AiConsentSettings';
 import { useAuthStore } from '../auth/authStore';
 import { importLocalData } from '../sync/syncQueue';
 import GoogleSignInButton from '../components/account/GoogleSignInButton';
@@ -213,6 +214,7 @@ export default function ProfilePage() {
         >
           <div className="mt-6"><AccountPanel /></div>
         </PageSection>
+        <AiConsentSettings />
         <PushSettings />
         <ThemePreferenceControl />
         <ColorPaletteControl />
@@ -389,6 +391,8 @@ export default function ProfilePage() {
           </label>
           <button type="button" onClick={() => void saveProfile()} disabled={isLoading || csrfToken === null} className="min-h-11 w-full rounded-xl bg-[var(--ik-basil)] px-4 py-2 font-bold text-[var(--ik-porcelain)] hover:bg-[var(--ik-basil-dark)] disabled:opacity-60 sm:w-fit">Salva profilo</button>
         </div>
+
+        <AiConsentSettings />
 
         <section className="mt-7 border-t border-[var(--ik-border)] pt-6" aria-labelledby="recipe-images-heading">
           <h2 id="recipe-images-heading" className="text-xl font-black text-[var(--ik-ink)]">Immagini delle ricette</h2>

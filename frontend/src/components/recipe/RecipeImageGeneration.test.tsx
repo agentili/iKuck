@@ -39,36 +39,36 @@ describe('RecipeImageGeneration', () => {
     expect(fetch).toHaveBeenCalledWith('/v1/recipe-images/pollo-al-limone/generate?kind=catalog', expect.objectContaining({ method: 'POST' }));
   });
 
-  it('requires explicit image consent for the actual image provider before private dispatch', async () => {
-    const fetch = vi.fn().mockResolvedValueOnce(json(status(false))).mockResolvedValueOnce(json(status(false)))
-      .mockResolvedValueOnce(json(status())).mockResolvedValueOnce(json({ queued: 1 }, 202));
+  it('links to Profile settings when private image consent is missing', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(json(status(false)));
     vi.stubGlobal('fetch', fetch);
     render(<RecipeImageGeneration recipeId="personal-recipe" />);
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Genera immagine' }));
+
     expect(screen.getByText(/foto candidate vengono inviati a OpenAI/)).toBeInTheDocument();
-    const confirm = screen.getByRole('button', { name: 'Conferma e genera' });
-    expect(confirm).toBeDisabled();
+    const settingsLink = screen.getByRole('link', { name: /gestisci il consenso immagini nel profilo/i });
+    expect(settingsLink).toHaveAttribute('href', '/profile#ai-consent-settings');
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Conferma e genera' })).not.toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(1);
-    await user.click(screen.getByRole('checkbox'));
-    await user.click(confirm);
-    await screen.findByRole('status');
-    expect(fetch.mock.calls[2][0]).toBe('/v1/ai-recipes/consent');
-    expect(JSON.parse(fetch.mock.calls[2][1].body)).toEqual({ enabled: true, expectedRevision: '2026-11-01T00:00:00Z', imageProvider: 'openai', imagePolicyVersion: 'recipe-images-v1' });
-    expect(fetch.mock.calls[3][0]).toBe('/v1/recipe-images/personal-recipe/generate?kind=private');
+    expect(fetch).not.toHaveBeenCalledWith('/v1/recipe-images/personal-recipe/generate?kind=private', expect.anything());
   });
 
-  it('requires a new confirmation when the image provider changes', async () => {
+  it('refreshes the server-selected image provider and keeps the Profile settings link', async () => {
     const fetch = vi.fn().mockResolvedValueOnce(json(status(false)))
       .mockResolvedValueOnce(json({ ...status(false), selectedImageProvider: 'gemini' }));
     vi.stubGlobal('fetch', fetch);
     render(<RecipeImageGeneration />);
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Genera tutte le immagini' }));
-    await user.click(screen.getByRole('checkbox'));
-    await user.click(screen.getByRole('button', { name: 'Conferma e genera' }));
+    expect(await screen.findByText(/foto candidate vengono inviati a OpenAI/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /gestisci il consenso immagini nel profilo/i })).toHaveAttribute('href', '/profile#ai-consent-settings');
+
+    await user.click(screen.getByRole('button', { name: 'Genera tutte le immagini' }));
     expect(await screen.findByText(/foto candidate vengono inviati a Google Gemini/)).toBeInTheDocument();
-    expect(screen.getByRole('checkbox')).not.toBeChecked();
+    expect(screen.getByRole('link', { name: /gestisci il consenso immagini nel profilo/i })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
