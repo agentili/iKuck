@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ApiClientError } from '../../api/apiClient';
 import { useAuthStore } from '../../auth/authStore';
 import { clearAiRecipeProposalHistory } from '../../ai/aiRecipeHistory';
@@ -51,9 +51,10 @@ export default function AiConsentSettings() {
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const scope = useSyncExternalStore(subscribeActiveDataScope, getActiveDataScope, getActiveDataScope);
   const verified = user !== null && user.emailVerifiedAt.trim().length > 0 && csrfToken !== null;
-  const owner: ConsentOwner | null = verified && user !== null && csrfToken !== null
-    ? { userId: user.id, csrfToken, scope }
-    : null;
+  const userId = user?.id ?? null;
+  const owner = useMemo<ConsentOwner | null>(() => verified && userId !== null && csrfToken !== null
+    ? { userId, csrfToken, scope }
+    : null, [verified, userId, csrfToken, scope]);
   const [statusRecord, setStatusRecord] = useState<ConsentRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [consentDraft, setConsentDraft] = useState(false);
@@ -104,7 +105,7 @@ export default function AiConsentSettings() {
         if (active && isCurrentConsentOwner(requestOwner, generation, requestGeneration, mounted)) setError(errorMessage(loadError));
       });
     return () => { active = false; };
-  }, [verified, user?.id, csrfToken, scope]);
+  }, [verified, owner]);
 
   const homeConsentEnabled = status !== null
     && status.consent.enabled
