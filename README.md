@@ -113,7 +113,7 @@ powershell -ExecutionPolicy Bypass -File scripts/validate-production-config.ps1 
 docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml config
 ```
 
-Le variabili `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `USDA_API_KEY` e `OPENAI_API_KEY` sono opzionali: ogni provider resta disabilitato finché non sono configurate le credenziali richieste. `GOOGLE_CLIENT_ID` è un identificativo pubblico ma deve comunque essere valorizzato solo nell'env locale del deployment o nel secret manager, mai insieme a chiavi provider o password nel repository.
+Le variabili `RESEND_API_KEY`, `RESEND_FROM_EMAIL` e `OPENAI_API_KEY` sono opzionali: ogni provider resta disabilitato finché non sono configurate le credenziali richieste. `GOOGLE_CLIENT_ID` è un identificativo pubblico ma deve comunque essere valorizzato solo nell'env locale del deployment o nel secret manager, mai insieme a chiavi provider o password nel repository.
 
 Per una prova standalone su un mini PC Linux nella rete locale, usa la guida [deploy standalone su mini PC](docs/standalone-mini-pc.md) e la composizione `deploy/docker-compose.standalone.yml`. L’accesso avviene via HTTP su `http://IP_DEL_MINI_PC:8080`, senza esporre direttamente API, PostgreSQL o Redis.
 
@@ -170,7 +170,7 @@ Dopo la prima richiesta esplicita, le proposte del catalogo vengono ricalcolate 
 
 Le ricette AI sono opzionali, richiedono un account con email verificata e un consenso esplicito salvato sul server. Sono limitate a cinque generazioni per giorno UTC, restano private dell’account e rispettano i filtri dieta/allergeni attivi; la revoca del consenso nasconde la generazione ma non elimina le ricette già salvate. Senza `OPENAI_API_KEY` il provider AI resta disabilitato. La chiave OpenAI resta esclusivamente nel backend e non viene mai salvata nel browser o nei log.
 
-Gli smoke test reali di Resend, USDA e OpenAI non fanno parte della suite ordinaria: vengono eseguiti solo quando le rispettive chiavi sono fornite esplicitamente. I test PostgreSQL/Redis richiedono `INTEGRATION_DATABASE_URL` e `INTEGRATION_REDIS_URL`; senza queste variabili vengono saltati.
+Gli smoke test reali di Resend e OpenAI non fanno parte della suite ordinaria: vengono eseguiti solo quando le rispettive chiavi sono fornite esplicitamente. I test PostgreSQL/Redis richiedono `INTEGRATION_DATABASE_URL` e `INTEGRATION_REDIS_URL`; senza queste variabili vengono saltati. Le stime nutrizionali del catalogo sono statiche e locali: non è disponibile un servizio di calcolo nutrizionale remoto.
 
 ### Notifiche push
 

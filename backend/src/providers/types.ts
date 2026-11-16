@@ -1,7 +1,7 @@
 import type { DietProfilePayload, GeneratedRecipeDraft as SharedGeneratedRecipeDraft } from '@ikuck/shared/contracts';
 import type { DiaryRecipeDraft } from '@ikuck/shared/dinnerDiary';
 
-export type ProviderName = 'email' | 'nutrition' | 'recipes' | 'dinner_reconstruction' | 'chef_chat';
+export type ProviderName = 'email' | 'recipes' | 'dinner_reconstruction' | 'chef_chat';
 
 export class ProviderUnavailableError extends Error {
   readonly code = 'provider_unavailable' as const;
@@ -46,25 +46,6 @@ export interface EmailProvider {
   send: (message: EmailMessage) => Promise<{ messageId: string }>;
 }
 
-export interface NutritionLookup {
-  query: string;
-  quantityGrams?: number;
-}
-
-export interface NutritionEstimate {
-  source: 'usda';
-  calories: number | null;
-  proteinGrams: number | null;
-  carbohydrateGrams: number | null;
-  fatGrams: number | null;
-  matchedFood: string;
-  isComplete: boolean;
-  missingNutrients: string[];
-}
-
-export interface NutritionProvider {
-  lookup: (lookup: NutritionLookup) => Promise<NutritionEstimate>;
-}
 
 export interface RecipeGenerationRequest {
   dishTitle?: string;
@@ -94,7 +75,7 @@ export interface DinnerReconstructionProvider {
 
 export interface ProviderBundle {
   email: EmailProvider;
-  nutrition: NutritionProvider;
+
   recipes: RecipeGenerationProvider;
   dinnerReconstruction: DinnerReconstructionProvider;
 }
