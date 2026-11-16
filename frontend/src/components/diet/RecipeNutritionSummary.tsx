@@ -8,7 +8,7 @@ interface RecipeNutritionSummaryProps {
 const formatValue = (value: number | null, suffix: string): string => value === null ? `n/d ${suffix}` : `${value} ${suffix}`;
 
 export default function RecipeNutritionSummary({ nutrition }: RecipeNutritionSummaryProps) {
-  const sourceLabel = nutrition.source === 'usda' ? 'Valori USDA aggiornati' : 'Stima indicativa';
+
   const incompleteLabel = nutrition.missingNutrients.length > 0
     ? `Dati incompleti: mancano ${labelMissingNutrients(nutrition.missingNutrients)}`
     : null;
@@ -22,7 +22,7 @@ export default function RecipeNutritionSummary({ nutrition }: RecipeNutritionSum
         <span>{formatValue(nutrition.fatGramsPerServing, 'g grassi')}</span>
       </div>
       <p className="mt-1 flex flex-wrap gap-x-2 text-xs font-bold text-amber-800">
-        <span>{sourceLabel}</span>
+        <span>Stima indicativa</span>
         {incompleteLabel !== null && <span>· {incompleteLabel}</span>}
       </p>
     </div>

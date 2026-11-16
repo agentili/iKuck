@@ -9,8 +9,7 @@ export interface ProviderConfig {
   smtpPass?: string;
   emailFrom?: string;
   smtpTimeoutMs?: number;
-  usdaApiKey?: string;
-  usdaTimeoutMs?: number;
+
   openAiApiKey?: string;
   openAiModel?: string;
   geminiApiKey?: string;
@@ -88,7 +87,7 @@ const environmentSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   SYNC_MAX_CLIENT_CLOCK_SKEW_SECONDS: z.coerce.number().int().min(0).max(86400).default(300),
-  USDA_TIMEOUT_MS: z.coerce.number().int().min(100).max(120000).default(8000),
+
   OPENAI_TIMEOUT_MS: z.coerce.number().int().min(100).max(120000).default(30000),
   TRUST_PROXY: z.preprocess(
     (value) => value === '' ? undefined : value,
@@ -106,7 +105,7 @@ const environmentSchema = z.object({
     (value) => value === '' ? undefined : value,
     z.coerce.number().int().min(100).max(120000).default(10000),
   ),
-  USDA_API_KEY: optionalEnvironmentString(),
+
   OPENAI_API_KEY: optionalEnvironmentString(),
   OPENAI_MODEL: z.string().min(1).default('gpt-5.5'),
   GEMINI_API_KEY: optionalEnvironmentString(),
@@ -174,8 +173,7 @@ export const loadConfig = (environment: NodeJS.ProcessEnv): AppConfig => {
       smtpPass: parsed.SMTP_PASS,
       emailFrom: parsed.EMAIL_FROM,
       smtpTimeoutMs: parsed.SMTP_TIMEOUT_MS,
-      usdaApiKey: parsed.USDA_API_KEY,
-      usdaTimeoutMs: parsed.USDA_TIMEOUT_MS,
+
       openAiApiKey: parsed.OPENAI_API_KEY,
       openAiModel: parsed.OPENAI_MODEL,
       geminiApiKey: parsed.GEMINI_API_KEY,

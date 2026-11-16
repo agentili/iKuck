@@ -44,7 +44,7 @@ powershell -ExecutionPolicy Bypass -File scripts/verify-repository.ps1 -E2E
 powershell -ExecutionPolicy Bypass -File scripts/verify-repository.ps1 -Integration
 ```
 
-Integration verification requires disposable `INTEGRATION_DATABASE_URL` and `INTEGRATION_REDIS_URL` values. Production browser tests require an HTTPS `E2E_BASE_URL` and `E2E_PRODUCTION=true`. Resend, USDA and OpenAI provider smoke tests are opt-in and must use disposable credentials and data.
+Integration verification requires disposable `INTEGRATION_DATABASE_URL` and `INTEGRATION_REDIS_URL` values. Production browser tests require an HTTPS `E2E_BASE_URL` and `E2E_PRODUCTION=true`. Resend and OpenAI provider smoke tests are opt-in and must use disposable credentials and data.
 
 Useful focused commands:
 
