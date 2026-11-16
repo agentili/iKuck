@@ -28,6 +28,7 @@ import {
 } from './activityStorage';
 import {
   derivePantryItems,
+  isPantryLot,
   normalizePantrySnapshot,
   observePantryCanonicalSnapshot,
   pantryDatabaseKeyForScope,
@@ -38,6 +39,7 @@ import {
 } from './pantryStorage';
 import { getActiveDataScope, scopeStorageKey, type SyncScope } from '../sync/scopeContext';
 import { isScopeWritable, ScopeRevokedError, trackScopedWrite, waitForScopedWrites } from '../sync/scopeWriteFence';
+import { parseCollectionSnapshot } from './collectionSnapshot';
 
 function getLocalStorage(): Storage | null {
   try {
@@ -47,16 +49,45 @@ function getLocalStorage(): Storage | null {
   }
 }
 
-// While IndexedDB is available the localStorage mirror is best-effort: a denied
-// getter or method must never break a commit, read, reconciliation or acknowledgement.
-function readMirror(key: string): string | null {
-  const storage = getLocalStorage();
-  if (storage === null) return null;
+type MirrorRead = { ok: true; raw: string | null } | { ok: false; error: unknown };
+
+// An unreadable mirror is optional only when a valid primary establishes authority.
+function readMirror(key: string): MirrorRead {
   try {
-    return storage.getItem(key);
-  } catch {
-    return null;
+    return { ok: true, raw: requireLocalStorage().getItem(key) };
+  } catch (error) {
+    return { ok: false, error };
   }
+}
+
+function snapshotRaw(primary: unknown, mirror: MirrorRead): string | null {
+  if (primary !== undefined && primary !== null) {
+    if (typeof primary !== 'string') throw new Error('Invalid local collection snapshot');
+    return primary;
+  }
+  if (!mirror.ok) throw mirror.error;
+  return mirror.raw;
+}
+
+function parseConsumptionEntries(raw: string | null): DinnerEntry[] {
+  parseCollectionSnapshot(raw, isDinnerEntry);
+  return parseDinnerEntriesSnapshot(raw);
+}
+
+function parseConsumptionPantry(raw: string | null): PantrySnapshot {
+  if (raw === null) return emptyPantry();
+  // The general pantry parser supports legacy normalization, including filtering
+  // invalid lots. Dinner must reject those bytes before any write/ack or cleanup.
+  const persisted: unknown = JSON.parse(raw);
+  if (typeof persisted !== 'object' || persisted === null || !('state' in persisted)
+    || typeof persisted.state !== 'object' || persisted.state === null
+    || ('pantryLots' in persisted.state && (!Array.isArray(persisted.state.pantryLots)
+      || !persisted.state.pantryLots.every(isPantryLot)))) {
+    throw new Error('Invalid local pantry snapshot');
+  }
+  const snapshot = parsePantrySnapshot(raw);
+  if (snapshot === null) throw new Error('Invalid local pantry snapshot');
+  return snapshot;
 }
 
 function clearMirror(key: string): void {
@@ -69,15 +100,17 @@ function clearMirror(key: string): void {
   }
 }
 
-function restoreMirror(key: string, value: string | null): void {
-  const storage = getLocalStorage();
-  if (storage === null) return;
+function clearReadMirror(key: string, mirror: MirrorRead, validate: (raw: string | null) => unknown): void {
+  // Never delete an unread copy, or a newer mirror written while IDB was pending.
+  if (!mirror.ok) return;
   try {
-    if (value === null) storage.removeItem(key);
-    else storage.setItem(key, value);
+    validate(mirror.raw);
   } catch {
-    // The IndexedDB transaction remains authoritative if mirror restoration fails.
+    // Preserve corrupt copies for recovery even when the primary is authoritative.
+    return;
   }
+  const current = readMirror(key);
+  if (current.ok && current.raw === mirror.raw) clearMirror(key);
 }
 
 // Without IndexedDB localStorage is the durable store: any denied access must fail
@@ -237,7 +270,7 @@ const readLocalRecords = (scope: SyncScope): DinnerConsumptionOutboxRecord[] => 
 const currentPantryFromLocalStorage = (scope: SyncScope): PantrySnapshot => {
   const storage = requireLocalStorage();
   const raw = storage.getItem(pantryStorageKeyForScope(scope));
-  return raw === null ? emptyPantry() : parsePantrySnapshot(raw) ?? emptyPantry();
+  return parseConsumptionPantry(raw);
 };
 
 const createReceipt = (command: DinnerConsumptionCommand, committedAt: string, plan: PantryConsumptionPlan): DinnerConsumptionReceipt => ({
@@ -315,37 +348,34 @@ export async function commitDinnerConsumption({
     const activityMirrorKey = cookEvent === undefined ? null : activityEventsStorageKeyForScope(scope);
     const pantryMirror = readMirror(pantryMirrorKey);
     const entriesMirror = readMirror(entriesMirrorKey);
-    const activityMirror = activityMirrorKey === null ? null : readMirror(activityMirrorKey);
-    const fallbackPantry = pantryMirror === null ? null : parsePantrySnapshot(pantryMirror);
+    const activityMirror: MirrorRead = activityMirrorKey === null ? { ok: true, raw: null } : readMirror(activityMirrorKey);
     const database = await openLocalDatabase();
     assertCurrentScope(scope);
     const transaction = database.transaction([KEY_VALUE_STORE, DINNER_CONSUMPTION_STORE], 'readwrite');
     const completion = transaction.done;
     const values = transaction.objectStore(KEY_VALUE_STORE);
     const consumptionStore = transaction.objectStore(DINNER_CONSUMPTION_STORE);
-    let mirrorsTouched = false;
-    let transactionCommitted = false;
+    const writes: Promise<unknown>[] = [];
+    const reads: Promise<unknown>[] = [];
+    const read = <T>(request: Promise<T>): Promise<T> => {
+      reads.push(request);
+      return request;
+    };
 
     try {
-      mirrorsTouched = true;
-      clearMirror(pantryMirrorKey);
-      clearMirror(entriesMirrorKey);
-      if (activityMirrorKey !== null) clearMirror(activityMirrorKey);
       const [pantryRaw, entriesRaw, activityRaw, storedRecord, storedEntryRecord] = await Promise.all([
-        values.get(pantryDatabaseKeyForScope(scope)),
-        values.get(dinnerEntriesDatabaseKeyForScope(scope)),
-        cookEvent === undefined ? Promise.resolve(undefined) : values.get(activityEventsDatabaseKeyForScope(scope)),
-        consumptionStore.get(command.operationId) as Promise<DinnerConsumptionOutboxRecord | undefined>,
-        consumptionStore.index('byScopeEntryId').get(scopeEntryId(scope, command.entryId)) as Promise<DinnerConsumptionOutboxRecord | undefined>,
+        read(values.get(pantryDatabaseKeyForScope(scope))),
+        read(values.get(dinnerEntriesDatabaseKeyForScope(scope))),
+        cookEvent === undefined ? Promise.resolve(undefined) : read(values.get(activityEventsDatabaseKeyForScope(scope))),
+        read(consumptionStore.get(command.operationId) as Promise<DinnerConsumptionOutboxRecord | undefined>),
+        read(consumptionStore.index('byScopeEntryId').get(scopeEntryId(scope, command.entryId)) as Promise<DinnerConsumptionOutboxRecord | undefined>),
       ]);
       assertCurrentScope(scope);
-      const pantrySnapshot = typeof pantryRaw === 'string'
-        ? parsePantrySnapshot(pantryRaw) ?? fallbackPantry ?? emptyPantry()
-        : fallbackPantry ?? emptyPantry();
-      const existingEntries = parseDinnerEntriesSnapshot(typeof entriesRaw === 'string' ? entriesRaw : entriesMirror);
+      const pantrySnapshot = parseConsumptionPantry(snapshotRaw(pantryRaw, pantryMirror));
+      const existingEntries = parseConsumptionEntries(snapshotRaw(entriesRaw, entriesMirror));
       const existingCookEvents = cookEvent === undefined
         ? []
-        : parseCookEventsSnapshot(typeof activityRaw === 'string' ? activityRaw : activityMirror);
+        : parseCookEventsSnapshot(snapshotRaw(activityRaw, activityMirror));
 
       if (storedRecord !== undefined) {
         if (storedRecord.scope !== scope || JSON.stringify(storedRecord.command) !== JSON.stringify(command)
@@ -354,7 +384,6 @@ export async function commitDinnerConsumption({
           throw new DinnerConsumptionConflictError('The operation ID is already committed with different content or scope');
         }
         await completion;
-        transactionCommitted = true;
         assertCurrentScope(scope);
         return resultFor(true, storedRecord.entry, pantrySnapshot, storedRecord);
       }
@@ -368,19 +397,21 @@ export async function commitDinnerConsumption({
       const receipt = createReceipt(command, capturedUpdatedAt, plan);
       const outbox = createOutboxRecord(command, entry, receipt, capturedUpdatedAt, cookEvent);
       assertCurrentScope(scope);
-      const writes: Promise<unknown>[] = [
-        values.put(serializePantrySnapshot(nextPantrySnapshot), pantryDatabaseKeyForScope(scope)),
-        values.put(serializeDinnerEntriesSnapshot([...existingEntries, entry]), dinnerEntriesDatabaseKeyForScope(scope)),
-        consumptionStore.put(outbox),
-      ];
+      // Register separately: a later synchronous put failure must not lose
+      // the request promises already started, which still need draining on abort.
+      writes.push(values.put(serializePantrySnapshot(nextPantrySnapshot), pantryDatabaseKeyForScope(scope)));
+      writes.push(values.put(serializeDinnerEntriesSnapshot([...existingEntries, entry]), dinnerEntriesDatabaseKeyForScope(scope)));
+      writes.push(consumptionStore.put(outbox));
       if (cookEvent !== undefined) {
         writes.push(values.put(serializeCookEventsSnapshot([...existingCookEvents, cookEvent]), activityEventsDatabaseKeyForScope(scope)));
       }
       await Promise.all(writes);
       assertCurrentScope(scope);
       await completion;
-      transactionCommitted = true;
       assertCurrentScope(scope);
+      clearReadMirror(pantryMirrorKey, pantryMirror, parseConsumptionPantry);
+      clearReadMirror(entriesMirrorKey, entriesMirror, parseConsumptionEntries);
+      if (activityMirrorKey !== null) clearReadMirror(activityMirrorKey, activityMirror, parseCookEventsSnapshot);
       observePantryCanonicalSnapshot(scope, serializePantrySnapshot(nextPantrySnapshot));
       return resultFor(false, entry, nextPantrySnapshot, outbox);
     } catch (error) {
@@ -389,12 +420,7 @@ export async function commitDinnerConsumption({
       } catch {
         // The transaction may already have completed or aborted.
       }
-      await completion.catch(() => undefined);
-      if (mirrorsTouched && !transactionCommitted) {
-        restoreMirror(pantryMirrorKey, pantryMirror);
-        restoreMirror(entriesMirrorKey, entriesMirror);
-        if (activityMirrorKey !== null) restoreMirror(activityMirrorKey, activityMirror);
-      }
+      await Promise.allSettled([...reads, ...writes, completion]);
       throw error;
     }
   });
@@ -411,7 +437,7 @@ function commitLocalConsumption(
   const pantrySnapshot = currentPantryFromLocalStorage(command.scope);
   const storage = requireLocalStorage();
   const entriesKey = dinnerEntriesStorageKeyForScope(command.scope);
-  const existingEntries = parseDinnerEntriesSnapshot(storage.getItem(entriesKey));
+  const existingEntries = parseConsumptionEntries(storage.getItem(entriesKey));
   const activityKey = cookEvent === undefined ? null : activityEventsStorageKeyForScope(command.scope);
   const existingCookEvents = activityKey === null ? [] : parseCookEventsSnapshot(storage.getItem(activityKey));
   if (existingOutbox !== null) {
@@ -440,6 +466,7 @@ function commitLocalConsumption(
   if (activityKey !== null && cookEvent !== undefined) {
     changes[activityKey] = serializeCookEventsSnapshot([...existingCookEvents, cookEvent]);
   }
+  assertCurrentScope(command.scope);
   commitLocalStorageJournal(changes);
   observePantryCanonicalSnapshot(command.scope, serializePantrySnapshot(nextPantrySnapshot));
   return resultFor(false, entry, nextPantrySnapshot, outbox);
@@ -624,9 +651,10 @@ export async function reconcileDinnerConsumption({
         throw new DinnerConsumptionConflictError('The server response does not match the pending dinner operation');
       }
       const storage = requireLocalStorage();
-      const sourceEntries = parseDinnerEntriesSnapshot(storage.getItem(dinnerEntriesStorageKeyForScope(originalScope)));
+      parseConsumptionPantry(storage.getItem(pantryStorageKeyForScope(canonicalScope)));
+      const sourceEntries = parseConsumptionEntries(storage.getItem(dinnerEntriesStorageKeyForScope(originalScope)));
       const targetEntries = originalScope === canonicalScope ? sourceEntries
-        : parseDinnerEntriesSnapshot(storage.getItem(dinnerEntriesStorageKeyForScope(canonicalScope)));
+        : parseConsumptionEntries(storage.getItem(dinnerEntriesStorageKeyForScope(canonicalScope)));
       const changes: Record<string, string | null> = {
         [pantryStorageKeyForScope(canonicalScope)]: serializePantrySnapshot(pantrySnapshot),
         [dinnerEntriesStorageKeyForScope(canonicalScope)]: serializeDinnerEntriesSnapshot(upsertEntry(targetEntries, result.entry)),
@@ -672,19 +700,24 @@ export async function reconcileDinnerConsumption({
     const values = transaction.objectStore(KEY_VALUE_STORE);
     const consumption = transaction.objectStore(DINNER_CONSUMPTION_STORE);
     const queue = transaction.objectStore(SYNC_QUEUE_STORE);
-    let mirrorsTouched = false;
-    let transactionCommitted = false;
+    const writes: Promise<unknown>[] = [];
+    const reads: Promise<unknown>[] = [];
+    const read = <T>(request: Promise<T>): Promise<T> => {
+      reads.push(request);
+      return request;
+    };
     try {
-      mirrorsTouched = true;
-      for (const key of mirrorKeys) clearMirror(key);
       const queuedScopes = [...new Set([originalScope, canonicalScope])];
-      const [storedRecord, sourceEntriesRaw, targetEntriesRaw, sourceEventsRaw, targetEventsRaw, queuedByScope] = await Promise.all([
-        consumption.get(operationId) as Promise<DinnerConsumptionOutboxRecord | undefined>,
-        values.get(sourceEntriesKey),
-        originalScope === canonicalScope ? Promise.resolve(undefined) : values.get(targetEntriesKey),
-        result.cookEvent === undefined ? Promise.resolve(undefined) : values.get(sourceEventsKey),
-        result.cookEvent === undefined || originalScope === canonicalScope ? Promise.resolve(undefined) : values.get(targetEventsKey),
-        Promise.all(queuedScopes.map((scope) => queue.index('byScope').getAll(scope) as Promise<Array<Partial<SyncMutation> & { scope?: SyncScope; mutationId?: string }>>)),
+      const [storedRecord, sourceEntriesRaw, targetEntriesRaw, sourceEventsRaw, targetEventsRaw, queuedByScope, pantryRaw] = await Promise.all([
+        read(consumption.get(operationId) as Promise<DinnerConsumptionOutboxRecord | undefined>),
+        read(values.get(sourceEntriesKey)),
+        originalScope === canonicalScope ? Promise.resolve(undefined) : read(values.get(targetEntriesKey)),
+        result.cookEvent === undefined ? Promise.resolve(undefined) : read(values.get(sourceEventsKey)),
+        result.cookEvent === undefined || originalScope === canonicalScope ? Promise.resolve(undefined) : read(values.get(targetEventsKey)),
+        // Track nested requests and their aggregate: either a later map iteration
+        // or the following pantry read can throw before the outer Promise.all.
+        read(Promise.all(queuedScopes.map((scope) => read(queue.index('byScope').getAll(scope) as Promise<Array<Partial<SyncMutation> & { scope?: SyncScope; mutationId?: string }>>)))),
+        read(values.get(pantryDatabaseKeyForScope(canonicalScope))),
       ]);
       assertCurrent();
       if (storedRecord === undefined || !isOutboxRecord(storedRecord) || storedRecord.scope !== originalScope
@@ -692,25 +725,23 @@ export async function reconcileDinnerConsumption({
         || result.entry.id !== storedRecord.entryId || result.receipt.scope !== canonicalScope) {
         throw new DinnerConsumptionConflictError('The server response does not match the pending dinner operation');
       }
-      const sourceEntries = parseDinnerEntriesSnapshot(typeof sourceEntriesRaw === 'string'
-        ? sourceEntriesRaw : mirrors.get(dinnerEntriesStorageKeyForScope(originalScope)) ?? null);
+      const mirrorFor = (key: string): MirrorRead => mirrors.get(key)!;
+      parseConsumptionPantry(snapshotRaw(pantryRaw, mirrorFor(pantryStorageKeyForScope(canonicalScope))));
+      const sourceEntries = parseConsumptionEntries(snapshotRaw(sourceEntriesRaw, mirrorFor(dinnerEntriesStorageKeyForScope(originalScope))));
       const targetEntries = originalScope === canonicalScope ? sourceEntries
-        : parseDinnerEntriesSnapshot(typeof targetEntriesRaw === 'string'
-          ? targetEntriesRaw : mirrors.get(dinnerEntriesStorageKeyForScope(canonicalScope)) ?? null);
-      const writes: Promise<unknown>[] = [
-        values.put(serializePantrySnapshot(pantrySnapshot), pantryDatabaseKeyForScope(canonicalScope)),
-        values.put(serializeDinnerEntriesSnapshot(upsertEntry(targetEntries, result.entry)), targetEntriesKey),
-      ];
+        : parseConsumptionEntries(snapshotRaw(targetEntriesRaw, mirrorFor(dinnerEntriesStorageKeyForScope(canonicalScope))));
+      // Validate every participating snapshot before scheduling any writes. Otherwise
+      // a later parse failure aborts outstanding requests with unhandled rejections.
+      const sourceEvents = result.cookEvent === undefined ? []
+        : parseCookEventsSnapshot(snapshotRaw(sourceEventsRaw, mirrorFor(activityEventsStorageKeyForScope(originalScope))));
+      const targetEvents = result.cookEvent === undefined ? [] : originalScope === canonicalScope ? sourceEvents
+        : parseCookEventsSnapshot(snapshotRaw(targetEventsRaw, mirrorFor(activityEventsStorageKeyForScope(canonicalScope))));
+      writes.push(values.put(serializePantrySnapshot(pantrySnapshot), pantryDatabaseKeyForScope(canonicalScope)));
+      writes.push(values.put(serializeDinnerEntriesSnapshot(upsertEntry(targetEntries, result.entry)), targetEntriesKey));
       if (originalScope !== canonicalScope) {
         writes.push(values.put(serializeDinnerEntriesSnapshot(removeEntry(sourceEntries, storedRecord.entryId)), sourceEntriesKey));
       }
-      let sourceEvents: CookEvent[] = [];
       if (result.cookEvent !== undefined) {
-        sourceEvents = parseCookEventsSnapshot(typeof sourceEventsRaw === 'string'
-          ? sourceEventsRaw : mirrors.get(activityEventsStorageKeyForScope(originalScope)) ?? null);
-        const targetEvents = originalScope === canonicalScope ? sourceEvents
-          : parseCookEventsSnapshot(typeof targetEventsRaw === 'string'
-            ? targetEventsRaw : mirrors.get(activityEventsStorageKeyForScope(canonicalScope)) ?? null);
         writes.push(values.put(serializeCookEventsSnapshot(upsertCookEvent(targetEvents, result.cookEvent)), targetEventsKey));
         if (originalScope !== canonicalScope) {
           writes.push(values.put(serializeCookEventsSnapshot(removeCookEvent(sourceEvents, storedRecord.entryId)), sourceEventsKey));
@@ -735,8 +766,13 @@ export async function reconcileDinnerConsumption({
       await Promise.all(writes);
       assertCurrent();
       await completion;
-      transactionCommitted = true;
       assertCurrent();
+      for (const [key, mirror] of mirrors) {
+        const validate = key === pantryStorageKeyForScope(canonicalScope) ? parseConsumptionPantry
+          : key === dinnerEntriesStorageKeyForScope(originalScope) || key === dinnerEntriesStorageKeyForScope(canonicalScope)
+            ? parseConsumptionEntries : parseCookEventsSnapshot;
+        clearReadMirror(key, mirror, validate);
+      }
       observePantryCanonicalSnapshot(canonicalScope, serializePantrySnapshot(pantrySnapshot));
       return {
         entry: result.entry,
@@ -751,10 +787,7 @@ export async function reconcileDinnerConsumption({
       } catch {
         // The transaction may already have completed or aborted.
       }
-      await completion.catch(() => undefined);
-      if (mirrorsTouched && !transactionCommitted) {
-        for (const [key, value] of mirrors) restoreMirror(key, value);
-      }
+      await Promise.allSettled([...reads, ...writes, completion]);
       throw error;
     }
   });

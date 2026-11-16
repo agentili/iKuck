@@ -24,6 +24,7 @@ import { getActiveDataScope, subscribeActiveDataScope, type SyncScope } from '..
 import { trackScopedWrite } from '../sync/scopeWriteFence';
 
 export interface ActivityState {
+  hydrationError: boolean;
   hasHydrated: boolean;
   events: CookEvent[];
   preferences: RecipePreference[];
@@ -81,10 +82,12 @@ const preferencePayloadIsValid = (payload: RecipePreferencePayload): boolean => 
 );
 
 export const useActivityStore = create<ActivityState>((set, get) => ({
+  hydrationError: false,
   hasHydrated: false,
   events: [],
   preferences: [],
   recordCookEvent: (recipe: PantryRecipe, servings?: number, note?: string | null, consumptionContext?: { command: DinnerConsumptionCommand; event: CookEvent; entry: DinnerEntry }): Promise<string | null> => {
+      if (!get().hasHydrated || get().hydrationError) return Promise.resolve(null);
       const cookedAt = new Date().toISOString();
       const normalizedNote = normalizeNote(note ?? null);
       const servingsToRecord = servings ?? recipe.servings;
@@ -137,6 +140,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
       return Promise.resolve(event.id);
     },
   removeCookEvent: (id) => {
+    if (!get().hasHydrated || get().hydrationError) return false;
     const existing = get().events.find((event) => event.id === id);
     if (existing === undefined) return false;
     const events = get().events.filter((event) => event.id !== id);
@@ -147,6 +151,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     return true;
   },
   restoreCookEvent: (event) => {
+    if (!get().hasHydrated || get().hydrationError) return false;
     if (get().events.some((existing) => existing.id === event.id)) return false;
     if (validateCookEventDetails(event.recipeId, event.recipeTitle, event.servings, event.cookedAt, event.note).length > 0) return false;
     const events = [...get().events, event];
@@ -157,6 +162,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     return true;
   },
   clearActivity: () => {
+    if (!get().hasHydrated || get().hydrationError) return 0;
     const events = get().events;
     if (events.length === 0) return 0;
     set({ events: [] });
@@ -169,6 +175,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
   },
   getRecipePreference: (recipeId) => get().preferences.find((preference) => preference.recipeId === recipeId),
   setRecipePreference: (recipeId, favorite, rating, note) => {
+    if (!get().hasHydrated || get().hydrationError) return false;
     const payload: RecipePreferencePayload = { recipeId, favorite, rating, note: normalizeNote(note) };
     if (!preferencePayloadIsValid(payload)) return false;
     const existing = get().getRecipePreference(recipeId);
@@ -207,7 +214,7 @@ registerActivitySnapshotListener((snapshot) => {
 const resetActivityHydration = (): void => {
   hydrationGeneration += 1;
   hydratedActiveScope = null;
-  useActivityStore.setState({ hasHydrated: false, events: [], preferences: [] });
+  useActivityStore.setState({ hasHydrated: false, hydrationError: false, events: [], preferences: [] });
 };
 
 subscribeActiveDataScope(resetActivityHydration);
@@ -222,7 +229,7 @@ export async function hydrateActivityStore(): Promise<void> {
   for (;;) {
     const activeScope = getActiveDataScope();
     const generation = hydrationGeneration;
-    if (useActivityStore.getState().hasHydrated && hydratedActiveScope === activeScope) return;
+    if (useActivityStore.getState().hasHydrated && !useActivityStore.getState().hydrationError && hydratedActiveScope === activeScope) return;
     if (hydrationPromise === null) {
       const currentPromise = Promise.all([readCookEvents(activeScope), readRecipePreferences(activeScope)])
         .then(([events, preferences]) => {
@@ -232,12 +239,13 @@ export async function hydrateActivityStore(): Promise<void> {
             events: normalizeCookEvents(events),
             preferences: normalizeRecipePreferences(preferences),
             hasHydrated: true,
+            hydrationError: false,
           });
         })
         .catch(() => {
           if (getActiveDataScope() !== activeScope || hydrationGeneration !== generation) return;
           hydratedActiveScope = activeScope;
-          useActivityStore.setState({ events: [], preferences: [], hasHydrated: true });
+          useActivityStore.setState({ hasHydrated: true, hydrationError: true });
         })
         .finally(() => {
           hydrationPromise = null;
