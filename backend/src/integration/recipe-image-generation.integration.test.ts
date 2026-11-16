@@ -50,6 +50,9 @@ const url = process.env.INTEGRATION_DATABASE_URL;
   afterAll(async () => {
     await app.close();
     await db.execute(sql`DELETE FROM sync_items WHERE user_id IN (${owner}::uuid,${other}::uuid)`);
+    await db.execute(sql`DELETE FROM processed_sync_mutations
+      WHERE scope_type='user' AND scope_id IN (${owner},${other})
+        AND user_id IN (${owner}::uuid,${other}::uuid)`);
     await db.execute(sql`DELETE FROM houses WHERE id=${house}`);
     await db.execute(sql`DELETE FROM users WHERE id IN (${owner}::uuid,${other}::uuid)`);
     await db.execute(sql`DELETE FROM recipe_image_jobs WHERE catalog_id IS NOT NULL`);
