@@ -125,7 +125,7 @@ function AppContent() {
       void syncVerifiedSession(session, {
         isSessionCurrent: () => {
           const current = readVerifiedSession();
-          return current?.userId === session.userId && current.csrfToken === session.csrfToken;
+          return active && current?.userId === session.userId && current.csrfToken === session.csrfToken;
         },
         onMembershipLost: () => {
           if (active) useHouseStore.getState().clear();
