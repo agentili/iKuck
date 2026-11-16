@@ -1,5 +1,5 @@
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { render, screen, act, within } from '@testing-library/react';
+import { render, screen, act, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProfilePage from './ProfilePage';
@@ -192,6 +192,32 @@ describe('ProfilePage', () => {
     expect(await screen.findByText(/Consenso immagini attivo per Gemini di Google/)).toBeVisible();
   });
 
+  it('fails closed when the server has no selected image provider', async () => {
+    const fetch = vi.fn().mockImplementation((path: string) => {
+      if (path === '/v1/ai-recipes/consent') {
+        return Promise.resolve(new Response(JSON.stringify({
+          consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' },
+          selectedProvider: 'gemini',
+          selectedImageProvider: null,
+        }), { status: 200 }));
+      }
+      if (path === '/v1/profile') {
+        return Promise.resolve(new Response(JSON.stringify({ profile: { displayName: 'Ale' } }), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ changes: [], nextCursor: 0 }), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetch);
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1', expiresAt: '2026-10-12T10:00:00.000Z' });
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    expect(await screen.findByText(/Il servizio per la creazione di immagini non è disponibile sul server/i)).toBeVisible();
+    expect(screen.queryByRole('checkbox', { name: /per le immagini/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Salva consenso immagini AI' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/foto candidate vengono inviati a/i)).not.toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalledWith('/v1/ai-recipes', expect.anything());
+    expect(fetch).not.toHaveBeenCalledWith('/v1/ai-recipes/consent', expect.objectContaining({ method: 'PUT' }));
+  });
+
   it('does not offer approval when the selected AI provider is unavailable', async () => {
     const fetch = vi.fn().mockImplementation((path: string) => {
       if (path === '/v1/ai-recipes/consent') {
@@ -279,6 +305,73 @@ describe('ProfilePage', () => {
     expect(screen.getByRole('checkbox', { name: /acconsento all’invio a OpenAI/i })).toBeChecked();
     expect(consentReads).toBe(2);
   });
+
+  it.each(['home', 'images'] as const)(
+    'ignores a failed stale %s conflict refresh after the account and CSRF session change',
+    async (permission) => {
+      const user = userEvent.setup();
+      const secondAccount = { ...verifiedUser, id: 'user-2', email: 'second@example.com' };
+      let consentReads = 0;
+      let rejectConflictRefresh: ((reason?: unknown) => void) | undefined;
+      let consentWrites = 0;
+      const fetch = vi.fn().mockImplementation((path: string, options?: RequestInit) => {
+        if (path === '/v1/ai-recipes/consent' && options?.method === 'PUT') {
+          consentWrites += 1;
+          return Promise.resolve(new Response(JSON.stringify({ code: 'ai_consent_revision_conflict', message: 'Consent changed' }), { status: 409 }));
+        }
+        if (path === '/v1/ai-recipes/consent') {
+          consentReads += 1;
+          if (consentReads === 2) {
+            return new Promise<Response>((_resolve, reject) => { rejectConflictRefresh = reject; });
+          }
+          const isNewOwner = consentReads > 2;
+          return Promise.resolve(new Response(JSON.stringify({
+            consent: { enabled: false, updatedAt: isNewOwner ? '2026-09-13T12:03:00.000Z' : '2026-09-13T12:00:00.000Z' },
+            selectedProvider: isNewOwner ? 'gemini' : 'openai',
+            selectedImageProvider: isNewOwner ? 'openai' : 'gemini',
+          }), { status: 200 }));
+        }
+        if (path === '/v1/profile') {
+          return Promise.resolve(new Response(JSON.stringify({ profile: { displayName: null } }), { status: 200 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ changes: [], nextCursor: 0 }), { status: 200 }));
+      });
+      vi.stubGlobal('fetch', fetch);
+      setActiveDataScope('account:user-1');
+      useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1', expiresAt: '2026-10-12T10:00:00.000Z' });
+      render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+      const oldControlName = permission === 'home'
+        ? /Acconsento all’invio a OpenAI dei dati necessari per creare ricette AI/i
+        : /Acconsento all’invio a Gemini di Google per le immagini/i;
+      const newControlName = permission === 'home'
+        ? /Acconsento all’invio a Gemini di Google dei dati necessari per creare ricette AI/i
+        : /Acconsento all’invio a OpenAI per le immagini delle ricette/i;
+      await user.click(await screen.findByRole('checkbox', { name: oldControlName }));
+      await user.click(screen.getByRole('button', { name: permission === 'home' ? 'Salva consenso AI' : 'Salva consenso immagini AI' }));
+      await waitFor(() => expect(rejectConflictRefresh).toBeDefined());
+
+      await act(async () => {
+        useAuthStore.setState({ user: secondAccount, csrfToken: 'csrf-2' });
+        setActiveDataScope('account:user-2');
+      });
+      const newOwnerControl = await screen.findByRole('checkbox', { name: newControlName });
+      expect(newOwnerControl).not.toBeChecked();
+      expect(screen.getByText('Provider selezionato dal server: Gemini di Google.')).toBeVisible();
+
+      await act(async () => {
+        rejectConflictRefresh?.(new Error('The previous owner refresh failed'));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Il consenso è cambiato in un’altra scheda/i)).not.toBeInTheDocument();
+      expect(screen.queryByText('Consenso attivo per OpenAI.')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Consenso immagini attivo per Gemini di Google/)).not.toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: newControlName })).not.toBeChecked();
+      expect(consentWrites).toBe(1);
+    },
+  );
 
   it('does not expose the previous account consent while the new session status is loading', async () => {
     const secondAccount = { ...verifiedUser, id: 'user-2', email: 'second@example.com' };

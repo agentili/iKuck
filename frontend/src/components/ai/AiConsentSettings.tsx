@@ -139,6 +139,7 @@ export default function AiConsentSettings() {
             && latest.consent.imageProvider === latest.selectedImageProvider);
           setError('Il consenso è cambiato in un’altra scheda. Ho aggiornato lo stato: controlla la scelta prima di salvare di nuovo.');
         } catch {
+          if (!isCurrentConsentOwner(requestOwner, generation, requestGeneration, mounted)) return;
           setError('Il consenso è cambiato in un’altra scheda. Aggiorna la pagina e verifica la scelta prima di riprovare.');
         }
       } else {
@@ -176,6 +177,7 @@ export default function AiConsentSettings() {
             && latest.consent.imageProvider === latest.selectedImageProvider);
           setError('Il consenso è cambiato in un’altra scheda. Ho aggiornato lo stato: controlla la scelta prima di salvare di nuovo.');
         } catch {
+          if (!isCurrentConsentOwner(requestOwner, generation, requestGeneration, mounted)) return;
           setError('Il consenso è cambiato in un’altra scheda. Aggiorna la pagina e verifica la scelta prima di riprovare.');
         }
       } else {

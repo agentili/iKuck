@@ -20,6 +20,80 @@ test('catalog image arrives asynchronously with attribution and remains availabl
   await expect(page.getByRole('img', { name: 'Pollo al limone: immagine illustrativa' })).toBeVisible();
 });
 
+test('Profile grants image consent to its selected provider without granting Home recipe consent', async ({ page }) => {
+  await installOfflineBackend(page, { responses: {
+    'GET /v1/auth/session': { json: { authenticated: true, user: { id: 'image-user', email: 'images@example.com', emailVerifiedAt: '2026-11-01T00:00:00Z' }, csrfToken: 'image-csrf', expiresAt: '2099-01-01T00:00:00Z' } },
+    'GET /v1/profile': { json: { profile: { displayName: 'Images' } } },
+    'GET /v1/house': { json: null },
+    'GET /v1/sync': { json: { changes: [], nextCursor: 0 } },
+    'POST /v1/sync': { json: { accepted: [], changes: [], nextCursor: 0 } },
+    'GET /v1/ai-recipes/consent': { json: {
+      consent: { enabled: false, updatedAt: '2026-11-01T00:00:00Z' },
+      selectedProvider: 'gemini', selectedImageProvider: 'openai',
+    } },
+    'PUT /v1/ai-recipes/consent': { json: {
+      consent: { enabled: true, imageProvider: 'openai', imagePolicyVersion: 'recipe-images-v1', updatedAt: '2026-11-01T00:01:00Z' },
+      selectedProvider: 'gemini', selectedImageProvider: 'openai',
+    } },
+  } });
+  const imageGrantRequests: import('@playwright/test').Request[] = [];
+  let recipeCollectionReads = 0;
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (request.method() === 'PUT' && url.pathname === '/v1/ai-recipes/consent') imageGrantRequests.push(request);
+    if (request.method() === 'GET' && url.pathname === '/v1/ai-recipes') recipeCollectionReads += 1;
+  });
+
+  await page.goto('/profile');
+  const homeConsent = page.getByRole('checkbox', { name: 'Acconsento all’invio a Gemini di Google dei dati necessari per creare ricette AI' });
+  const imageConsent = page.getByRole('checkbox', { name: 'Acconsento all’invio a OpenAI per le immagini delle ricette' });
+  await expect(imageConsent).toBeVisible();
+  await expect(homeConsent).not.toBeChecked();
+  await imageConsent.check();
+  await page.getByRole('button', { name: 'Salva consenso immagini AI' }).click();
+
+  await expect(page.getByText('Consenso immagini attivo per OpenAI.')).toBeVisible();
+  await expect(homeConsent).not.toBeChecked();
+  expect(imageGrantRequests).toHaveLength(1);
+  expect(imageGrantRequests[0]?.headers()['x-csrf-token']).toBe('image-csrf');
+  expect(imageGrantRequests[0]?.postDataJSON()).toEqual({
+    enabled: true,
+    imagePolicyVersion: 'recipe-images-v1',
+    imageProvider: 'openai',
+    expectedRevision: '2026-11-01T00:00:00Z',
+  });
+  expect(recipeCollectionReads).toBe(0);
+});
+
+test('Profile fails closed when image provider is null and availability is omitted', async ({ page }) => {
+  await installOfflineBackend(page, { responses: {
+    'GET /v1/auth/session': { json: { authenticated: true, user: { id: 'image-user', email: 'images@example.com', emailVerifiedAt: '2026-11-01T00:00:00Z' }, csrfToken: 'image-csrf', expiresAt: '2099-01-01T00:00:00Z' } },
+    'GET /v1/profile': { json: { profile: { displayName: 'Images' } } },
+    'GET /v1/house': { json: null },
+    'GET /v1/sync': { json: { changes: [], nextCursor: 0 } },
+    'POST /v1/sync': { json: { accepted: [], changes: [], nextCursor: 0 } },
+    'GET /v1/ai-recipes/consent': { json: {
+      consent: { enabled: false, updatedAt: '2026-11-01T00:00:00Z' },
+      selectedProvider: 'gemini', selectedImageProvider: null,
+    } },
+  } });
+  let consentWrites = 0;
+  let recipeCollectionReads = 0;
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (request.method() === 'PUT' && url.pathname === '/v1/ai-recipes/consent') consentWrites += 1;
+    if (request.method() === 'GET' && url.pathname === '/v1/ai-recipes') recipeCollectionReads += 1;
+  });
+
+  await page.goto('/profile');
+  await expect(page.getByText(/Il servizio per la creazione di immagini non è disponibile sul server/i)).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: /per le immagini/i })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Salva consenso immagini AI' })).toHaveCount(0);
+  await expect(page.getByText(/foto candidate vengono inviati a/i)).toHaveCount(0);
+  expect(consentWrites).toBe(0);
+  expect(recipeCollectionReads).toBe(0);
+});
+
 test('bulk generation is only in profile and single generation stays in recipe detail', async ({ page, context }) => {
   const consent = { enabled: true, updatedAt: '2026-11-01T00:00:00Z', imageProvider: 'openai', imagePolicyVersion: 'recipe-images-v1' };
   await installOfflineBackend(page, { responses: {

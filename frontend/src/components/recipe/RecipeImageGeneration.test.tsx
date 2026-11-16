@@ -108,12 +108,17 @@ describe('RecipeImageGeneration', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Immagine aggiunta alla coda');
   });
 
-  it('reports an actually disabled backend and does not queue images', async () => {
-    const fetch = vi.fn().mockResolvedValue(json({ ...status(), selectedImageProvider: undefined }));
+  it.each([
+    ['null', { ...status(), selectedImageProvider: null }],
+    ['omitted', { ...status(), selectedImageProvider: undefined }],
+  ])('fails closed for private image dispatch when the selected image provider is %s', async (_availability, response) => {
+    const fetch = vi.fn().mockResolvedValue(json(response));
     vi.stubGlobal('fetch', fetch);
-    render(<RecipeImageGeneration />);
-    await userEvent.click(screen.getByRole('button', { name: 'Genera tutte le immagini' }));
+    render(<RecipeImageGeneration recipeId="personal-recipe" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Genera immagine' }));
+
     expect(await screen.findByRole('alert')).toHaveTextContent('Il servizio immagini non è attivo sul server.');
     expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalledWith('/v1/recipe-images/personal-recipe/generate?kind=private', expect.anything());
   });
 });
