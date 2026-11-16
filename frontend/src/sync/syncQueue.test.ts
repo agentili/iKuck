@@ -667,6 +667,8 @@ describe('sync queue', () => {
   });
 
   it('syncs a verified session on reconnect and removes the listener', async () => {
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
     let currentSession: typeof session | null = session;
     const fetch = vi.fn().mockResolvedValue(responseFor({ changes: [], nextCursor: 1 }));
     vi.stubGlobal('fetch', fetch);
@@ -680,6 +682,43 @@ describe('sync queue', () => {
     window.dispatchEvent(new Event('online'));
     expect(fetch).toHaveBeenCalledOnce();
     vi.unstubAllGlobals();
+  });
+
+  it('uploads new durable enqueues and polls remote changes without reconnect', async () => {
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
+    const fetch = vi.fn().mockImplementation(() => Promise.resolve(responseFor({ changes: [], nextCursor: 1 })));
+    vi.stubGlobal('fetch', fetch);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const stop = listenForReconnect(() => session);
+    try {
+      await enqueueMutation(accountScope, sampleMutation('online-write'));
+      await vi.advanceTimersByTimeAsync(250);
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+      expect(JSON.parse(fetch.mock.calls[0][1].body).mutations).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+      expect(JSON.parse(fetch.mock.calls[1][1].body).mutations).toHaveLength(0);
+    } finally { stop(); vi.useRealTimers(); vi.unstubAllGlobals(); }
+  });
+
+  it.each(['guest', 'unverified', 'token', 'scope', 'offline'])('does not schedule private network work for %s contexts', async context => {
+    setActiveDataScope(accountScope);
+    setPersonalDataScope(accountScope);
+    let current: typeof session | null = context === 'guest' ? null : context === 'unverified' ? { ...session, emailVerifiedAt: '' } : session;
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const stop = listenForReconnect(() => current);
+    const online = context === 'offline' ? vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false) : null;
+    try {
+      if (context === 'token') current = { ...session, csrfToken: 'replacement' };
+      if (context === 'scope') setActiveDataScope('account:other');
+      await enqueueMutation(accountScope, sampleMutation(`fenced-${context}`));
+      window.dispatchEvent(new Event('online'));
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fetch).not.toHaveBeenCalled();
+    } finally { stop(); online?.mockRestore(); vi.useRealTimers(); vi.unstubAllGlobals(); }
   });
 
   it('drains all queued mutations in bounded batches and reports the counts', async () => {
