@@ -90,6 +90,7 @@ export default function HomePage() {
   const csrfToken = useAuthStore((state) => state.csrfToken);
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSavingRecipe, setIsSavingRecipe] = useState(false);
   const [generateCandidate, setGenerateCandidate] = useState<GenerateRecipeFromPantryResponse | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
@@ -223,7 +224,7 @@ export default function HomePage() {
   };
 
   const saveGeneratedRecipe = async () => {
-    if (!user || !csrfToken || generateCandidate === null || generateCandidate.kind !== 'candidate') return;
+    if (!user || !csrfToken || generateCandidate === null || generateCandidate.kind !== 'candidate' || isSavingRecipe) return;
     const { recipe: draft } = generateCandidate;
     const now = new Date().toISOString();
     const generatedRecipe: GeneratedRecipe = {
@@ -233,6 +234,8 @@ export default function HomePage() {
       createdAt: now,
       updatedAt: now,
     };
+    setIsSavingRecipe(true);
+    setGenerateError(null);
     try {
       await saveAiRecipe(generatedRecipe, csrfToken);
       setGenerateCandidate(null);
@@ -242,6 +245,8 @@ export default function HomePage() {
       } else {
         setGenerateError('Impossibile salvare la ricetta.');
       }
+    } finally {
+      setIsSavingRecipe(false);
     }
   };
 
@@ -330,6 +335,11 @@ export default function HomePage() {
             >
               {isGenerating ? 'Generazione in corso…' : 'Genera ricetta da dispensa'}
             </button>
+          )}
+          {noneAvailable !== null && (
+            <p role="status" className="w-full rounded-xl border border-[var(--ik-border)] bg-[var(--ik-mist)] px-4 py-3 text-sm text-[var(--ik-ink-muted)]">
+              {noneAvailable.message}
+            </p>
           )}
           <Link to="/pantry" className="inline-flex min-h-11 items-center rounded-xl px-3 py-2 font-bold text-[var(--ik-basil-dark)] underline decoration-[var(--ik-border-strong)] underline-offset-4 hover:bg-[var(--ik-mist)]">Apri tutta la dispensa</Link>
           <SuggestionControls allowOneMissing={allowOneMissing} disabled={!hasPantryItems} onAllowOneMissingChange={setAllowOneMissing} onSearch={() => search()} />
@@ -422,7 +432,7 @@ export default function HomePage() {
         onAdd={addIngredients}
       />
 
-      {(generateCandidate !== null || generateError !== null) && (
+      {(candidate !== null || generateError !== null) && (
         <section className="fixed inset-0 z-50 flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-label="Anteprima ricetta">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={discardGeneratedRecipe} />
           <div className="relative bg-[var(--ik-surface)] border border-[var(--ik-border)] rounded-2xl p-6 max-w-md w-full shadow-[var(--ik-shadow-lift)]">
@@ -431,21 +441,8 @@ export default function HomePage() {
                 {generateError}
               </div>
             )}
-            {noneAvailable !== null && (
-              <div className="mb-4 text-center">
-                <h3 className="text-lg font-bold text-[var(--ik-ink)]">Nessuna nuova ricetta disponibile</h3>
-                <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">{noneAvailable.message}</p>
-                <button
-                  type="button"
-                  onClick={discardGeneratedRecipe}
-                  className="mt-4 min-h-10 rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-surface)] px-4 py-2 font-semibold text-[var(--ik-ink)] hover:bg-[var(--ik-mist)]"
-                >
-                  Chiudi
-                </button>
-              </div>
-            )}
             {candidate !== null && (
-              <GenerateCandidatePreview recipe={candidate.recipe} onSave={saveGeneratedRecipe} onDiscard={discardGeneratedRecipe} isSaving={isGenerating} />
+              <GenerateCandidatePreview recipe={candidate.recipe} onSave={saveGeneratedRecipe} onDiscard={discardGeneratedRecipe} isSaving={isGenerating || isSavingRecipe} />
             )}
           </div>
         </section>

@@ -26,6 +26,7 @@ import { writeKeyValue } from '../storage/indexedDb';
 
 const hydratePantryStoreMock = vi.hoisted(() => vi.fn());
 const generateRecipeFromPantryMock = vi.hoisted(() => vi.fn());
+const saveAiRecipeMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../store/localPantryStore', async () => {
   const actual = await vi.importActual<typeof import('../store/localPantryStore')>('../store/localPantryStore');
@@ -36,6 +37,7 @@ vi.mock('../components/ai/AiRecipePanel', () => ({ default: () => null }));
 vi.mock('../ai/aiRecipeApi', async () => ({
   ...(await vi.importActual<typeof import('../ai/aiRecipeApi')>('../ai/aiRecipeApi')),
   generateRecipeFromPantry: generateRecipeFromPantryMock,
+  saveAiRecipe: saveAiRecipeMock,
 }));
 
 const seedPantry = (value: string): void => {
@@ -71,6 +73,7 @@ describe('HomePage recipe search', () => {
   beforeEach(() => {
     window.localStorage.clear();
     generateRecipeFromPantryMock.mockReset();
+    saveAiRecipeMock.mockReset();
     useAuthStore.setState({ user: null, csrfToken: null, expiresAt: null });
     setActiveDataScope('guest');
     hydratePantryStoreMock.mockReset();
@@ -127,6 +130,93 @@ describe('HomePage recipe search', () => {
     const preview = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
     expect(within(preview).getByRole('heading', { name: 'Orata al cartoccio' })).toBeVisible();
     expect(generateRecipeFromPantryMock).toHaveBeenCalledWith({ ingredients: ['Pasta', 'Tonno'] }, 'csrf-token');
+  });
+
+  it('shows no-new-recipe feedback without opening the preview dialog', async () => {
+    const user = userEvent.setup();
+    useAuthStore.setState({
+      user: { id: 'user-1', email: 'user@example.com', emailVerifiedAt: '2026-09-24T00:00:00.000Z' },
+      csrfToken: 'csrf-token',
+    });
+    seedPantry('pasta, tonno');
+    generateRecipeFromPantryMock.mockResolvedValueOnce({
+      kind: 'none_available',
+      message: 'Non ho trovato ingredienti sufficienti per proporre qualcosa di nuovo.',
+    });
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+
+    expect(await screen.findByText('Non ho trovato ingredienti sufficienti per proporre qualcosa di nuovo.')).toBeVisible();
+    expect(screen.queryByRole('dialog', { name: 'Anteprima ricetta' })).not.toBeInTheDocument();
+  });
+
+  it('saves a candidate only after explicit confirmation', async () => {
+    const user = userEvent.setup();
+    useAuthStore.setState({
+      user: { id: 'user-1', email: 'user@example.com', emailVerifiedAt: '2026-09-24T00:00:00.000Z' },
+      csrfToken: 'csrf-token',
+    });
+    seedPantry('pasta, tonno');
+    generateRecipeFromPantryMock.mockResolvedValueOnce({
+      kind: 'candidate',
+      recipe: {
+        title: 'Pasta al tonno',
+        description: 'Una ricetta semplice.',
+        ingredients: [{ name: 'Pasta', amount: '160 g' }, { name: 'Tonno', amount: '1 scatoletta' }],
+        steps: ['Cuoci la pasta.', 'Aggiungi il tonno.'],
+        diets: [],
+        allergens: [],
+      },
+    });
+    saveAiRecipeMock.mockResolvedValueOnce(undefined);
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    const preview = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+    expect(saveAiRecipeMock).not.toHaveBeenCalled();
+
+    await user.click(within(preview).getByRole('button', { name: 'Salva nel ricettario' }));
+
+    await waitFor(() => expect(saveAiRecipeMock).toHaveBeenCalledOnce());
+    expect(saveAiRecipeMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Pasta al tonno',
+      source: 'ai',
+    }), 'csrf-token');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Anteprima ricetta' })).not.toBeInTheDocument());
+  });
+
+  it('disables repeated saves while the explicit save is pending', async () => {
+    const user = userEvent.setup();
+    let finishSave: (() => void) | undefined;
+    useAuthStore.setState({
+      user: { id: 'user-1', email: 'user@example.com', emailVerifiedAt: '2026-09-24T00:00:00.000Z' },
+      csrfToken: 'csrf-token',
+    });
+    seedPantry('pasta, tonno');
+    generateRecipeFromPantryMock.mockResolvedValueOnce({
+      kind: 'candidate',
+      recipe: {
+        title: 'Pasta al tonno',
+        description: 'Una ricetta semplice.',
+        ingredients: [{ name: 'Pasta', amount: '160 g' }, { name: 'Tonno', amount: '1 scatoletta' }],
+        steps: ['Cuoci la pasta.', 'Aggiungi il tonno.'],
+        diets: [],
+        allergens: [],
+      },
+    });
+    saveAiRecipeMock.mockImplementationOnce(() => new Promise<void>((resolve) => { finishSave = resolve; }));
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    const preview = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+    const saveButton = within(preview).getByRole('button', { name: 'Salva nel ricettario' });
+    await user.click(saveButton);
+
+    await waitFor(() => expect(saveAiRecipeMock).toHaveBeenCalledOnce());
+    expect(saveButton).toBeDisabled();
+    await act(async () => finishSave?.());
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Anteprima ricetta' })).not.toBeInTheDocument());
   });
 
   it('explains the empty pantry and disables search until ingredients are saved', () => {
