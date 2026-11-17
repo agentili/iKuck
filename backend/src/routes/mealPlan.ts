@@ -138,7 +138,7 @@ export const registerMealPlanRoutes = ({ repository, authService, appOrigin, rat
     return reply.code(200).send({ version: 2, results } satisfies MealPlanImportResponse);
   });
 
-  app.get('/v1/meal-plan/recovery', async (request) => {
+  app.route({ method: ['GET', 'POST'], url: '/v1/meal-plan/recovery', handler: async (request) => {
     ensureSameOrigin(request, appOrigin);
     const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
@@ -153,7 +153,7 @@ export const registerMealPlanRoutes = ({ repository, authService, appOrigin, rat
       observed,
     }));
     return { version: 2, conflicts, quarantined };
-  });
+  } });
 
   app.post('/v1/meal-plan/recovery/:conflictId/resolve', async (request) => {
     ensureSameOrigin(request, appOrigin);

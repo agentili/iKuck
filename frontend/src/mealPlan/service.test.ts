@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlanCommand, PlanState } from '@ikuck/shared/contracts';
+import { enqueueEntityMutation } from '../sync/syncQueue';
+import { generatedToSavedRecipe } from './recipeLibrary';
+import { toDiaryPantryRecipe } from '../domain/diaryRecipes';
 import { deleteLocalDatabase } from '../storage/indexedDb';
 import { enqueueMealPlanCommand, readMealPlanOutbox, saveGuestPlanState } from './storage';
 import type { MealPlanApi } from './api';
@@ -33,6 +36,26 @@ const prepareBootstrap = async (scope: 'house:house-1' | 'account:user-1'): Prom
 };
 
 describe('meal plan outbox synchronization', () => {
+  it('keeps a plan assignment pending until its saved recipe has been uploaded', async () => {
+    const recipe = generatedToSavedRecipe({
+      id: 'unsynced-rice', source: 'ai', title: 'Riso', description: '',
+      ingredients: [{ name: 'Riso', amount: '100 g' }], steps: ['Cuoci.'], diets: ['omnivore'], allergens: [],
+      createdAt: '2026-11-12T12:00:00Z', updatedAt: '2026-11-12T12:00:00Z',
+    }, 'user-1');
+    const recipeId = toDiaryPantryRecipe({ scope: 'house:house-1', value: recipe }).id;
+    await prepareBootstrap('house:house-1');
+    await enqueueEntityMutation('house:house-1', 'saved_recipe', recipe.id, 'upsert', recipe);
+    await enqueueMealPlanCommand('house:house-1', { ...command, recipeId });
+    const savedState = { ...state, recipeId };
+    const api = {
+      getCapabilities: vi.fn().mockResolvedValue({ version: 2, syncReadVersion: 2 }),
+      sendCommand: vi.fn().mockResolvedValue({ version: 2, operationId: command.operationId, outcome: 'applied', current: savedState }),
+      readStates: vi.fn().mockResolvedValue([{ date: state.date, state: savedState }]),
+    } as unknown as MealPlanApi;
+    await expect(syncPendingMealPlan('house:house-1', 'csrf-token', api, () => {})).rejects.toThrow(/ricetta/i);
+    expect(api.sendCommand).not.toHaveBeenCalled();
+    expect(await readMealPlanOutbox(['house:house-1'])).toHaveLength(1);
+  });
   it('negotiates capability, sends the persisted command, reads the winner, then acknowledges atomically', async () => {
     await prepareBootstrap('house:house-1');
     await enqueueMealPlanCommand('house:house-1', command);

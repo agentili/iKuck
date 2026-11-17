@@ -15,15 +15,17 @@ describe('PlanPage', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Piano settimanale' })).toBeInTheDocument();
   });
 
-  it('keeps local guest proposals visibly distinct from shared plans', async () => {
+  it('shows the guest plan without the sharing and timezone banner', async () => {
     render(
       <MemoryRouter initialEntries={['/plan']}>
         <PlanPage />
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getByText(/salvato su questo dispositivo/i)).toBeVisible());
-    expect(screen.queryByText(/piano condiviso/i)).not.toBeInTheDocument();
+    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
+    expect(screen.queryByRole('region', { name: 'Stato della condivisione' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/salvato su questo dispositivo/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Fuso:/)).not.toBeInTheDocument();
   });
 
   it('does not duplicate navigation links at the bottom', () => {

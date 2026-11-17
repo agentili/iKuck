@@ -312,7 +312,23 @@ const createMealPlanLiveRuntime = async (target) => {
       });
       const houseService = houseServiceModule.createHouseService({ repository: houseRepository, syncRepository: repository });
       const route = { repository, authService: auth, appOrigin };
+      let wizardAi = {};
+      if (process.env.IKUCK_PLAN_WIZARD_FAKE_AI === 'true') {
+        const { createRedisGenerationRateLimiter } = await import('../../../backend/dist/ai/rateLimit.js');
+        wizardAi = { aiRecipes: {
+          ...route,
+          recipeProvider: 'openai',
+          limiter: createRedisGenerationRateLimiter(cache),
+          dinnerReconstructionProvider: { reconstruct: async () => [] },
+          provider: { generate: async () => ({
+            title: 'Riso wizard condiviso', description: 'Proposta del provider simulato per il test di integrazione.',
+            ingredients: [{ name: 'Riso', amount: '320 g' }, { name: 'Limone', amount: '1' }],
+            steps: ['Cuoci il riso.', 'Aggiungi il limone.'], diets: ['omnivore', 'vegan'], allergens: [],
+          }) },
+        } };
+      }
       const app = appModule.createApp({
+        ...wizardAi,
         database: databaseAdapter,
         cache,
         auth: { service: auth, appOrigin, secureCookies: false, rateLimiter },

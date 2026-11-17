@@ -13,7 +13,8 @@ test('il piano ospite propone ricette reali e conserva una sostituzione dopo il 
 
   const plan = page.getByRole('list', { name: 'Pasti da domani' });
   await expect(plan.getByRole('listitem')).toHaveCount(7);
-  await expect(page.getByText(/salvato su questo dispositivo · non condiviso/i)).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Stato della condivisione' })).toHaveCount(0);
+  await expect(page.getByText(/^Fuso:/)).toHaveCount(0);
 
   const firstRow = plan.getByRole('listitem').first();
   const recipeTitle = firstRow.locator('div p').first();
@@ -24,7 +25,7 @@ test('il piano ospite propone ricette reali e conserva una sostituzione dopo il 
   const date = await firstRow.getAttribute('data-date');
   expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
-  await choosePlanAlternative(page, firstRow.getByRole('button', { name: /modifica ricetta/i }));
+  await choosePlanAlternative(page, firstRow.getByRole('button', { name: /cambia ricetta/i }));
   await expect(recipeTitle).not.toHaveText(originalTitle ?? '');
   const replacementTitle = await recipeTitle.textContent();
   expect(replacementTitle).not.toBeNull();
@@ -51,7 +52,8 @@ test('il piano ospite propone ricette reali e conserva una sostituzione dopo il 
   await page.reload();
   const reloadedRow = page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem').first();
   await expect(reloadedRow.locator('div p').first()).toHaveText(replacementTitle!);
-  await expect(page.getByText(/salvato su questo dispositivo · non condiviso/i)).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Stato della condivisione' })).toHaveCount(0);
+  await expect(page.getByText(/^Fuso:/)).toHaveCount(0);
   assertOfflineBackendClean(page);
 });
 
@@ -110,9 +112,9 @@ test('una ricevuta del Piano arrivata dopo il logout conserva la coda account gi
   await expect(planHeading).toBeVisible();
 
   const plan = page.getByRole('list', { name: 'Pasti da domani' });
-  await expect(page.getByText('Sincronizzato con il tuo account', { exact: true })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(7);
   await expect(plan.getByRole('listitem')).toHaveCount(7);
-  await choosePlanAlternative(page, plan.getByRole('listitem').first().getByRole('button', { name: /modifica ricetta/i }));
+  await choosePlanAlternative(page, plan.getByRole('listitem').first().getByRole('button', { name: /cambia ricetta/i }));
   const command = await commandStarted;
   expect(command).toMatchObject({ scope: accountScope, action: 'manual_set' });
 
@@ -135,7 +137,7 @@ test('una ricevuta del Piano arrivata dopo il logout conserva la coda account gi
 
   await page.getByRole('button', { name: 'Profilo' }).click();
   await page.getByRole('button', { name: 'Esci' }).click();
-  await expect(page.getByText(/Salvato su questo dispositivo · non condiviso/i)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Esci', exact: true })).toHaveCount(0);
   const guestPlan = page.getByRole('list', { name: 'Pasti da domani' });
   await expect(guestPlan.getByRole('listitem')).toHaveCount(7);
   const guestTitle = await guestPlan.getByRole('listitem').first().locator('div p').first().textContent();
@@ -164,7 +166,7 @@ test('il Piano ospite si importa solo su conferma e si riprende dopo la riconnes
   const firstRow = page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem').first();
   const planDate = await firstRow.getAttribute('data-date');
   expect(planDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  await choosePlanAlternative(page, firstRow.getByRole('button', { name: /modifica ricetta/i }));
+  await choosePlanAlternative(page, firstRow.getByRole('button', { name: /cambia ricetta/i }));
   await expect.poll(() => page.evaluate(async (date) => {
     const request = indexedDB.open('ikuck-local-v2');
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -379,7 +381,7 @@ test('rimuove il conflitto dal Piano solo dopo retry applicato e verificato dal 
   await expect(planHeading).toBeVisible();
   const plan = page.getByRole('list', { name: 'Pasti da domani' });
   await expect(plan.getByRole('listitem')).toHaveCount(7);
-  await choosePlanAlternative(page, plan.getByRole('listitem').first().getByRole('button', { name: /modifica ricetta/i }));
+  await choosePlanAlternative(page, plan.getByRole('listitem').first().getByRole('button', { name: /cambia ricetta/i }));
   const conflictRegion = page.getByRole('region', { name: 'Modifiche in conflitto' });
   await expect(conflictRegion).toContainText('non è stata condivisa');
   await expect(page.getByRole('button', { name: 'Riproporre la scelta' })).toBeVisible();
@@ -392,7 +394,7 @@ test('rimuove il conflitto dal Piano solo dopo retry applicato e verificato dal 
 
   await page.getByRole('button', { name: 'Riproporre la scelta' }).click();
   await expect(conflictRegion).toHaveCount(0);
-  await expect(page.getByText('Sincronizzato con il tuo account', { exact: true })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(7);
   expect(commands).toHaveLength(3);
   expect(commands[1]).toMatchObject({ date: commands[0]?.date, recipeId: commands[0]?.recipeId });
   expect(commands[1]?.operationId).not.toBe(commands[0]?.operationId);
@@ -424,6 +426,6 @@ test('rimuove il conflitto dal Piano solo dopo retry applicato e verificato dal 
 
   await page.reload();
   await expect(conflictRegion).toHaveCount(0);
-  await expect(page.getByText('Sincronizzato con il tuo account', { exact: true })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(7);
   assertOfflineBackendClean(page);
 });

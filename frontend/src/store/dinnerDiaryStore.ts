@@ -176,11 +176,22 @@ export const useDinnerDiaryStore = create<DinnerDiaryState>((set, get) => ({
   clearDraftSet: (scope, id) => { const found = get().drafts.some(v => v.scope === scope && v.value.entryId === id); if (!found) return false; set(state => ({ drafts: state.drafts.filter(v => !(v.scope === scope && v.value.entryId === id)) })); const draftScope = getPersonalDataScope(); const personalDrafts = get().drafts.map(v => v.value); queueWrite(draftScope, () => writeDiaryDraftSets(personalDrafts, draftScope)); return true; },
 }));
 
+// A read started before a recipe write or sync snapshot must not replace it.
+let recipeRevision = 0;
+useDinnerDiaryStore.subscribe((state, previous) => {
+  if (state.recipes !== previous.recipes) recipeRevision++;
+});
+
 export async function hydrateDinnerDiaryStore(): Promise<void> {
   const ticket = ++generation; const scopes = [...new Set([getActiveDataScope(), getPersonalDataScope()])];
+  const recipesAtStart = recipeRevision;
   try {
     const snapshots = await Promise.all(scopes.map(async scope => ({ scope, entries: await readDinnerEntries(scope), recipes: await readSavedRecipes(scope), drafts: await readDiaryDraftSets(scope) })));
     if (ticket !== generation || scopes[0] !== getActiveDataScope() || scopes[1] !== getPersonalDataScope() && scopes.length > 1) return;
+    if (recipesAtStart !== recipeRevision) {
+      if (!useDinnerDiaryStore.getState().hasHydrated) await hydrateDinnerDiaryStore();
+      return;
+    }
     const entries = snapshots.flatMap(s => attach(s.scope, s.entries));
     const recipes = snapshots.flatMap(s => attach(s.scope, s.recipes));
     // Drafts are personal local data even when their entry now belongs to a
@@ -207,12 +218,18 @@ registerDinnerDiarySnapshotListener(snapshot => {
 // Resolve only after the recipe is durable and its shared mutation is queued.
 export async function savePlanRecipe(scope: SyncScope, recipe: SavedRecipe, assertCurrent: () => void): Promise<void> {
   assertCurrent();
+  const assertLibraryReady = () => {
+    const library = useDinnerDiaryStore.getState();
+    if (!library.hasHydrated || library.error !== null) throw new Error('Il ricettario non è disponibile. Ricaricalo prima di salvare.');
+  };
+  assertLibraryReady();
   if (!isSavedRecipe(recipe) || !canEdit(scope)) throw new Error('La ricetta non può essere salvata in questo contesto.');
   const previous = writeChains.get(scope) ?? Promise.resolve();
   const pending = trackScopedWrite(scope, async (assertWritable) => {
     await previous;
     assertCurrent();
     assertWritable();
+    assertLibraryReady();
     const recipes = useDinnerDiaryStore.getState().recipes.filter(item => item.scope === scope && item.value.id !== recipe.id).map(item => item.value);
     await writeSavedRecipes([...recipes, recipe], scope, assertCurrent);
     assertCurrent();
