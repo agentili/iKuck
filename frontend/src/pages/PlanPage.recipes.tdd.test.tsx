@@ -1,12 +1,27 @@
 import { choosePlanRecipe } from '../test/choosePlanRecipe';
 import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_DIET_PROFILE, isRecipeCompatible } from '../domain/dietary';
 import { RECIPES } from '../domain/recipes';
 import PlanPage from './PlanPage';
+import { readMealPlanSnapshot } from '../mealPlan/storage';
 
 describe('PlanPage recipe proposals', () => {
+  it('opens the wizard without changing the plan and cancels without writing', async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><PlanPage /></MemoryRouter>);
+    const buttons = await screen.findAllByRole('button', { name: /cambia ricetta/i });
+    const before = await readMealPlanSnapshot('guest');
+    await user.click(buttons[0]);
+    const wizard = await screen.findByRole('dialog', { name: 'Definisci la ricetta del giorno' });
+    expect(wizard).toBeVisible();
+    expect(await readMealPlanSnapshot('guest')).toEqual(before);
+    await user.click(within(wizard).getByRole('button', { name: 'Annulla' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(await readMealPlanSnapshot('guest')).toEqual(before);
+  });
   it('proposes a compatible real catalogue recipe within 30 minutes when one is available', async () => {
     const eligibleRecipes = RECIPES.filter((recipe) => (
       recipe.durationMinutes !== null
@@ -39,7 +54,12 @@ describe('PlanPage recipe proposals', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findAllByRole('button', { name: /modifica ricetta/i })).toHaveLength(7);
+    expect(await screen.findAllByRole('button', { name: /cambia ricetta/i })).toHaveLength(7);
+    for (const row of screen.getAllByRole('listitem')) {
+      const button = within(row).getByRole('button', { name: /cambia ricetta/i });
+      expect(button).toHaveTextContent('Cambia ricetta');
+      expect(button).toBeEnabled();
+    }
   });
 
   it('persists a replacement across a page reload', async () => {
@@ -49,7 +69,7 @@ describe('PlanPage recipe proposals', () => {
     const firstRow = await screen.findAllByRole('listitem').then((items) => items[0]);
     const originalTitle = within(firstRow).getByText((text) => compatibleTitles.includes(text)).textContent;
 
-    await choosePlanRecipe(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
+    await choosePlanRecipe(within(firstRow).getByRole('button', { name: /cambia ricetta/i }));
     await waitFor(() => {
       const title = within(firstRow).getByText((text) => compatibleTitles.includes(text)).textContent;
       expect(title).not.toBe(originalTitle);

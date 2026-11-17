@@ -133,7 +133,7 @@ test.describe('T02 · shell cinque voci', () => {
     await expect(heading(page, 'Pagina non trovata')).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Piano settimanale', exact: true }).first()).toBeVisible();
     await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(7);
-    await expect(page.getByText('Condivisione non disponibile')).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Stato della condivisione' })).toHaveCount(0);
     await expect(page.getByText(/non supporta ancora il piano condiviso/i)).toBeVisible();
   });
 
@@ -159,7 +159,7 @@ test.describe('T02 · shell cinque voci', () => {
   test('il server legacy non consente di leggere o modificare il piano condiviso', async ({ page }) => {
     await page.goto('/plan');
     await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(7);
-    await expect(page.getByRole('button', { name: /modifica ricetta/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /cambia ricetta/i })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /aggiorna fuso/i })).toHaveCount(0);
     await expect(page.getByText(/non supporta ancora il piano condiviso/i)).toBeVisible();
   });

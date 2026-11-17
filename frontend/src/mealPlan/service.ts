@@ -1,7 +1,9 @@
 import type { PlanCommand, PlanState, SyncMutationScope } from '@ikuck/shared/contracts';
+import { isSavedRecipe } from '@ikuck/shared/dinnerDiary';
+import { toDiaryPantryRecipe } from '../domain/diaryRecipes';
 import type { SyncScope } from '../sync/scopeContext';
 import { assertScopeWritable } from '../sync/scopeWriteFence';
-import { getDeviceId } from '../sync/syncQueue';
+import { getDeviceId, readQueuedMutations } from '../sync/syncQueue';
 import type { MealPlanApi } from './api';
 import { mealPlanApi } from './api';
 import type { MealPlanImportItem } from './validation';
@@ -153,6 +155,17 @@ async function syncPendingMealPlanUnlocked(
   }
   const outbox = await readMealPlanOutbox([scope], assertCurrent);
   assertCurrent();
+  const mutations = await readQueuedMutations(scope);
+  assertCurrent();
+  const pendingRecipeIds = new Set(mutations.flatMap(mutation => {
+    if (mutation.entityType !== 'saved_recipe' || mutation.operation !== 'upsert' || !isSavedRecipe(mutation.payload)) return [];
+    const value = mutation.payload;
+    const recipeScopes: SyncScope[] = [scope, 'guest', ...(value.authorId ? [`account:${value.authorId}` as SyncScope] : [])];
+    return recipeScopes.map(recipeScope => toDiaryPantryRecipe({ scope: recipeScope, value }).id);
+  }));
+  if (outbox.some(record => 'recipeId' in record.command && pendingRecipeIds.has(record.command.recipeId))) {
+    throw new Error('La ricetta resta sul dispositivo: il piano sarà condiviso dopo la conferma del ricettario.');
+  }
   let acknowledged = 0;
   let conflicts = 0;
   let index = 0;

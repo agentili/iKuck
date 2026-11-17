@@ -18,7 +18,7 @@ import { assertScopeWritable, isScopeWritable, subscribeScopeAvailability } from
 import { hydrateDietProfileStore, useDietProfileStore } from '../store/dietProfileStore';
 import { usePantryStore } from '../store/localPantryStore';
 import { useShoppingListStore } from '../store/shoppingListStore';
-import { getDeviceId } from '../sync/syncQueue';
+import { getDeviceId, syncVerifiedSession } from '../sync/syncQueue';
 import { MealPlanUnavailableError, mealPlanApi, type MealPlanApi, type MealPlanRecoveryConflict, type MealPlanRecoveryQuarantine, type MealPlanRecoveryResolution } from '../mealPlan/api';
 import {
   formatCivilDateLong,
@@ -140,7 +140,9 @@ const toView = async (
   if (scope.startsWith('house:') && scope !== 'guest') {
     try {
       assertCurrent?.();
-      const recovery = await mealPlanApi.readRecovery();
+      const csrfToken = useAuthStore.getState().csrfToken;
+      if (csrfToken === null) throw new Error('La sessione non è disponibile per verificare i conflitti.');
+      const recovery = await mealPlanApi.readRecovery(csrfToken);
       assertCurrent?.();
       recoveryConflicts.push(...recovery.conflicts);
       recoveryQuarantines.push(...recovery.quarantined);
@@ -401,18 +403,29 @@ export default function PlanPage() {
   const savedRecipes = useDinnerDiaryStore(state => state.recipes);
   const libraryReady = useDinnerDiaryStore(state => state.hasHydrated);
   const libraryError = useDinnerDiaryStore(state => state.error);
-  const [generatedRecipes, setGeneratedRecipes] = useState<{ scope: SyncScope; userId: string; recipes: GeneratedRecipe[] } | null>(null);
-  const libraryRecipes = useMemo(() => planRecipeLibrary(recipeScope, savedRecipes, generatedRecipes?.scope === recipeScope && generatedRecipes.userId === user?.id ? generatedRecipes.recipes : []), [recipeScope, savedRecipes, generatedRecipes, user?.id]);
+  const aiOwnerKey = JSON.stringify([recipeScope, user?.id, user?.emailVerifiedAt, csrfToken, expiresAt]);
+  const [generatedRecipes, setGeneratedRecipes] = useState<{ ownerKey: string; recipes: GeneratedRecipe[] } | null>(null);
+  const libraryRecipes = useMemo(() => planRecipeLibrary(recipeScope, savedRecipes, generatedRecipes?.ownerKey === aiOwnerKey ? generatedRecipes.recipes : []), [recipeScope, savedRecipes, generatedRecipes, aiOwnerKey]);
   const [wizard, setWizard] = useState<{ date: string; label: string; token: string } | null>(null);
   const wizardOpen = useRef(false);
+  const savingPlan = useRef(false);
+  const deferredRefresh = useRef(false);
   useLayoutEffect(() => { wizardOpen.current = wizard !== null; }, [wizard]);
   useEffect(() => { void hydrateDinnerDiaryStore(); }, [activeScope]);
   useEffect(() => {
     let cancelled = false;
-    if (user && user.emailVerifiedAt && csrfToken) void fetchAiRecipes().then(recipes => { if (!cancelled) setGeneratedRecipes({ scope: activeScope, userId: user.id, recipes }); }).catch(() => { if (!cancelled) setGeneratedRecipes(null); });
-    else setGeneratedRecipes(null);
+    const isCurrent = () => {
+      const auth = useAuthStore.getState();
+      const currentScope = isVerifiedUser(auth.user) && auth.csrfToken !== null ? getActiveDataScope() : 'guest';
+      return !cancelled && aiOwnerKey === JSON.stringify([currentScope, auth.user?.id, auth.user?.emailVerifiedAt, auth.csrfToken, auth.expiresAt]);
+    };
+    if (isVerifiedUser(user) && csrfToken !== null) {
+      void fetchAiRecipes().then(recipes => {
+        if (isCurrent()) setGeneratedRecipes({ ownerKey: aiOwnerKey, recipes });
+      }).catch(() => { if (isCurrent()) setGeneratedRecipes(null); });
+    } else setGeneratedRecipes(null);
     return () => { cancelled = true; };
-  }, [activeScope, user, csrfToken]);
+  }, [aiOwnerKey, user, csrfToken]);
   const [view, setView] = useState<PlanPageView>(() => initialView('guest'));
   const [viewContextKey, setViewContextKey] = useState('');
   const [busyDate, setBusyDate] = useState<string | null>(null);
@@ -422,9 +435,20 @@ export default function PlanPage() {
   const [timeZoneDraft, setTimeZoneDraft] = useState('');
   const [savingTimeZone, setSavingTimeZone] = useState(false);
   const generation = useRef(0);
+  useLayoutEffect(() => { savingPlan.current = busyDate !== null; }, [busyDate]);
 
   useEffect(() => {
-    const refresh = (): void => { if (!wizardOpen.current) setReload((current) => current + 1); };
+    if (wizard === null && busyDate === null && deferredRefresh.current) {
+      deferredRefresh.current = false;
+      setReload(current => current + 1);
+    }
+  }, [wizard, busyDate]);
+
+  useEffect(() => {
+    const refresh = (): void => {
+      if (wizardOpen.current || savingPlan.current) deferredRefresh.current = true;
+      else setReload(current => current + 1);
+    };
     window.addEventListener('focus', refresh);
     window.addEventListener('online', refresh);
     const poll = window.setInterval(() => {
@@ -609,22 +633,12 @@ export default function PlanPage() {
 
   const localCopy = currentView.mode === 'guest';
 
-  const shareStatus = currentView.mode === 'guest'
-    ? 'Salvato su questo dispositivo · non condiviso'
-    : currentView.mode === 'unsupported'
-      ? 'Condivisione non disponibile'
-      : currentView.mode === 'offline'
-        ? 'In attesa di conferma · non ancora condiviso'
-        : currentView.mode === 'provisional'
-          ? 'Fuso provvisorio · piano condiviso non modificabile'
-          : currentView.scope.startsWith('house:') ? 'Condiviso con la Casa' : 'Sincronizzato con il tuo account';
-
   useLayoutEffect(() => setTimeZoneDraft(currentView.timeZone ?? ''), [currentView.timeZone]);
 
   const chooseReplacement = async (date: string, recipe: PantryRecipe, created?: SavedRecipe): Promise<void> => {
     const fence = captureActionFence(view.scope);
     if (!fence.isCurrent() || busyDate !== null) throw new Error('Il piano è cambiato. Riapri la modifica.');
-    const generated = generatedRecipes?.scope === scope && generatedRecipes.userId === user?.id ? generatedRecipes.recipes.find(candidate => candidate.id === recipe.id) : undefined;
+    const generated = generatedRecipes?.ownerKey === aiOwnerKey ? generatedRecipes.recipes.find(candidate => candidate.id === recipe.id) : undefined;
     if (!created && generated) {
       created = generatedToSavedRecipe(generated, user?.id ?? null);
       recipe = toDiaryPantryRecipe({ scope, value: created });
@@ -666,6 +680,10 @@ export default function PlanPage() {
         publishView(optimistic);
         setWizard(null);
         try {
+          if (created && user !== null && fence.csrfToken !== null) {
+            await syncVerifiedSession({ userId: user.id, emailVerifiedAt: user.emailVerifiedAt, csrfToken: fence.csrfToken }, { isSessionCurrent: fence.isCurrent });
+            fence.assertCurrent();
+          }
           await syncPendingMealPlan(view.scope, fence.csrfToken ?? '', api, fence.assertCurrent);
           fence.assertCurrent();
           const confirmed = await toView(view.scope, view.dates, view.timeZone ?? getDeviceTimeZone() ?? 'UTC', 'shared', true, null, fence.assertCurrent);
@@ -868,11 +886,6 @@ export default function PlanPage() {
         </nav>
       </header>
 
-      <section aria-label="Stato della condivisione" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4">
-        <p role="status" className="inline-flex min-h-9 items-center rounded-full bg-[var(--ik-mist)] px-3 py-1 text-sm font-semibold text-[var(--ik-ink)]">{currentView.status === 'loading' ? 'Caricamento del piano…' : shareStatus}</p>
-        {currentView.timeZone !== null && <p className="text-sm font-medium text-[var(--ik-ink-muted)]">Fuso: {currentView.timeZone}</p>}
-      </section>
-
       {currentView.status === 'ready' && currentView.scope.startsWith('house:') && houseState?.membership?.role === 'admin' && currentView.canEdit && (
         <form className="mb-4 flex flex-wrap items-end gap-3 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4" onSubmit={(event) => { event.preventDefault(); void changeHouseTimeZone(); }}>
           <label className="grid gap-1 text-sm font-semibold text-[var(--ik-ink)]">
@@ -940,11 +953,11 @@ export default function PlanPage() {
                   <button
                     type="button"
                     className="inline-flex min-h-11 w-fit items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border-2 border-[var(--ik-basil)] bg-[var(--ik-surface)] px-3 py-1.5 text-sm font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)] disabled:opacity-60 sm:col-start-3 sm:row-start-2"
-                    aria-label={`Modifica ricetta per ${label}`}
+                    aria-label={`Cambia ricetta per ${label}`}
                     disabled={busyDate !== null || !scopeWritable}
                     onClick={() => setWizard({ date, label, token: contextToken })}
                   >
-                    {busyDate === date ? 'Salvataggio…' : <><Pencil size={15} aria-hidden="true" /> Modifica</>}
+                    {busyDate === date ? 'Salvataggio…' : <><Pencil size={15} aria-hidden="true" /> Cambia ricetta</>}
                   </button>
                 )}
               </li>

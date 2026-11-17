@@ -5,6 +5,12 @@ import { createMealPlanApi } from './api';
 const request = vi.fn<ApiRequest>();
 
 describe('meal plan API client', () => {
+  it('reads recovery using POST and the captured CSRF token', async () => {
+    request.mockResolvedValueOnce({ version: 2, conflicts: [], quarantined: [] });
+    const api = createMealPlanApi(request as unknown as ApiRequest);
+    await expect(api.readRecovery('csrf-token')).resolves.toMatchObject({ version: 2 });
+    expect(request).toHaveBeenCalledWith('/v1/meal-plan/recovery', { method: 'POST', csrfToken: 'csrf-token' });
+  });
   it('negotiates v2 before reading or writing the shared plan', async () => {
     request.mockResolvedValueOnce({ version: 2, syncReadVersion: 2 });
     const api = createMealPlanApi(request as unknown as ApiRequest);

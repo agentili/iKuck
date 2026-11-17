@@ -20,6 +20,26 @@ const authFor = (userId: string) => ({
 }) as unknown as AuthService;
 
 describe('meal plan household persistence', () => {
+  it('reads recovery through a browser-compatible POST while retaining origin and CSRF checks', async () => {
+    const authService = authFor('admin');
+    const repository = createMemorySyncRepository({ scopeResolver: async () => ({ kind: 'house', id: 'house-1' }) });
+    const app = createApp({
+      database: { ping: async () => undefined }, cache: { ping: async () => undefined },
+      auth: { service: authService, appOrigin: origin, secureCookies: false },
+      sync: { repository, authService, appOrigin: origin },
+    });
+    try {
+      const recovery = await app.inject({ method: 'POST', url: '/v1/meal-plan/recovery', headers });
+      expect(recovery.statusCode).toBe(200);
+      expect(recovery.json()).toEqual({ version: 2, conflicts: [], quarantined: [] });
+      for (const invalidHeaders of [{ ...headers, origin: 'https://other.example' }, { ...headers, 'x-csrf-token': 'invalid' }]) {
+        const rejected = await app.inject({ method: 'POST', url: '/v1/meal-plan/recovery', headers: invalidHeaders });
+        expect(rejected.statusCode).toBe(403);
+      }
+      const legacy = await app.inject({ method: 'GET', url: '/v1/meal-plan/recovery', headers });
+      expect(legacy.statusCode).toBe(200);
+    } finally { await app.close(); }
+  });
   it('makes a saved household choice visible to a member who joins later', async () => {
     const houseRepository = createMemoryHouseRepository([verifiedUser('admin'), verifiedUser('new-member')]);
     const syncRepository = createMemorySyncRepository({

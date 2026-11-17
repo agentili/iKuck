@@ -97,7 +97,7 @@ export interface MealPlanApi {
   getHouseTimeZone: () => Promise<HouseTimeZoneState>;
   initializeHouseTimeZone: (timeZone: string, csrfToken: string) => Promise<HouseTimeZoneState>;
   updateHouseTimeZone: (timeZone: string | null, expectedRevision: string | null, csrfToken: string) => Promise<HouseTimeZoneState>;
-  readRecovery: () => Promise<MealPlanRecoveryResponse>;
+  readRecovery: (csrfToken: string) => Promise<MealPlanRecoveryResponse>;
   resolveRecovery: (conflictId: string, resolution: MealPlanRecoveryResolution, csrfToken: string) => Promise<PlanResult>;
 }
 
@@ -182,7 +182,7 @@ export function createMealPlanApi(request: ApiRequest = apiRequest): MealPlanApi
     updateHouseTimeZone: async (timeZone, expectedRevision, csrfToken) => parseTimeZone(await request<unknown>('/v1/house/time-zone', {
       method: 'PUT', csrfToken, body: { timeZone, expectedRevision },
     })),
-    readRecovery: async () => parseRecovery(await request<unknown>('/v1/meal-plan/recovery')),
+    readRecovery: async (csrfToken) => parseRecovery(await request<unknown>('/v1/meal-plan/recovery', { method: 'POST', csrfToken })),
     resolveRecovery: async (conflictId, resolution, csrfToken) => {
       const response = await request<unknown>(`/v1/meal-plan/recovery/${conflictId}/resolve`, {
         method: 'POST', csrfToken, body: resolution,

@@ -229,16 +229,14 @@ describe('PlanPage pantry and recovery', () => {
       pantryIds: ['pasta'],
       present: 'pasta',
       missing: 'olive_oil',
-      status: 'Sincronizzato con il tuo account',
     },
     {
       scope: 'house:house-1' as const,
       pantryIds: ['olive_oil'],
       present: 'olive_oil',
       missing: 'pasta',
-      status: 'Condiviso con la Casa',
     },
-  ])('uses the active $scope pantry without mixing shopping-list state into stock', async ({ scope, pantryIds, present, missing, status }) => {
+  ])('uses the active $scope pantry without mixing shopping-list state into stock', async ({ scope, pantryIds, present, missing }) => {
     setPersonalDataScope('account:user-1');
     setActiveDataScope(scope);
     useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-token', expiresAt: '2026-12-01T00:00:00.000Z' });
@@ -255,7 +253,7 @@ describe('PlanPage pantry and recovery', () => {
     setupSharedPlan([scope]);
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
-    expect(await screen.findByText(status)).toBeVisible();
+    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
     const missingSection = await screen.findByRole('region', { name: 'Ingredienti mancanti per il piano' });
     expect(within(missingSection).getByText(missing, { exact: true })).toBeVisible();
     expect(within(missingSection).queryByText(present, { exact: true })).not.toBeInTheDocument();
@@ -307,7 +305,7 @@ describe('PlanPage pantry and recovery', () => {
     useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-token', expiresAt: '2026-12-01T00:00:00.000Z' });
     const { datesByScope, readRecovery } = setupSharedPlan(['house:house-1']);
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
-    expect(await screen.findByText('Condiviso con la Casa')).toBeVisible();
+    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
 
     vi.mocked(mealPlanApi.getCapabilities).mockRejectedValueOnce(new ApiClientError(0, 'network_error', 'offline'));
     readRecovery.mockRejectedValueOnce(new ApiClientError(0, 'network_error', 'offline'));
@@ -318,7 +316,7 @@ describe('PlanPage pantry and recovery', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/conflitti di migrazione/i);
     const planList = screen.getByRole('list', { name: 'Pasti da domani' });
     const firstRow = within(planList).getAllByRole('listitem')[0]!;
-    const replaceButton = within(firstRow).getByRole('button', { name: /modifica ricetta/i });
+    const replaceButton = within(firstRow).getByRole('button', { name: /cambia ricetta/i });
     expect(replaceButton).toBeEnabled();
 
     await choosePlanRecipe(replaceButton);
@@ -340,7 +338,7 @@ describe('PlanPage pantry and recovery', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Non è stato possibile verificare i conflitti di migrazione');
     expect(screen.getByText('Pasta tonno e pomodoro')).toBeVisible();
-    expect(screen.queryByRole('button', { name: /modifica ricetta/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /cambia ricetta/i })).not.toBeInTheDocument();
   });
 
   it('does not publish recovery data after an in-flight request belongs to an old session and house scope', async () => {

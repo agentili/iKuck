@@ -128,7 +128,7 @@ test('a losing account manual choice does not break the house Plan sync page aft
     await expect.poll(() => planSyncPages.length).toBeGreaterThan(0);
     expect(planSyncRequests.some((request) => request.syncScope === houseScope)).toBe(true);
     await expect(page.getByRole('alert').filter({ hasText: 'La pagina di sincronizzazione del piano non è valida.' })).toHaveCount(0);
-    await expect(page.getByText('Condiviso con la Casa', { exact: true })).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(7);
     const row = page.locator(`[data-date="${planDate}"]`);
     await expect(row).toContainText(winningRecipe.title);
 
@@ -188,9 +188,9 @@ test('account Plan outbox survives offline-to-House transition, retries a lost r
     const page = await member.newPage();
     await seedPlanPantry(page, accountScope);
     await page.goto('/plan');
-    await expect(page.getByText('Sincronizzato con il tuo account', { exact: true })).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(7);
     const row = page.locator(`[data-date="${date}"]`);
-    await expect(row.getByRole('button', { name: /modifica ricetta/i })).toBeVisible();
+    await expect(row.getByRole('button', { name: /cambia ricetta/i })).toBeVisible();
 
     await page.route('**/v1/sync', (route) => route.abort('failed'));
     await page.goto('/shopping-list');
@@ -201,10 +201,10 @@ test('account Plan outbox survives offline-to-House transition, retries a lost r
     await expect.poll(() => storedMutationCount(page, accountScope, 'shopping_list_item')).toBeGreaterThan(0);
 
     await page.goto('/plan');
-    await expect(page.getByText('In attesa di conferma · non ancora condiviso', { exact: true })).toBeVisible();
-    await expect(row.getByRole('button', { name: /modifica ricetta/i })).toBeVisible();
+    await expect(page.getByText(/Connessione assente: la copia salvata/)).toBeVisible();
+    await expect(row.getByRole('button', { name: /cambia ricetta/i })).toBeVisible();
     await member.setOffline(true);
-    await choosePlanAlternative(page, row.getByRole('button', { name: /modifica ricetta/i }));
+    await choosePlanAlternative(page, row.getByRole('button', { name: /cambia ricetta/i }));
     await expect(row.getByText('In attesa di conferma · non condivisa', { exact: true })).toBeVisible();
     const pending = await storedPlanOutbox(page, accountScope);
     expect(pending).toHaveLength(1);
@@ -240,7 +240,7 @@ test('account Plan outbox survives offline-to-House transition, retries a lost r
     await page.unroute('**/v1/sync');
     await member.setOffline(false);
     await page.goto('/plan');
-    await expect(page.getByText('Condiviso con la Casa', { exact: true })).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(7);
     await expect.poll(() => importRequests.length).toBe(1);
     await expect.poll(async () => storedPlanOutbox(page, accountScope)).toHaveLength(1);
     await expect.poll(() => queueImportRequests.length).toBeGreaterThan(0);
@@ -248,7 +248,7 @@ test('account Plan outbox survives offline-to-House transition, retries a lost r
     explicitReloadRetry = true;
     await page.setExtraHTTPHeaders({ 'x-t06-retry': 'yes' });
     await page.reload();
-    await expect(page.getByText('Condiviso con la Casa', { exact: true })).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(7);
     await expect.poll(() => importRequests.length).toBeGreaterThan(1);
     expect(importRequests.every((body) => JSON.stringify(body) === JSON.stringify(importRequests[0]))).toBe(true);
     const accountImport = importRequests[0] as { version: number; scope: string; items: Array<{ source: string; sourceId: string; localRevision: string; command: PlanCommand }> };
@@ -333,7 +333,7 @@ test('a new member bootstraps 201 historical dates, stays isolated from outsider
       if (body.mealPlanReadVersion === 2) cursors.push(body.cursor);
     });
     await page.goto('/plan');
-    await expect(page.getByText('Condiviso con la Casa', { exact: true })).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(7);
     await expect.poll(async () => Object.keys((await storedPlan(page, scope))?.states ?? {}).filter((date) => date.startsWith('2020-')).length).toBe(201);
     expect(cursors[0]).toBe(0);
     expect(cursors.length).toBeGreaterThanOrEqual(2);
@@ -341,21 +341,21 @@ test('a new member bootstraps 201 historical dates, stays isolated from outsider
     const geometry = await page.evaluate(() => ({ width: innerWidth, height: innerHeight,
       scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));
     expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth);
-    expect((await page.getByRole('button', { name: /modifica ricetta/i }).first().boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    expect((await page.getByRole('button', { name: /cambia ricetta/i }).first().boundingBox())?.height).toBeGreaterThanOrEqual(44);
     await page.screenshot({ path: '../.hermes/plans/t06-bootstrap-plan-mobile.png', fullPage: true });
 
     const rejected = await post(outsider, outsiderSession, '/v1/meal-plan/read', { version: 2, scope, dates: [history[0]] });
     expect(rejected.status()).toBe(403);
     const outsiderPage = await outsider.newPage();
     await outsiderPage.goto('/plan');
-    await expect(outsiderPage.getByText('Sincronizzato con il tuo account', { exact: true })).toBeVisible();
+    await expect(outsiderPage.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem')).toHaveCount(7);
     const outsiderSnapshot = await storedPlan(outsiderPage, `account:${outsiderSession.user.id}`);
     expect(Object.keys(outsiderSnapshot?.states ?? {}).some((date) => date.startsWith('2020-'))).toBe(false);
 
     const firstRow = page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem').first();
     const date = (await firstRow.getAttribute('data-date'))!;
     await member.setOffline(true);
-    await choosePlanAlternative(page, firstRow.getByRole('button', { name: /modifica ricetta/i }));
+    await choosePlanAlternative(page, firstRow.getByRole('button', { name: /cambia ricetta/i }));
     await expect(firstRow.getByText('In attesa di conferma · non condivisa', { exact: true })).toBeVisible();
     await expect.poll(async () => (await storedPlan(page, scope))?.overlays[date]?.kind).toBe('manual');
     const offlineChoice = (await storedPlan(page, scope))!.overlays[date]!;
@@ -376,8 +376,8 @@ test('guest import requires confirmation and retries the same operations after a
     await seedPlanPantry(page);
     await page.goto('/plan');
     const first = page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem').first();
-    await expect(first.getByRole('button', { name: /modifica ricetta/i })).toBeVisible();
-    await choosePlanAlternative(page, first.getByRole('button', { name: /modifica ricetta/i }));
+    await expect(first.getByRole('button', { name: /cambia ricetta/i })).toBeVisible();
+    await choosePlanAlternative(page, first.getByRole('button', { name: /cambia ricetta/i }));
     const date = (await first.getAttribute('data-date'))!;
     await expect.poll(async () => (await storedPlan(page, 'guest'))?.states[date]?.kind).toBe('manual');
     const source = (await storedPlan(page, 'guest'))!.states[date]!;

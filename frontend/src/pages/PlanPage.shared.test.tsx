@@ -17,6 +17,8 @@ import { ApiClientError } from '../api/apiClient';
 import { deleteLocalDatabase, readQueueValues } from '../storage/indexedDb';
 import { getNextSevenCivilDates } from '../mealPlan/dates';
 import type { MealPlanApi } from '../mealPlan/api';
+import * as aiRecipeApi from '../ai/aiRecipeApi';
+import { usePantryStore } from '../store/localPantryStore';
 
 const user = { id: 'user-1', email: 'user@example.test', emailVerifiedAt: '2026-10-01T00:00:00.000Z' };
 
@@ -77,12 +79,74 @@ const setupExistingSharedPlan = () => {
 };
 
 describe('PlanPage shared mode', () => {
+  it('defers refresh after the dialog closes until the pending confirmation finishes', async () => {
+    const { statesByScope } = setupExistingSharedPlan();
+    const started = deferred<PlanCommand>();
+    const receipt = deferred<Awaited<ReturnType<MealPlanApi['sendCommand']>>>();
+    vi.spyOn(mealPlanApi, 'sendCommand').mockImplementation(command => {
+      started.resolve(command);
+      return receipt.promise;
+    });
+    render(<MemoryRouter><PlanPage /></MemoryRouter>);
+    await choosePlanRecipe((await screen.findAllByRole('button', { name: /cambia ricetta/i }))[0]);
+    const command = await started.promise;
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    const capabilities = vi.mocked(mealPlanApi.getCapabilities);
+    const callsBefore = capabilities.mock.calls.length;
+    await act(async () => { window.dispatchEvent(new Event('online')); });
+    expect(capabilities).toHaveBeenCalledTimes(callsBefore);
+    if (command.action !== 'manual_set') throw new Error('Expected a manual selection');
+    const previous = statesByScope.get('house:house-1')!.get(command.date)!;
+    const confirmed: PlanState = { ...previous, recipeId: command.recipeId, kind: 'manual', revision: crypto.randomUUID(), serverSequence: 50 };
+    statesByScope.get('house:house-1')!.set(command.date, confirmed);
+    await act(async () => receipt.resolve({ version: 2, operationId: command.operationId, outcome: 'applied', current: confirmed }));
+    await waitFor(async () => expect(await readMealPlanOutbox(['house:house-1'])).toEqual([]));
+    await waitFor(() => expect(capabilities.mock.calls.length).toBeGreaterThan(callsBefore));
+  });
+  it('invalidates the open wizard and its AI collection when the session token changes', async () => {
+    setupExistingSharedPlan();
+    const oldRecipe = {
+      id: 'old-session-rice', source: 'ai' as const, title: 'Riso della sessione precedente', description: 'Ricetta privata.',
+      ingredients: [{ name: 'Riso', amount: '100 g' }], steps: ['Cuoci.'], diets: ['omnivore' as const], allergens: [],
+      createdAt: '2026-11-12T12:00:00Z', updatedAt: '2026-11-12T12:00:00Z',
+    };
+    const pending = deferred<typeof oldRecipe[]>();
+    vi.spyOn(aiRecipeApi, 'fetchAiRecipes').mockResolvedValueOnce([oldRecipe]).mockImplementation(() => pending.promise);
+    const userInput = userEvent.setup();
+    render(<MemoryRouter><PlanPage /></MemoryRouter>);
+    const buttons = await screen.findAllByRole('button', { name: /cambia ricetta/i });
+    act(() => usePantryStore.setState({ stapleIds: ['rice'], hasHydrated: true }));
+    await userInput.click(buttons[0]);
+    await userInput.click(screen.getByRole('button', { name: /scegli dalla dispensa/i }));
+    expect(await screen.findByRole('button', { name: /Riso della sessione precedente/i })).toBeVisible();
+    act(() => useAuthStore.setState({ csrfToken: 'renewed-csrf-token' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await userInput.click((await screen.findAllByRole('button', { name: /cambia ricetta/i }))[0]);
+    await userInput.click(screen.getByRole('button', { name: /scegli dalla dispensa/i }));
+    expect(screen.queryByRole('button', { name: /Riso della sessione precedente/i })).not.toBeInTheDocument();
+    await act(async () => pending.resolve([]));
+  });
+  it('replays a refresh deferred while the recipe wizard was open', async () => {
+    setupExistingSharedPlan();
+    const capabilities = vi.mocked(mealPlanApi.getCapabilities);
+    const userInput = userEvent.setup();
+    render(<MemoryRouter><PlanPage /></MemoryRouter>);
+    const buttons = await screen.findAllByRole('button', { name: /cambia ricetta/i });
+    await userInput.click(buttons[0]);
+    const wizard = await screen.findByRole('dialog');
+    const callsBefore = capabilities.mock.calls.length;
+    act(() => window.dispatchEvent(new Event('online')));
+    expect(capabilities).toHaveBeenCalledTimes(callsBefore);
+    await userInput.click(within(wizard).getByRole('button', { name: 'Annulla' }));
+    await waitFor(() => expect(capabilities).toHaveBeenCalledTimes(callsBefore + 1));
+    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
+  });
   it('loads the local guest plan when the session has no user identity', async () => {
     useAuthStore.setState({ user: null, csrfToken: null, expiresAt: null });
     setActiveDataScope('guest');
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
-    expect(await screen.findByText(/salvato su questo dispositivo/i)).toBeVisible();
+    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
     expect(await screen.findAllByRole('listitem')).toHaveLength(7);
     expect(screen.queryByRole('link', { name: 'Apri la lista della spesa' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Torna al Chef' })).not.toBeInTheDocument();
@@ -93,7 +157,7 @@ describe('PlanPage shared mode', () => {
     setActiveDataScope('guest');
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
-    expect(await screen.findByText(/salvato su questo dispositivo/i)).toBeVisible();
+    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
     const firstRow = (await screen.findAllByRole('listitem'))[0]!;
     const before = await readMealPlanSnapshot('guest');
     const transactionRead = deferred<void>();
@@ -112,7 +176,7 @@ describe('PlanPage shared mode', () => {
       return request;
     });
 
-    await choosePlanRecipe(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
+    await choosePlanRecipe(within(firstRow).getByRole('button', { name: /cambia ricetta/i }));
     await transactionRead.promise;
     get.mockRestore();
 
@@ -133,7 +197,7 @@ describe('PlanPage shared mode', () => {
     await waitFor(() => expect(screen.getByText(/non supporta ancora il piano condiviso/i)).toBeVisible());
     expect(read).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
-    expect(screen.queryAllByRole('button', { name: /modifica ricetta/i })).toHaveLength(0);
+    expect(screen.queryAllByRole('button', { name: /cambia ricetta/i })).toHaveLength(0);
     await expect(readMealPlanOutbox(['house:house-1'])).resolves.toEqual([]);
   });
 
@@ -145,10 +209,10 @@ describe('PlanPage shared mode', () => {
     const send = vi.spyOn(mealPlanApi, 'sendCommand');
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
-    expect(await screen.findByText(/fuso provvisorio/i)).toBeVisible();
+    expect(await screen.findByText(/bootstrap storico del piano non è completo/i)).toBeVisible();
     expect(screen.getAllByRole('listitem')).toHaveLength(7);
     expect(screen.getByText(/non vengono letti o modificati/i)).toBeVisible();
-    expect(screen.queryAllByRole('button', { name: /modifica ricetta/i })).toHaveLength(0);
+    expect(screen.queryAllByRole('button', { name: /cambia ricetta/i })).toHaveLength(0);
     expect(read).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
   });
@@ -186,8 +250,11 @@ describe('PlanPage shared mode', () => {
     });
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
-    await waitFor(() => expect(screen.getByText('Condiviso con la Casa')).toBeVisible());
+    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
     expect(screen.getAllByRole('listitem')).toHaveLength(7);
+    expect(screen.queryByRole('region', { name: 'Stato della condivisione' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Condiviso con la Casa')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Fuso:/)).not.toBeInTheDocument();
     expect(send).toHaveBeenCalledTimes(7);
     expect(send.mock.calls.every(([command]) => command.action === 'auto_create' && command.baseRevision === null)).toBe(true);
     expect(read.mock.calls[0]?.[0]).toBe('house:house-1');
@@ -227,10 +294,10 @@ describe('PlanPage shared mode', () => {
     });
     const firstDevice = render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
-    await waitFor(() => expect(screen.getByText('Condiviso con la Casa')).toBeVisible());
+    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
     const firstRow = screen.getAllByRole('listitem')[0];
     const originalTitle = RECIPES.find((recipe) => recipe.id === current.get(firstRow.getAttribute('data-date')!)?.recipeId)!.title;
-    await choosePlanRecipe(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
+    await choosePlanRecipe(within(firstRow).getByRole('button', { name: /cambia ricetta/i }));
     await waitFor(() => {
       const state = current.get(firstRow.getAttribute('data-date')!);
       expect(state?.kind).toBe('manual');
@@ -260,7 +327,7 @@ describe('PlanPage shared mode', () => {
     const deviceId = vi.spyOn(syncQueue, 'getDeviceId').mockResolvedValue('device-test');
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
     const firstRow = (await screen.findAllByRole('listitem'))[0]!;
-    const changeButton = within(firstRow).getByRole('button', { name: /modifica ricetta/i });
+    const changeButton = within(firstRow).getByRole('button', { name: /cambia ricetta/i });
     deviceId.mockClear();
 
     act(() => {
@@ -284,7 +351,7 @@ describe('PlanPage shared mode', () => {
 
     const firstRow = (await screen.findAllByRole('listitem'))[0]!;
     getDeviceId.mockImplementationOnce(() => deviceId.promise);
-    await choosePlanRecipe(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
+    await choosePlanRecipe(within(firstRow).getByRole('button', { name: /cambia ricetta/i }));
     await waitFor(() => expect(getDeviceId).toHaveBeenCalledTimes(2));
 
     setTimeZone({ timeZone: 'America/New_York', revision: '123e4567-e89b-42d3-a456-426614174001' });
@@ -295,7 +362,8 @@ describe('PlanPage shared mode', () => {
       });
       setActiveDataScope('house:house-2');
     });
-    expect(await screen.findByText(/Fuso: America\/New_York/)).toBeVisible();
+    await waitFor(async () => expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York'));
+    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
     deviceId.resolve('action-device');
 
     await waitFor(async () => {
@@ -316,10 +384,10 @@ describe('PlanPage shared mode', () => {
     });
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
-    const oldZone = await screen.findByText(/Fuso: Europe\/Rome/);
-    expect(oldZone).toBeVisible();
+    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
+    expect((await readMealPlanSnapshot('house:house-1')).timeZone?.timeZone).toBe('Europe/Rome');
     const firstRow = screen.getAllByRole('listitem')[0]!;
-    await choosePlanRecipe(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
+    await choosePlanRecipe(within(firstRow).getByRole('button', { name: /cambia ricetta/i }));
     const command = await sendStarted.promise;
     await waitFor(async () => expect(await readMealPlanOutbox(['house:house-1'])).toHaveLength(1));
 
@@ -331,7 +399,8 @@ describe('PlanPage shared mode', () => {
       });
       setActiveDataScope('house:house-2');
     });
-    expect(await screen.findByText(/Fuso: America\/New_York/)).toBeVisible();
+    await waitFor(async () => expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York'));
+    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
 
     const previous = statesByScope.get('house:house-1')!.get(command.date)!;
     if (command.action !== 'manual_set') throw new Error('Expected a manual replacement command');
@@ -344,7 +413,8 @@ describe('PlanPage shared mode', () => {
 
     await waitFor(async () => {
       expect(await readMealPlanOutbox(['house:house-1'])).toHaveLength(1);
-      expect(screen.getByText(/Fuso: America\/New_York/)).toBeVisible();
+      expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York');
+      expect(screen.getByRole('list', { name: 'Pasti da domani' })).toBeVisible();
     });
     expect(await readMealPlanOutbox(['house:house-2'])).toEqual([]);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -360,8 +430,8 @@ describe('PlanPage shared mode', () => {
     });
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
-    expect(await screen.findByText(/Fuso: Europe\/Rome/)).toBeVisible();
-    await choosePlanRecipe(within(screen.getAllByRole('listitem')[0]!).getByRole('button', { name: /modifica ricetta/i }));
+    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
+    await choosePlanRecipe(within(screen.getAllByRole('listitem')[0]!).getByRole('button', { name: /cambia ricetta/i }));
     const command = await sendStarted.promise;
     await waitFor(async () => expect(await readMealPlanOutbox(['house:house-1'])).toHaveLength(1));
 
@@ -414,7 +484,7 @@ describe('PlanPage shared mode', () => {
     });
 
     try {
-      await choosePlanRecipe(within(firstRow).getByRole('button', { name: /modifica ricetta/i }));
+      await choosePlanRecipe(within(firstRow).getByRole('button', { name: /cambia ricetta/i }));
       await queueWriteReached.promise;
       put.mockRestore();
 
@@ -476,7 +546,8 @@ describe('PlanPage shared mode', () => {
       });
       setActiveDataScope('house:house-2');
     });
-    expect(await screen.findByText(/Fuso: America\/New_York/)).toBeVisible();
+    await waitFor(async () => expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York'));
+    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
 
     lateResponse.resolve({
       version: 2,
@@ -488,7 +559,8 @@ describe('PlanPage shared mode', () => {
     await waitFor(async () => {
       expect(await readMealPlanOutbox(['house:house-1'])).toHaveLength(1);
       expect((await readMealPlanSnapshot('house:house-1')).conflicts).toContainEqual(expect.objectContaining({ id: conflictCommand.operationId }));
-      expect(screen.getByText(/Fuso: America\/New_York/)).toBeVisible();
+      expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York');
+      expect(screen.getByRole('list', { name: 'Pasti da domani' })).toBeVisible();
     });
   });
 
@@ -521,13 +593,15 @@ describe('PlanPage shared mode', () => {
       });
       setActiveDataScope('house:house-2');
     });
-    expect(await screen.findByText(/Fuso: America\/New_York/)).toBeVisible();
+    await waitFor(async () => expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York'));
+    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
     pendingRead.resolve({ timeZone: 'Europe/Rome', revision: '123e4567-e89b-42d3-a456-426614174000' });
 
     await waitFor(async () => {
       expect(update).not.toHaveBeenCalled();
       expect((await readMealPlanSnapshot('house:house-1')).timeZone?.timeZone).toBe('Europe/Rome');
-      expect(screen.getByText(/Fuso: America\/New_York/)).toBeVisible();
+      expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York');
+      expect(screen.getByRole('list', { name: 'Pasti da domani' })).toBeVisible();
     });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
@@ -581,7 +655,8 @@ describe('PlanPage shared mode', () => {
     await transactionRead.promise;
     get.mockRestore();
 
-    expect(await screen.findByText(/Fuso: America\/New_York/)).toBeVisible();
+    await waitFor(async () => expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York'));
+    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
     await waitFor(async () => {
       expect(update).toHaveBeenCalledTimes(1);
       expect((await readMealPlanSnapshot('house:house-1')).timeZone).toEqual({
@@ -626,6 +701,7 @@ describe('PlanPage shared mode', () => {
     await userInput.click(screen.getByRole('button', { name: 'Aggiorna fuso' }));
 
     await waitFor(() => expect(update).toHaveBeenCalledWith('America/New_York', '123e4567-e89b-42d3-a456-426614174000', 'csrf-token'));
-    await waitFor(() => expect(screen.getByText(/America\/New_York/)).toBeVisible());
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Fuso orario della Casa' })).toHaveValue('America/New_York'));
+    expect((await readMealPlanSnapshot('house:house-1')).timeZone?.timeZone).toBe('America/New_York');
   });
 });

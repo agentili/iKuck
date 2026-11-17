@@ -1,5 +1,32 @@
 import { expect, test } from '@playwright/test';
 import { installOfflineBackend, assertOfflineBackendClean } from './helpers/backendMode';
+import { seedPlanPantry } from './helpers/planWizard';
+
+test('annulla da tastiera senza cambiare il piano e restituisce il focus al pulsante', async ({ page }) => {
+  await installOfflineBackend(page);
+  await seedPlanPantry(page);
+  await page.goto('/plan');
+  const row = page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem').first();
+  const title = row.locator('div p').first();
+  const original = await title.textContent();
+  const action = row.getByRole('button', { name: /cambia ricetta/i });
+  await action.click();
+  const wizard = page.getByRole('dialog', { name: 'Definisci la ricetta del giorno' });
+  await expect(wizard).toBeVisible();
+  await wizard.getByRole('button', { name: /scegli dalla dispensa/i }).click();
+  await wizard.getByRole('region', { name: 'Alternative dalla dispensa' }).getByRole('button').first().click();
+  await expect(title).toHaveText(original!);
+  await expect(wizard.getByRole('button', { name: 'Usa per questo giorno' })).toBeVisible();
+  await wizard.getByRole('button', { name: 'Indietro' }).click();
+  await expect(wizard.getByRole('region', { name: 'Alternative dalla dispensa' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(wizard).toHaveCount(0);
+  await expect(action).toBeFocused();
+  await expect(title).toHaveText(original!);
+  await page.reload();
+  await expect(title).toHaveText(original!);
+  assertOfflineBackendClean(page);
+});
 
 test('crea con AI da descrizione e porzioni e conserva la ricetta nel ricettario e nel piano', async ({ page }, testInfo) => {
   const states = new Map<string, Record<string, unknown>>();
@@ -26,7 +53,7 @@ test('crea con AI da descrizione e porzioni e conserva la ricetta nel ricettario
   });
   await page.goto('/plan');
   const row = page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem').first();
-  await row.getByRole('button', { name: /modifica ricetta/i }).click();
+  await row.getByRole('button', { name: /cambia ricetta/i }).click();
   const wizard = page.getByRole('dialog');
   await wizard.getByRole('button', { name: /crea con ai/i }).click();
   await wizard.getByLabel('Descrizione del piatto', { exact: true }).fill('Un risotto cremoso al limone');
@@ -41,7 +68,7 @@ test('crea con AI da descrizione e porzioni e conserva la ricetta nel ricettario
   await expect(wizard.getByText('Ingredienti e dosi')).toHaveCount(0);
   await expect(row.getByText(generated.title, { exact: true })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-  await page.screenshot({ path: `/tmp/ikuck-plan-wizard-${testInfo.project.name}.png` });
+  await page.screenshot({ path: testInfo.outputPath('plan-recipe-wizard.png') });
   await wizard.getByRole('button', { name: 'Salva nel ricettario e usa' }).click();
   await expect(wizard).not.toBeVisible();
   await expect(row.getByText(generated.title)).toBeVisible();
