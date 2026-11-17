@@ -5,7 +5,7 @@ import { createApp } from '../app.js';
 import type { AuthService } from '../auth/service.js';
 import { hashOpaqueToken } from '../auth/tokens.js';
 import type { GenerationRateLimiter } from '../ai/rateLimit.js';
-import { createMemorySyncRepository } from '../sync/repository.js';
+import { createMemorySyncRepository, DEFAULT_AI_CONSENT_REVISION } from '../sync/repository.js';
 import type { DinnerReconstructionProvider } from '../providers/types.js';
 import type { RecipeGenerationProvider } from '../providers/types.js';
 import { ProviderTimeoutError } from '../providers/types.js';
@@ -177,6 +177,129 @@ describe('AI recipe routes', () => {
     expect(oldClient.json()).toMatchObject({ code: 'ai_consent_revision_required' });
     await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toBeNull();
     await app.close();
+  });
+
+  it('accepts the exact image-only consent request without creating Home, Dinner or chat grants', async () => {
+    vi.stubEnv('RECIPE_IMAGES_ENABLED', 'true');
+    vi.stubEnv('RECIPE_IMAGE_PROVIDER', 'openai');
+    vi.stubEnv('RECIPE_IMAGE_MODEL', 'test-image');
+    vi.stubEnv('RECIPE_IMAGE_VISION_MODEL', 'test-vision');
+    vi.stubEnv('PEXELS_API_KEY', 'test-search');
+    vi.stubEnv('OPENAI_API_KEY', 'test-image-provider');
+    const { app, repository, provider } = createAiApp({ recipeProvider: 'gemini' });
+
+    try {
+      const current = await app.inject({ method: 'GET', url: '/v1/ai-recipes/consent', headers });
+      const imageOnlyPayload = {
+        enabled: true,
+        imagePolicyVersion: 'recipe-images-v1',
+        imageProvider: current.json().selectedImageProvider as 'openai',
+        expectedRevision: current.json().consent.updatedAt as string,
+      };
+      const granted = await app.inject({ method: 'PUT', url: '/v1/ai-recipes/consent', headers, payload: imageOnlyPayload });
+
+      expect(current.json().selectedProvider).toBe('gemini');
+      expect(current.json().selectedImageProvider).toBe('openai');
+      expect(granted.statusCode).toBe(200);
+      expect(granted.json().consent).toMatchObject({
+        enabled: true,
+        imagePolicyVersion: 'recipe-images-v1',
+        imageProvider: 'openai',
+      });
+      expect(granted.json().consent).not.toHaveProperty('homeProvider');
+      expect(granted.json().consent).not.toHaveProperty('dinnerProvider');
+      expect(granted.json().consent).not.toHaveProperty('chatProvider');
+      await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toMatchObject({
+        payload: { enabled: true, imagePolicyVersion: 'recipe-images-v1', imageProvider: 'openai' },
+      });
+      await expect(repository.withAiConsentDispatch('user-1', { kind: 'home', provider: 'gemini' }, async () => 'dispatched'))
+        .rejects.toMatchObject({ code: 'ai_consent_required' });
+      const homeGeneration = await generate(app);
+      expect(homeGeneration.statusCode).toBe(403);
+      expect(homeGeneration.json()).toMatchObject({ code: 'ai_consent_required' });
+      expect(provider.generate).not.toHaveBeenCalled();
+
+      const missingRevision = await app.inject({
+        method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+        payload: { enabled: true, imagePolicyVersion: 'recipe-images-v1', imageProvider: 'openai' },
+      });
+      expect(missingRevision.statusCode).toBe(428);
+      expect(missingRevision.json()).toMatchObject({ code: 'ai_consent_revision_required' });
+
+      const staleRevision = await app.inject({
+        method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+        payload: { ...imageOnlyPayload, expectedRevision: current.json().consent.updatedAt },
+      });
+      expect(staleRevision.statusCode).toBe(409);
+      expect(staleRevision.json()).toMatchObject({ code: 'ai_consent_revision_conflict' });
+
+      const mismatchedProvider = await app.inject({
+        method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+        payload: { ...imageOnlyPayload, imageProvider: 'gemini', expectedRevision: granted.json().consent.updatedAt },
+      });
+      expect(mismatchedProvider.statusCode).toBe(409);
+      expect(mismatchedProvider.json()).toMatchObject({ code: 'ai_provider_mismatch' });
+
+      const revoked = await app.inject({ method: 'PUT', url: '/v1/ai-recipes/consent', headers, payload: { enabled: false } });
+      expect(revoked.statusCode).toBe(200);
+      expect(revoked.json().consent).toMatchObject({ enabled: false });
+      expect(revoked.json().consent).not.toHaveProperty('imagePolicyVersion');
+      expect(revoked.json().consent).not.toHaveProperty('imageProvider');
+    } finally {
+      await app.close();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('rejects image consent while the server image service is disabled', async () => {
+    vi.stubEnv('RECIPE_IMAGES_ENABLED', 'false');
+    const { app, repository } = createAiApp();
+
+    try {
+      const current = await app.inject({ method: 'GET', url: '/v1/ai-recipes/consent', headers });
+      const response = await app.inject({
+        method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+        payload: {
+          enabled: true,
+          imagePolicyVersion: 'recipe-images-v1',
+          imageProvider: 'openai',
+          expectedRevision: current.json().consent.updatedAt,
+        },
+      });
+
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toMatchObject({ code: 'provider_unavailable' });
+      await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toBeNull();
+    } finally {
+      await app.close();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('rejects image consent when the enabled image service is incompletely configured', async () => {
+    vi.stubEnv('RECIPE_IMAGES_ENABLED', 'true');
+    vi.stubEnv('RECIPE_IMAGE_PROVIDER', 'openai');
+    vi.stubEnv('RECIPE_IMAGE_MODEL', '');
+    const { app, repository } = createAiApp();
+
+    try {
+      const response = await app.inject({
+        method: 'PUT', url: '/v1/ai-recipes/consent', headers,
+        payload: {
+          enabled: true,
+          imagePolicyVersion: 'recipe-images-v1',
+          imageProvider: 'openai',
+          expectedRevision: DEFAULT_AI_CONSENT_REVISION,
+        },
+      });
+
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toMatchObject({ code: 'provider_unavailable' });
+      await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toBeNull();
+    } finally {
+      await app.close();
+      vi.unstubAllEnvs();
+    }
   });
 
   it('rejects Home consent for a provider other than the server-selected recipient', async () => {

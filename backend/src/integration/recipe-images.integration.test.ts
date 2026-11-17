@@ -4,7 +4,7 @@ import type { AuthService } from '../auth/service.js';
 import { randomUUID } from 'node:crypto';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { sql } from 'drizzle-orm';
-import { beforeAll, afterAll, describe, it, expect, vi } from 'vitest';
+import { beforeAll, beforeEach, afterAll, describe, it, expect, vi } from 'vitest';
 import { createDatabase } from '../db/client.js';
 import { runImageTick as tick } from '../recipeImages/repository.js';
 import { ImageProviderError } from '../recipeImages/providers.js';
@@ -24,14 +24,27 @@ const url = process.env.INTEGRATION_DATABASE_URL;
     await migrate(db, { migrationsFolder: 'src/db/migrations' });
     await db.execute(sql`INSERT INTO users(id,email) VALUES(${userId},${`${userId}@images.test`})`);
   });
+  beforeEach(async () => {
+    await db.execute(sql`DELETE FROM sync_items WHERE user_id=${userId}::uuid`);
+    await db.execute(sql`DELETE FROM recipe_image_jobs WHERE user_id=${userId}::uuid`);
+    await db.execute(sql`DELETE FROM recipe_image_quota WHERE principal=${userId}`);
+    provider.search.mockReset().mockResolvedValue(null);
+    provider.generate.mockReset().mockResolvedValue(result);
+  });
   afterAll(async () => { await db.execute(sql`DELETE FROM sync_items WHERE scope_id=${userId}`); await db.execute(sql`DELETE FROM users WHERE id=${userId}`); await db.execute(sql`DELETE FROM recipe_image_quota WHERE principal=${userId}`); await database.close(); });
   const save = async (entityType: string, id: string, payload: unknown) => db.execute(sql`INSERT INTO sync_items(user_id,scope_type,scope_id,entity_type,entity_id,device_id,payload,client_updated_at,mutation_id) VALUES(${userId},'user',${userId},${entityType},${id},'test',${JSON.stringify(payload)}::jsonb,now(),${randomUUID()}) ON CONFLICT(scope_type,scope_id,entity_type,entity_id) DO UPDATE SET payload=excluded.payload`);
+  const grantImageConsent = () => save('ai_consent', 'profile', {
+    enabled: true,
+    homeProvider: 'openai',
+    imagePolicyVersion: 'recipe-images-v1',
+    imageProvider: 'openai',
+  });
   it('queues atomically, waits for consent, resumes and persists binary without changing the recipe', async () => {
     await save('generated_recipe', 'image-recipe', { title: 'Pasta', ingredients: [{ name: 'Pasta' }] });
     await runImageTick();
     let rows = await db.execute(sql`SELECT state FROM recipe_image_jobs WHERE user_id=${userId}`);
     expect(rows[0].state).toBe('consent_required'); expect(provider.search).not.toHaveBeenCalled();
-    await save('ai_consent','profile',{ enabled: true, homeProvider: 'openai', imagePolicyVersion: 'recipe-images-v1' });
+    await save('ai_consent','profile',{ enabled: true, homeProvider: 'openai', imagePolicyVersion: 'recipe-images-v1', imageProvider: 'openai' });
     await Promise.all([runImageTick(),runImageTick()]);
     expect(provider.generate).toHaveBeenCalledTimes(1);
     rows = await db.execute(sql`SELECT a.content,j.state FROM recipe_image_assets a JOIN recipe_image_jobs j ON j.id=a.job_id WHERE j.user_id=${userId}`);
@@ -39,8 +52,29 @@ const url = process.env.INTEGRATION_DATABASE_URL;
     await db.execute(sql`UPDATE sync_items SET deleted=true,payload=NULL WHERE scope_id=${userId} AND entity_id='image-recipe'`);
     expect((await db.execute(sql`SELECT * FROM recipe_image_assets a JOIN recipe_image_jobs j ON j.id=a.job_id WHERE j.user_id=${userId}`)).length).toBe(0);
   });
+  it('does not reuse Home consent as image permission when imageProvider is absent', async () => {
+    const searchesBefore = provider.search.mock.calls.length;
+    const generationsBefore = provider.generate.mock.calls.length;
+    await save('generated_recipe', 'home-only-image-job', { title: 'Home-only image', ingredients: [{ name: 'Riso' }] });
+    await save('ai_consent', 'profile', {
+      enabled: true,
+      homeProvider: 'openai',
+      imagePolicyVersion: 'recipe-images-v1',
+    });
+    const [job] = await db.execute(sql`SELECT id FROM recipe_image_jobs
+      WHERE user_id=${userId}::uuid AND recipe->>'title'='Home-only image'`);
+
+    await tick(db, config, provider, String(job.id));
+
+    const [stored] = await db.execute(sql`SELECT state FROM recipe_image_jobs WHERE id=${String(job.id)}::uuid`);
+    expect(stored.state).toBe('consent_required');
+    expect(provider.search).toHaveBeenCalledTimes(searchesBefore);
+    expect(provider.generate).toHaveBeenCalledTimes(generationsBefore);
+  });
+
   it('does not automatically repeat an ambiguous paid generation', async () => {
     provider.generate.mockRejectedValueOnce(new ImageProviderError(true));
+    await grantImageConsent();
     await save('saved_recipe', 'ambiguous', { title: 'Rice', ingredients: [{ name: 'Rice' }] });
     await runImageTick();
     const rows = await db.execute(sql`SELECT state,dispatched_at FROM recipe_image_jobs WHERE user_id=${userId}`);
@@ -49,6 +83,7 @@ const url = process.env.INTEGRATION_DATABASE_URL;
     await runImageTick(); expect(provider.generate).toHaveBeenCalledTimes(count);
   });
   it('enforces the daily generation quota before dispatch', async () => {
+    await grantImageConsent();
     await db.execute(sql`INSERT INTO recipe_image_quota(principal,day,used) VALUES(${userId},CURRENT_DATE,5) ON CONFLICT(principal,day) DO UPDATE SET used=5`);
     await save('generated_recipe','over-quota',{ title: 'Soup', ingredients: [{ name: 'Soup' }] });
     const calls = provider.generate.mock.calls.length;
@@ -58,7 +93,8 @@ const url = process.env.INTEGRATION_DATABASE_URL;
   });
   it('never serves another user private assets, and marks authorized binaries no-store', async () => {
     vi.stubEnv('RECIPE_IMAGES_ENABLED','true'); vi.stubEnv('PEXELS_API_KEY','test'); vi.stubEnv('OPENAI_API_KEY','test'); vi.stubEnv('RECIPE_IMAGE_MODEL','test'); vi.stubEnv('RECIPE_IMAGE_VISION_MODEL','test');
-    const [job] = await db.execute(sql`SELECT id FROM recipe_image_jobs WHERE user_id=${userId} LIMIT 1`);
+    await save('generated_recipe', 'private-asset-recipe', { title: 'Private asset recipe', ingredients: [{ name: 'Riso' }] });
+    const [job] = await db.execute(sql`SELECT id FROM recipe_image_jobs WHERE user_id=${userId} AND recipe->>'title'='Private asset recipe'`);
     await db.execute(sql`INSERT INTO recipe_image_assets(job_id,content,hash,width,height,source,author,source_url,license) VALUES(${String(job.id)},${result.bytes},'hash',10,10,'ai','test','','') ON CONFLICT DO NOTHING`);
     const auth = { authenticate: async (token: string) => ({ id: 'test', userId: token === 'owner' ? userId : randomUUID(), email: 'test@example.com', emailVerifiedAt: new Date(), csrfTokenHash: 'test', expiresAt: new Date('2099-01-01') }) } as unknown as AuthService;
     const app = Fastify(); await app.register(imageRoutes(db,auth,'https://example.com'));

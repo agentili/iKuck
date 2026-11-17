@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { AiRecipeConsentStatus } from '../../ai/aiRecipeApi';
 import { ApiClientError, apiRequest } from '../../api/apiClient';
-import { fetchAiConsentStatus, updateAiConsent } from '../../ai/aiRecipeApi';
+import { fetchAiConsentStatus } from '../../ai/aiRecipeApi';
 import { useAuthStore } from '../../auth/authStore';
 import { RECIPES } from '../../domain/recipes';
 import { getActiveDataScope, subscribeActiveDataScope } from '../../sync/scopeContext';
@@ -22,7 +22,6 @@ function GenerationControl({ recipeId, disabled = false }: Props) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [consent, setConsent] = useState<AiRecipeConsentStatus | null>(null);
-  const [accepted, setAccepted] = useState(false);
   const mounted = useRef(true);
   const running = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -32,7 +31,7 @@ function GenerationControl({ recipeId, disabled = false }: Props) {
   const isCurrent = () => mounted.current && useAuthStore.getState().user?.id === user?.id
     && useAuthStore.getState().csrfToken === csrfToken && getActiveDataScope() === scope;
 
-  const generate = async (authorize = false) => {
+  const generate = async () => {
     if (!verified || running.current || disabled) return;
     running.current = true;
     setBusy(true); setMessage(null); setError(null);
@@ -44,11 +43,8 @@ function GenerationControl({ recipeId, disabled = false }: Props) {
         const valid = status.consent.enabled && status.consent.imagePolicyVersion === 'recipe-images-v1'
           && status.consent.imageProvider === status.selectedImageProvider;
         if (!valid) {
-          if (!authorize || !accepted || consent?.selectedImageProvider !== status.selectedImageProvider) {
-            setConsent(status); setAccepted(false); return;
-          }
-          await updateAiConsent(true, csrfToken!, status.consent.updatedAt, undefined, undefined, true, status.selectedImageProvider);
-          if (!isCurrent()) return;
+          setConsent(status);
+          return;
         }
       }
       const path = recipeId === undefined ? '/v1/recipe-images/generate'
@@ -82,9 +78,8 @@ function GenerationControl({ recipeId, disabled = false }: Props) {
       </button>
       {!verified && <p className="text-sm">Accedi con un account verificato per creare le immagini.</p>}
       {consent !== null && <div className="grid gap-3">
-        <p className="text-sm">Per creare le immagini, il titolo del piatto viene inviato a Pexels; titolo, ingredienti e foto candidate vengono inviati a {consent.selectedImageProvider === 'gemini' ? 'Google Gemini' : 'OpenAI'} per cercare, valutare o generare immagini illustrative. Puoi revocare il consenso dalle impostazioni AI in Ricette.</p>
-        <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} disabled={busy} />Acconsento all’invio dei dati per creare le immagini</label>
-        <button type="button" disabled={!accepted || busy} onClick={() => void generate(true)} className="ik-button-primary min-h-12 px-4 py-2 font-bold disabled:opacity-60">Conferma e genera</button>
+        <p className="text-sm">Per creare le immagini, il titolo del piatto viene inviato a Pexels; titolo, ingredienti e foto candidate vengono inviati a {consent.selectedImageProvider === 'gemini' ? 'Google Gemini' : 'OpenAI'} per cercare, valutare o generare immagini illustrative. Puoi concedere o revocare questo consenso nel Profilo.</p>
+        <a href="/profile#ai-consent-settings" className="inline-flex min-h-11 w-fit items-center rounded-xl px-2 py-2 font-bold text-[var(--ik-basil-dark)] underline underline-offset-2">Gestisci il consenso immagini nel Profilo</a>
       </div>}
       {message !== null && <p role="status" className="text-sm">{message}</p>}
       {error !== null && <p role="alert" className="text-sm text-[var(--ik-tomato)]">{error}</p>}

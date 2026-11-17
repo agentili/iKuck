@@ -6,6 +6,7 @@ import { createApp } from '../app.js';
 import type { AuthService } from '../auth/service.js';
 import { hashOpaqueToken } from '../auth/tokens.js';
 import { createDatabase } from '../db/client.js';
+import { createDrizzleSyncRepository, DEFAULT_AI_CONSENT_REVISION } from '../sync/repository.js';
 import { imageRoutes } from '../recipeImages/routes.js';
 import { catalogImageRecipes, queuePrivateImages } from '../recipeImages/generation.js';
 import { runImageTick } from '../recipeImages/repository.js';
@@ -49,6 +50,9 @@ const url = process.env.INTEGRATION_DATABASE_URL;
   afterAll(async () => {
     await app.close();
     await db.execute(sql`DELETE FROM sync_items WHERE user_id IN (${owner}::uuid,${other}::uuid)`);
+    await db.execute(sql`DELETE FROM processed_sync_mutations
+      WHERE scope_type='user' AND scope_id IN (${owner},${other})
+        AND user_id IN (${owner}::uuid,${other}::uuid)`);
     await db.execute(sql`DELETE FROM houses WHERE id=${house}`);
     await db.execute(sql`DELETE FROM users WHERE id IN (${owner}::uuid,${other}::uuid)`);
     await db.execute(sql`DELETE FROM recipe_image_jobs WHERE catalog_id IS NOT NULL`);
@@ -75,6 +79,49 @@ const url = process.env.INTEGRATION_DATABASE_URL;
     expect((await single('theirs')).statusCode).toBe(404);
     expect((await single('shared-theirs')).statusCode).toBe(404);
     expect((await single('unknown')).statusCode).toBe(404);
+  });
+
+  it('authorizes image-only consent only for its explicit selected provider and revokes it globally', async () => {
+    await save(owner, 'image-only-recipe');
+    const repository = createDrizzleSyncRepository(db);
+    const granted = await repository.updateAiConsent(owner, {
+      enabled: true,
+      imagePolicyVersion: 'recipe-images-v1',
+      imageProvider: 'openai',
+      expectedRevision: DEFAULT_AI_CONSENT_REVISION,
+    });
+
+    expect(granted).toMatchObject({ enabled: true, imagePolicyVersion: 'recipe-images-v1', imageProvider: 'openai' });
+    expect(granted).not.toHaveProperty('homeProvider');
+    await expect(repository.withAiConsentDispatch(owner, { kind: 'home', provider: 'openai' }, async () => 'dispatched'))
+      .rejects.toMatchObject({ code: 'ai_consent_required' });
+    await expect(repository.updateAiConsent(owner, {
+      enabled: true, imagePolicyVersion: 'recipe-images-v1', imageProvider: 'openai',
+    })).rejects.toMatchObject({ code: 'ai_consent_revision_required' });
+    await expect(repository.updateAiConsent(owner, {
+      enabled: true, imagePolicyVersion: 'recipe-images-v1', imageProvider: 'openai',
+      expectedRevision: DEFAULT_AI_CONSENT_REVISION,
+    })).rejects.toMatchObject({ code: 'ai_consent_revision_conflict' });
+    expect((await single('image-only-recipe')).statusCode).toBe(202);
+
+    const mismatched = await repository.updateAiConsent(owner, {
+      enabled: true,
+      imagePolicyVersion: 'recipe-images-v1',
+      imageProvider: 'gemini',
+      expectedRevision: granted.updatedAt,
+    });
+    expect(mismatched.imageProvider).toBe('gemini');
+    expect((await single('image-only-recipe')).statusCode).toBe(403);
+
+    await db.execute(sql`UPDATE sync_items SET payload=(payload - 'imageProvider') || '{"homeProvider":"openai"}'::jsonb
+      WHERE user_id=${owner}::uuid AND entity_type='ai_consent' AND entity_id='profile'`);
+    expect((await single('image-only-recipe')).statusCode).toBe(403);
+
+    const revoked = await repository.updateAiConsent(owner, { enabled: false });
+    expect(revoked).toMatchObject({ enabled: false });
+    expect(revoked).not.toHaveProperty('imagePolicyVersion');
+    expect(revoked).not.toHaveProperty('imageProvider');
+    expect((await single('image-only-recipe')).statusCode).toBe(403);
   });
 
   it('creates a missing private association and preserves it under concurrent requests', async () => {

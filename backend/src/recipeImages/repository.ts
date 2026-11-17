@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { ApplicationDatabase } from '../db/client.js';
 import type { ImageConfig } from './config.js';
 import { createImageProvider, ImageProviderError, type ImageRecipe } from './providers.js';
+import { hasImageConsent } from './generation.js';
 type Database = ApplicationDatabase['db'];
 export async function runImageTick(db: Database, config: ImageConfig, provider = createImageProvider(config), targetJobId?: string) {
   if (!config.enabled) return;
@@ -16,9 +17,7 @@ export async function runImageTick(db: Database, config: ImageConfig, provider =
       if (job.sync_item_id && !job.user_id) { await tx.execute(sql`UPDATE recipe_image_jobs SET state='consent_required' WHERE id=${id}`); return; }
       if (job.user_id) {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`ikuck:ai-consent:${job.user_id}`},0))`);
-        const consent = await tx.execute(sql`SELECT payload FROM sync_items WHERE scope_type='user' AND scope_id=${String(job.user_id)} AND entity_type='ai_consent' AND NOT deleted`);
-        const payload = consent[0]?.payload as { enabled?: boolean; imagePolicyVersion?: string; homeProvider?: string; imageProvider?: string } | undefined;
-        if (!payload?.enabled || payload.imagePolicyVersion !== 'recipe-images-v1' || (payload.imageProvider ?? payload.homeProvider) !== config.provider) {
+        if (!await hasImageConsent(tx, String(job.user_id), config)) {
           await tx.execute(sql`UPDATE recipe_image_jobs SET state='consent_required' WHERE id=${id}`); return;
         }
       }
