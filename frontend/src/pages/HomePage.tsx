@@ -4,6 +4,9 @@ import { Link } from 'react-router-dom';
 import LocalRecipeCard from '../components/suggestions/LocalRecipeCard';
 import SuggestionControls from '../components/suggestions/SuggestionControls';
 import AiRecipePanel from '../components/ai/AiRecipePanel';
+import { generateRecipeFromPantry, saveAiRecipe, type GenerateRecipeFromPantryResponse } from '../ai/aiRecipeApi';
+import { ApiClientError } from '../api/apiClient';
+import type { GeneratedRecipe, GeneratedRecipeDraft } from '@ikuck/shared/contracts';
 import { createSeededRandom, findRecipeSuggestions } from '../domain/suggestions';
 import { RECIPES } from '../domain/recipes';
 import { toDiaryPantryRecipe } from '../domain/diaryRecipes';
@@ -85,6 +88,10 @@ export default function HomePage() {
   const persistenceStatuses = usePersistenceStatusStore((state) => state.statuses);
   const user = useAuthStore((state) => state.user);
   const csrfToken = useAuthStore((state) => state.csrfToken);
+
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateCandidate, setGenerateCandidate] = useState<GenerateRecipeFromPantryResponse | null>(null);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   const persistenceIssue = persistenceDomains
     .map((domain) => ({ domain, status: persistenceStatuses[domain] }))
@@ -190,6 +197,59 @@ export default function HomePage() {
     setSuggestions(calculateSuggestions(nextSeed, searchedAllowOneMissing));
   };
 
+  const generateFromPantry = async () => {
+    if (!user || !csrfToken) return;
+    setIsGenerating(true);
+    setGenerateError(null);
+    setGenerateCandidate(null);
+    try {
+      const ingredientNames = pantryItems.map((item) => item.label).filter(Boolean);
+      if (ingredientNames.length === 0) {
+        setGenerateError('Aggiungi almeno un ingrediente alla dispensa prima di generare una ricetta.');
+        setIsGenerating(false);
+        return;
+      }
+      const response = await generateRecipeFromPantry({ ingredients: ingredientNames }, csrfToken);
+      setGenerateCandidate(response);
+    } catch (error) {
+      if (error instanceof ApiClientError) {
+        setGenerateError(error.status === 429 ? 'Hai raggiunto il limite giornaliero di generazioni. Riprova più tardi.' : 'Impossibile generare la ricetta in questo momento.');
+      } else {
+        setGenerateError('Impossibile generare la ricetta in questo momento.');
+      }
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const saveGeneratedRecipe = async () => {
+    if (!user || !csrfToken || generateCandidate === null || generateCandidate.kind !== 'candidate') return;
+    const { recipe: draft } = generateCandidate;
+    const now = new Date().toISOString();
+    const generatedRecipe: GeneratedRecipe = {
+      ...draft,
+      id: crypto.randomUUID(),
+      source: 'ai',
+      createdAt: now,
+      updatedAt: now,
+    };
+    try {
+      await saveAiRecipe(generatedRecipe, csrfToken);
+      setGenerateCandidate(null);
+    } catch (error) {
+      if (error instanceof ApiClientError) {
+        setGenerateError(error.status === 429 ? 'Hai raggiunto il limite giornaliero di salvataggi.' : 'Impossibile salvare la ricetta.');
+      } else {
+        setGenerateError('Impossibile salvare la ricetta.');
+      }
+    }
+  };
+
+  const discardGeneratedRecipe = () => {
+    setGenerateCandidate(null);
+    setGenerateError(null);
+  };
+
   const addMissingSuggestionToShoppingList = (suggestion: RecipeSuggestion) => {
     addMissingRecipeIngredients(suggestion.recipe, availableIngredientIds);
   };
@@ -201,6 +261,9 @@ export default function HomePage() {
   const readySuggestions = suggestions.filter((suggestion) => suggestion.missingIngredientIds.length === 0);
   const onePurchaseSuggestions = suggestions.filter((suggestion) => suggestion.missingIngredientIds.length === 1);
   const hasPantryItems = pantryItems.length > 0;
+
+  const noneAvailable = generateCandidate?.kind === 'none_available' ? generateCandidate : null;
+  const candidate = generateCandidate?.kind === 'candidate' ? generateCandidate : null;
 
   return (
     <main id="main-content" className="ik-page ik-kitchen-page mx-auto min-h-screen w-full max-w-6xl px-4 pb-8 pt-5 sm:px-6 sm:pt-8 lg:px-8">
@@ -258,6 +321,16 @@ export default function HomePage() {
             onClick={openQuickAdd}
             className="ik-button-primary inline-flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold sm:w-auto"
           >Aggiungi ingredienti</button>
+          {user !== null && user.emailVerifiedAt.trim().length > 0 && csrfToken !== null && (
+            <button
+              type="button"
+              onClick={generateFromPantry}
+              disabled={isGenerating || pantryItems.length === 0}
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold sm:w-auto border-2 border-[var(--ik-border)] bg-[var(--ik-surface)] text-[var(--ik-ink)] hover:bg-[var(--ik-mist)] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isGenerating ? 'Generazione in corso…' : 'Genera ricetta da dispensa'}
+            </button>
+          )}
           <Link to="/pantry" className="inline-flex min-h-11 items-center rounded-xl px-3 py-2 font-bold text-[var(--ik-basil-dark)] underline decoration-[var(--ik-border-strong)] underline-offset-4 hover:bg-[var(--ik-mist)]">Apri tutta la dispensa</Link>
           <SuggestionControls allowOneMissing={allowOneMissing} disabled={!hasPantryItems} onAllowOneMissingChange={setAllowOneMissing} onSearch={() => search()} />
           {!hasPantryItems && <p className="text-sm text-[var(--ik-ink-muted)]">La ricerca è manuale e locale: nessuna chiamata parte aprendo la Home.</p>}
@@ -348,6 +421,77 @@ export default function HomePage() {
         onClose={closeQuickAdd}
         onAdd={addIngredients}
       />
+
+      {(generateCandidate !== null || generateError !== null) && (
+        <section className="fixed inset-0 z-50 flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-label="Anteprima ricetta">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={discardGeneratedRecipe} />
+          <div className="relative bg-[var(--ik-surface)] border border-[var(--ik-border)] rounded-2xl p-6 max-w-md w-full shadow-[var(--ik-shadow-lift)]">
+            {generateError !== null && (
+              <div className="mb-4 rounded-xl border border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] p-3 text-[var(--ik-tomato)] text-sm">
+                {generateError}
+              </div>
+            )}
+            {noneAvailable !== null && (
+              <div className="mb-4 text-center">
+                <h3 className="text-lg font-bold text-[var(--ik-ink)]">Nessuna nuova ricetta disponibile</h3>
+                <p className="mt-1 text-sm text-[var(--ik-ink-muted)]">{noneAvailable.message}</p>
+                <button
+                  type="button"
+                  onClick={discardGeneratedRecipe}
+                  className="mt-4 min-h-10 rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-surface)] px-4 py-2 font-semibold text-[var(--ik-ink)] hover:bg-[var(--ik-mist)]"
+                >
+                  Chiudi
+                </button>
+              </div>
+            )}
+            {candidate !== null && (
+              <GenerateCandidatePreview recipe={candidate.recipe} onSave={saveGeneratedRecipe} onDiscard={discardGeneratedRecipe} isSaving={isGenerating} />
+            )}
+          </div>
+        </section>
+      )}
     </main>
+  );
+}
+
+function GenerateCandidatePreview({ recipe, onSave, onDiscard, isSaving }: { recipe: GeneratedRecipeDraft; onSave: () => void; onDiscard: () => void; isSaving: boolean }) {
+  return (
+    <div className="space-y-4">
+      <h3 className="text-lg font-bold text-[var(--ik-ink)]">{recipe.title}</h3>
+      <p className="text-sm text-[var(--ik-ink-muted)]">{recipe.description}</p>
+      <div className="mt-2">
+        <h4 className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--ik-basil-dark)]">Ingredienti</h4>
+        <ul className="mt-1 list-disc list-inside text-sm text-[var(--ik-ink)] space-y-1">
+          {recipe.ingredients.map((ing, i) => (
+            <li key={i}>{ing.name} {ing.amount}</li>
+          ))}
+        </ul>
+      </div>
+      <div className="mt-2">
+        <h4 className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--ik-basil-dark)]">Procedimento</h4>
+        <ol className="mt-1 list-decimal list-inside text-sm text-[var(--ik-ink)] space-y-1">
+          {recipe.steps.map((step, i) => (
+            <li key={i}>{step}</li>
+          ))}
+        </ol>
+      </div>
+      <div className="mt-5 flex gap-3">
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={isSaving}
+          className="flex-1 min-h-11 rounded-xl bg-[var(--ik-basil-dark)] px-4 py-2 font-bold text-[var(--ik-porcelain)] hover:bg-[var(--ik-basil)] disabled:opacity-50"
+        >
+          Salva nel ricettario
+        </button>
+        <button
+          type="button"
+          onClick={onDiscard}
+          className="flex-1 min-h-11 rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-surface)] px-4 py-2 font-bold text-[var(--ik-ink)] hover:bg-[var(--ik-mist)]"
+        >
+          Scarta
+        </button>
+      </div>
+    </div>
   );
 }

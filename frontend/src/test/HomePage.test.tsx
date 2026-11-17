@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
 import type { PantryLot } from '@ikuck/shared/contracts';
 import { DEFAULT_STAPLE_IDS, parseIngredientInput } from '@ikuck/shared/ingredients';
+import { useAuthStore } from '../auth/authStore';
 import { DEFAULT_DIET_PROFILE } from '../domain/dietary';
 import HomePage from '../pages/HomePage';
 import PantryPage from '../pages/PantryPage';
@@ -24,11 +25,18 @@ import {
 import { writeKeyValue } from '../storage/indexedDb';
 
 const hydratePantryStoreMock = vi.hoisted(() => vi.fn());
+const generateRecipeFromPantryMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../store/localPantryStore', async () => {
   const actual = await vi.importActual<typeof import('../store/localPantryStore')>('../store/localPantryStore');
   return { ...actual, hydratePantryStore: hydratePantryStoreMock };
 });
+
+vi.mock('../components/ai/AiRecipePanel', () => ({ default: () => null }));
+vi.mock('../ai/aiRecipeApi', async () => ({
+  ...(await vi.importActual<typeof import('../ai/aiRecipeApi')>('../ai/aiRecipeApi')),
+  generateRecipeFromPantry: generateRecipeFromPantryMock,
+}));
 
 const seedPantry = (value: string): void => {
   act(() => {
@@ -62,6 +70,8 @@ const renderHome = (): void => {
 describe('HomePage recipe search', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    generateRecipeFromPantryMock.mockReset();
+    useAuthStore.setState({ user: null, csrfToken: null, expiresAt: null });
     setActiveDataScope('guest');
     hydratePantryStoreMock.mockReset();
     hydratePantryStoreMock.mockResolvedValue(undefined);
@@ -90,6 +100,33 @@ describe('HomePage recipe search', () => {
     expect(screen.getByRole('link', { name: 'Apri tutta la dispensa' })).toHaveAttribute('href', '/pantry');
     expect(screen.getByRole('button', { name: 'Trova ricette' })).toBeEnabled();
     expect(screen.queryByRole('region', { name: 'Ricette AI private' })).not.toBeInTheDocument();
+  });
+
+  it('shows a generated pantry recipe candidate in the preview dialog', async () => {
+    const user = userEvent.setup();
+    useAuthStore.setState({
+      user: { id: 'user-1', email: 'user@example.com', emailVerifiedAt: '2026-09-24T00:00:00.000Z' },
+      csrfToken: 'csrf-token',
+    });
+    seedPantry('pasta, tonno');
+    generateRecipeFromPantryMock.mockResolvedValueOnce({
+      kind: 'candidate',
+      recipe: {
+        title: 'Orata al cartoccio',
+        description: 'Orata con patate e olive.',
+        ingredients: [{ name: 'Orata', amount: '1' }, { name: 'Patate', amount: '300 g' }],
+        steps: ['Cuoci l’orata al cartoccio con le patate.'],
+        diets: [],
+        allergens: [],
+      },
+    });
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+
+    const preview = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+    expect(within(preview).getByRole('heading', { name: 'Orata al cartoccio' })).toBeVisible();
+    expect(generateRecipeFromPantryMock).toHaveBeenCalledWith({ ingredients: ['Pasta', 'Tonno'] }, 'csrf-token');
   });
 
   it('explains the empty pantry and disables search until ingredients are saved', () => {

@@ -303,6 +303,22 @@ export interface WeeklyPushPayload {
   expiresAt: string;
 }
 
+export interface GenerateRecipeRequest {
+  ingredients: string[];
+}
+
+export type GenerateRecipeCandidate = {
+  kind: 'candidate';
+  recipe: GeneratedRecipeDraft;
+};
+
+export type GenerateRecipeNone = {
+  kind: 'none_available';
+  message: string;
+};
+
+export type GenerateRecipeResponse = GenerateRecipeCandidate | GenerateRecipeNone;
+
 export type RecipeImageState = 'missing' | 'pending' | 'processing' | 'ready' | 'failed' | 'consent_required' | 'quota_exceeded' | 'disabled';
 export interface RecipeImageMetadata {
   state: RecipeImageState;

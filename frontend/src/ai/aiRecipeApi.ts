@@ -1,4 +1,11 @@
-import type { AiConsent, AiRecipeProvider, DietProfilePayload, GeneratedRecipe } from '@ikuck/shared/contracts';
+import type {
+  AiConsent,
+  AiRecipeProvider,
+  DietProfilePayload,
+  GeneratedRecipe,
+  GenerateRecipeRequest,
+  GenerateRecipeResponse,
+} from '@ikuck/shared/contracts';
 import { ApiClientError, apiRequest, type ApiRequest } from '../api/apiClient';
 
 export interface AiRecipeConsentStatus {
@@ -14,6 +21,9 @@ export interface AiRecipeGenerationInput {
   constraints: string[];
   existingRecipes?: Array<{ title: string; ingredients: Array<{ name: string; amount: string }> }>;
 }
+
+export type GenerateRecipeFromPantryInput = GenerateRecipeRequest;
+export type GenerateRecipeFromPantryResponse = GenerateRecipeResponse;
 
 interface ConsentResponse extends AiRecipeConsentStatus {}
 
@@ -158,4 +168,17 @@ export const deleteAiRecipe = async (
     method: 'DELETE',
     csrfToken,
   });
+};
+
+export const generateRecipeFromPantry = async (
+  input: GenerateRecipeFromPantryInput,
+  csrfToken: string,
+  request: ApiRequest = apiRequest,
+): Promise<GenerateRecipeFromPantryResponse> => {
+  const response = await request<GenerateRecipeFromPantryResponse>('/v1/recipes/generate', {
+    method: 'POST',
+    body: input,
+    csrfToken,
+  });
+  return response;
 };
