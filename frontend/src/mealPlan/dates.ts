@@ -17,15 +17,6 @@ export function isValidIanaTimeZone(timeZone: string): boolean {
   }
 }
 
-export function getDeviceTimeZone(): string | null {
-  try {
-    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return isValidIanaTimeZone(timeZone) ? timeZone : null;
-  } catch {
-    return null;
-  }
-}
-
 export function getCivilDate(instant: Date, timeZone: string): string {
   if (!Number.isFinite(instant.getTime())) throw new RangeError('A valid instant is required');
   if (!isValidIanaTimeZone(timeZone)) throw new RangeError('A supported IANA timezone is required');

@@ -14,7 +14,7 @@ const integration = url ? describe : describe.skip;
 integration('weekly Web Push persistence and worker', () => {
   const database = createDatabase(url!);
   const repository = createPushRepository(database.db);
-  const now = new Date('2030-01-04T18:00:00Z'); // Friday 19:00 Europe/Rome.
+  const now = new Date('2030-01-04T19:00:00Z'); // Friday 19:00 UTC.
   const monday = '2030-01-07';
   let owner: string;
   let other: string;
@@ -32,7 +32,7 @@ integration('weekly Web Push persistence and worker', () => {
     createdUsers.push(owner, other);
     await database.db.insert(users).values([owner, other].map((id) => ({ id, email: `${id}@push.test`, emailVerifiedAt: new Date() })));
     await database.db.insert(authSessions).values({ id: session, userId: owner, tokenHash: randomUUID(), csrfTokenHash: randomUUID(), expiresAt: new Date('2099-01-01') });
-    await repository.savePreferences(owner, { enabled: true, fridayTime: '19:00', timeZone: 'Europe/Rome' });
+    await repository.savePreferences(owner, { enabled: true, fridayTime: '19:00', timeZone: 'UTC' });
     subId = (await repository.subscribe(owner, session, { endpoint: `https://fcm.googleapis.com/send/${randomUUID()}`, keys: { p256dh: generateVAPIDKeys().publicKey, auth: Buffer.alloc(16).toString('base64url') } })).id;
   });
   afterAll(async () => {
@@ -44,7 +44,7 @@ integration('weekly Web Push persistence and worker', () => {
     for (let i = 0; i < days; i++) await database.db.insert(mealPlanStates).values({ scopeType: houseId ? 'house' : 'user', scopeId: houseId ?? owner,
       userScopeId: houseId ? null : owner, houseScopeId: houseId ?? null, planDate: `2030-01-${String(7 + i).padStart(2, '0')}`, revision: randomUUID(), kind: i % 2 ? 'manual' : 'automatic', recipeId: 'recipe' });
   };
-  const disable = async () => repository.savePreferences(owner, { enabled: false, fridayTime: '19:00', timeZone: 'Europe/Rome' });
+  const disable = async () => repository.savePreferences(owner, { enabled: false, fridayTime: '19:00', timeZone: 'UTC' });
   it('sends an empty or partial plan once despite concurrent workers and repeated ticks', async () => {
     await plan(6);
     await Promise.all([runPushTick(database.db, send, now), runPushTick(database.db, send, now)]);
@@ -59,13 +59,13 @@ integration('weekly Web Push persistence and worker', () => {
     expect(send).not.toHaveBeenCalled();
     await disable();
   });
-  it('uses the house plan and shared timezone instead of personal data', async () => {
+  it('uses the house plan with fixed UTC instead of personal data', async () => {
     const houseId = randomUUID(); createdHouses.push(houseId);
     await database.db.insert(houses).values({ id: houseId, name: 'Push house', timeZone: 'UTC', timeZoneRevision: randomUUID() });
     await database.db.insert(houseMemberships).values({ houseId, userId: owner, role: 'admin' });
     await plan(7); // Personal plan is complete but must not suppress the house reminder.
-    await runPushTick(database.db, send, now);
-    expect(send).not.toHaveBeenCalled(); // Only 18:00 in the house.
+    await runPushTick(database.db, send, new Date('2030-01-04T18:00:00Z'));
+    expect(send).not.toHaveBeenCalled(); // The reminder is not due before 19:00 UTC.
     await runPushTick(database.db, send, new Date('2030-01-04T19:00:00Z'));
     expect(send).toHaveBeenCalledTimes(1);
     await disable();

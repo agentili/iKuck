@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { validTimeZone } from './calendar.js';
+import { APP_TIME_ZONE } from '@ikuck/shared/contracts';
 
 // Exact provider hosts: arbitrary URLs and custom ports are never accepted.
 export function allowedPushEndpoint(value: string): boolean {
@@ -12,7 +12,7 @@ export function allowedPushEndpoint(value: string): boolean {
 }
 export const preferencesSchema = z.object({
   enabled: z.boolean(), fridayTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
-  timeZone: z.string().max(100).refine(validTimeZone),
+  timeZone: z.literal(APP_TIME_ZONE),
 }).strict();
 export const subscriptionSchema = z.object({
   endpoint: z.string().max(2048).refine(allowedPushEndpoint),

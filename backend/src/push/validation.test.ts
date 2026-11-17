@@ -10,7 +10,8 @@ describe('push input and configuration', () => {
     const valid = { endpoint: 'https://fcm.googleapis.com/send/token', keys: { p256dh: generateVAPIDKeys().publicKey, auth: Buffer.alloc(16).toString('base64url') } };
     expect(subscriptionSchema.safeParse(valid).success).toBe(true);
     expect(subscriptionSchema.safeParse({ ...valid, keys: { ...valid.keys, auth: 'invalid' } }).success).toBe(false);
-    expect(preferencesSchema.safeParse({ enabled: true, fridayTime: '19:00', timeZone: 'Europe/Rome' }).success).toBe(true);
+    expect(preferencesSchema.safeParse({ enabled: true, fridayTime: '19:00', timeZone: 'UTC' }).success).toBe(true);
+    expect(preferencesSchema.safeParse({ enabled: true, fridayTime: '19:00', timeZone: 'Europe/Rome' }).success).toBe(false);
     expect(preferencesSchema.safeParse({ enabled: true, fridayTime: '24:00', timeZone: 'local' }).success).toBe(false);
   });
   it('keeps push disabled by default and requires VAPID only when enabled', () => {

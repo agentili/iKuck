@@ -3,11 +3,14 @@ import { installOfflineBackend, assertOfflineBackendClean } from './helpers/back
 const monday = '2030-01-07';
 const id = '00000000-0000-4000-8000-000000000001';
 const pushStatus = { enabled: true, publicKey: 'B' + 'A'.repeat(86), preferencesConfigured: true, preferences: { enabled: false, fridayTime: '19:00', timeZone: 'Europe/Rome' }, effectiveTimeZone: 'Europe/Rome' };
-async function setupAccount(page: Page, serviceWorkers: 'block' | 'allow' = 'block') {
+async function setupAccount(page: Page, serviceWorkers: 'block' | 'allow' = 'block', house = false) {
   await installOfflineBackend(page, { serviceWorkers, responses: {
     'GET /v1/auth/session': { json: { authenticated: true, user: { id: 'push-browser-user', email: 'push@example.test', emailVerifiedAt: '2026-01-01T00:00:00Z' }, csrfToken: 'csrf', expiresAt: '2099-01-01T00:00:00Z' } },
     'GET /v1/profile': { json: { profile: { displayName: 'Push' } } },
-    'GET /v1/house': { json: null },
+    'GET /v1/house': { json: house ? {
+      house: { id, name: 'Casa UTC', createdAt: '2026-01-01T00:00:00Z' },
+      membership: { role: 'admin', joinedAt: '2026-01-01T00:00:00Z' }, members: [],
+    } : null },
     'GET /v1/push': { json: pushStatus },
     'GET /v1/push/subscriptions': { json: [] },
     'POST /v1/push/subscriptions': { json: { id } },
@@ -16,6 +19,7 @@ async function setupAccount(page: Page, serviceWorkers: 'block' | 'allow' = 'blo
     'GET /v1/meal-plan/capabilities': { json: { version: 2, syncReadVersion: 2 } },
     'GET /v1/ai-recipes/consent': { json: { consent: { enabled: false, updatedAt: '2026-01-01T00:00:00Z' }, selectedProvider: 'openai' } },
     'GET /v1/ai-recipes': { json: { recipes: [] } },
+    'POST /v1/meal-plan/recovery': { json: { version: 2, conflicts: [], quarantined: [] } },
   } });
   await page.route('**/v1/sync', async (route) => {
     const body = route.request().postDataJSON() as { cursor?: number } | null;
@@ -26,6 +30,48 @@ async function setupAccount(page: Page, serviceWorkers: 'block' | 'allow' = 'blo
     await route.fulfill({ json: { version: 2, states: body.dates.map((date, index) => ({ date, state: { date, revision: '123e4567-e89b-42d3-a456-426614174000', serverSequence: index + 1, kind: 'manual', recipeId: 'seed-recipe' } })) } });
   });
 }
+test.describe('fuso UTC non configurabile', () => {
+  test.use({ timezoneId: 'Europe/Rome' });
+  test('il piano guest usa UTC anche a cavallo della mezzanotte locale', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-11-08T23:30:00Z'));
+    await installOfflineBackend(page);
+    await page.goto('/plan');
+    const rows = page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem');
+    await expect(rows).toHaveCount(7);
+    await expect(rows.first()).toHaveAttribute('data-date', '2026-11-09');
+    await expect(rows.last()).toHaveAttribute('data-date', '2026-11-15');
+    await expect(page.getByRole('link', { name: 'Prossima settimana', exact: true })).toHaveAttribute('href', '/plan?week=2026-11-09');
+    await expect(page.getByRole('textbox', { name: /fuso/i })).toHaveCount(0);
+    assertOfflineBackendClean(page);
+  });
+  test('neanche un amministratore può scegliere il fuso del piano', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-11-08T23:30:00Z'));
+    await setupAccount(page, 'block', true);
+    await page.goto('/plan');
+    const rows = page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem');
+    await expect(rows).toHaveCount(7);
+    await expect(page.getByRole('button', { name: /cambia ricetta/i })).toHaveCount(7);
+    await expect(rows.first()).toHaveAttribute('data-date', '2026-11-09');
+    await expect(page.getByRole('textbox', { name: /fuso/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /aggiorna fuso/i })).toHaveCount(0);
+    assertOfflineBackendClean(page);
+  });
+  test('il profilo salva solo UTC anche con preferenze legacy', async ({ page }) => {
+    await setupAccount(page);
+    const writes: unknown[] = [];
+    await page.route('**/v1/push/preferences', async route => {
+      writes.push(route.request().postDataJSON());
+      await route.fulfill({ status: 204 });
+    });
+    await page.goto('/profile');
+    await expect(page.getByLabel('Orario del venerdì (UTC)')).toBeVisible();
+    await expect(page.getByRole('textbox', { name: /fuso/i })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Salva preferenze', exact: true }).click();
+    await expect(page.getByText('Preferenze salvate.')).toBeVisible();
+    expect(writes).toEqual([{ enabled: false, fridayTime: '19:00', timeZone: 'UTC' }]);
+    assertOfflineBackendClean(page);
+  });
+});
 test('il link del promemoria conserva la settimana quando serve accedere', async ({ page }) => {
   await installOfflineBackend(page);
   await page.goto(`/plan?week=${monday}`);

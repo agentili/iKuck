@@ -30,8 +30,17 @@ describe('Push settings', () => {
     expect(client.enableDevicePush).not.toHaveBeenCalled();
     fireEvent.click(enable);
     await screen.findByText('Notifiche attive su questo dispositivo.');
-    expect(client.savePushPreferences).toHaveBeenCalledWith({ ...status.preferences, enabled: true }, 'csrf');
+    expect(client.savePushPreferences).toHaveBeenCalledWith({ ...status.preferences, enabled: true, timeZone: 'UTC' }, 'csrf');
     expect(screen.getByRole('button', { name: 'Invia notifica di prova' })).toBeInTheDocument();
+  });
+  it('has no timezone editor and saves UTC even with legacy non-UTC preferences', async () => {
+    render(<MemoryRouter><PushSettings /></MemoryRouter>);
+    const save = await screen.findByRole('button', { name: 'Salva preferenze' });
+    expect(screen.queryByRole('textbox', { name: /fuso/i })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Orario del venerdì (UTC)')).toBeVisible();
+    fireEvent.click(save);
+    await screen.findByText('Preferenze salvate.');
+    expect(client.savePushPreferences).toHaveBeenCalledWith({ ...status.preferences, timeZone: 'UTC' }, 'csrf');
   });
   it('handles denied permission and provider-disabled configuration', async () => {
     vi.stubGlobal('Notification', { permission: 'denied' });

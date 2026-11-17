@@ -24,53 +24,17 @@ const makeApp = (repository: ReturnType<typeof createMemoryHouseRepository>, use
   });
 };
 
-describe('house meal-plan timezone authorization and CAS', () => {
-  it('lets a member initialize once but requires an admin for compare-and-set changes', async () => {
+describe('read-only house UTC authorization', () => {
+  it('lets house members read UTC without an initialization or editing permission', async () => {
     const repository = createMemoryHouseRepository([user('admin'), user('member')]);
     const adminApp = makeApp(repository, 'admin');
     const memberApp = makeApp(repository, 'member');
     try {
       await adminApp.inject({ method: 'POST', url: '/v1/house', headers, payload: { name: 'Casa' } });
       await createHouseService({ repository }).addMember('admin', 'member@example.com');
-
-      const initialize = await memberApp.inject({
-        method: 'POST', url: '/v1/house/time-zone/initialize', headers, payload: { timeZone: 'Europe/Rome' },
-      });
-      expect(initialize.statusCode).toBe(200);
-      expect(initialize.json()).toMatchObject({ timeZone: 'Europe/Rome', revision: expect.any(String) });
-
-      const memberUpdate = await memberApp.inject({
-        method: 'PUT', url: '/v1/house/time-zone', headers,
-        payload: { timeZone: 'America/New_York', expectedRevision: initialize.json().revision },
-      });
-      expect(memberUpdate.statusCode).toBe(403);
-      expect(memberUpdate.json()).toMatchObject({ code: 'house_admin_required' });
-
-      const invalid = await adminApp.inject({
-        method: 'PUT', url: '/v1/house/time-zone', headers,
-        payload: { timeZone: 'Not/A_Real_Zone', expectedRevision: initialize.json().revision },
-      });
-      expect(invalid.statusCode).toBe(400);
-
-      const cleared = await adminApp.inject({
-        method: 'PUT', url: '/v1/house/time-zone', headers,
-        payload: { timeZone: null, expectedRevision: initialize.json().revision },
-      });
-      expect(cleared.statusCode).toBe(200);
-      expect(cleared.json()).toMatchObject({ timeZone: null, revision: expect.not.stringContaining(initialize.json().revision) });
-
-      const delayedInitialize = await memberApp.inject({
-        method: 'POST', url: '/v1/house/time-zone/initialize', headers, payload: { timeZone: 'America/New_York' },
-      });
-      expect(delayedInitialize.statusCode).toBe(200);
-      expect(delayedInitialize.json()).toEqual(cleared.json());
-
-      const stale = await adminApp.inject({
-        method: 'PUT', url: '/v1/house/time-zone', headers,
-        payload: { timeZone: 'Europe/Paris', expectedRevision: initialize.json().revision },
-      });
-      expect(stale.statusCode).toBe(409);
-      expect(stale.json()).toMatchObject({ code: 'timezone_conflict', timeZone: null, revision: cleared.json().revision });
+      const response = await memberApp.inject({ method: 'GET', url: '/v1/house/time-zone', headers });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ timeZone: 'UTC', revision: expect.any(String) });
     } finally {
       await adminApp.close();
       await memberApp.close();
