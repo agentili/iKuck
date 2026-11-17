@@ -1,4 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm';
+import { APP_TIME_ZONE } from '@ikuck/shared/contracts';
 import type { PushPreferences, PushSubscriptionInput } from '@ikuck/shared/contracts';
 import type { ApplicationDatabase } from '../db/client.js';
 import { pushPreferences, pushSubscriptions } from '../db/schema.js';
@@ -10,13 +11,12 @@ type Database = ApplicationDatabase['db'];
 export const createPushRepository = (db: Database) => ({
   async status(userId: string) {
     const [preferences] = await db.select().from(pushPreferences).where(eq(pushPreferences.userId, userId));
-    const houses = await db.execute<{ time_zone: string | null }>(sql`
-      SELECT h.time_zone FROM houses h JOIN house_memberships m ON m.house_id = h.id WHERE m.user_id = ${userId}`);
-    const fallback: PushPreferences = { enabled: false, fridayTime: '19:00', timeZone: 'Europe/Rome' };
-    return { preferencesConfigured: preferences !== undefined, preferences: preferences ? { enabled: preferences.enabled, fridayTime: preferences.fridayTime, timeZone: preferences.timeZone } : fallback, effectiveTimeZone: houses[0]?.time_zone ?? preferences?.timeZone ?? fallback.timeZone };
+    const fallback: PushPreferences = { enabled: false, fridayTime: '19:00', timeZone: APP_TIME_ZONE };
+    return { preferencesConfigured: preferences !== undefined, preferences: preferences ? { enabled: preferences.enabled, fridayTime: preferences.fridayTime, timeZone: APP_TIME_ZONE } : fallback, effectiveTimeZone: APP_TIME_ZONE };
   },
   async savePreferences(userId: string, value: PushPreferences) {
-    await db.insert(pushPreferences).values({ userId, ...value }).onConflictDoUpdate({ target: pushPreferences.userId, set: value });
+    const preferences = { ...value, timeZone: APP_TIME_ZONE };
+    await db.insert(pushPreferences).values({ userId, ...preferences }).onConflictDoUpdate({ target: pushPreferences.userId, set: preferences });
   },
   async subscriptions(userId: string, sessionId: string) {
     return db.select({ id: pushSubscriptions.id, endpoint: pushSubscriptions.endpoint }).from(pushSubscriptions)
@@ -48,10 +48,10 @@ export type PushRepository = ReturnType<typeof createPushRepository>;
 
 // The same scope resolver as meal-plan synchronization: membership takes precedence.
 const candidateQuery = sql`
-  SELECT p.user_id, p.friday_time, COALESCE(h.time_zone, p.time_zone) AS time_zone,
+  SELECT p.user_id, p.friday_time,
     CASE WHEN m.house_id IS NULL THEN 'user:' || p.user_id::text ELSE 'house:' || m.house_id::text END AS scope_key
   FROM push_preferences p JOIN users u ON u.id = p.user_id
-  LEFT JOIN house_memberships m ON m.user_id = p.user_id LEFT JOIN houses h ON h.id = m.house_id
+  LEFT JOIN house_memberships m ON m.user_id = p.user_id
   WHERE p.enabled AND u.email_verified_at IS NOT NULL
     AND NOT EXISTS (SELECT 1 FROM house_migration_pending pending WHERE pending.user_id = p.user_id)`;
 
@@ -65,10 +65,10 @@ async function isComplete(db: Pick<Database, 'execute'>, scopeKey: string, weekS
 }
 
 export async function runPushTick(db: Database, send: PushTransport, now = new Date(), report: (event: string) => void = () => {}, shouldStop: () => boolean = () => false) {
-  const candidates = await db.execute<{ user_id: string; friday_time: string; time_zone: string; scope_key: string }>(candidateQuery);
+  const candidates = await db.execute<{ user_id: string; friday_time: string; scope_key: string }>(candidateQuery);
   for (const candidate of candidates) {
     if (shouldStop()) return;
-    const reminder = weeklyReminder(now, candidate.time_zone, candidate.friday_time);
+    const reminder = weeklyReminder(now, APP_TIME_ZONE, candidate.friday_time);
     if (!reminder || await isComplete(db, candidate.scope_key, reminder.weekStart)) continue;
     await db.execute(sql`
       INSERT INTO push_deliveries (subscription_id, week_start, scope_key, expires_at)
@@ -93,9 +93,9 @@ export async function runPushTick(db: Database, send: PushTransport, now = new D
       const finish = async (status: string) => {
         await tx.execute(sql`UPDATE push_deliveries SET status = ${status} WHERE subscription_id = ${delivery.subscription_id} AND week_start = ${delivery.week_start}::date`);
       };
-      const authorized = await tx.execute<{ scope_key: string; time_zone: string; friday_time: string }>(sql`${candidateQuery} AND p.user_id = ${delivery.user_id}`);
+      const authorized = await tx.execute<{ scope_key: string; friday_time: string }>(sql`${candidateQuery} AND p.user_id = ${delivery.user_id}`);
       const current = authorized[0];
-      const due = current && weeklyReminder(now, current.time_zone, current.friday_time);
+      const due = current && weeklyReminder(now, APP_TIME_ZONE, current.friday_time);
       const sessions = await tx.execute(sql`SELECT s.id FROM auth_sessions a JOIN push_subscriptions s ON s.session_id = a.id
         WHERE s.id = ${delivery.subscription_id} AND a.expires_at > ${now.toISOString()}`);
       if (!current || current.scope_key !== delivery.scope_key || !due || due.weekStart !== delivery.week_start || !sessions.length

@@ -8,7 +8,7 @@ import PlanPage from './PlanPage';
 import { mealPlanApi } from '../mealPlan/api';
 import type { MealPlanRecoveryConflict, MealPlanRecoveryQuarantine, MealPlanRecoveryResponse } from '../mealPlan/api';
 import { createLocalPlanState, readMealPlanOutbox, saveGuestPlanState } from '../mealPlan/storage';
-import { getDeviceTimeZone, getNextSevenCivilDates } from '../mealPlan';
+import { getNextSevenCivilDates } from '../mealPlan';
 import { RECIPES } from '../domain/recipes';
 import { useAuthStore } from '../auth/authStore';
 import { useHouseStore } from '../house/houseStore';
@@ -66,8 +66,7 @@ const setupSharedPlan = (scopes: readonly SyncMutationScope[], recipesByScope: P
   const datesByScope = new Map<SyncMutationScope, string[]>();
   const statesByScope = new Map<SyncMutationScope, PlanState[]>();
   for (const scope of scopes) {
-    const zone = scope.startsWith('house:') ? 'Europe/Rome' : getDeviceTimeZone() ?? 'UTC';
-    const dates = getNextSevenCivilDates(new Date(), zone);
+    const dates = getNextSevenCivilDates(new Date(), 'UTC');
     datesByScope.set(scope, dates);
     statesByScope.set(scope, dates.map((date, index) => createPlanState(
       date,
@@ -77,9 +76,6 @@ const setupSharedPlan = (scopes: readonly SyncMutationScope[], recipesByScope: P
   }
 
   vi.spyOn(mealPlanApi, 'getCapabilities').mockResolvedValue({ version: 2, syncReadVersion: 2 });
-  vi.spyOn(mealPlanApi, 'getHouseTimeZone').mockResolvedValue({
-    timeZone: 'Europe/Rome', revision: '123e4567-e89b-42d3-a456-426614174000',
-  });
   vi.spyOn(mealPlanApi, 'readSyncPage').mockImplementation(async (scope, _deviceId, cursor) => {
     const states = statesByScope.get(scope) ?? [];
     return {
@@ -136,8 +132,7 @@ const makeRecoveryConflict = (
 };
 
 const prepareGuestPlan = async (): Promise<void> => {
-  const timeZone = getDeviceTimeZone() ?? 'UTC';
-  const dates = getNextSevenCivilDates(new Date(), timeZone);
+  const dates = getNextSevenCivilDates(new Date(), 'UTC');
   await saveGuestPlanState(createLocalPlanState(dates[0]!, 'manual', pastaRecipe.id));
   for (const date of dates.slice(1)) {
     await saveGuestPlanState(createLocalPlanState(date, 'deleted', null));

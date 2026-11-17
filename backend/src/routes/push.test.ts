@@ -6,7 +6,7 @@ import { hashOpaqueToken } from '../auth/tokens.js';
 import type { PushRepository } from '../push/repository.js';
 
 const user = { id: 'session', userId: 'user', email: 'user@example.test', emailVerifiedAt: new Date(), csrfTokenHash: hashOpaqueToken('csrf'), expiresAt: new Date('2099-01-01') };
-const preferences = { enabled: true, fridayTime: '19:00', timeZone: 'Europe/Rome' };
+const preferences = { enabled: true, fridayTime: '19:00', timeZone: 'UTC' };
 const repository: PushRepository = {
   status: vi.fn().mockResolvedValue({ preferences, effectiveTimeZone: 'Europe/Rome', preferencesConfigured: true }),
   savePreferences: vi.fn(), subscriptions: vi.fn().mockResolvedValue([]), subscribe: vi.fn().mockResolvedValue({ id: 'subscription' }), unsubscribe: vi.fn(), testSubscription: vi.fn().mockResolvedValue(null),
@@ -22,6 +22,14 @@ const setup = (verified = true, enabled = true) => createApp({
 });
 beforeEach(() => vi.clearAllMocks());
 describe('push routes', () => {
+  it.each(['Europe/Rome', 'America/New_York', null])('rejects a client-selected timezone %s without persisting', async (timeZone) => {
+    const app = setup();
+    try {
+      const response = await app.inject({ method: 'PUT', url: '/v1/push/preferences', headers, payload: { ...preferences, timeZone } });
+      expect(response.statusCode).toBe(400);
+      expect(repository.savePreferences).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
   it('requires verification, origin and CSRF before persisting', async () => {
     const app = setup(false);
     expect((await app.inject({ url: '/v1/push', headers })).statusCode).toBe(403);

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { Link, useSearchParams } from 'react-router-dom';
 import { Pencil, Plus, ShoppingCart, Sparkles } from 'lucide-react';
 import type { DietProfile, PlanCommand, PlanState, SyncMutationScope } from '@ikuck/shared/contracts';
+import { APP_TIME_ZONE } from '@ikuck/shared/contracts';
 import { ApiClientError } from '../api/apiClient';
 import { useAuthStore } from '../auth/authStore';
 import PlanRecipeWizard from '../components/mealPlan/PlanRecipeWizard';
@@ -22,11 +23,9 @@ import { getDeviceId, syncVerifiedSession } from '../sync/syncQueue';
 import { MealPlanUnavailableError, mealPlanApi, type MealPlanApi, type MealPlanRecoveryConflict, type MealPlanRecoveryQuarantine, type MealPlanRecoveryResolution } from '../mealPlan/api';
 import {
   formatCivilDateLong,
-  getDeviceTimeZone,
   getPlanDates,
   parsePlanWeek,
   getNextWeekMonday,
-  isValidIanaTimeZone,
   selectPlanRecipe,
 } from '../mealPlan';
 import {
@@ -35,11 +34,9 @@ import {
   readMealPlanSnapshot,
   saveGuestPlanState,
   saveMealPlanRead,
-  saveMealPlanTimeZone,
   isMealPlanBootstrapComplete,
 } from '../mealPlan/storage';
 import { createPlanCommand, queuePlanCommand, syncPendingMealPlan, synchronizeMealPlanScope } from '../mealPlan/service';
-import { useHouseStore } from '../house/houseStore';
 
 interface PlanPageView {
   status: 'loading' | 'ready' | 'blocked' | 'error';
@@ -52,7 +49,6 @@ interface PlanPageView {
   recoveryQuarantines: MealPlanRecoveryQuarantine[];
   recoveryError: string | null;
   pendingDates: string[];
-  timeZone: string | null;
   canEdit: boolean;
   mode: 'guest' | 'shared' | 'offline' | 'unsupported' | 'provisional';
   message: string | null;
@@ -69,7 +65,6 @@ const initialView = (scope: SyncScope): PlanPageView => ({
   recoveryQuarantines: [],
   recoveryError: null,
   pendingDates: [],
-  timeZone: null,
   canEdit: false,
   mode: 'guest',
   message: null,
@@ -111,7 +106,6 @@ const getAvailableRecipe = (
 const toView = async (
   scope: SyncScope,
   dates: readonly string[],
-  timeZone: string,
   mode: PlanPageView['mode'],
   canEdit: boolean,
   message: string | null,
@@ -167,7 +161,6 @@ const toView = async (
     recoveryQuarantines,
     recoveryError,
     pendingDates: [...new Set(outbox.map((record) => record.command.date))],
-    timeZone,
     canEdit: !recoveryBlocksEdits && canEdit,
     mode,
     message,
@@ -175,8 +168,7 @@ const toView = async (
 };
 
 async function loadGuestPlan(now: Date, profile: DietProfile, assertCurrent: () => void, week: string | null): Promise<PlanPageView> {
-  const timeZone = getDeviceTimeZone();
-  if (timeZone === null || !isValidIanaTimeZone(timeZone)) throw new Error('Il fuso orario del dispositivo non è disponibile.');
+  const timeZone = APP_TIME_ZONE;
   const dates = getPlanDates(now, timeZone, week);
   assertCurrent();
   const snapshot = await readMealPlanSnapshot('guest');
@@ -197,31 +189,9 @@ async function loadGuestPlan(now: Date, profile: DietProfile, assertCurrent: () 
     states[date] = state;
     used.push(recipe.id);
   }
-  const view = await toView('guest', dates, timeZone, 'guest', true, null, assertCurrent);
+  const view = await toView('guest', dates, 'guest', true, null, assertCurrent);
   assertCurrent();
   return view;
-}
-
-async function readHouseZone(
-  scope: SyncScope,
-  csrfToken: string,
-  api: MealPlanApi,
-  assertCurrent: () => void,
-): Promise<{ timeZone: string; confirmed: boolean }> {
-  const deviceTimeZone = getDeviceTimeZone();
-  if (deviceTimeZone === null) throw new Error('Il fuso del dispositivo non è valido: verifica le impostazioni del browser.');
-  if (!scope.startsWith('house:')) return { timeZone: deviceTimeZone, confirmed: true };
-
-  assertCurrent();
-  let state = await api.getHouseTimeZone();
-  assertCurrent();
-  if (state.timeZone === null && state.revision === null) {
-    state = await api.initializeHouseTimeZone(deviceTimeZone, csrfToken);
-    assertCurrent();
-  }
-  await saveMealPlanTimeZone(scope, state, assertCurrent);
-  assertCurrent();
-  return { timeZone: state.timeZone ?? deviceTimeZone, confirmed: state.timeZone !== null };
 }
 
 async function loadSharedPlan(input: {
@@ -240,8 +210,8 @@ async function loadSharedPlan(input: {
   const scopeId = scope as SyncMutationScope;
   let cached = await readMealPlanSnapshot(scope);
   assertCurrent();
-  const deviceTimeZone = getDeviceTimeZone();
-  if (deviceTimeZone === null) throw new Error('Il fuso del dispositivo non è valido: verifica le impostazioni del browser.');
+  const timeZone = APP_TIME_ZONE;
+  const dates = getPlanDates(now, timeZone, week);
 
   let capabilityReady = false;
   try {
@@ -251,61 +221,32 @@ async function loadSharedPlan(input: {
   } catch (error) {
     assertCurrent();
     if (error instanceof MealPlanUnavailableError) {
-      const zone = scope.startsWith('house:') ? cached.timeZone?.timeZone ?? deviceTimeZone : deviceTimeZone;
-      const view = await toView(scope, getPlanDates(now, zone, week), zone, 'unsupported', false,
+      const view = await toView(scope, dates, 'unsupported', false,
         'Questo server non supporta ancora il piano condiviso. La copia locale, se presente, non è aggiornata né condivisa.', assertCurrent);
       return view;
     }
     if (!isNetworkError(error)) throw error;
-    const cachedZone = scope.startsWith('house:') ? cached.timeZone : null;
-    const zone = cachedZone?.timeZone ?? deviceTimeZone;
-    if (!isValidIanaTimeZone(zone)) throw new Error('Il fuso salvato non è valido; riconnettiti per aggiornare il piano.');
-    const timeZoneConfirmed = !scope.startsWith('house:') || cachedZone?.timeZone !== null && cachedZone !== null;
     const hasCachedBootstrap = cached.capability !== null && isMealPlanBootstrapComplete(cached, cached.capability);
     if (!hasCachedBootstrap) {
-      return toView(scope, getPlanDates(now, zone, week), zone, 'provisional', false,
+      return toView(scope, dates, 'provisional', false,
         'Connessione assente: il bootstrap storico del piano non è completo; i dati condivisi non vengono letti o modificati.', assertCurrent);
     }
-    const canEditOffline = timeZoneConfirmed;
-    const mode = timeZoneConfirmed ? 'offline' : 'provisional';
-    const message = timeZoneConfirmed
-      ? 'Connessione assente: la copia salvata può essere provvisoria. Le nuove scelte restano sul dispositivo finché non vengono confermate dal server.'
-      : 'Connessione assente e fuso della Casa non memorizzato: il calendario usa provvisoriamente il fuso del dispositivo. Il piano condiviso non viene letto o modificato.';
-    return toView(scope, getPlanDates(now, zone, week), zone, mode, canEditOffline, message, assertCurrent);
+    return toView(scope, dates, 'offline', true,
+      'Connessione assente: la copia salvata può essere provvisoria. Le nuove scelte restano sul dispositivo finché non vengono confermate dal server.', assertCurrent);
   }
 
   if (!capabilityReady) throw new MealPlanUnavailableError();
-  let zoneState: { timeZone: string; confirmed: boolean };
-  try {
-    zoneState = await readHouseZone(scope, csrfToken, api, assertCurrent);
-  } catch (error) {
-    assertCurrent();
-    if (!isNetworkError(error) || cached.capability === null || !isMealPlanBootstrapComplete(cached, cached.capability)) throw error;
-    const zone = scope.startsWith('house:') ? cached.timeZone?.timeZone ?? deviceTimeZone : deviceTimeZone;
-    const confirmed = !scope.startsWith('house:') || cached.timeZone?.timeZone !== null && cached.timeZone !== null;
-  return toView(scope, getPlanDates(now, zone, week), zone, 'offline', confirmed,
-      'Il fuso condiviso non è raggiungibile: vengono mostrate le date salvate, non una finestra confermata.', assertCurrent);
-  }
-  const dates = getPlanDates(now, zoneState.timeZone, week);
-  if (scope.startsWith('house:') && !zoneState.confirmed) {
-    return toView(scope, dates, zoneState.timeZone, 'provisional', false,
-      'Il fuso della Casa non è impostato. Le date mostrate usano il fuso del dispositivo e il piano condiviso non viene letto o modificato.', assertCurrent);
-  }
   let serverStates: Array<{ date: string; state: PlanState | null }>;
   try {
     assertCurrent();
     serverStates = await api.readStates(scopeId, dates, csrfToken);
     assertCurrent();
-    const persistedTimeZone = scope.startsWith('house:')
-      ? (await readMealPlanSnapshot(scope)).timeZone ?? undefined
-      : undefined;
-    assertCurrent();
-    await saveMealPlanRead(scope, dates, serverStates, persistedTimeZone, assertCurrent);
+    await saveMealPlanRead(scope, dates, serverStates, undefined, assertCurrent);
     assertCurrent();
   } catch (error) {
     assertCurrent();
     if (!isNetworkError(error) || cached.capability === null || !isMealPlanBootstrapComplete(cached, cached.capability)) throw error;
-    return toView(scope, dates, zoneState.timeZone, 'offline', zoneState.confirmed,
+    return toView(scope, dates, 'offline', true,
       'Connessione assente: viene mostrata la copia salvata, non una conferma aggiornata dal server.', assertCurrent);
   }
 
@@ -325,10 +266,10 @@ async function loadSharedPlan(input: {
     }
   }
 
-  let view = await toView(scope, dates, zoneState.timeZone, syncMessage === null ? 'shared' : 'offline',
-    syncAvailable && zoneState.confirmed, syncMessage, assertCurrent);
+  let view = await toView(scope, dates, syncMessage === null ? 'shared' : 'offline',
+    syncAvailable, syncMessage, assertCurrent);
   assertCurrent();
-  if (zoneState.confirmed && syncAvailable) {
+  if (syncAvailable) {
     const pendingDates = new Set(view.pendingDates);
     const used = dates.flatMap((date) => {
       const state = view.overlays[date] ?? view.states[date];
@@ -369,17 +310,10 @@ async function loadSharedPlan(input: {
             ? 'Connessione assente: le proposte restano sul dispositivo finché il server non le conferma.'
             : 'Le proposte non sono ancora state confermate dal server.';
       }
-      view = await toView(scope, dates, zoneState.timeZone, syncMessage === null ? 'shared' : 'offline',
-        syncAvailable && syncMessage === null && zoneState.confirmed, syncMessage, assertCurrent);
+      view = await toView(scope, dates, syncMessage === null ? 'shared' : 'offline',
+        syncAvailable && syncMessage === null, syncMessage, assertCurrent);
       assertCurrent();
     }
-  } else if (syncAvailable) {
-    view = {
-      ...view,
-      mode: 'provisional',
-      canEdit: false,
-      message: 'Il fuso della Casa non è impostato. Le date mostrate usano il fuso del dispositivo e non sono modificabili come piano condiviso.',
-    };
   }
   assertCurrent();
   return view;
@@ -397,7 +331,7 @@ export default function PlanPage() {
   const pantryHasHydrated = usePantryStore((state) => state.hasHydrated);
   const shoppingItems = useShoppingListStore((state) => state.items);
   const shoppingHasHydrated = useShoppingListStore((state) => state.hasHydrated);
-  const houseState = useHouseStore((state) => state.state);
+
   const activeScope = useSyncExternalStore(subscribeActiveDataScope, getActiveDataScope, getActiveDataScope);
   const recipeScope: SyncScope = isVerifiedUser(user) && csrfToken !== null ? activeScope : 'guest';
   const savedRecipes = useDinnerDiaryStore(state => state.recipes);
@@ -432,8 +366,7 @@ export default function PlanPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [feedbackContextKey, setFeedbackContextKey] = useState('');
   const [reload, setReload] = useState(0);
-  const [timeZoneDraft, setTimeZoneDraft] = useState('');
-  const [savingTimeZone, setSavingTimeZone] = useState(false);
+
   const generation = useRef(0);
   useLayoutEffect(() => { savingPlan.current = busyDate !== null; }, [busyDate]);
 
@@ -558,7 +491,7 @@ export default function PlanPage() {
     setFeedbackContextKey(effectContextToken);
     setFeedback(null);
     setBusyDate(null);
-    setSavingTimeZone(false);
+
     if ((week !== null && user === null) || (user !== null && (!verified || scope === 'guest'))) {
       return () => { cancelled = true; };
     }
@@ -633,8 +566,6 @@ export default function PlanPage() {
 
   const localCopy = currentView.mode === 'guest';
 
-  useLayoutEffect(() => setTimeZoneDraft(currentView.timeZone ?? ''), [currentView.timeZone]);
-
   const chooseReplacement = async (date: string, recipe: PantryRecipe, created?: SavedRecipe): Promise<void> => {
     const fence = captureActionFence(view.scope);
     if (!fence.isCurrent() || busyDate !== null) throw new Error('Il piano è cambiato. Riapri la modifica.');
@@ -656,7 +587,7 @@ export default function PlanPage() {
         const state = createLocalPlanState(date, 'manual', recipe.id);
         await saveGuestPlanState(state, {}, fence.assertCurrent);
         fence.assertCurrent();
-        const nextView = await toView('guest', view.dates, view.timeZone ?? getDeviceTimeZone() ?? 'UTC', 'guest', true, null, fence.assertCurrent);
+        const nextView = await toView('guest', view.dates, 'guest', true, null, fence.assertCurrent);
         fence.assertCurrent();
         publishView(nextView);
       } else {
@@ -674,7 +605,7 @@ export default function PlanPage() {
         const optimisticState = createLocalPlanState(date, 'manual', recipe.id);
         await queuePlanCommand(view.scope, command, optimisticState, { assertCurrent: fence.assertCurrent });
         fence.assertCurrent();
-        const optimistic = await toView(view.scope, view.dates, view.timeZone ?? getDeviceTimeZone() ?? 'UTC', 'offline', true,
+        const optimistic = await toView(view.scope, view.dates, 'offline', true,
           'Modifica salvata sul dispositivo; non è condivisa finché il server non la conferma.', fence.assertCurrent);
         fence.assertCurrent();
         publishView(optimistic);
@@ -686,7 +617,7 @@ export default function PlanPage() {
           }
           await syncPendingMealPlan(view.scope, fence.csrfToken ?? '', api, fence.assertCurrent);
           fence.assertCurrent();
-          const confirmed = await toView(view.scope, view.dates, view.timeZone ?? getDeviceTimeZone() ?? 'UTC', 'shared', true, null, fence.assertCurrent);
+          const confirmed = await toView(view.scope, view.dates, 'shared', true, null, fence.assertCurrent);
           fence.assertCurrent();
           publishView(confirmed);
           if (confirmed.conflicts.some((conflict) => conflict.id === command.operationId)) {
@@ -694,7 +625,7 @@ export default function PlanPage() {
           }
         } catch (error) {
           if (!fence.isCurrent()) return;
-          const pending = await toView(view.scope, view.dates, view.timeZone ?? getDeviceTimeZone() ?? 'UTC', 'offline',
+          const pending = await toView(view.scope, view.dates, 'offline',
             !(error instanceof MealPlanUnavailableError), error instanceof MealPlanUnavailableError
               ? 'Il server non supporta più il piano condiviso. La modifica resta conservata sul dispositivo.'
               : 'La modifica resta sul dispositivo e non è ancora condivisa.', fence.assertCurrent);
@@ -754,13 +685,13 @@ export default function PlanPage() {
       }
       await syncPendingMealPlan(view.scope, fence.csrfToken ?? '', api, fence.assertCurrent);
       fence.assertCurrent();
-      const confirmed = await toView(view.scope, view.dates, view.timeZone ?? getDeviceTimeZone() ?? 'UTC', 'shared', true, null, fence.assertCurrent);
+      const confirmed = await toView(view.scope, view.dates, 'shared', true, null, fence.assertCurrent);
       fence.assertCurrent();
       publishView(confirmed);
     } catch {
       if (!fence.isCurrent()) return;
       publishFeedback('La scelta resta conservata sul dispositivo e non è stata confermata dal server.');
-      const pending = await toView(view.scope, view.dates, view.timeZone ?? getDeviceTimeZone() ?? 'UTC', 'offline', true,
+      const pending = await toView(view.scope, view.dates, 'offline', true,
         'In attesa di conferma · la copia locale non è ancora condivisa.', fence.assertCurrent);
       if (fence.isCurrent()) publishView(pending);
     } finally {
@@ -801,7 +732,7 @@ export default function PlanPage() {
     try {
       await mealPlanApi.resolveRecovery(conflictId, resolution, fence.csrfToken);
       fence.assertCurrent();
-      const confirmed = await toView(view.scope, view.dates, view.timeZone ?? getDeviceTimeZone() ?? 'UTC', 'shared', true, null, fence.assertCurrent);
+      const confirmed = await toView(view.scope, view.dates, 'shared', true, null, fence.assertCurrent);
       fence.assertCurrent();
       publishView(confirmed);
       publishFeedback('Conflitto risolto: la scelta è stata confermata.');
@@ -810,33 +741,6 @@ export default function PlanPage() {
       publishFeedback(error instanceof Error ? error.message : 'La risoluzione non è stata confermata.');
     } finally {
       if (fence.isCurrent()) setBusyDate(null);
-    }
-  };
-
-  const changeHouseTimeZone = async (): Promise<void> => {
-    const fence = captureActionFence(view.scope);
-    if (!fence.isCurrent()) return;
-    const nextTimeZone = timeZoneDraft.trim();
-    if (!isValidIanaTimeZone(nextTimeZone)) {
-      publishFeedback('Inserisci un fuso IANA valido, per esempio Europe/Rome.');
-      return;
-    }
-    if (fence.csrfToken === null || !view.scope.startsWith('house:')) return;
-    setSavingTimeZone(true);
-    publishFeedback(null);
-    try {
-      fence.assertCurrent();
-      const current = await api.getHouseTimeZone();
-      fence.assertCurrent();
-      const updated = await api.updateHouseTimeZone(nextTimeZone, current.revision, fence.csrfToken);
-      fence.assertCurrent();
-      await saveMealPlanTimeZone(view.scope, updated, fence.assertCurrent);
-      fence.assertCurrent();
-      setReload((value) => value + 1);
-    } catch {
-      if (fence.isCurrent()) publishFeedback('Il fuso non è stato aggiornato. Ricarica il piano e riprova.');
-    } finally {
-      if (fence.isCurrent()) setSavingTimeZone(false);
     }
   };
 
@@ -882,30 +786,9 @@ export default function PlanPage() {
         {searchParams.has('week') && week === null && <p role="status">Settimana non valida: sono mostrati i prossimi sette giorni.</p>}
         <nav aria-label="Periodo del piano" className="mt-3 flex flex-wrap gap-4">
           <Link to="/plan" className="inline-flex min-h-11 items-center font-bold underline">Prossimi sette giorni</Link>
-          <Link to={`/plan?week=${getNextWeekMonday(new Date(), currentView.timeZone ?? getDeviceTimeZone() ?? 'Europe/Rome')}`} className="inline-flex min-h-11 items-center font-bold underline">Prossima settimana</Link>
+          <Link to={`/plan?week=${getNextWeekMonday(new Date(), APP_TIME_ZONE)}`} className="inline-flex min-h-11 items-center font-bold underline">Prossima settimana</Link>
         </nav>
       </header>
-
-      {currentView.status === 'ready' && currentView.scope.startsWith('house:') && houseState?.membership?.role === 'admin' && currentView.canEdit && (
-        <form className="mb-4 flex flex-wrap items-end gap-3 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-4" onSubmit={(event) => { event.preventDefault(); void changeHouseTimeZone(); }}>
-          <label className="grid gap-1 text-sm font-semibold text-[var(--ik-ink)]">
-            Fuso orario della Casa
-            <input
-              type="text"
-              name="house-time-zone"
-              autoComplete="off"
-              value={timeZoneDraft}
-              onChange={(event) => setTimeZoneDraft(event.currentTarget.value)}
-              className="ik-input min-h-11 w-full border-2 px-3 py-2 sm:w-56"
-              aria-describedby="house-time-zone-help"
-            />
-          </label>
-          <p id="house-time-zone-help" className="sr-only">Usa un identificativo IANA, per esempio Europe/Rome.</p>
-          <button type="submit" disabled={savingTimeZone || !scopeWritable} className="min-h-11 rounded-xl border-2 border-[var(--ik-basil)] bg-[var(--ik-surface)] px-4 py-2 font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)] disabled:opacity-60">
-            {savingTimeZone ? 'Aggiornamento…' : 'Aggiorna fuso'}
-          </button>
-        </form>
-      )}
 
       {currentView.message !== null && <p role="status" className="mb-4 rounded-[var(--ik-radius-panel)] border border-[var(--ik-accent-border)] bg-[var(--ik-yolk-soft)] px-4 py-3 text-sm text-[var(--ik-warn-ink)]">{currentView.message}</p>}
       {currentView.status === 'ready' && currentView.recoveryError !== null && <p role="alert" className="mb-4 rounded-[var(--ik-radius-panel)] border border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] px-4 py-3 text-sm text-[var(--ik-tomato)]">{currentView.recoveryError}</p>}

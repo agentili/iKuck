@@ -2,6 +2,7 @@ import { ApiClientError } from '../api/apiClient';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { PushPreferences, PushStatus } from '@ikuck/shared/contracts';
+import { APP_TIME_ZONE } from '@ikuck/shared/contracts';
 import { useAuthStore } from '../auth/authStore';
 import { browserSubscription, clearLocalPush, deleteDeviceSubscription, enableDevicePush, getDeviceSubscriptions, getPushStatus, reconcilePushAccount, savePushPreferences, sendPushTest, supportsPush } from './client';
 
@@ -10,7 +11,7 @@ export default function PushSettings() {
   const user = useAuthStore((s) => s.user);
   const csrfToken = useAuthStore((s) => s.csrfToken);
   const [status, setStatus] = useState<PushStatus | null>(null);
-  const [draft, setDraft] = useState<PushPreferences>({ enabled: false, fridayTime: '19:00', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Rome' });
+  const [draft, setDraft] = useState<PushPreferences>({ enabled: false, fridayTime: '19:00', timeZone: APP_TIME_ZONE });
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -32,7 +33,7 @@ export default function PushSettings() {
           setMessage('Questo dispositivo non è più abilitato. Attiva di nuovo le notifiche.');
         }
         setStatus(next);
-        setDraft(next.preferencesConfigured ? next.preferences : { ...next.preferences, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || next.preferences.timeZone });
+        setDraft({ ...next.preferences, timeZone: APP_TIME_ZONE });
         setDeviceId(device?.id ?? null);
       } catch { if (active) setMessage('Impossibile leggere le impostazioni delle notifiche. Riprova quando sei online.'); }
     })();
@@ -50,7 +51,7 @@ export default function PushSettings() {
         setDeviceId(null);
         setMessage('L’iscrizione è scaduta. Attiva di nuovo le notifiche su questo dispositivo.');
       } else if (error instanceof ApiClientError && error.code === 'invalid_payload') {
-        setMessage('Controlla l’orario e il fuso IANA, ad esempio Europe/Rome.');
+        setMessage('Controlla l’orario del venerdì, espresso in UTC.');
       } else if (error instanceof ApiClientError && error.code === 'push_device_limit') {
         setMessage('Hai raggiunto il limite di 20 dispositivi. Disattiva le notifiche su un dispositivo che non usi più.');
       } else {
@@ -76,9 +77,8 @@ export default function PushSettings() {
       {status?.enabled && <Link to="/plan" className="mt-3 inline-flex min-h-11 items-center font-bold underline">Apri piano settimanale</Link>}
       {status?.enabled && <form className="mt-4 grid gap-3" onSubmit={(event) => { event.preventDefault(); if (csrfToken) void run(async () => { await savePushPreferences(draft, csrfToken); const next = await getPushStatus(); setStatus(next); setMessage('Preferenze salvate.'); }); }}>
         <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={draft.enabled} disabled={busy} onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })} />Promemoria attivo per il mio account</label>
-        <label className="grid gap-1">Orario del venerdì<input type="time" required value={draft.fridayTime} disabled={busy} onChange={(event) => setDraft({ ...draft, fridayTime: event.target.value })} className="ik-input min-h-11" /></label>
-        <label className="grid gap-1">Fuso personale (se la Casa non ne ha uno)<input required value={draft.timeZone} disabled={busy} onChange={(event) => setDraft({ ...draft, timeZone: event.target.value })} className="ik-input min-h-11" /></label>
-        <p>Fuso usato: {status.effectiveTimeZone}. Le modifiche ancora offline verranno considerate dopo la sincronizzazione.</p>
+        <label className="grid gap-1">Orario del venerdì (UTC)<input type="time" required value={draft.fridayTime} disabled={busy} onChange={(event) => setDraft({ ...draft, fridayTime: event.target.value })} className="ik-input min-h-11" /></label>
+        <p>Tutti gli orari sono in UTC. Le modifiche ancora offline verranno considerate dopo la sincronizzazione.</p>
         <button className={buttonClass} disabled={busy || !csrfToken}>Salva preferenze</button>
       </form>}
       {status?.enabled && supportsPush() && <div className="mt-4 flex flex-wrap gap-3">

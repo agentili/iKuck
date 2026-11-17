@@ -95,8 +95,6 @@ export interface MealPlanApi {
   sendCommand: (command: PlanCommand, csrfToken: string) => Promise<PlanResult>;
   importCommands: (scope: SyncMutationScope, items: readonly MealPlanImportItem[], csrfToken: string) => Promise<MealPlanImportResponse>;
   getHouseTimeZone: () => Promise<HouseTimeZoneState>;
-  initializeHouseTimeZone: (timeZone: string, csrfToken: string) => Promise<HouseTimeZoneState>;
-  updateHouseTimeZone: (timeZone: string | null, expectedRevision: string | null, csrfToken: string) => Promise<HouseTimeZoneState>;
   readRecovery: (csrfToken: string) => Promise<MealPlanRecoveryResponse>;
   resolveRecovery: (conflictId: string, resolution: MealPlanRecoveryResolution, csrfToken: string) => Promise<PlanResult>;
 }
@@ -176,12 +174,6 @@ export function createMealPlanApi(request: ApiRequest = apiRequest): MealPlanApi
       return parsed;
     },
     getHouseTimeZone: async () => parseTimeZone(await request<unknown>('/v1/house/time-zone')),
-    initializeHouseTimeZone: async (timeZone, csrfToken) => parseTimeZone(await request<unknown>('/v1/house/time-zone/initialize', {
-      method: 'POST', csrfToken, body: { timeZone },
-    })),
-    updateHouseTimeZone: async (timeZone, expectedRevision, csrfToken) => parseTimeZone(await request<unknown>('/v1/house/time-zone', {
-      method: 'PUT', csrfToken, body: { timeZone, expectedRevision },
-    })),
     readRecovery: async (csrfToken) => parseRecovery(await request<unknown>('/v1/meal-plan/recovery', { method: 'POST', csrfToken })),
     resolveRecovery: async (conflictId, resolution, csrfToken) => {
       const response = await request<unknown>(`/v1/meal-plan/recovery/${conflictId}/resolve`, {

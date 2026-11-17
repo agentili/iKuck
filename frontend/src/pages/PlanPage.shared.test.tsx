@@ -3,10 +3,10 @@ import { MemoryRouter } from 'react-router-dom';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
-import type { HouseTimeZoneState, PlanCommand, PlanState } from '@ikuck/shared/contracts';
+import type { PlanCommand, PlanState } from '@ikuck/shared/contracts';
 import PlanPage from './PlanPage';
 import { mealPlanApi, MealPlanUnavailableError } from '../mealPlan/api';
-import { readMealPlanOutbox, readMealPlanSnapshot, commitMealPlanCommand, enqueueMealPlanCommand } from '../mealPlan/storage';
+import { readMealPlanOutbox, readMealPlanSnapshot, commitMealPlanCommand, enqueueMealPlanCommand, saveMealPlanTimeZone } from '../mealPlan/storage';
 import { scopeStorageKey, setActiveDataScope } from '../sync/scopeContext';
 import { completeScopePurge, resumeScope, revokeScope } from '../sync/scopeWriteFence';
 import * as syncQueue from '../sync/syncQueue';
@@ -33,6 +33,7 @@ beforeEach(async () => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   useAuthStore.setState({ user: null, csrfToken: null, expiresAt: null });
   useHouseStore.setState({ state: null });
@@ -47,8 +48,7 @@ const deferred = <T,>() => {
 
 const setupExistingSharedPlan = () => {
   const dates = [...new Set([
-    ...getNextSevenCivilDates(new Date(), 'Europe/Rome'),
-    ...getNextSevenCivilDates(new Date(), 'America/New_York'),
+    ...getNextSevenCivilDates(new Date(), 'UTC'),
   ])];
   const statesByScope = new Map<string, Map<string, PlanState>>();
   for (const [scope, offset] of [['house:house-1', 0], ['house:house-2', 7]] as const) {
@@ -60,10 +60,7 @@ const setupExistingSharedPlan = () => {
       recipeId: RECIPES[(index + offset) % RECIPES.length]!.id,
     }])));
   }
-  let timeZone: HouseTimeZoneState = {
-    timeZone: 'Europe/Rome', revision: '123e4567-e89b-42d3-a456-426614174000',
-  };
-  const getZone = vi.spyOn(mealPlanApi, 'getHouseTimeZone').mockImplementation(async () => timeZone);
+  const getZone = vi.spyOn(mealPlanApi, 'getHouseTimeZone');
   vi.spyOn(mealPlanApi, 'getCapabilities').mockResolvedValue({ version: 2, syncReadVersion: 2 });
   vi.spyOn(mealPlanApi, 'readSyncPage').mockImplementation(async (scope, _deviceId, cursor) => {
     const states = [...(statesByScope.get(scope)?.values() ?? [])];
@@ -75,10 +72,45 @@ const setupExistingSharedPlan = () => {
     date,
     state: statesByScope.get(scope)?.get(date) ?? null,
   })));
-  return { dates, statesByScope, getZone, setTimeZone: (value: HouseTimeZoneState): void => { timeZone = value; } };
+  return { dates, statesByScope, getZone };
 };
 
 describe('PlanPage shared mode', () => {
+  it.each(['shared', 'offline', 'unsupported'] as const)('ignores legacy cached and device zones in %s mode', async (mode) => {
+    vi.stubEnv('TZ', 'Europe/Rome');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-08T23:30:00Z'));
+    const { dates, getZone } = setupExistingSharedPlan();
+    const first = render(<MemoryRouter><PlanPage /></MemoryRouter>);
+    await screen.findByRole('list', { name: 'Pasti da domani' });
+    first.unmount();
+    await saveMealPlanTimeZone('house:house-1', { timeZone: 'Pacific/Kiritimati', revision: crypto.randomUUID() });
+    if (mode !== 'shared') {
+      vi.mocked(mealPlanApi.getCapabilities).mockRejectedValue(mode === 'offline'
+        ? new ApiClientError(0, 'network_error', 'offline') : new MealPlanUnavailableError());
+    }
+    render(<MemoryRouter><PlanPage /></MemoryRouter>);
+    const list = await screen.findByRole('list', { name: 'Pasti da domani' });
+    expect(within(list).getAllByRole('listitem').map(row => row.getAttribute('data-date'))).toEqual(dates);
+    expect(dates[0]).toBe('2026-11-09');
+    expect(screen.getByRole('link', { name: 'Prossima settimana' })).toHaveAttribute('href', '/plan?week=2026-11-09');
+    expect(getZone).not.toHaveBeenCalled();
+    expect(screen.queryByRole('textbox', { name: /fuso/i })).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('button', { name: /cambia ricetta/i })).toHaveLength(mode === 'unsupported' ? 0 : 7);
+  });
+  it('does not offer timezone controls to house admins or request a configurable timezone', async () => {
+    const { getZone } = setupExistingSharedPlan();
+    useHouseStore.setState({ state: {
+      house: { id: 'house-1', name: 'Casa', createdAt: '2026-01-01T00:00:00.000Z' },
+      membership: { role: 'admin', joinedAt: '2026-01-01T00:00:00.000Z' },
+      members: [],
+    } });
+    render(<MemoryRouter><PlanPage /></MemoryRouter>);
+    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
+    expect(screen.queryByRole('textbox', { name: /fuso/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /aggiorna fuso/i })).not.toBeInTheDocument();
+    expect(getZone).not.toHaveBeenCalled();
+  });
   it('defers refresh after the dialog closes until the pending confirmation finishes', async () => {
     const { statesByScope } = setupExistingSharedPlan();
     const started = deferred<PlanCommand>();
@@ -201,7 +233,7 @@ describe('PlanPage shared mode', () => {
     await expect(readMealPlanOutbox(['house:house-1'])).resolves.toEqual([]);
   });
 
-  it('shows a provisional device-timezone calendar on first offline load without sending plan data', async () => {
+  it('shows a read-only UTC calendar on first offline load without sending plan data', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-10-28T12:00:00.000Z'));
     vi.spyOn(mealPlanApi, 'getCapabilities').mockRejectedValue(new ApiClientError(0, 'network_error', 'offline'));
@@ -221,9 +253,6 @@ describe('PlanPage shared mode', () => {
     const current = new Map<string, PlanState>();
     let sequence = 0;
     vi.spyOn(mealPlanApi, 'getCapabilities').mockResolvedValue({ version: 2, syncReadVersion: 2 });
-    vi.spyOn(mealPlanApi, 'getHouseTimeZone').mockResolvedValue({
-      timeZone: 'Europe/Rome', revision: '123e4567-e89b-42d3-a456-426614174000',
-    });
     const read = vi.spyOn(mealPlanApi, 'readStates').mockImplementation(async (_scope, dates) => dates.map((date) => ({
       date,
       state: current.get(date) ?? null,
@@ -265,9 +294,6 @@ describe('PlanPage shared mode', () => {
     const current = new Map<string, PlanState>();
     let sequence = 0;
     vi.spyOn(mealPlanApi, 'getCapabilities').mockResolvedValue({ version: 2, syncReadVersion: 2 });
-    vi.spyOn(mealPlanApi, 'getHouseTimeZone').mockResolvedValue({
-      timeZone: 'Europe/Rome', revision: '123e4567-e89b-42d3-a456-426614174000',
-    });
     const read = vi.spyOn(mealPlanApi, 'readStates').mockImplementation(async (_scope, dates) => dates.map((date) => ({
       date,
       state: current.get(date) ?? null,
@@ -343,7 +369,7 @@ describe('PlanPage shared mode', () => {
   });
 
   it('does not queue a replacement when the session and house change during device ID lookup', async () => {
-    const { setTimeZone } = setupExistingSharedPlan();
+    const { dates } = setupExistingSharedPlan();
     const deviceId = deferred<string>();
     const getDeviceId = vi.spyOn(syncQueue, 'getDeviceId').mockResolvedValue('bootstrap-device');
     const send = vi.spyOn(mealPlanApi, 'sendCommand');
@@ -354,7 +380,6 @@ describe('PlanPage shared mode', () => {
     await choosePlanRecipe(within(firstRow).getByRole('button', { name: /cambia ricetta/i }));
     await waitFor(() => expect(getDeviceId).toHaveBeenCalledTimes(2));
 
-    setTimeZone({ timeZone: 'America/New_York', revision: '123e4567-e89b-42d3-a456-426614174001' });
     act(() => {
       useAuthStore.setState({
         user: { ...user, id: 'user-2', email: 'second@example.test' },
@@ -362,7 +387,7 @@ describe('PlanPage shared mode', () => {
       });
       setActiveDataScope('house:house-2');
     });
-    await waitFor(async () => expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York'));
+    await waitFor(async () => expect(Object.keys((await readMealPlanSnapshot('house:house-2')).states)).toEqual(dates));
     expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
     deviceId.resolve('action-device');
 
@@ -375,7 +400,7 @@ describe('PlanPage shared mode', () => {
   });
 
   it('keeps a persisted replacement in its original outbox and rejects its late response after a session and house switch', async () => {
-    const { statesByScope, setTimeZone } = setupExistingSharedPlan();
+    const { dates, statesByScope } = setupExistingSharedPlan();
     const sendStarted = deferred<PlanCommand>();
     const lateResponse = deferred<Awaited<ReturnType<MealPlanApi['sendCommand']>>>();
     vi.spyOn(mealPlanApi, 'sendCommand').mockImplementation(async (command) => {
@@ -385,13 +410,12 @@ describe('PlanPage shared mode', () => {
     render(<MemoryRouter><PlanPage /></MemoryRouter>);
 
     expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
-    expect((await readMealPlanSnapshot('house:house-1')).timeZone?.timeZone).toBe('Europe/Rome');
+    expect((await readMealPlanSnapshot('house:house-1')).states).toEqual(Object.fromEntries(statesByScope.get('house:house-1')!));
     const firstRow = screen.getAllByRole('listitem')[0]!;
     await choosePlanRecipe(within(firstRow).getByRole('button', { name: /cambia ricetta/i }));
     const command = await sendStarted.promise;
     await waitFor(async () => expect(await readMealPlanOutbox(['house:house-1'])).toHaveLength(1));
 
-    setTimeZone({ timeZone: 'America/New_York', revision: '123e4567-e89b-42d3-a456-426614174001' });
     act(() => {
       useAuthStore.setState({
         user: { ...user, id: 'user-2', email: 'second@example.test' },
@@ -399,7 +423,7 @@ describe('PlanPage shared mode', () => {
       });
       setActiveDataScope('house:house-2');
     });
-    await waitFor(async () => expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York'));
+    await waitFor(async () => expect(Object.keys((await readMealPlanSnapshot('house:house-2')).states)).toEqual(dates));
     expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
 
     const previous = statesByScope.get('house:house-1')!.get(command.date)!;
@@ -413,7 +437,7 @@ describe('PlanPage shared mode', () => {
 
     await waitFor(async () => {
       expect(await readMealPlanOutbox(['house:house-1'])).toHaveLength(1);
-      expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York');
+      expect(Object.keys((await readMealPlanSnapshot('house:house-2')).states)).toEqual(dates);
       expect(screen.getByRole('list', { name: 'Pasti da domani' })).toBeVisible();
     });
     expect(await readMealPlanOutbox(['house:house-2'])).toEqual([]);
@@ -502,8 +526,8 @@ describe('PlanPage shared mode', () => {
   });
 
   it('keeps a conflict retry queued in the old scope when its network response arrives after switching houses', async () => {
-    const { statesByScope, setTimeZone } = setupExistingSharedPlan();
-    const date = getNextSevenCivilDates(new Date(), 'Europe/Rome')[0]!;
+    const { dates, statesByScope } = setupExistingSharedPlan();
+    const date = getNextSevenCivilDates(new Date(), 'UTC')[0]!;
     const current = statesByScope.get('house:house-1')!.get(date)!;
     const conflictCommand: PlanCommand = {
       version: 2,
@@ -538,7 +562,6 @@ describe('PlanPage shared mode', () => {
       resolvesConflictId: conflictCommand.operationId,
     });
 
-    setTimeZone({ timeZone: 'America/New_York', revision: '123e4567-e89b-42d3-a456-426614174001' });
     act(() => {
       useAuthStore.setState({
         user: { ...user, id: 'user-2', email: 'second@example.test' },
@@ -546,7 +569,7 @@ describe('PlanPage shared mode', () => {
       });
       setActiveDataScope('house:house-2');
     });
-    await waitFor(async () => expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York'));
+    await waitFor(async () => expect(Object.keys((await readMealPlanSnapshot('house:house-2')).states)).toEqual(dates));
     expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
 
     lateResponse.resolve({
@@ -559,149 +582,9 @@ describe('PlanPage shared mode', () => {
     await waitFor(async () => {
       expect(await readMealPlanOutbox(['house:house-1'])).toHaveLength(1);
       expect((await readMealPlanSnapshot('house:house-1')).conflicts).toContainEqual(expect.objectContaining({ id: conflictCommand.operationId }));
-      expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York');
+      expect(Object.keys((await readMealPlanSnapshot('house:house-2')).states)).toEqual(dates);
       expect(screen.getByRole('list', { name: 'Pasti da domani' })).toBeVisible();
     });
   });
 
-  it('does not update or persist a house timezone after its session changes during the timezone read', async () => {
-    const { getZone, setTimeZone } = setupExistingSharedPlan();
-    useHouseStore.setState({ state: {
-      house: { id: 'house-1', name: 'Casa', createdAt: '2026-01-01T00:00:00.000Z' },
-      membership: { role: 'admin', joinedAt: '2026-01-01T00:00:00.000Z' },
-      members: [],
-    } });
-    const update = vi.spyOn(mealPlanApi, 'updateHouseTimeZone').mockResolvedValue({
-      timeZone: 'America/New_York', revision: '123e4567-e89b-42d3-a456-426614174001',
-    });
-    const pendingRead = deferred<HouseTimeZoneState>();
-    const userInput = userEvent.setup();
-    render(<MemoryRouter><PlanPage /></MemoryRouter>);
-
-    const input = await screen.findByRole('textbox', { name: 'Fuso orario della Casa' });
-    await userInput.clear(input);
-    await userInput.type(input, 'America/New_York');
-    getZone.mockImplementationOnce(() => pendingRead.promise);
-    await userInput.click(screen.getByRole('button', { name: 'Aggiorna fuso' }));
-    await waitFor(() => expect(getZone).toHaveBeenCalledTimes(2));
-
-    setTimeZone({ timeZone: 'America/New_York', revision: '123e4567-e89b-42d3-a456-426614174002' });
-    act(() => {
-      useAuthStore.setState({
-        user: { ...user, id: 'user-2', email: 'second@example.test' },
-        csrfToken: 'second-csrf-token',
-      });
-      setActiveDataScope('house:house-2');
-    });
-    await waitFor(async () => expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York'));
-    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
-    pendingRead.resolve({ timeZone: 'Europe/Rome', revision: '123e4567-e89b-42d3-a456-426614174000' });
-
-    await waitFor(async () => {
-      expect(update).not.toHaveBeenCalled();
-      expect((await readMealPlanSnapshot('house:house-1')).timeZone?.timeZone).toBe('Europe/Rome');
-      expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York');
-      expect(screen.getByRole('list', { name: 'Pasti da domani' })).toBeVisible();
-    });
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  it('does not commit an updated timezone when the session changes during its IndexedDB write', async () => {
-    const { setTimeZone } = setupExistingSharedPlan();
-    useHouseStore.setState({ state: {
-      house: { id: 'house-1', name: 'Casa', createdAt: '2026-01-01T00:00:00.000Z' },
-      membership: { role: 'admin', joinedAt: '2026-01-01T00:00:00.000Z' },
-      members: [],
-    } });
-    const update = vi.spyOn(mealPlanApi, 'updateHouseTimeZone').mockResolvedValue({
-      timeZone: 'America/New_York', revision: '123e4567-e89b-42d3-a456-426614174001',
-    });
-    let timezoneUpdated = false;
-    const transactionRead = deferred<void>();
-    const originalGet = IDBObjectStore.prototype.get;
-    const get = vi.spyOn(IDBObjectStore.prototype, 'get').mockImplementation(function (this: IDBObjectStore, key) {
-      const request = originalGet.call(this, key);
-      if (timezoneUpdated && this.transaction.mode === 'readwrite'
-        && key === scopeStorageKey('house:house-1', 'meal-plan-v2')) {
-        timezoneUpdated = false;
-        request.addEventListener('success', () => {
-          useAuthStore.setState({
-            user: { ...user, id: 'user-2', email: 'second@example.test' },
-            csrfToken: 'second-csrf-token',
-          });
-          setActiveDataScope('house:house-2');
-          setTimeZone({ timeZone: 'America/New_York', revision: '123e4567-e89b-42d3-a456-426614174002' });
-          useHouseStore.setState({ state: {
-            house: { id: 'house-2', name: 'Altra casa', createdAt: '2026-01-01T00:00:00.000Z' },
-            membership: { role: 'admin', joinedAt: '2026-01-01T00:00:00.000Z' },
-            members: [],
-          } });
-          transactionRead.resolve();
-        }, { once: true });
-      }
-      return request;
-    });
-    update.mockImplementation(async (nextTimeZone) => {
-      timezoneUpdated = true;
-      return { timeZone: nextTimeZone, revision: '123e4567-e89b-42d3-a456-426614174001' };
-    });
-    const userInput = userEvent.setup();
-    render(<MemoryRouter><PlanPage /></MemoryRouter>);
-
-    const input = await screen.findByRole('textbox', { name: 'Fuso orario della Casa' });
-    await userInput.clear(input);
-    await userInput.type(input, 'America/New_York');
-    await userInput.click(screen.getByRole('button', { name: 'Aggiorna fuso' }));
-    await transactionRead.promise;
-    get.mockRestore();
-
-    await waitFor(async () => expect((await readMealPlanSnapshot('house:house-2')).timeZone?.timeZone).toBe('America/New_York'));
-    expect(await screen.findByRole('list', { name: 'Pasti da domani' })).toBeVisible();
-    await waitFor(async () => {
-      expect(update).toHaveBeenCalledTimes(1);
-      expect((await readMealPlanSnapshot('house:house-1')).timeZone).toEqual({
-        timeZone: 'Europe/Rome', revision: '123e4567-e89b-42d3-a456-426614174000',
-      });
-    });
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  it('lets a house admin update the shared IANA timezone with the current revision', async () => {
-    useHouseStore.setState({ state: {
-      house: { id: 'house-1', name: 'Casa', createdAt: '2026-01-01T00:00:00.000Z' },
-      membership: { role: 'admin', joinedAt: '2026-01-01T00:00:00.000Z' },
-      members: [],
-    } });
-    let timeZone: string | null = 'Europe/Rome';
-    let revision: string | null = '123e4567-e89b-42d3-a456-426614174000';
-    vi.spyOn(mealPlanApi, 'getCapabilities').mockResolvedValue({ version: 2, syncReadVersion: 2 });
-    vi.spyOn(mealPlanApi, 'getHouseTimeZone').mockImplementation(async () => ({ timeZone, revision }));
-    const update = vi.spyOn(mealPlanApi, 'updateHouseTimeZone').mockImplementation(async (nextTimeZone) => {
-      timeZone = nextTimeZone;
-      revision = '123e4567-e89b-42d3-a456-426614174001';
-      return { timeZone, revision };
-    });
-    vi.spyOn(mealPlanApi, 'readStates').mockImplementation(async (_scope, dates) => dates.map((date, index) => ({
-      date,
-      state: {
-        date,
-        revision: `0000000${index + 1}-0000-4000-8000-000000000001`,
-        serverSequence: index + 1,
-        kind: 'automatic' as const,
-        recipeId: RECIPES[0].id,
-      },
-    })));
-    const userInput = userEvent.setup();
-    render(<MemoryRouter><PlanPage /></MemoryRouter>);
-
-    const timeZoneInput = await screen.findByRole('textbox', { name: 'Fuso orario della Casa' });
-    await userInput.clear(timeZoneInput);
-    await userInput.type(timeZoneInput, 'America/New_York');
-    expect(timeZoneInput).toHaveValue('America/New_York');
-    await userInput.click(screen.getByRole('button', { name: 'Aggiorna fuso' }));
-
-    await waitFor(() => expect(update).toHaveBeenCalledWith('America/New_York', '123e4567-e89b-42d3-a456-426614174000', 'csrf-token'));
-    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Fuso orario della Casa' })).toHaveValue('America/New_York'));
-    expect((await readMealPlanSnapshot('house:house-1')).timeZone?.timeZone).toBe('America/New_York');
-  });
 });

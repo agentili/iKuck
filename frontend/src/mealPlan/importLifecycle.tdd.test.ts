@@ -30,8 +30,6 @@ function createImportApi() {
       }),
     })),
     getHouseTimeZone: vi.fn(),
-    initializeHouseTimeZone: vi.fn(),
-    updateHouseTimeZone: vi.fn(),
     readRecovery: vi.fn<MealPlanApi['readRecovery']>(async () => ({ version: 2, conflicts: [], quarantined: [] })),
     resolveRecovery: vi.fn<MealPlanApi['resolveRecovery']>(async () => ({ version: 2, operationId: crypto.randomUUID(), outcome: 'applied', current: null })),
   };

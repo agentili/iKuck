@@ -46,20 +46,20 @@ type DateWindowCase = {
 
 const dateWindowCases: DateWindowCase[] = [
   {
-    description: 'starts after the Rome civil date at the spring DST boundary',
+    description: 'uses UTC instead of the device Rome date at the spring DST boundary',
     instant: '2026-03-28T23:30:00Z',
     timeZone: 'Europe/Rome',
-    today: '2026-03-29',
-    nextSevenDays: ['2026-03-30', '2026-03-31', '2026-04-01', '2026-04-02', '2026-04-03', '2026-04-04', '2026-04-05'],
-    eighthDay: '2026-04-06',
-  },
-  {
-    description: 'uses the New York civil date for the same instant near UTC midnight',
-    instant: '2026-03-28T23:30:00Z',
-    timeZone: 'America/New_York',
     today: '2026-03-28',
     nextSevenDays: ['2026-03-29', '2026-03-30', '2026-03-31', '2026-04-01', '2026-04-02', '2026-04-03', '2026-04-04'],
     eighthDay: '2026-04-05',
+  },
+  {
+    description: 'uses UTC instead of the previous device New York date near UTC midnight',
+    instant: '2026-03-29T00:30:00Z',
+    timeZone: 'America/New_York',
+    today: '2026-03-29',
+    nextSevenDays: ['2026-03-30', '2026-03-31', '2026-04-01', '2026-04-02', '2026-04-03', '2026-04-04', '2026-04-05'],
+    eighthDay: '2026-04-06',
   },
   {
     description: 'keeps seven consecutive civil dates across the spring clock change',

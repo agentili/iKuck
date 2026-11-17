@@ -1,8 +1,14 @@
 # Promemoria push del piano settimanale
 
-Le notifiche sono facoltative e disponibili agli account verificati. Ogni utente sceglie l'orario del venerdì (default 19:00); ogni browser deve essere abilitato esplicitamente dal Profilo. Il worker usa il fuso IANA della Casa, se configurato, altrimenti quello personale salvato nelle preferenze. Il server considera solo dati sincronizzati: il promemoria parte se manca almeno una ricetta dal lunedì alla domenica successivi. Non genera il piano.
+Le notifiche sono facoltative e disponibili agli account verificati. Ogni utente sceglie l'orario del venerdì (default 19:00); ogni browser deve essere abilitato esplicitamente dal Profilo. Il piano e il worker usano sempre UTC, indipendentemente dal dispositivo e dalla Casa. Il fuso non è configurabile, nemmeno dagli amministratori. Il server considera solo dati sincronizzati: il promemoria parte se manca almeno una ricetta dal lunedì alla domenica successivi. Non genera il piano.
 
 Il clic apre `/plan?week=YYYY-MM-DD` (lunedì); in assenza di accesso il Profilo conserva la destinazione. La rotta del Piano funziona sia nella build Sous Chef sia nell’interfaccia originale. La finestra mobile dei prossimi sette giorni rimane la vista predefinita. Il comando Prossima settimana apre la vista di calendario anche senza una notifica.
+
+## Fuso fisso e aggiornamento dei dati
+
+La migrazione `0019_fixed_utc` converte a UTC i vecchi fusi della Casa e delle notifiche, inizializza quelli assenti e impedisce valori diversi anche nel database. Le date civili già salvate e gli orari `HH:mm` restano invariati: un promemoria alle `19:00` è ora alle `19:00 UTC`, anche durante l’ora legale. Il piano ignora i vecchi fusi della cache anche offline. Le API `POST /v1/house/time-zone/initialize` e `PUT /v1/house/time-zone` sono rimosse; `GET /v1/house/time-zone` resta in sola lettura per compatibilità. I vecchi client devono aggiornare la PWA per non inviare più scelte di fuso.
+
+Prima di questo aggiornamento fermare i vecchi worker e attendere la conclusione degli invii, quindi fermare le vecchie API per impedire scritture concorrenti delle preferenze. Applicare la migrazione e avviare solo API e worker aggiornati. Nella stessa transazione la migrazione elimina le consegne ancora `pending`, che verranno ricostruite dal worker soltanto nella nuova finestra UTC, con scadenza ricalcolata e i consueti controlli di autorizzazione e completezza. Il contatore dei tentativi e il backoff delle consegne pendenti vengono azzerati anche per quelle già UTC. Le righe `sent`, `skipped` ed `expired` restano invariate e mantengono la deduplica; quelle già terminali prima dell’aggiornamento non vengono riaperte. Non cambia la garanzia di consegna descritta sotto: un precedente invio dall’esito incerto può comunque essere ripetuto.
 
 ## Configurazione
 
@@ -22,7 +28,7 @@ Tutte le route richiedono una sessione verificata; le mutazioni richiedono anche
 | Metodo e percorso | Comportamento |
 | --- | --- |
 | `GET /v1/push` | Disponibilità del servizio, chiave VAPID pubblica, preferenze e fuso effettivo |
-| `PUT /v1/push/preferences` | Salva `enabled`, `fridayTime` (`HH:mm`) e `timeZone` IANA |
+| `PUT /v1/push/preferences` | Salva `enabled` e `fridayTime` (`HH:mm`, in UTC); il campo di compatibilità `timeZone` accetta solo `UTC` |
 | `GET /v1/push/subscriptions` | Elenca ID/endpoint associati alla sessione corrente, senza chiavi |
 | `POST /v1/push/subscriptions` | Registra `endpoint` e `keys.p256dh/auth`; restituisce l'ID |
 | `DELETE /v1/push/subscriptions/:id` | Revoca solo un'iscrizione della sessione e dell'utente correnti |
@@ -44,6 +50,6 @@ Per fermare il servizio impostare `PUSH_ENABLED=false`, ricreare l'API e arresta
 
 ## Verifiche
 
-Test unitari: calendario/fusi/ora legale, payload, permessi, cambio account, validazione endpoint/chiavi e API con autenticazione/CSRF. Test PostgreSQL disposable: piano vuoto/parziale/completo, ambito Casa, concorrenza, retry, scadenza e revoca. Test browser: consenso esplicito, ricezione nel service worker via CDP, disattivazione, destinazione settimanale, offline e aggiornamento della PWA.
+Test unitari: calendario UTC, indipendenza dal fuso del dispositivo, payload, permessi, cambio account, validazione endpoint/chiavi e API con autenticazione/CSRF. Test PostgreSQL disposable: piano vuoto/parziale/completo, ambito Casa, concorrenza, retry, scadenza e revoca. Test browser: consenso esplicito, ricezione nel service worker via CDP, disattivazione, destinazione settimanale, offline e aggiornamento della PWA.
 
 Prima dell'attivazione in produzione, eseguire una notifica di prova su staging HTTPS su desktop/Android e su una PWA iOS reale, verificando app chiusa, clic, ritorno al piano dopo il login, orario configurato e revoca. I test con provider simulato/CDP non verificano la consegna attraverso i servizi push pubblici.

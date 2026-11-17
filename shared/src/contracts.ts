@@ -1,3 +1,5 @@
+export const APP_TIME_ZONE = 'UTC';
+
 export const SYNC_ENTITY_TYPES = [
   'pantry_item',
   'pantry_lot',

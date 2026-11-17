@@ -72,12 +72,13 @@ export const houses = pgTable('houses', {
   id: uuid('id').defaultRandom().primaryKey(),
   name: text('name').notNull(),
   createdByUserId: uuid('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
-  timeZone: text('time_zone'),
-  timeZoneRevision: uuid('time_zone_revision'),
+  timeZone: text('time_zone').default('UTC').notNull(),
+  timeZoneRevision: uuid('time_zone_revision').defaultRandom().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
   timeZoneRevisionPair: check('houses_time_zone_revision_pair_check', sql`(${table.timeZone} IS NULL AND ${table.timeZoneRevision} IS NULL) OR ${table.timeZoneRevision} IS NOT NULL`),
+  timeZoneUtc: check('houses_time_zone_utc_check', sql`${table.timeZone} = 'UTC'`),
 }));
 
 export const houseMemberships = pgTable('house_memberships', {
@@ -367,8 +368,10 @@ export const pushPreferences = pgTable('push_preferences', {
   userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
   enabled: boolean('enabled').default(false).notNull(),
   fridayTime: text('friday_time').default('19:00').notNull(),
-  timeZone: text('time_zone').notNull(),
-});
+  timeZone: text('time_zone').default('UTC').notNull(),
+}, (table) => ({
+  timeZoneUtc: check('push_preferences_time_zone_utc_check', sql`${table.timeZone} = 'UTC'`),
+}));
 
 export const pushSubscriptions = pgTable('push_subscriptions', {
   id: uuid('id').defaultRandom().primaryKey(),
