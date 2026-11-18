@@ -367,6 +367,39 @@ describe('POST /v1/recipes/generate', () => {
     await app.close();
   });
 
+  it('releases reserved quota when dried fruit is the only sulphite-excluded ingredient', async () => {
+    const commit = vi.fn().mockResolvedValue(undefined);
+    const release = vi.fn().mockResolvedValue(undefined);
+    const limiter = {
+      consume: vi.fn().mockResolvedValue({ allowed: true, used: 1, remaining: 9999 }),
+      reserve: vi.fn().mockResolvedValue({
+        quota: { allowed: true, used: 1, remaining: 9999 },
+        commit,
+        release,
+      }),
+    };
+    const provider = { generate: vi.fn().mockResolvedValue(draft) };
+    const { app, repository } = createRecipeApp({ provider, limiter });
+
+    try {
+      const response = await generate(app, {
+        ingredients: ['Uvetta'],
+        dietProfile: { ...defaultDietProfile, excludedAllergens: ['sulphites'] },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ kind: 'none_available' });
+      expect(response.json()).not.toHaveProperty('recipe');
+      expect(provider.generate).not.toHaveBeenCalled();
+      expect(await repository.readAll('user-1')).toHaveLength(0);
+      expect(limiter.reserve).toHaveBeenCalledTimes(1);
+      expect(release).toHaveBeenCalledTimes(1);
+      expect(commit).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
   it.each(['Sugo', 'Olio', 'Pasta', 'Couscous', 'Pangrattato', 'Fagioli'])(
     'rejects Home-normalized %s without consent and releases quota',
     async (input) => {
