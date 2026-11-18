@@ -26,6 +26,7 @@ import { type PantryLotRouteDependencies, registerPantryLotRoutes } from './rout
 import { type ShoppingListRouteDependencies, registerShoppingListRoutes } from './routes/shoppingList.js';
 import { type ActivityRouteDependencies, registerActivityRoutes } from './routes/activity.js';
 import { type RecipePreferenceRouteDependencies, registerRecipePreferenceRoutes } from './routes/recipePreferences.js';
+import { type RecipeRouteDependencies, registerRecipeRoutes } from './routes/recipes.js';
 import { type DietProfileRouteDependencies, registerDietProfileRoutes } from './routes/dietProfile.js';
 
 import { type AiRecipeRouteDependencies, registerAiRecipeRoutes } from './routes/aiRecipes.js';
@@ -54,6 +55,7 @@ export interface ExtendedPlatformDependencies extends PlatformDependencies {
 
   aiRecipes?: AiRecipeRouteDependencies;
   chefChat?: ChefChatDependencies;
+  recipes?: RecipeRouteDependencies;
   push?: PushRouteDependencies;
   house?: HouseRouteDependencies;
   dinnerDiary?: DinnerDiaryRecipeRouteDependencies;
@@ -134,6 +136,7 @@ export const createApp = (
   if (dependencies.dietProfile !== undefined) app.register(registerDietProfileRoutes(dependencies.dietProfile));
 
   if (dependencies.aiRecipes !== undefined) app.register(registerAiRecipeRoutes(dependencies.aiRecipes));
+  if (dependencies.recipes !== undefined) app.register(registerRecipeRoutes(dependencies.recipes));
   if (dependencies.house !== undefined) app.register(registerHouseRoutes(dependencies.house));
   if (dependencies.dinnerDiary !== undefined) app.register(registerDinnerDiaryRecipeRoutes(dependencies.dinnerDiary));
   if (dependencies.dinnerConsumption !== undefined) app.register(registerDinnerConsumptionRoutes(dependencies.dinnerConsumption));

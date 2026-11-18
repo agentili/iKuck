@@ -1,5 +1,10 @@
 import type { AiConsent, DietProfilePayload, GeneratedRecipe, GeneratedRecipeDraft } from '@ikuck/shared/contracts';
-import { RECIPE_MAX_INGREDIENTS } from '@ikuck/shared/limits';
+import {
+  GENERATED_RECIPE_DESCRIPTION_MAX_LENGTH,
+  GENERATED_RECIPE_STEP_MAX_LENGTH,
+  GENERATED_RECIPE_TITLE_MAX_LENGTH,
+  RECIPE_MAX_INGREDIENTS,
+} from '@ikuck/shared/limits';
 import { z } from 'zod';
 
 const dietTypes = ['omnivore', 'vegetarian', 'pescatarian', 'vegan'] as const;
@@ -23,13 +28,13 @@ const euAllergens = [
 const unique = <T>(items: T[]): boolean => new Set(items).size === items.length;
 
 export const generatedRecipeDraftSchema = z.object({
-  title: z.string().trim().min(1).max(120),
-  description: z.string().trim().min(1).max(500),
+  title: z.string().trim().min(1).max(GENERATED_RECIPE_TITLE_MAX_LENGTH),
+  description: z.string().trim().min(1).max(GENERATED_RECIPE_DESCRIPTION_MAX_LENGTH),
   ingredients: z.array(z.object({
     name: z.string().trim().min(1).max(120),
     amount: z.string().trim().min(1).max(80),
   }).strict()).min(1).max(RECIPE_MAX_INGREDIENTS),
-  steps: z.array(z.string().trim().min(1).max(500)).min(1).max(20),
+  steps: z.array(z.string().trim().min(1).max(GENERATED_RECIPE_STEP_MAX_LENGTH)).min(1).max(20),
   diets: z.array(z.enum(dietTypes)).min(1).max(dietTypes.length).refine(unique, 'Diets must be unique'),
   allergens: z.array(z.enum(euAllergens)).max(euAllergens.length).refine(unique, 'Allergens must be unique'),
 }).strict();

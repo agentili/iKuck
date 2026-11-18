@@ -12,7 +12,7 @@ interface OfflineBackendState {
 
 export interface OfflineApiResponse {
   status?: number;
-  json: unknown;
+  json: unknown | ((request: Request) => unknown | Promise<unknown>);
 }
 
 export interface OfflineBackendOptions {
@@ -101,7 +101,10 @@ const installContextGuard = async (page: Page, state: OfflineBackendState): Prom
     const configuredResponse = isSameOrigin ? state.responses.get(responseKey) : undefined;
 
     if (configuredResponse !== undefined) {
-      await route.fulfill({ status: configuredResponse.status ?? 200, json: configuredResponse.json });
+      const json = typeof configuredResponse.json === 'function'
+        ? await configuredResponse.json(request)
+        : configuredResponse.json;
+      await route.fulfill({ status: configuredResponse.status ?? 200, json });
       return;
     }
 

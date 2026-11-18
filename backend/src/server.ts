@@ -142,6 +142,14 @@ export const start = async () => {
         appOrigin: config.appOrigin,
         recipeProvider: config.providers.recipeProvider ?? 'openai',
       },
+      recipes: {
+        provider: providers.recipes,
+        recipeProvider: config.providers.recipeProvider ?? 'openai',
+        limiter: createRedisGenerationRateLimiter(cache),
+        repository: sync,
+        authService: auth,
+        appOrigin: config.appOrigin,
+      },
     },
     {
       logger: createServerLoggerOptions(config.logLevel),

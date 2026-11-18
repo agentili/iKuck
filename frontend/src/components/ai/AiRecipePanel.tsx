@@ -30,6 +30,7 @@ interface AiRecipePanelProps {
   generationMode?: 'ingredients' | 'title';
   generationReady?: boolean;
   onRecipeSaved?: (recipe: GeneratedRecipe) => void;
+  savedRecipeUpdate?: SavedRecipeCollectionUpdate | null;
   ingredients: string[];
   dietProfile: DietProfilePayload;
   user: AuthUser | null;
@@ -40,6 +41,11 @@ interface SavedAiCollection {
   owner: AiRecipeCollectionOwner;
   recipes: GeneratedRecipe[];
   pendingDeletes: GeneratedRecipe[];
+}
+
+interface SavedRecipeCollectionUpdate {
+  owner: AiRecipeCollectionOwner;
+  recipe: GeneratedRecipe;
 }
 
 const errorMessage = (error: unknown): string => {
@@ -83,7 +89,7 @@ const RecipeBody = ({ recipe }: { recipe: GeneratedRecipe }) => (
   </>
 );
 
-export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToken, generationMode = 'ingredients', generationReady = true, onRecipeSaved, onRecipeProposed, constraints = [], dishDescription }: AiRecipePanelProps) {
+export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToken, generationMode = 'ingredients', generationReady = true, onRecipeSaved, savedRecipeUpdate, onRecipeProposed, constraints = [], dishDescription }: AiRecipePanelProps) {
   const fromTitle = generationMode === 'title';
   const fromDescription = dishDescription !== undefined;
   const [dishTitle, setDishTitle] = useState('');
@@ -257,6 +263,24 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
 
     return () => { cancelled = true; };
   }, [currentAiOwner]);
+
+  useEffect(() => {
+    if (savedRecipeUpdate === undefined
+      || savedRecipeUpdate === null
+      || !isSameAiRecipeCollectionOwner(savedRecipeUpdate.owner, currentAiOwner)
+      || !isCurrentPanelOwner(savedRecipeUpdate.owner)) return;
+
+    setSavedAiCollection((current) => {
+      if (!isCurrentPanelOwner(savedRecipeUpdate.owner)) return current;
+      const collection = current !== null && isSameAiRecipeCollectionOwner(current.owner, savedRecipeUpdate.owner)
+        ? current
+        : { owner: savedRecipeUpdate.owner, recipes: [], pendingDeletes: [] };
+      return {
+        ...collection,
+        recipes: [savedRecipeUpdate.recipe, ...collection.recipes.filter((item) => item.id !== savedRecipeUpdate.recipe.id)],
+      };
+    });
+  }, [currentAiOwner, savedRecipeUpdate]);
 
   if (!verified) {
     return (

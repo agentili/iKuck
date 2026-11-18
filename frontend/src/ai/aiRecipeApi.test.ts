@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ApiRequest } from '../api/apiClient';
 import type { DietProfilePayload, GeneratedRecipe } from '@ikuck/shared/contracts';
-import { deleteAiRecipe, fetchAiConsent, fetchAiConsentStatus, fetchAiRecipes, generateAiRecipe, saveAiRecipe, updateAiConsent, updateDinnerAiConsent } from './aiRecipeApi';
+import { deleteAiRecipe, fetchAiConsent, fetchAiConsentStatus, fetchAiRecipes, generateAiRecipe, generateRecipeFromPantry, saveAiRecipe, updateAiConsent, updateDinnerAiConsent } from './aiRecipeApi';
 
 const profile: DietProfilePayload = {
   diet: 'vegan',
@@ -124,6 +124,20 @@ describe('AI recipe API', () => {
     expect(request).toHaveBeenCalledWith('/v1/ai-recipes', {
       method: 'POST',
       body: { ingredients: ['Ceci'], constraints: [], dietProfile: profile },
+      csrfToken: 'csrf-token',
+    });
+  });
+
+  it('sends the active diet profile with pantry generation requests', async () => {
+    const response = { kind: 'none_available', message: 'Nessuna ricetta disponibile.' } as const;
+    const request = vi.fn().mockResolvedValue(response) as unknown as ApiRequest;
+    const input = { ingredients: ['Ceci'], dietProfile: profile };
+
+    await expect(generateRecipeFromPantry(input, 'csrf-token', request)).resolves.toEqual(response);
+
+    expect(request).toHaveBeenCalledWith('/v1/recipes/generate', {
+      method: 'POST',
+      body: input,
       csrfToken: 'csrf-token',
     });
   });

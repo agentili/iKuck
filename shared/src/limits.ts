@@ -9,6 +9,15 @@ export const AI_RECIPE_MAX_GENERATION_INGREDIENTS = 100;
 /** Maximum number of ingredients allowed in a generated or saved recipe. */
 export const RECIPE_MAX_INGREDIENTS = 30;
 
+/** Maximum generated recipe title length accepted by the draft and save schemas. */
+export const GENERATED_RECIPE_TITLE_MAX_LENGTH = 120;
+
+/** Maximum generated recipe description length accepted by the draft and save schemas. */
+export const GENERATED_RECIPE_DESCRIPTION_MAX_LENGTH = 500;
+
+/** Maximum generated recipe step length accepted by the draft and save schemas. */
+export const GENERATED_RECIPE_STEP_MAX_LENGTH = 500;
+
 
 export const DIARY_ID_MAX_LENGTH = 128;
 export const DIARY_TITLE_MAX_LENGTH = 160;
