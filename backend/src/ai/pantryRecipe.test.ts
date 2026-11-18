@@ -11,6 +11,12 @@ import type { RecipeReference } from './recipeNovelty.js';
 import { generatePantryRecipeDraft } from './pantryRecipe.js';
 import { parseGeneratedRecipeDraft } from './validation.js';
 
+const sulphiteExcludingProfile: DietProfilePayload = {
+  diet: 'omnivore',
+  excludedAllergens: ['sulphites'],
+  nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null },
+};
+
 describe('generatePantryRecipeDraft', () => {
   it('creates a structured suggestion from known pantry ingredients', () => {
     const recipe = generatePantryRecipeDraft(['Orata', 'Patate'], [], () => 0);
@@ -248,6 +254,79 @@ describe('generatePantryRecipeDraft', () => {
     const recipe = generatePantryRecipeDraft(['Arachidi e mandorle'], [], () => 0);
 
     expect(recipe?.allergens).toEqual(['peanuts', 'nuts']);
+  });
+
+  it.each(['Uvetta', 'Datteri'])(
+    'rejects the dried-fruit label %s when sulphites are excluded',
+    (ingredient) => {
+      expect(generatePantryRecipeDraft([ingredient], [], () => 0, sulphiteExcludingProfile)).toBeNull();
+    },
+  );
+
+  it.each(['Prugne secche', 'Albicocche secche'])(
+    'keeps the unsupported dried-fruit label %s fail-closed',
+    (ingredient) => {
+      expect(generatePantryRecipeDraft([ingredient], [], () => 0)).toBeNull();
+      expect(generatePantryRecipeDraft([ingredient], [], () => 0, sulphiteExcludingProfile)).toBeNull();
+    },
+  );
+
+  it.each(['Uvetta', 'Datteri'])(
+    'preserves the dried-fruit sulphite fact through pantry normalization for %s',
+    (ingredient) => {
+      const parsed = parseIngredientInput(ingredient);
+      expect(parsed).toMatchObject([{ label: ingredient, known: false }]);
+
+      const labels = parsed.map(({ label }) => label);
+      const recipe = generatePantryRecipeDraft(labels, [], () => 0);
+
+      expect(recipe).not.toBeNull();
+      expect(recipe?.allergens).toContain('sulphites');
+      expect(generatePantryRecipeDraft(labels, [], () => 0, sulphiteExcludingProfile)).toBeNull();
+    },
+  );
+
+  it.each(['Prugne secche', 'Albicocche secche'])(
+    'keeps normalized unsupported dried-fruit label %s fail-closed',
+    (ingredient) => {
+      const parsed = parseIngredientInput(ingredient);
+      expect(parsed).toMatchObject([{ label: ingredient, known: false }]);
+
+      const labels = parsed.map(({ label }) => label);
+      expect(generatePantryRecipeDraft(labels, [], () => 0)).toBeNull();
+      expect(generatePantryRecipeDraft(labels, [], () => 0, sulphiteExcludingProfile)).toBeNull();
+    },
+  );
+
+  it.each(['Uvetta e Datteri', 'Uvetta e Mandorle'])(
+    'retains the sulphite fact from a compound dried-fruit label %s',
+    (ingredient) => {
+      const recipe = generatePantryRecipeDraft([ingredient], [], () => 0);
+
+      expect(recipe?.allergens).toContain('sulphites');
+      expect(generatePantryRecipeDraft([ingredient], [], () => 0, sulphiteExcludingProfile)).toBeNull();
+    },
+  );
+
+  it.each([
+    { source: 'raw', ingredients: ['Uvetta', 'Riso'] },
+    { source: 'Home-normalized', ingredients: parseIngredientInput('Uvetta, Riso').map(({ label }) => label) },
+  ])('uses only Riso from a mixed $source pantry when sulphites are excluded', ({ ingredients }) => {
+    const recipe = generatePantryRecipeDraft(ingredients, [], () => 0, sulphiteExcludingProfile);
+
+    expect(recipe).not.toBeNull();
+    expect(recipe?.ingredients.map(({ name }) => name)).toEqual(['Riso']);
+  });
+
+  it.each([
+    ['Mandorle', ['nuts']],
+    ['Arachidi', ['peanuts']],
+    ['Arachidi e mandorle', ['peanuts', 'nuts']],
+  ] as const)('preserves ordinary nut allergen facts for %s', (ingredient, expectedAllergens) => {
+    const recipe = generatePantryRecipeDraft([ingredient], [], () => 0);
+
+    expect(recipe?.allergens).toEqual(expectedAllergens);
+    expect(recipe?.allergens).not.toContain('sulphites');
   });
 
   it('rejects a compound celery label when celery is excluded', () => {

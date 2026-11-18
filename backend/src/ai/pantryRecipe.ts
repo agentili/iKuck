@@ -174,6 +174,10 @@ const classifyPantryIngredient = (name: string): ClassifiedIngredient | null => 
     default:
       return null;
   }
+  // Dried-fruit allergen facts are name-level; pantry categories may group them under nuts.
+  if ([...words].some((word) => driedFruitNames.has(word)) && !ingredientAllergens.includes('sulphites')) {
+    ingredientAllergens.push('sulphites');
+  }
   return { category, allergens: ingredientAllergens };
 };
 
