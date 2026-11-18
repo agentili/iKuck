@@ -1,11 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { RefreshCw, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import LocalRecipeCard from '../components/suggestions/LocalRecipeCard';
 import SuggestionControls from '../components/suggestions/SuggestionControls';
 import AiRecipePanel from '../components/ai/AiRecipePanel';
 import { generateRecipeFromPantry, saveAiRecipe, type GenerateRecipeFromPantryResponse } from '../ai/aiRecipeApi';
 import { ApiClientError } from '../api/apiClient';
+import {
+  createAiRecipeCollectionOwner,
+  isCurrentAiRecipeCollectionOwner,
+  isSameAiRecipeCollectionOwner,
+  type AiRecipeCollectionOwner,
+} from '../ai/aiRecipeOwnership';
 import type { GeneratedRecipe, GeneratedRecipeDraft } from '@ikuck/shared/contracts';
 import { createSeededRandom, findRecipeSuggestions } from '../domain/suggestions';
 import { RECIPES } from '../domain/recipes';
@@ -58,6 +64,9 @@ export default function HomePage() {
   const [focusResultsTitle, setFocusResultsTitle] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const addDialogTriggerRef = useRef<HTMLButtonElement>(null);
+  const generateButtonRef = useRef<HTMLButtonElement>(null);
+  const recipeDialogRef = useRef<HTMLDialogElement>(null);
+  const recipeDialogTitleRef = useRef<HTMLHeadingElement>(null);
   const dialogScopeRef = useRef(getActiveDataScope());
   const closeQuickAdd = useCallback(() => {
     setQuickAddOpen(false);
@@ -88,11 +97,127 @@ export default function HomePage() {
   const persistenceStatuses = usePersistenceStatusStore((state) => state.statuses);
   const user = useAuthStore((state) => state.user);
   const csrfToken = useAuthStore((state) => state.csrfToken);
+  const verified = user !== null && user.emailVerifiedAt.trim().length > 0 && csrfToken !== null;
+  const currentAiOwner = useMemo(
+    () => createAiRecipeCollectionOwner(user?.id ?? null, verified, csrfToken, activeScope),
+    [activeScope, csrfToken, user?.id, verified],
+  );
 
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isSavingRecipe, setIsSavingRecipe] = useState(false);
-  const [generateCandidate, setGenerateCandidate] = useState<GenerateRecipeFromPantryResponse | null>(null);
-  const [generateError, setGenerateError] = useState<string | null>(null);
+  const [generationResult, setGenerationResult] = useState<{
+    owner: AiRecipeCollectionOwner;
+    requestId: number;
+    response: GenerateRecipeFromPantryResponse;
+  } | null>(null);
+  const [generationError, setGenerationError] = useState<{
+    owner: AiRecipeCollectionOwner;
+    message: string;
+  } | null>(null);
+  const [generationOperation, setGenerationOperation] = useState<{
+    owner: AiRecipeCollectionOwner;
+    requestId: number;
+  } | null>(null);
+  const [saveOperation, setSaveOperation] = useState<{
+    owner: AiRecipeCollectionOwner;
+    requestId: number;
+    candidateRequestId: number;
+  } | null>(null);
+  const [savedRecipeUpdate, setSavedRecipeUpdate] = useState<{
+    owner: AiRecipeCollectionOwner;
+    recipe: GeneratedRecipe;
+  } | null>(null);
+  const ownerEpochRef = useRef({ owner: currentAiOwner, epoch: 0 });
+  const generationRequestIdRef = useRef(0);
+  const saveRequestIdRef = useRef(0);
+  const candidateSaveRef = useRef<{
+    requestId: number;
+    owner: AiRecipeCollectionOwner;
+    recipe: GeneratedRecipe;
+  } | null>(null);
+  const mountedRef = useRef(false);
+
+  const refreshCurrentAiOwner = useCallback(() => {
+    const { user: currentUser, csrfToken: currentCsrfToken } = useAuthStore.getState();
+    const currentVerified = currentUser !== null
+      && currentUser.emailVerifiedAt.trim().length > 0
+      && currentCsrfToken !== null;
+    const nextOwner = createAiRecipeCollectionOwner(
+      currentUser?.id ?? null,
+      currentVerified,
+      currentCsrfToken,
+      getActiveDataScope(),
+    );
+    const previous = ownerEpochRef.current;
+    const sameOwner = (previous.owner === null && nextOwner === null)
+      || isSameAiRecipeCollectionOwner(previous.owner, nextOwner);
+    if (sameOwner) return;
+
+    ownerEpochRef.current = { owner: nextOwner, epoch: previous.epoch + 1 };
+    generationRequestIdRef.current += 1;
+    saveRequestIdRef.current += 1;
+    candidateSaveRef.current = null;
+    setGenerationResult(null);
+    setGenerationError(null);
+    setGenerationOperation(null);
+    setSaveOperation(null);
+    setSavedRecipeUpdate(null);
+  }, []);
+
+  useLayoutEffect(() => {
+    const unsubscribeAuth = useAuthStore.subscribe(() => refreshCurrentAiOwner());
+    const unsubscribeScope = subscribeActiveDataScope(() => refreshCurrentAiOwner());
+    refreshCurrentAiOwner();
+    return () => {
+      unsubscribeAuth();
+      unsubscribeScope();
+    };
+  }, [refreshCurrentAiOwner]);
+
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      ownerEpochRef.current = { ...ownerEpochRef.current, epoch: ownerEpochRef.current.epoch + 1 };
+      generationRequestIdRef.current += 1;
+      saveRequestIdRef.current += 1;
+    };
+  }, []);
+
+  const visibleGenerationResult = generationResult !== null
+    && isSameAiRecipeCollectionOwner(generationResult.owner, currentAiOwner)
+    ? generationResult
+    : null;
+  const generateCandidate = visibleGenerationResult?.response ?? null;
+  const generateError = generationError !== null
+    && isSameAiRecipeCollectionOwner(generationError.owner, currentAiOwner)
+    ? generationError.message
+    : null;
+  const isRecipeDialogOpen = generateCandidate?.kind === 'candidate' || generateError !== null;
+  const isGenerating = generationOperation !== null
+    && generationOperation.requestId === generationRequestIdRef.current
+    && isSameAiRecipeCollectionOwner(generationOperation.owner, currentAiOwner);
+  const isSavingRecipe = saveOperation !== null
+    && visibleGenerationResult !== null
+    && saveOperation.requestId === saveRequestIdRef.current
+    && saveOperation.candidateRequestId === visibleGenerationResult.requestId
+    && isSameAiRecipeCollectionOwner(saveOperation.owner, currentAiOwner);
+
+  useLayoutEffect(() => {
+    if (!isRecipeDialogOpen) return;
+    const dialog = recipeDialogRef.current;
+    if (dialog === null) return;
+    const trigger = generateButtonRef.current;
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
+    recipeDialogTitleRef.current?.focus();
+
+    return () => {
+      if (dialog.open && typeof dialog.close === 'function') dialog.close();
+      else dialog.removeAttribute('open');
+      window.requestAnimationFrame(() => {
+        if (trigger?.isConnected) trigger.focus();
+      });
+    };
+  }, [isRecipeDialogOpen]);
 
   const persistenceIssue = persistenceDomains
     .map((domain) => ({ domain, status: persistenceStatuses[domain] }))
@@ -199,60 +324,155 @@ export default function HomePage() {
   };
 
   const generateFromPantry = async () => {
-    if (!user || !csrfToken) return;
-    setIsGenerating(true);
-    setGenerateError(null);
-    setGenerateCandidate(null);
+    const owner = currentAiOwner;
+    if (owner === null || !user || !csrfToken || isGenerating || !isCurrentAiRecipeCollectionOwner(owner)) return;
+    const ownerEpoch = ownerEpochRef.current.epoch;
+    const requestId = ++generationRequestIdRef.current;
+    candidateSaveRef.current = null;
+    const isCurrentGeneration = (): boolean => mountedRef.current
+      && ownerEpochRef.current.epoch === ownerEpoch
+      && generationRequestIdRef.current === requestId
+      && isSameAiRecipeCollectionOwner(ownerEpochRef.current.owner, owner)
+      && isCurrentAiRecipeCollectionOwner(owner);
+
+    saveRequestIdRef.current += 1;
+    setSaveOperation(null);
+    setGenerationOperation({ owner, requestId });
+    setGenerationError(null);
+    setGenerationResult(null);
     try {
       const ingredientNames = pantryItems.map((item) => item.label).filter(Boolean);
       if (ingredientNames.length === 0) {
-        setGenerateError('Aggiungi almeno un ingrediente alla dispensa prima di generare una ricetta.');
-        setIsGenerating(false);
+        if (isCurrentGeneration()) {
+          setGenerationError({ owner, message: 'Aggiungi almeno un ingrediente alla dispensa prima di generare una ricetta.' });
+        }
         return;
       }
-      const response = await generateRecipeFromPantry({ ingredients: ingredientNames }, csrfToken);
-      setGenerateCandidate(response);
+      const response = await generateRecipeFromPantry({
+        ingredients: ingredientNames,
+        dietProfile: {
+          diet: dietProfile.diet,
+          excludedAllergens: dietProfile.excludedAllergens,
+          nutrition: dietProfile.nutrition,
+        },
+      }, owner.sessionTokenIdentity);
+      if (!isCurrentGeneration()) return;
+      setGenerationResult({ owner, requestId, response });
     } catch (error) {
+      if (!isCurrentGeneration()) return;
       if (error instanceof ApiClientError) {
-        setGenerateError(error.status === 429 ? 'Hai raggiunto il limite giornaliero di generazioni. Riprova più tardi.' : 'Impossibile generare la ricetta in questo momento.');
+        setGenerationError({
+          owner,
+          message: error.status === 429 ? 'Hai raggiunto il limite giornaliero di generazioni. Riprova più tardi.' : 'Impossibile generare la ricetta in questo momento.',
+        });
       } else {
-        setGenerateError('Impossibile generare la ricetta in questo momento.');
+        setGenerationError({ owner, message: 'Impossibile generare la ricetta in questo momento.' });
       }
     } finally {
-      setIsGenerating(false);
+      if (isCurrentGeneration()) setGenerationOperation(null);
     }
   };
 
   const saveGeneratedRecipe = async () => {
-    if (!user || !csrfToken || generateCandidate === null || generateCandidate.kind !== 'candidate' || isSavingRecipe) return;
-    const { recipe: draft } = generateCandidate;
-    const now = new Date().toISOString();
-    const generatedRecipe: GeneratedRecipe = {
-      ...draft,
-      id: crypto.randomUUID(),
-      source: 'ai',
-      createdAt: now,
-      updatedAt: now,
-    };
-    setIsSavingRecipe(true);
-    setGenerateError(null);
+    const result = visibleGenerationResult;
+    if (currentAiOwner === null
+      || result === null
+      || result.response.kind !== 'candidate'
+      || isSavingRecipe
+      || !isCurrentAiRecipeCollectionOwner(result.owner)) return;
+    const { recipe: draft } = result.response;
+    const owner = result.owner;
+    const ownerEpoch = ownerEpochRef.current.epoch;
+    const saveRequestId = ++saveRequestIdRef.current;
+    const isCurrentSave = (): boolean => mountedRef.current
+      && ownerEpochRef.current.epoch === ownerEpoch
+      && saveRequestIdRef.current === saveRequestId
+      && generationRequestIdRef.current === result.requestId
+      && isSameAiRecipeCollectionOwner(ownerEpochRef.current.owner, owner)
+      && isCurrentAiRecipeCollectionOwner(owner);
+    const cachedCandidateSave = candidateSaveRef.current;
+    let generatedRecipe: GeneratedRecipe;
+    if (cachedCandidateSave !== null
+      && cachedCandidateSave.requestId === result.requestId
+      && isSameAiRecipeCollectionOwner(cachedCandidateSave.owner, owner)) {
+      generatedRecipe = cachedCandidateSave.recipe;
+    } else {
+      const now = new Date().toISOString();
+      generatedRecipe = {
+        ...draft,
+        id: crypto.randomUUID(),
+        source: 'ai',
+        createdAt: now,
+        updatedAt: now,
+      };
+      candidateSaveRef.current = { requestId: result.requestId, owner, recipe: generatedRecipe };
+    }
+    setSaveOperation({ owner, requestId: saveRequestId, candidateRequestId: result.requestId });
+    setGenerationError(null);
     try {
-      await saveAiRecipe(generatedRecipe, csrfToken);
-      setGenerateCandidate(null);
+      const savedRecipe = await saveAiRecipe(generatedRecipe, owner.sessionTokenIdentity);
+      if (!isCurrentSave()) return;
+      setSavedRecipeUpdate({ owner, recipe: savedRecipe });
+      if (candidateSaveRef.current?.requestId === result.requestId
+        && isSameAiRecipeCollectionOwner(candidateSaveRef.current.owner, owner)) {
+        candidateSaveRef.current = null;
+      }
+      setGenerationResult((current) => current?.requestId === result.requestId
+        && isSameAiRecipeCollectionOwner(current.owner, owner)
+        ? null
+        : current);
     } catch (error) {
+      if (!isCurrentSave()) return;
       if (error instanceof ApiClientError) {
-        setGenerateError(error.status === 429 ? 'Hai raggiunto il limite giornaliero di salvataggi.' : 'Impossibile salvare la ricetta.');
+        setGenerationError({
+          owner,
+          message: error.status === 429 ? 'Hai raggiunto il limite giornaliero di salvataggi.' : 'Impossibile salvare la ricetta.',
+        });
       } else {
-        setGenerateError('Impossibile salvare la ricetta.');
+        setGenerationError({ owner, message: 'Impossibile salvare la ricetta.' });
       }
     } finally {
-      setIsSavingRecipe(false);
+      if (isCurrentSave()) setSaveOperation(null);
     }
   };
 
   const discardGeneratedRecipe = () => {
-    setGenerateCandidate(null);
-    setGenerateError(null);
+    if (isSavingRecipe) return;
+    generationRequestIdRef.current += 1;
+    saveRequestIdRef.current += 1;
+    candidateSaveRef.current = null;
+    setGenerationResult(null);
+    setGenerationError(null);
+    setGenerationOperation(null);
+    setSaveOperation(null);
+  };
+
+  const handleRecipeDialogKeyDown = (event: ReactKeyboardEvent<HTMLDialogElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      discardGeneratedRecipe();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+
+    const dialog = recipeDialogRef.current;
+    if (dialog === null) return;
+    const focusableElements = Array.from(dialog.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ));
+    const first = focusableElements[0];
+    const last = focusableElements[focusableElements.length - 1];
+    const currentIndex = focusableElements.indexOf(document.activeElement as HTMLElement);
+    if (first === undefined || last === undefined) {
+      event.preventDefault();
+      recipeDialogTitleRef.current?.focus();
+    } else if (event.shiftKey && currentIndex <= 0) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (currentIndex === -1 || currentIndex === focusableElements.length - 1)) {
+      event.preventDefault();
+      first.focus();
+    }
   };
 
   const addMissingSuggestionToShoppingList = (suggestion: RecipeSuggestion) => {
@@ -328,6 +548,7 @@ export default function HomePage() {
           >Aggiungi ingredienti</button>
           {user !== null && user.emailVerifiedAt.trim().length > 0 && csrfToken !== null && (
             <button
+              ref={generateButtonRef}
               type="button"
               onClick={generateFromPantry}
               disabled={isGenerating || pantryItems.length === 0}
@@ -421,6 +642,7 @@ export default function HomePage() {
             dietProfile={dietProfile}
             user={user}
             csrfToken={csrfToken}
+            savedRecipeUpdate={savedRecipeUpdate}
           />
         </section>
       )}
@@ -433,19 +655,42 @@ export default function HomePage() {
       />
 
       {(candidate !== null || generateError !== null) && (
-        <section className="fixed inset-0 z-50 flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-label="Anteprima ricetta">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={discardGeneratedRecipe} />
-          <div className="relative bg-[var(--ik-surface)] border border-[var(--ik-border)] rounded-2xl p-6 max-w-md w-full shadow-[var(--ik-shadow-lift)]">
+        <div className="ik-modal-backdrop fixed inset-0 z-50 grid place-items-center p-4">
+          <dialog
+            ref={recipeDialogRef}
+            aria-modal="true"
+            aria-labelledby="generated-recipe-dialog-title"
+            className="ik-modal-surface ik-generated-recipe-dialog m-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-[var(--ik-radius-panel)] p-5 sm:p-6"
+            onCancel={(event) => {
+              event.preventDefault();
+              discardGeneratedRecipe();
+            }}
+            onKeyDown={handleRecipeDialogKeyDown}
+          >
+            <div className="mb-4 flex shrink-0 items-start justify-between gap-4 border-b border-[var(--ik-border)] pb-3">
+              <h2 id="generated-recipe-dialog-title" ref={recipeDialogTitleRef} tabIndex={-1} className="text-xl font-black text-[var(--ik-ink)]">
+                {candidate !== null ? 'Anteprima ricetta' : 'Generazione non riuscita'}
+              </h2>
+              <button
+                type="button"
+                onClick={discardGeneratedRecipe}
+                disabled={isSavingRecipe}
+                aria-label={candidate !== null ? 'Scarta anteprima' : 'Chiudi'}
+                className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--ik-border)] text-[var(--ik-ink)] hover:bg-[var(--ik-mist)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            </div>
             {generateError !== null && (
-              <div className="mb-4 rounded-xl border border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] p-3 text-[var(--ik-tomato)] text-sm">
+              <div role="alert" className="mb-4 shrink-0 rounded-xl border border-[var(--ik-tomato)] bg-[var(--ik-tomato-soft)] p-3 text-sm text-[var(--ik-tomato)]">
                 {generateError}
               </div>
             )}
             {candidate !== null && (
-              <GenerateCandidatePreview recipe={candidate.recipe} onSave={saveGeneratedRecipe} onDiscard={discardGeneratedRecipe} isSaving={isGenerating || isSavingRecipe} />
+              <GenerateCandidatePreview recipe={candidate.recipe} onSave={saveGeneratedRecipe} onDiscard={discardGeneratedRecipe} isSaving={isSavingRecipe} />
             )}
-          </div>
-        </section>
+          </dialog>
+        </div>
       )}
     </main>
   );
@@ -453,26 +698,33 @@ export default function HomePage() {
 
 function GenerateCandidatePreview({ recipe, onSave, onDiscard, isSaving }: { recipe: GeneratedRecipeDraft; onSave: () => void; onDiscard: () => void; isSaving: boolean }) {
   return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-bold text-[var(--ik-ink)]">{recipe.title}</h3>
-      <p className="text-sm text-[var(--ik-ink-muted)]">{recipe.description}</p>
-      <div className="mt-2">
-        <h4 className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--ik-basil-dark)]">Ingredienti</h4>
-        <ul className="mt-1 list-disc list-inside text-sm text-[var(--ik-ink)] space-y-1">
-          {recipe.ingredients.map((ing, i) => (
-            <li key={i}>{ing.name} {ing.amount}</li>
-          ))}
-        </ul>
+    <div aria-busy={isSaving} className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        <h3 className="text-lg font-bold text-[var(--ik-ink)]">{recipe.title}</h3>
+        <p className="mt-4 text-sm text-[var(--ik-ink-muted)]">{recipe.description}</p>
+        <div className="mt-4">
+          <h4 className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--ik-basil-dark)]">Ingredienti</h4>
+          <ul className="mt-1 list-inside list-disc space-y-1 text-sm text-[var(--ik-ink)]">
+            {recipe.ingredients.map((ing, i) => (
+              <li key={i}>{ing.name} {ing.amount}</li>
+            ))}
+          </ul>
+        </div>
+        <div className="mt-4">
+          <h4 className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--ik-basil-dark)]">Procedimento</h4>
+          <ol className="mt-1 list-inside list-decimal space-y-1 text-sm text-[var(--ik-ink)]">
+            {recipe.steps.map((step, i) => (
+              <li key={i}>{step}</li>
+            ))}
+          </ol>
+        </div>
       </div>
-      <div className="mt-2">
-        <h4 className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--ik-basil-dark)]">Procedimento</h4>
-        <ol className="mt-1 list-decimal list-inside text-sm text-[var(--ik-ink)] space-y-1">
-          {recipe.steps.map((step, i) => (
-            <li key={i}>{step}</li>
-          ))}
-        </ol>
-      </div>
-      <div className="mt-5 flex gap-3">
+      {isSaving && (
+        <p role="status" className="mt-4 shrink-0 text-sm text-[var(--ik-ink-muted)]">
+          Salvataggio in corso: attendi la risposta prima di chiudere.
+        </p>
+      )}
+      <div className="mt-5 flex shrink-0 gap-3 border-t border-[var(--ik-border)] pt-4">
         <button
           type="button"
           onClick={onSave}
@@ -484,6 +736,7 @@ function GenerateCandidatePreview({ recipe, onSave, onDiscard, isSaving }: { rec
         <button
           type="button"
           onClick={onDiscard}
+          disabled={isSaving}
           className="flex-1 min-h-11 rounded-xl border-2 border-[var(--ik-border)] bg-[var(--ik-surface)] px-4 py-2 font-bold text-[var(--ik-ink)] hover:bg-[var(--ik-mist)]"
         >
           Scarta

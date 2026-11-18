@@ -1,9 +1,10 @@
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { useLayoutEffect, useSyncExternalStore } from 'react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SavedRecipe } from '@ikuck/shared/dinnerDiary';
-import type { PantryLot } from '@ikuck/shared/contracts';
+import type { GeneratedRecipe, PantryLot } from '@ikuck/shared/contracts';
 import { DEFAULT_STAPLE_IDS, parseIngredientInput } from '@ikuck/shared/ingredients';
 import { useAuthStore } from '../auth/authStore';
 import { DEFAULT_DIET_PROFILE } from '../domain/dietary';
@@ -14,7 +15,7 @@ import { useActivityStore } from '../store/activityStore';
 import { useDietProfileStore } from '../store/dietProfileStore';
 import { useShoppingListStore } from '../store/shoppingListStore';
 import { hydrateDinnerDiaryStore, useDinnerDiaryStore } from '../store/dinnerDiaryStore';
-import { getActiveDataScope, scopeStorageKey, setActiveDataScope } from '../sync/scopeContext';
+import { getActiveDataScope, scopeStorageKey, setActiveDataScope, subscribeActiveDataScope, type SyncScope } from '../sync/scopeContext';
 import { reportPersistenceMemoryOnly, usePersistenceStatusStore } from '../store/persistenceStatusStore';
 import {
   getPantrySnapshotConflictError,
@@ -61,16 +62,93 @@ const confirmedDiaryRecipe: SavedRecipe = {
   suggestedFields: [], source: 'diary', authorId: 'user-1', createdAt: '2026-09-29T18:00:00.000Z', updatedAt: '2026-09-29T18:01:00.000Z',
 };
 
-const renderHome = (): void => {
-  render(
-    <MemoryRouter>
-      <HomePage />
-    </MemoryRouter>,
+const renderHome = () => render(
+  <MemoryRouter>
+    <HomePage />
+  </MemoryRouter>,
+);
+
+const ownershipCommitSnapshots: Array<{
+  userId: string | null;
+  csrfToken: string | null;
+  scope: SyncScope;
+  bodyText: string;
+}> = [];
+
+function HomeOwnershipCommitProbe() {
+  const user = useAuthStore((state) => state.user);
+  const csrfToken = useAuthStore((state) => state.csrfToken);
+  const scope = useSyncExternalStore(
+    (listener) => subscribeActiveDataScope(listener),
+    getActiveDataScope,
+    getActiveDataScope,
   );
+
+  useLayoutEffect(() => {
+    ownershipCommitSnapshots.push({
+      userId: user?.id ?? null,
+      csrfToken,
+      scope,
+      bodyText: document.body.textContent ?? '',
+    });
+  }, [user, csrfToken, scope]);
+
+  return null;
+}
+
+const renderHomeWithOwnershipProbe = () => render(
+  <MemoryRouter>
+    <>
+      <HomePage />
+      <HomeOwnershipCommitProbe />
+    </>
+  </MemoryRouter>,
+);
+
+const setOwnership = (userId: string | null, csrfToken: string | null, scope: SyncScope): void => {
+  act(() => {
+    useAuthStore.setState({
+      user: userId === null
+        ? null
+        : { id: userId, email: `${userId}@example.com`, emailVerifiedAt: '2026-09-24T00:00:00.000Z' },
+      csrfToken,
+      expiresAt: null,
+    });
+    setActiveDataScope(scope);
+    usePantryStore.setState({ hasHydrated: true });
+    useDinnerDiaryStore.setState({ hasHydrated: true });
+  });
+};
+
+const setVerifiedOwner = (userId: string, csrfToken: string, scope: SyncScope = `account:${userId}`): void => {
+  setOwnership(userId, csrfToken, scope);
+};
+
+const generatedCandidate = (title: string) => ({
+  kind: 'candidate' as const,
+  recipe: {
+    title,
+    description: 'Una ricetta generata.',
+    ingredients: [{ name: 'Pasta', amount: '160 g' }],
+    steps: ['Cuoci la pasta.'],
+    diets: [],
+    allergens: [],
+  },
+});
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 };
 
 describe('HomePage recipe search', () => {
   beforeEach(() => {
+    ownershipCommitSnapshots.length = 0;
     window.localStorage.clear();
     generateRecipeFromPantryMock.mockReset();
     saveAiRecipeMock.mockReset();
@@ -112,14 +190,22 @@ describe('HomePage recipe search', () => {
       csrfToken: 'csrf-token',
     });
     seedPantry('pasta, tonno');
+    useDietProfileStore.setState({
+      profile: {
+        ...DEFAULT_DIET_PROFILE,
+        diet: 'vegan',
+        excludedAllergens: ['milk'],
+        updatedAt: '2026-09-24T00:00:00.000Z',
+      },
+    });
     generateRecipeFromPantryMock.mockResolvedValueOnce({
       kind: 'candidate',
       recipe: {
-        title: 'Orata al cartoccio',
-        description: 'Orata con patate e olive.',
-        ingredients: [{ name: 'Orata', amount: '1' }, { name: 'Patate', amount: '300 g' }],
-        steps: ['Cuoci l’orata al cartoccio con le patate.'],
-        diets: [],
+        title: 'Ceci e riso',
+        description: 'Ceci e riso con olio e spezie.',
+        ingredients: [{ name: 'Ceci', amount: '150 g' }, { name: 'Riso', amount: '100 g' }],
+        steps: ['Cuoci il riso e unisci i ceci.'],
+        diets: ['omnivore', 'vegetarian', 'pescatarian', 'vegan'],
         allergens: [],
       },
     });
@@ -128,8 +214,270 @@ describe('HomePage recipe search', () => {
     await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
 
     const preview = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
-    expect(within(preview).getByRole('heading', { name: 'Orata al cartoccio' })).toBeVisible();
-    expect(generateRecipeFromPantryMock).toHaveBeenCalledWith({ ingredients: ['Pasta', 'Tonno'] }, 'csrf-token');
+    expect(within(preview).getByRole('heading', { name: 'Ceci e riso' })).toBeVisible();
+    expect(generateRecipeFromPantryMock).toHaveBeenCalledWith({
+      ingredients: ['Pasta', 'Tonno'],
+      dietProfile: {
+        diet: 'vegan',
+        excludedAllergens: ['milk'],
+        nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null },
+      },
+    }, 'csrf-token');
+  });
+
+  it('focuses the preview when opened and restores focus after Escape closes it', async () => {
+    const user = userEvent.setup();
+    setVerifiedOwner('user-1', 'csrf-token');
+    seedPantry('pasta');
+    generateRecipeFromPantryMock.mockResolvedValueOnce(generatedCandidate('Pasta semplice'));
+    renderHome();
+
+    const trigger = screen.getByRole('button', { name: 'Genera ricetta da dispensa' });
+    await user.click(trigger);
+    const dialog = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+
+    expect(within(dialog).getByRole('heading', { name: 'Anteprima ricetta' })).toHaveFocus();
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('dialog', { name: 'Anteprima ricetta' })).not.toBeInTheDocument();
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it('keeps Tab and Shift+Tab navigation inside the preview dialog', async () => {
+    const user = userEvent.setup();
+    setVerifiedOwner('user-1', 'csrf-token');
+    seedPantry('pasta');
+    generateRecipeFromPantryMock.mockResolvedValueOnce(generatedCandidate('Pasta semplice'));
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+    const closeButton = within(dialog).getByRole('button', { name: 'Scarta anteprima' });
+    const discardButton = within(dialog).getByRole('button', { name: 'Scarta' });
+
+    discardButton.focus();
+    await user.tab();
+    expect(closeButton).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(discardButton).toHaveFocus();
+  });
+
+  it('dismisses an error-only generation dialog with Escape and restores focus', async () => {
+    const user = userEvent.setup();
+    setVerifiedOwner('user-1', 'csrf-token');
+    seedPantry('pasta');
+    generateRecipeFromPantryMock.mockRejectedValueOnce(new Error('Provider unavailable'));
+    renderHome();
+
+    const trigger = screen.getByRole('button', { name: 'Genera ricetta da dispensa' });
+    await user.click(trigger);
+    const dialog = await screen.findByRole('dialog', { name: 'Generazione non riuscita' });
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Impossibile generare la ricetta in questo momento.');
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('dialog', { name: 'Generazione non riuscita' })).not.toBeInTheDocument();
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it('offers an operable close control on an error-only dialog', async () => {
+    const user = userEvent.setup();
+    setVerifiedOwner('user-1', 'csrf-token');
+    seedPantry('pasta');
+    generateRecipeFromPantryMock.mockRejectedValueOnce(new Error('Provider unavailable'));
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Generazione non riuscita' });
+    const closeButton = within(dialog).getByRole('button', { name: 'Chiudi' });
+    expect(closeButton).toBeVisible();
+    closeButton.focus();
+    await user.keyboard('{Enter}');
+
+    expect(screen.queryByRole('dialog', { name: 'Generazione non riuscita' })).not.toBeInTheDocument();
+  });
+
+  const ownershipTransitions = [
+    { label: 'account changes', userId: 'user-2', csrfToken: 'csrf-token-2', scope: 'account:user-2' },
+    { label: 'session token changes', userId: 'user-1', csrfToken: 'csrf-token-2', scope: 'account:user-1' },
+    { label: 'house scope changes', userId: 'user-1', csrfToken: 'csrf-token', scope: 'house:house-1' },
+    { label: 'the session logs out', userId: null, csrfToken: null, scope: 'guest' },
+  ] satisfies Array<{ label: string; userId: string | null; csrfToken: string | null; scope: SyncScope }>;
+
+  it('ignores a deferred generation across an uncommitted A-to-B-to-A owner transition', async () => {
+    const user = userEvent.setup();
+    setVerifiedOwner('user-1', 'csrf-token');
+    seedPantry('pasta');
+    const pendingGeneration = deferred<ReturnType<typeof generatedCandidate>>();
+    generateRecipeFromPantryMock.mockReturnValueOnce(pendingGeneration.promise);
+    renderHomeWithOwnershipProbe();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    expect(generateRecipeFromPantryMock).toHaveBeenCalledTimes(1);
+
+    const snapshotStart = ownershipCommitSnapshots.length;
+    act(() => {
+      usePantryStore.setState({ hasHydrated: false });
+      useDinnerDiaryStore.setState({ hasHydrated: false });
+      useAuthStore.setState({
+        user: { id: 'user-2', email: 'user-2@example.com', emailVerifiedAt: '2026-09-24T00:00:00.000Z' },
+        csrfToken: 'csrf-token-2',
+        expiresAt: null,
+      });
+      setActiveDataScope('account:user-2');
+      useAuthStore.setState({
+        user: { id: 'user-1', email: 'user@example.com', emailVerifiedAt: '2026-09-24T00:00:00.000Z' },
+        csrfToken: 'csrf-token',
+        expiresAt: null,
+      });
+      setActiveDataScope('account:user-1');
+      usePantryStore.setState({ hasHydrated: true });
+      useDinnerDiaryStore.setState({ hasHydrated: true });
+    });
+
+    const transitionSnapshots = ownershipCommitSnapshots.slice(snapshotStart);
+    expect(transitionSnapshots.some((snapshot) => snapshot.userId === 'user-2')).toBe(false);
+    await act(async () => {
+      pendingGeneration.resolve(generatedCandidate('Anteprima obsoleta'));
+      await pendingGeneration.promise;
+    });
+
+    expect(screen.queryByRole('heading', { name: 'Anteprima obsoleta' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { settlement: 'succeeds', resolve: true },
+    { settlement: 'fails', resolve: false },
+  ])('ignores a deferred save that $settlement across an uncommitted A-to-B-to-A owner transition', async ({ resolve }) => {
+    const user = userEvent.setup();
+    const pendingSave = deferred<void>();
+    setVerifiedOwner('user-1', 'csrf-token');
+    seedPantry('pasta');
+    generateRecipeFromPantryMock.mockResolvedValueOnce(generatedCandidate('Bozza A'));
+    saveAiRecipeMock.mockReturnValueOnce(pendingSave.promise);
+    renderHomeWithOwnershipProbe();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    const preview = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+    await user.click(within(preview).getByRole('button', { name: 'Salva nel ricettario' }));
+    await waitFor(() => expect(saveAiRecipeMock).toHaveBeenCalledOnce());
+
+    const snapshotStart = ownershipCommitSnapshots.length;
+    act(() => {
+      usePantryStore.setState({ hasHydrated: false });
+      useDinnerDiaryStore.setState({ hasHydrated: false });
+      useAuthStore.setState({
+        user: { id: 'user-2', email: 'user-2@example.com', emailVerifiedAt: '2026-09-24T00:00:00.000Z' },
+        csrfToken: 'csrf-token-2',
+        expiresAt: null,
+      });
+      setActiveDataScope('account:user-2');
+      useAuthStore.setState({
+        user: { id: 'user-1', email: 'user@example.com', emailVerifiedAt: '2026-09-24T00:00:00.000Z' },
+        csrfToken: 'csrf-token',
+        expiresAt: null,
+      });
+      setActiveDataScope('account:user-1');
+      usePantryStore.setState({ hasHydrated: true });
+      useDinnerDiaryStore.setState({ hasHydrated: true });
+    });
+    expect(ownershipCommitSnapshots.slice(snapshotStart).some((snapshot) => snapshot.userId === 'user-2')).toBe(false);
+    expect(screen.queryByRole('dialog', { name: 'Anteprima ricetta' })).not.toBeInTheDocument();
+
+    await act(async () => {
+      if (resolve) pendingSave.resolve();
+      else {
+        pendingSave.reject(new Error('Salvataggio della sessione precedente'));
+        await pendingSave.promise.catch(() => undefined);
+      }
+    });
+
+    expect(screen.queryByText('Impossibile salvare la ricetta.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Anteprima ricetta' })).not.toBeInTheDocument();
+  });
+
+  it.each(ownershipTransitions)(
+    'hides and invalidates a generated preview in the same committed render when $label',
+    async ({ userId, csrfToken, scope }) => {
+      const user = userEvent.setup();
+      setVerifiedOwner('user-1', 'csrf-token');
+      seedPantry('pasta');
+      generateRecipeFromPantryMock.mockResolvedValueOnce(generatedCandidate('Privata della sessione'));
+      renderHomeWithOwnershipProbe();
+
+      await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+      expect(await screen.findByRole('heading', { name: 'Privata della sessione' })).toBeVisible();
+
+      const snapshotStart = ownershipCommitSnapshots.length;
+      setOwnership(userId, csrfToken, scope);
+
+      const transitionCommit = ownershipCommitSnapshots.slice(snapshotStart).at(-1);
+      expect(transitionCommit).toMatchObject({ userId, csrfToken, scope });
+      expect(transitionCommit?.bodyText).not.toContain('Privata della sessione');
+      expect(screen.queryByRole('dialog', { name: 'Anteprima ricetta' })).not.toBeInTheDocument();
+
+      setVerifiedOwner('user-1', 'csrf-token');
+      expect(screen.queryByRole('dialog', { name: 'Anteprima ricetta' })).not.toBeInTheDocument();
+    },
+  );
+
+  it.each(ownershipTransitions)(
+    'ignores deferred generation success and failure after $label and return',
+    async ({ userId, csrfToken, scope }) => {
+      const user = userEvent.setup();
+      setVerifiedOwner('user-1', 'csrf-token');
+      seedPantry('pasta');
+      renderHomeWithOwnershipProbe();
+
+      for (const attempt of [1, 2]) {
+        const pendingGeneration = deferred<ReturnType<typeof generatedCandidate>>();
+        generateRecipeFromPantryMock.mockReturnValueOnce(pendingGeneration.promise);
+        await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+        await waitFor(() => expect(generateRecipeFromPantryMock).toHaveBeenCalledTimes(attempt));
+        setOwnership(userId, csrfToken, scope);
+        setVerifiedOwner('user-1', 'csrf-token');
+        seedPantry('pasta');
+
+        await act(async () => {
+          if (attempt === 1) pendingGeneration.resolve(generatedCandidate('Risposta della sessione precedente'));
+          else {
+            pendingGeneration.reject(new Error('Errore della sessione precedente'));
+            await pendingGeneration.promise.catch(() => undefined);
+          }
+        });
+
+        expect(screen.queryByRole('dialog', { name: 'Anteprima ricetta' })).not.toBeInTheDocument();
+        expect(screen.queryByText('Risposta della sessione precedente')).not.toBeInTheDocument();
+        expect(screen.queryByText('Impossibile generare la ricetta in questo momento.')).not.toBeInTheDocument();
+      }
+    },
+  );
+
+  it('ignores a pending generation from an unmounted Home after the same owner remounts', async () => {
+    const user = userEvent.setup();
+    const oldGeneration = deferred<ReturnType<typeof generatedCandidate>>();
+    const currentGeneration = deferred<ReturnType<typeof generatedCandidate>>();
+    setVerifiedOwner('user-1', 'csrf-token');
+    seedPantry('pasta');
+    generateRecipeFromPantryMock
+      .mockReturnValueOnce(oldGeneration.promise)
+      .mockReturnValueOnce(currentGeneration.promise);
+    const oldPage = renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    await waitFor(() => expect(generateRecipeFromPantryMock).toHaveBeenCalledOnce());
+    oldPage.unmount();
+
+    renderHome();
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    await waitFor(() => expect(generateRecipeFromPantryMock).toHaveBeenCalledTimes(2));
+    await act(async () => currentGeneration.resolve(generatedCandidate('Anteprima del nuovo Home')));
+    expect(await screen.findByRole('heading', { name: 'Anteprima del nuovo Home' })).toBeVisible();
+
+    await act(async () => oldGeneration.resolve(generatedCandidate('Risposta del Home smontato')));
+
+    expect(screen.getByRole('heading', { name: 'Anteprima del nuovo Home' })).toBeVisible();
+    expect(screen.queryByText('Risposta del Home smontato')).not.toBeInTheDocument();
   });
 
   it('shows no-new-recipe feedback without opening the preview dialog', async () => {
@@ -186,6 +534,57 @@ describe('HomePage recipe search', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Anteprima ricetta' })).not.toBeInTheDocument());
   });
 
+  it('keeps save identity stable per candidate after a committed response is lost', async () => {
+    const user = userEvent.setup();
+    const persistedRecipes = new Map<string, GeneratedRecipe>();
+    const lostFirstResponse = deferred<void>();
+    let rejectFirstResponse = true;
+    setVerifiedOwner('user-1', 'csrf-token');
+    seedPantry('pasta');
+    generateRecipeFromPantryMock
+      .mockResolvedValueOnce(generatedCandidate('Pasta semplice'))
+      .mockResolvedValueOnce(generatedCandidate('Pasta semplice'));
+    saveAiRecipeMock.mockImplementation(async (recipe: GeneratedRecipe) => {
+      // Model the route's scoped entity upsert: persistence is keyed by recipe ID.
+      persistedRecipes.set(recipe.id, structuredClone(recipe));
+      if (rejectFirstResponse) {
+        rejectFirstResponse = false;
+        await lostFirstResponse.promise;
+        throw new Error('The response was lost after persistence completed');
+      }
+      return structuredClone(persistedRecipes.get(recipe.id)!);
+    });
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    const firstPreview = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+    const saveButton = within(firstPreview).getByRole('button', { name: 'Salva nel ricettario' });
+    await user.click(saveButton);
+    await waitFor(() => expect(saveAiRecipeMock).toHaveBeenCalledOnce());
+    expect(saveButton).toBeDisabled();
+    await user.click(saveButton);
+    expect(saveAiRecipeMock).toHaveBeenCalledOnce();
+    expect(persistedRecipes.size).toBe(1);
+
+    await act(async () => lostFirstResponse.resolve());
+    expect(await within(firstPreview).findByRole('alert')).toHaveTextContent('Impossibile salvare la ricetta.');
+    expect(within(firstPreview).getByRole('heading', { name: 'Pasta semplice' })).toBeVisible();
+
+    await user.click(within(firstPreview).getByRole('button', { name: 'Salva nel ricettario' }));
+    await waitFor(() => expect(saveAiRecipeMock).toHaveBeenCalledTimes(2));
+    expect(saveAiRecipeMock.mock.calls[1]?.[0]).toEqual(saveAiRecipeMock.mock.calls[0]?.[0]);
+    expect(persistedRecipes.size).toBe(1);
+    expect(await screen.queryByRole('dialog', { name: 'Anteprima ricetta' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    const secondPreview = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+    await user.click(within(secondPreview).getByRole('button', { name: 'Salva nel ricettario' }));
+    await waitFor(() => expect(saveAiRecipeMock).toHaveBeenCalledTimes(3));
+    expect((saveAiRecipeMock.mock.calls[2]?.[0] as GeneratedRecipe).id)
+      .not.toBe((saveAiRecipeMock.mock.calls[0]?.[0] as GeneratedRecipe).id);
+    expect(persistedRecipes.size).toBe(2);
+  });
+
   it('disables repeated saves while the explicit save is pending', async () => {
     const user = userEvent.setup();
     let finishSave: (() => void) | undefined;
@@ -218,6 +617,143 @@ describe('HomePage recipe search', () => {
     await act(async () => finishSave?.());
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Anteprima ricetta' })).not.toBeInTheDocument());
   });
+
+  it('keeps the preview open while a dispatched save is pending', async () => {
+    const user = userEvent.setup();
+    const pendingSave = deferred<void>();
+    setVerifiedOwner('user-1', 'csrf-token');
+    seedPantry('pasta');
+    generateRecipeFromPantryMock.mockResolvedValueOnce(generatedCandidate('Pasta in corso'));
+    saveAiRecipeMock.mockReturnValueOnce(pendingSave.promise);
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+    await user.click(within(dialog).getByRole('button', { name: 'Salva nel ricettario' }));
+    await waitFor(() => expect(saveAiRecipeMock).toHaveBeenCalledOnce());
+
+    expect(within(dialog).getByRole('button', { name: 'Scarta anteprima' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Salva nel ricettario' })).toBeDisabled();
+    expect(within(dialog).getByText('Salvataggio in corso: attendi la risposta prima di chiudere.')).toBeVisible();
+    await user.keyboard('{Escape}');
+    expect(dialog).toBeInTheDocument();
+
+    await act(async () => pendingSave.resolve());
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Anteprima ricetta' })).not.toBeInTheDocument());
+  });
+
+  it.each([
+    { settlement: 'succeeds', resolve: true },
+    { settlement: 'fails', resolve: false },
+  ])('does not let a late save that $settlement replace or report over a newer preview', async ({ resolve }) => {
+    const user = userEvent.setup();
+    const pendingSave = deferred<void>();
+    useAuthStore.setState({
+      user: { id: 'user-1', email: 'user@example.com', emailVerifiedAt: '2026-09-24T00:00:00.000Z' },
+      csrfToken: 'csrf-token',
+    });
+    seedPantry('pasta');
+    generateRecipeFromPantryMock
+      .mockResolvedValueOnce(generatedCandidate('Prima ricetta'))
+      .mockResolvedValueOnce(generatedCandidate('Anteprima più recente'));
+    saveAiRecipeMock.mockReturnValueOnce(pendingSave.promise);
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    const firstPreview = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+    await user.click(within(firstPreview).getByRole('button', { name: 'Salva nel ricettario' }));
+    await waitFor(() => expect(saveAiRecipeMock).toHaveBeenCalledOnce());
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    expect(await screen.findByRole('heading', { name: 'Anteprima più recente' })).toBeVisible();
+
+    await act(async () => {
+      if (resolve) pendingSave.resolve();
+      else {
+        pendingSave.reject(new Error('Salvataggio obsoleto non riuscito'));
+        await pendingSave.promise.catch(() => undefined);
+      }
+    });
+
+    expect(screen.getByRole('heading', { name: 'Anteprima più recente' })).toBeVisible();
+    expect(screen.queryByText('Impossibile salvare la ricetta.')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { settlement: 'succeeds', resolve: true },
+    { settlement: 'fails', resolve: false },
+  ])('ignores a deferred save that $settlement after Home unmounts', async ({ resolve }) => {
+    const user = userEvent.setup();
+    const pendingSave = deferred<void>();
+    setVerifiedOwner('user-1', 'csrf-token');
+    seedPantry('pasta');
+    generateRecipeFromPantryMock
+      .mockResolvedValueOnce(generatedCandidate('Anteprima salvata'))
+      .mockResolvedValueOnce(generatedCandidate('Anteprima dopo il remount'));
+    saveAiRecipeMock.mockReturnValueOnce(pendingSave.promise);
+    const oldPage = renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    const firstPreview = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+    await user.click(within(firstPreview).getByRole('button', { name: 'Salva nel ricettario' }));
+    await waitFor(() => expect(saveAiRecipeMock).toHaveBeenCalledOnce());
+    oldPage.unmount();
+
+    renderHome();
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    expect(await screen.findByRole('heading', { name: 'Anteprima dopo il remount' })).toBeVisible();
+    await act(async () => {
+      if (resolve) pendingSave.resolve();
+      else {
+        pendingSave.reject(new Error('Salvataggio precedente al remount'));
+        await pendingSave.promise.catch(() => undefined);
+      }
+    });
+
+    expect(screen.getByRole('heading', { name: 'Anteprima dopo il remount' })).toBeVisible();
+    expect(screen.queryByText('Impossibile salvare la ricetta.')).not.toBeInTheDocument();
+  });
+
+  it.each(ownershipTransitions.flatMap((transition) => [
+    { ...transition, settlement: 'succeeds', resolve: true },
+    { ...transition, settlement: 'fails', resolve: false },
+  ]))(
+    'ignores a deferred save that $settlement after $label and return',
+    async ({ userId, csrfToken, scope, resolve }) => {
+      const user = userEvent.setup();
+      const pendingSave = deferred<void>();
+      setVerifiedOwner('user-1', 'csrf-token');
+      seedPantry('pasta');
+      generateRecipeFromPantryMock
+        .mockResolvedValueOnce(generatedCandidate('Anteprima da salvare'))
+        .mockResolvedValueOnce(generatedCandidate('Anteprima proprietaria corrente'));
+      saveAiRecipeMock.mockReturnValueOnce(pendingSave.promise);
+      renderHome();
+
+      await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+      const firstPreview = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+      await user.click(within(firstPreview).getByRole('button', { name: 'Salva nel ricettario' }));
+      await waitFor(() => expect(saveAiRecipeMock).toHaveBeenCalledOnce());
+      expect(saveAiRecipeMock).toHaveBeenCalledWith(expect.objectContaining({ title: 'Anteprima da salvare' }), 'csrf-token');
+
+      setOwnership(userId, csrfToken, scope);
+      setVerifiedOwner('user-1', 'csrf-token');
+      seedPantry('pasta');
+      await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+      expect(await screen.findByRole('heading', { name: 'Anteprima proprietaria corrente' })).toBeVisible();
+
+      await act(async () => {
+        if (resolve) pendingSave.resolve();
+        else {
+          pendingSave.reject(new Error('Salvataggio della sessione precedente'));
+          await pendingSave.promise.catch(() => undefined);
+        }
+      });
+
+      expect(screen.getByRole('heading', { name: 'Anteprima proprietaria corrente' })).toBeVisible();
+      expect(screen.queryByText('Impossibile salvare la ricetta.')).not.toBeInTheDocument();
+    },
+  );
 
   it('explains the empty pantry and disables search until ingredients are saved', () => {
     renderHome();

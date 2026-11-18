@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import type { AiRecipeProvider, GeneratedRecipeDraft, SyncChange } from '@ikuck/shared/contracts';
+import type { AiRecipeProvider, DietProfilePayload, GeneratedRecipeDraft, SyncChange } from '@ikuck/shared/contracts';
 import { AI_RECIPE_MAX_GENERATION_INGREDIENTS } from '@ikuck/shared/limits';
 import { generatePantryRecipeDraft } from '../ai/pantryRecipe.js';
 import {
@@ -11,7 +11,9 @@ import {
   type RecipeReference,
 } from '../ai/recipeNovelty.js';
 import type { GenerationRateLimiter, GenerationRateReservation } from '../ai/rateLimit.js';
+import { isGeneratedRecipeCompatible, parseGeneratedRecipeDraft } from '../ai/validation.js';
 import { AuthServiceError, type AuthService } from '../auth/service.js';
+import { dietProfilePayloadSchema } from '../diet/validation.js';
 import { AiConsentRequiredError, type SyncRepository } from '../sync/repository.js';
 import { ensureCsrf, ensureSameOrigin, requireVerifiedSession } from './auth.js';
 import type { RecipeGenerationProvider } from '../providers/types.js';
@@ -21,6 +23,7 @@ const generationRequestSchema = z.object({
     .array(z.string().trim().min(1).max(120))
     .min(1)
     .max(AI_RECIPE_MAX_GENERATION_INGREDIENTS),
+  dietProfile: dietProfilePayloadSchema,
 }).strict();
 
 const invalidPayload = (): AuthServiceError =>
@@ -103,6 +106,7 @@ export const registerRecipeRoutes = ({
     if (!parsed.success) throw invalidPayload();
 
     const ingredients = parsed.data.ingredients;
+    const dietProfile = parsed.data.dietProfile as DietProfilePayload;
 
     let savedRecipes: { title: string; ingredients: { name: string; amount: string }[] }[];
     try {
@@ -142,12 +146,16 @@ export const registerRecipeRoutes = ({
 
         draft = await repository.withAiConsentDispatch(session.userId, { kind: 'home', provider: recipeProvider }, async () => {
           try {
-            return await provider.generate({
+            const generated = await provider.generate({
               ingredients,
               constraints: [],
+              dietProfile,
               existingRecipes,
               signal: requestAbort.signal,
             });
+            const validated = parseGeneratedRecipeDraft(generated);
+            if (validated === null) throw new Error('Recipe provider returned an invalid draft');
+            return validated;
           } catch {
             throw new AuthServiceError('provider_unavailable', 503, 'Recipe provider is unavailable');
           }
@@ -155,6 +163,10 @@ export const registerRecipeRoutes = ({
 
         if (draft === null) {
           throw new AuthServiceError('provider_unavailable', 503, 'Recipe provider is unavailable');
+        }
+
+        if (!isGeneratedRecipeCompatible(draft, dietProfile)) {
+          throw new AuthServiceError('ai_recipe_incompatible', 422, 'Generated recipe does not match the active dietary profile');
         }
 
         noveltyConflict = findRecipeNoveltyConflict(draft, knownReferences);
@@ -184,7 +196,9 @@ export const registerRecipeRoutes = ({
     }
 
     if (draft === null || noveltyConflict !== null) {
-      draft = generatePantryRecipeDraft(ingredients, knownReferences);
+      const fallback = generatePantryRecipeDraft(ingredients, knownReferences, Math.random, dietProfile);
+      draft = fallback === null ? null : parseGeneratedRecipeDraft(fallback);
+      if (draft !== null && !isGeneratedRecipeCompatible(draft, dietProfile)) draft = null;
       noveltyConflict = null;
     }
 

@@ -305,6 +305,7 @@ export interface WeeklyPushPayload {
 
 export interface GenerateRecipeRequest {
   ingredients: string[];
+  dietProfile: DietProfilePayload;
 }
 
 export type GenerateRecipeCandidate = {
