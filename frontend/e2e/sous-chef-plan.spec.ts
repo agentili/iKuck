@@ -135,9 +135,19 @@ test('una ricevuta del Piano arrivata dopo il logout conserva la coda account gi
   }, { scope: accountScope, operationId: command.operationId });
   await expect.poll(hasPersistedCommand).toBe(true);
 
-  await page.getByRole('button', { name: 'Profilo' }).click();
+  const profileMenu = page.getByRole('button', { name: 'Profilo' });
+  const guestHeader = page.getByRole('banner').getByText('Dati locali', { exact: true });
+  await profileMenu.click();
   await page.getByRole('button', { name: 'Esci' }).click();
+  // Logout can remount the header after the first reopen. Wait for the guest menu, not just the disappearance of Esci.
+  await expect(async () => {
+    if (await profileMenu.getAttribute('aria-expanded', { timeout: 500 }) === 'false') {
+      await profileMenu.click({ timeout: 500 });
+    }
+    await expect(guestHeader).toBeVisible({ timeout: 500 });
+  }).toPass({ timeout: 10_000 });
   await expect(page.getByRole('button', { name: 'Esci', exact: true })).toHaveCount(0);
+  await profileMenu.click();
   const guestPlan = page.getByRole('list', { name: 'Pasti da domani' });
   await expect(guestPlan.getByRole('listitem')).toHaveCount(7);
   const guestTitle = await guestPlan.getByRole('listitem').first().locator('div p').first().textContent();
