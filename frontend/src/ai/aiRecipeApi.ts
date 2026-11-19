@@ -5,6 +5,7 @@ import type {
   GeneratedRecipe,
   GenerateRecipeRequest,
   GenerateRecipeResponse,
+  SyncMutationScope,
 } from '@ikuck/shared/contracts';
 import { ApiClientError, apiRequest, type ApiRequest } from '../api/apiClient';
 
@@ -150,10 +151,11 @@ export const saveAiRecipe = async (
   recipe: GeneratedRecipe,
   csrfToken: string,
   request: ApiRequest = apiRequest,
+  syncScope?: SyncMutationScope,
 ): Promise<GeneratedRecipe> => {
   const response = await request<GeneratedRecipeResponse>('/v1/ai-recipes/save', {
     method: 'POST',
-    body: { recipe },
+    body: { recipe, ...(syncScope === undefined ? {} : { syncScope }) },
     csrfToken,
   });
   return response.recipe;

@@ -433,7 +433,7 @@ export interface SyncRepository extends DinnerConsumptionRepository {
     signal?: AbortSignal,
   ) => Promise<T>;
   readChanges: (userId: string, cursor: number, limit: number, requestedScope?: SyncMutation['syncScope'], supportedEntityTypes?: readonly SyncMutation['entityType'][], validateSupportedTypesForScope?: boolean) => Promise<SyncChange[]>;
-  readAll: (userId: string) => Promise<SyncChange[]>;
+  readAll: (userId: string, expectedSharedScope?: SyncMutationScope) => Promise<SyncChange[]>;
   readEntity: (userId: string, entityType: SyncMutation['entityType'], entityId: string) => Promise<StoredSyncItem | null>;
   migrateUserSharedDataToHouse: (userId: string, houseId: string, pendingAccountMutations?: readonly SyncMutation[]) => Promise<void>;
   readHouseMigrationPending: (userId: string) => Promise<{ houseId: string } | null>;
@@ -1899,8 +1899,9 @@ export const createMemorySyncRepository = (repositoryOptions: SyncRepositoryOpti
         .slice(0, limit)
         .map(toChange);
     },
-    readAll: async (userId) => {
+    readAll: async (userId, expectedSharedScope) => {
       const resolved = await resolveReadScopes(userId, options);
+      resolveScopeForCurrentMembership(userId, 'generated_recipe', resolved.currentHouse?.id ?? null, expectedSharedScope);
       const pending = houseMigrationPending.get(userId);
       if (pending !== undefined) throw new HouseMigrationPendingError();
       const keys = new Set(resolved.scopes.map(scopeKey));
@@ -3931,7 +3932,7 @@ export const createDrizzleSyncRepository = (
     return rows.map((row) => toChange(fromDatabaseItem(row)));
   }),
 
-  readAll: async (userId) => database.transaction(async (transaction) => {
+  readAll: async (userId, expectedSharedScope) => database.transaction(async (transaction) => {
     let currentHouse: SyncScope | null = null;
     const [membership] = await transaction.select({ houseId: houseMemberships.houseId })
       .from(houseMemberships)
@@ -3951,6 +3952,7 @@ export const createDrizzleSyncRepository = (
     if (pending !== undefined) throw new HouseMigrationPendingError();
     const sharedEntityCondition = inArray(syncItems.entityType, [...HOUSE_SYNC_ENTITY_TYPES]);
     const personalEntityCondition = sql`NOT (${sharedEntityCondition})`;
+    resolveScopeForCurrentMembership(userId, 'generated_recipe', currentHouse?.id ?? null, expectedSharedScope);
     const scopeCondition = currentHouse === null
       ? and(eq(syncItems.scopeType, 'user'), eq(syncItems.scopeId, userId))
       : or(

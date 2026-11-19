@@ -90,7 +90,8 @@ describe('Chef landing page', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Oggi lo chef propone...' })).toBeVisible();
     expect(screen.getByText('Proposta locale')).toBeVisible();
     expect(screen.queryByRole('group', { name: 'Prosegui in cucina' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'accedi con un account verificato' })).toHaveAttribute('href', '/profile');
+    expect(screen.queryByRole('button', { name: 'Genera dalla dispensa' })).not.toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Messaggio per Chef' })).not.toBeInTheDocument();
     expect(chatState.loadConsentStatus).not.toHaveBeenCalled();
   });
