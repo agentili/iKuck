@@ -308,14 +308,62 @@ export interface GenerateRecipeRequest {
   dietProfile: DietProfilePayload;
 }
 
+export type PantryIngredientExclusion =
+  | { name: string; reason: 'composition_unverified' | 'diet_incompatible' }
+  | { name: string; reason: 'excluded_allergen'; allergens: EuAllergen[] };
+
+export type PantryIngredientDisposition = 'used' | 'not_selected' | 'excluded';
+export type PantryIngredientEvidence = 'name_facts' | 'provider_declared' | 'unverified';
+export type PantryIngredientAllergenCoverage = 'complete' | 'partial' | 'unknown';
+export type PantryIngredientReviewReason =
+  | 'composition_unverified'
+  | 'diet_incompatible'
+  | 'excluded_allergen'
+  | 'recipe_limit'
+  | 'local_preparation_unavailable'
+  | 'not_selected'
+  | 'search_exhausted';
+
+export interface PantryIngredientAssessment {
+  inputIndex: number;
+  name: string;
+  disposition: PantryIngredientDisposition;
+  evidence: PantryIngredientEvidence;
+  allergenCoverage: PantryIngredientAllergenCoverage;
+  presentAllergens: EuAllergen[];
+  possibleAllergens: EuAllergen[];
+  recipeIngredientIndexes: number[];
+  reason?: PantryIngredientReviewReason;
+  warning?: string;
+}
+
+export interface PantryRecipeIngredientWarning {
+  ingredientIndex: number;
+  name: string;
+  allergenCoverage: PantryIngredientAllergenCoverage;
+  presentAllergens: EuAllergen[];
+  possibleAllergens: EuAllergen[];
+  warning: string;
+}
+
+export interface PantryIngredientReview {
+  resultSource: 'provider' | 'local' | 'none';
+  consideredIngredients: string[];
+  assessments: PantryIngredientAssessment[];
+  excludedIngredients: PantryIngredientExclusion[];
+  recipeIngredientWarnings?: PantryRecipeIngredientWarning[];
+}
+
 export type GenerateRecipeCandidate = {
   kind: 'candidate';
   recipe: GeneratedRecipeDraft;
+  ingredientReview?: PantryIngredientReview;
 };
 
 export type GenerateRecipeNone = {
   kind: 'none_available';
   message: string;
+  ingredientReview?: PantryIngredientReview;
 };
 
 export type GenerateRecipeResponse = GenerateRecipeCandidate | GenerateRecipeNone;

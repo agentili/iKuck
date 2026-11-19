@@ -140,6 +140,85 @@ test('genera da dispensa, mostra l’anteprima e salva solo dopo conferma', asyn
   });
 });
 
+test('mostra i rischi di un composto separato solo sui componenti interessati', async ({ page }) => {
+  const submissions: Array<{ path: string; body: Record<string, unknown> }> = [];
+  const recipe: GeneratedRecipeDraft = {
+    title: 'Riso, latte e mortadella',
+    description: 'Una preparazione semplice.',
+    ingredients: [
+      { name: 'Riso', amount: '100 g' },
+      { name: 'Latte', amount: '100 ml' },
+      { name: 'Mortadella', amount: '80 g' },
+    ],
+    steps: ['Cuoci gli ingredienti.'],
+    diets: ['omnivore'],
+    allergens: ['milk', 'nuts', 'sulphites'],
+  };
+
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/v1/recipes/generate') {
+      submissions.push({ path: '/v1/recipes/generate', body: request.postDataJSON() as Record<string, unknown> });
+    }
+  });
+
+  await installOfflineBackend(page, {
+    responses: {
+      'GET /v1/auth/session': { status: 200, json: verifiedSession },
+      'GET /v1/house': { status: 200, json: { house: null } },
+      'GET /v1/sync': { status: 200, json: { changes: [], nextCursor: 0 } },
+      'POST /v1/sync': { status: 200, json: { uploaded: 0, downloaded: 0, pending: 0, complete: true } },
+      'GET /v1/ai-recipes/consent': { status: 200, json: { consent, selectedProvider: 'openai' } },
+      'GET /v1/ai-recipes': { status: 200, json: { recipes: [] } },
+      'POST /v1/recipes/generate': {
+        status: 200,
+        json: {
+          kind: 'candidate',
+          recipe,
+          ingredientReview: {
+            consideredIngredients: ['Riso e Latte e Mortadella'],
+            resultSource: 'provider',
+            assessments: [{
+              inputIndex: 0,
+              name: 'Riso e Latte e Mortadella',
+              disposition: 'used',
+              evidence: 'name_facts',
+              allergenCoverage: 'partial',
+              presentAllergens: ['milk'],
+              possibleAllergens: ['nuts', 'sulphites'],
+              recipeIngredientIndexes: [0, 1, 2],
+            }],
+            excludedIngredients: [],
+            recipeIngredientWarnings: [{
+              ingredientIndex: 2,
+              name: 'Mortadella',
+              allergenCoverage: 'partial',
+              presentAllergens: [],
+              possibleAllergens: ['nuts', 'sulphites'],
+              warning: "Composizione non completamente verificata dal solo nome: controlla l'etichetta. L'assenza di altri allergeni non è verificata.",
+            }],
+          },
+        },
+      },
+    },
+  });
+
+  await page.goto('/cucina');
+  await page.getByRole('button', { name: 'Aggiungi ingredienti' }).first().click();
+  const addDialog = page.getByRole('dialog', { name: 'Aggiungi ingredienti' });
+  await addDialog.getByRole('combobox', { name: 'Ingredienti presenti' }).fill('Riso e Latte e Mortadella');
+  await addDialog.getByRole('button', { name: 'Aggiungi ingredienti' }).click();
+  await page.getByRole('button', { name: 'Genera ricetta da dispensa' }).click();
+
+  const preview = page.getByRole('dialog', { name: 'Anteprima ricetta' });
+  await expect(preview.getByRole('heading', { name: recipe.title })).toBeVisible();
+  await expect(preview.getByText(/^Mortadella: Composizione non completamente verificata dal solo nome/i)).toBeVisible();
+  await expect(preview.getByText(/^Riso: Composizione non completamente verificata dal solo nome/i)).toHaveCount(0);
+  await expect(preview.getByText(/^Latte: Composizione non completamente verificata dal solo nome/i)).toHaveCount(0);
+  await expect(preview.getByText(/Rischio possibile per Mortadella:/i)).toBeVisible();
+  expect(submissions).toHaveLength(1);
+  expect(submissions[0]?.body).toMatchObject({ ingredients: ['Riso e Latte e Mortadella'], dietProfile });
+});
+
 test('mantiene raggiungibili i comandi con una ricetta lunga su schermo piccolo', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 560 });
   await installOfflineBackend(page, {

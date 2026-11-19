@@ -201,7 +201,7 @@ export default function PantryPage() {
   const conflictCopyCount = conflictCopies.length;
 
   const availableIngredientIds = useMemo(
-    () => [...pantryItems.filter((item) => item.known).map((item) => item.id), ...stapleIds],
+    () => [...pantryItems.map((item) => item.id), ...stapleIds],
     [pantryItems, stapleIds],
   );
 

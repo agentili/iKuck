@@ -15,7 +15,7 @@ export function DailyRecipeCard() {
   const pantryReady = usePantryStore((state) => state.hasHydrated);
   const profile = useDietProfileStore((state) => state.profile);
   const dietReady = useDietProfileStore((state) => state.hasHydrated);
-  const availableIds = useMemo(() => [...items.filter((item) => item.known).map((item) => item.id), ...staples], [items, staples]);
+  const availableIds = useMemo(() => [...items.map((item) => item.id), ...staples], [items, staples]);
   const [date, setDate] = useState(localDateKey);
   const [state, setState] = useState<{ scope: string; date: string; selection: DailyRecipeSelection | null; error: boolean } | null>(null);
 

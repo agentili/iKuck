@@ -62,6 +62,13 @@ const confirmedDiaryRecipe: SavedRecipe = {
   suggestedFields: [], source: 'diary', authorId: 'user-1', createdAt: '2026-09-29T18:00:00.000Z', updatedAt: '2026-09-29T18:01:00.000Z',
 };
 
+const customPantryDiaryRecipe: SavedRecipe = {
+  id: 'saved-tempeh-recipe', title: 'Tempeh in padella', description: 'Una preparazione semplice.',
+  ingredients: [{ name: 'Tempeh', amount: '200 g', ingredientId: null, optional: false, provenance: 'provided' }],
+  steps: ['Cuoci il tempeh.'], servings: 2, durationMinutes: null, diets: null, allergens: null,
+  suggestedFields: [], source: 'diary', authorId: null, createdAt: '2026-09-29T18:00:00.000Z', updatedAt: '2026-09-29T18:01:00.000Z',
+};
+
 const renderHome = () => render(
   <MemoryRouter>
     <HomePage />
@@ -183,6 +190,19 @@ describe('HomePage recipe search', () => {
     expect(screen.queryByRole('region', { name: 'Ricette AI private' })).not.toBeInTheDocument();
   });
 
+  it('matches an Altri ingredienti pantry label to a custom saved-diary ingredient', async () => {
+    const user = userEvent.setup();
+    seedPantry('Tempeh');
+    useDinnerDiaryStore.setState({ recipes: [{ scope: 'guest', value: customPantryDiaryRecipe }] });
+    renderHome();
+
+    expect(usePantryStore.getState().pantryItems).toEqual([{ id: 'custom:tempeh', label: 'Tempeh', known: false }]);
+    await user.click(screen.getByRole('button', { name: 'Trova ricette' }));
+
+    expect(await screen.findByRole('heading', { name: 'Tempeh in padella' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Pronte da cucinare' })).toBeVisible();
+  });
+
   it('shows a generated pantry recipe candidate in the preview dialog', async () => {
     const user = userEvent.setup();
     useAuthStore.setState({
@@ -223,6 +243,210 @@ describe('HomePage recipe search', () => {
         nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null },
       },
     }, 'csrf-token');
+  });
+
+  it('shows which custom pantry labels were excluded because their composition is unverified', async () => {
+    const user = userEvent.setup();
+    setVerifiedOwner('user-1', 'csrf-token');
+    seedPantry('Pasta, Tempeh');
+    generateRecipeFromPantryMock.mockResolvedValueOnce({
+      kind: 'candidate',
+      recipe: {
+        title: 'Pasta semplice', description: 'Una ricetta.',
+        ingredients: [{ name: 'Pasta', amount: '160 g' }], steps: ['Cuoci la pasta.'], diets: [], allergens: [],
+      },
+      ingredientReview: {
+        consideredIngredients: ['Pasta', 'Tempeh'],
+        resultSource: 'provider',
+        assessments: [
+          {
+            inputIndex: 0, name: 'Pasta', disposition: 'used', evidence: 'provider_declared',
+            allergenCoverage: 'partial', presentAllergens: ['gluten'], possibleAllergens: ['eggs'], recipeIngredientIndexes: [0],
+            warning: "Composizione proposta, non verifica del prodotto: controlla l'etichetta.",
+          },
+          {
+            inputIndex: 1, name: 'Tempeh', disposition: 'excluded', evidence: 'unverified',
+            allergenCoverage: 'unknown', presentAllergens: [], possibleAllergens: [], recipeIngredientIndexes: [], reason: 'composition_unverified',
+          },
+        ],
+        excludedIngredients: [{ name: 'Tempeh', reason: 'composition_unverified' }],
+      },
+    });
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    const preview = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+
+    expect(within(preview).getByText('Tempeh')).toBeVisible();
+    expect(within(preview).getByText(/composizione non verificabile dal solo nome/i)).toBeVisible();
+    expect(within(preview).getByText(/ingredienti valutati: 2/i)).toBeVisible();
+  });
+
+  it('explains provider-declared partial composition and separates used, unselected and excluded items', async () => {
+    const user = userEvent.setup();
+    setVerifiedOwner('user-1', 'csrf-token');
+    seedPantry('Pasta, Patate');
+    generateRecipeFromPantryMock.mockResolvedValueOnce({
+      kind: 'candidate',
+      recipe: {
+        title: 'Pasta semplice', description: 'Una ricetta.',
+        ingredients: [{ name: 'Pasta', amount: '160 g' }], steps: ['Cuoci la pasta.'],
+        diets: ['omnivore'], allergens: ['gluten'],
+      },
+      ingredientReview: {
+        consideredIngredients: ['Pasta', 'Patate'],
+        resultSource: 'provider',
+        assessments: [
+          {
+            inputIndex: 0, name: 'Pasta', disposition: 'used', evidence: 'provider_declared',
+            allergenCoverage: 'partial', presentAllergens: ['gluten'], recipeIngredientIndexes: [0], possibleAllergens: ['eggs'],
+            warning: "Composizione proposta, non verifica del prodotto: controlla l'etichetta. L'assenza di altri allergeni non è verificata.",
+          },
+          {
+            inputIndex: 1, name: 'Patate', disposition: 'not_selected', evidence: 'name_facts',
+            allergenCoverage: 'complete', presentAllergens: [], recipeIngredientIndexes: [], reason: 'not_selected', possibleAllergens: [],
+          },
+        ],
+        excludedIngredients: [],
+      },
+    });
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    const preview = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+
+    expect(within(preview).getByText(/ingredienti valutati: 2/i)).toBeVisible();
+    expect(within(preview).getByText(/usati nella proposta: 1/i)).toBeVisible();
+    expect(within(preview).getByText(/non usati nella proposta: 1/i)).toBeVisible();
+    expect(within(preview).getByText(/esclusi per sicurezza: 0/i)).toBeVisible();
+    expect(within(preview).getByText(/composizione proposta, non verifica del prodotto: controlla l'etichetta/i)).toBeVisible();
+    expect(within(preview).getByText(/rischio possibile per pasta: uova/i)).toBeVisible();
+  });
+
+  it('shows partial-composition risks for provider ingredients outside the pantry', async () => {
+    const user = userEvent.setup();
+    setVerifiedOwner('user-1', 'csrf-token');
+    seedPantry('Riso');
+    generateRecipeFromPantryMock.mockResolvedValueOnce({
+      kind: 'candidate',
+      recipe: {
+        title: 'Riso con mortadella', description: 'Una ricetta.',
+        ingredients: [{ name: 'Riso', amount: '100 g' }, { name: 'Mortadella', amount: '80 g' }],
+        steps: ['Cuoci il riso.'], diets: ['omnivore'], allergens: [],
+      },
+      ingredientReview: {
+        consideredIngredients: ['Riso'], resultSource: 'provider',
+        assessments: [{
+          inputIndex: 0, name: 'Riso', disposition: 'used', evidence: 'name_facts',
+          allergenCoverage: 'complete', presentAllergens: [], possibleAllergens: [],
+          recipeIngredientIndexes: [0],
+        }],
+        excludedIngredients: [],
+        recipeIngredientWarnings: [{
+          ingredientIndex: 1, name: 'Mortadella', allergenCoverage: 'partial',
+          presentAllergens: [],
+          possibleAllergens: ['nuts', 'sulphites'],
+          warning: "Composizione non completamente verificata dal solo nome: controlla l'etichetta. L'assenza di altri allergeni non è verificata.",
+        }],
+      },
+    });
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    const preview = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+
+    expect(within(preview).getByText(/mortadella: composizione non completamente verificata dal solo nome/i)).toBeVisible();
+    expect(within(preview).getByText(/rischio possibile per mortadella: frutta a guscio, anidride solforosa e solfiti/i)).toBeVisible();
+  });
+
+  it('shows the unmapped remainder risk when a provider output compound also maps to pantry rice', async () => {
+    const user = userEvent.setup();
+    setVerifiedOwner('user-1', 'csrf-token');
+    seedPantry('Riso');
+    generateRecipeFromPantryMock.mockResolvedValueOnce({
+      kind: 'candidate',
+      recipe: {
+        title: 'Riso e Mortadella', description: 'Una preparazione semplice.',
+        ingredients: [{ name: 'Riso e Mortadella', amount: '180 g' }],
+        steps: ['Cuoci il riso con la Mortadella.'], diets: ['omnivore'], allergens: ['nuts', 'sulphites'],
+      },
+      ingredientReview: {
+        consideredIngredients: ['Riso'], resultSource: 'provider',
+        assessments: [{
+          inputIndex: 0, name: 'Riso', disposition: 'used', evidence: 'name_facts',
+          allergenCoverage: 'complete', presentAllergens: [], possibleAllergens: [], recipeIngredientIndexes: [0],
+        }],
+        excludedIngredients: [],
+        recipeIngredientWarnings: [{
+          ingredientIndex: 0, name: 'Riso e Mortadella', allergenCoverage: 'partial',
+          presentAllergens: [], possibleAllergens: ['nuts', 'sulphites'],
+          warning: "Composizione non completamente verificata dal solo nome: controlla l'etichetta. L'assenza di altri allergeni non è verificata.",
+        }],
+      },
+    });
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    const preview = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+
+    expect(within(preview).getByText(/riso e mortadella: composizione non completamente verificata dal solo nome/i)).toBeVisible();
+    expect(within(preview).getByText(/rischio possibile per riso e mortadella: frutta a guscio, anidride solforosa e solfiti/i)).toBeVisible();
+  });
+
+  it('shows generic Pasta risk when Pasta and Pomodoro map to one provider compound', async () => {
+    const user = userEvent.setup();
+    setVerifiedOwner('user-1', 'csrf-token');
+    seedPantry('Pasta, Pomodoro');
+    generateRecipeFromPantryMock.mockResolvedValueOnce({
+      kind: 'candidate',
+      recipe: {
+        title: 'Pasta e Pomodoro', description: 'Una preparazione semplice.',
+        ingredients: [{ name: 'Pasta e Pomodoro', amount: '180 g' }],
+        steps: ['Cuoci la pasta con il pomodoro.'], diets: ['omnivore'], allergens: ['gluten', 'eggs'],
+      },
+      ingredientReview: {
+        consideredIngredients: ['Pasta', 'Pomodoro'], resultSource: 'provider',
+        assessments: [
+          {
+            inputIndex: 0, name: 'Pasta', disposition: 'used', evidence: 'provider_declared',
+            allergenCoverage: 'partial', presentAllergens: ['gluten'], possibleAllergens: ['eggs'],
+            recipeIngredientIndexes: [0],
+            warning: "Composizione proposta, non verifica del prodotto: controlla l'etichetta. L'assenza di altri allergeni non è verificata.",
+          },
+          {
+            inputIndex: 1, name: 'Pomodoro', disposition: 'used', evidence: 'name_facts',
+            allergenCoverage: 'complete', presentAllergens: [], possibleAllergens: [], recipeIngredientIndexes: [0],
+          },
+        ],
+        excludedIngredients: [],
+      },
+    });
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    const preview = await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+
+    expect(within(preview).getByText(/usati nella proposta: 2/i)).toBeVisible();
+    expect(within(preview).getByText(/rischio possibile per pasta: uova/i)).toBeVisible();
+  });
+
+  it('sends shared canonical beef labels unchanged from pantry to recipe generation', async () => {
+    const user = userEvent.setup();
+    setVerifiedOwner('user-1', 'csrf-token');
+    seedPantry('Manzo, Carne macinata');
+    expect(parseIngredientInput('Manzo, Carne macinata').map(({ id, label }) => ({ id, label }))).toEqual([
+      { id: 'beef_strips', label: 'Straccetti di manzo' },
+      { id: 'ground_beef', label: 'Carne macinata' },
+    ]);
+    generateRecipeFromPantryMock.mockResolvedValueOnce(generatedCandidate('Manzo'));
+    renderHome();
+
+    await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
+    await screen.findByRole('dialog', { name: 'Anteprima ricetta' });
+
+    expect(generateRecipeFromPantryMock).toHaveBeenCalledWith(expect.objectContaining({
+      ingredients: ['Straccetti di manzo', 'Carne macinata'],
+    }), 'csrf-token');
   });
 
   it('focuses the preview when opened and restores focus after Escape closes it', async () => {
@@ -490,12 +714,28 @@ describe('HomePage recipe search', () => {
     generateRecipeFromPantryMock.mockResolvedValueOnce({
       kind: 'none_available',
       message: 'Non ho trovato ingredienti sufficienti per proporre qualcosa di nuovo.',
+      ingredientReview: {
+        consideredIngredients: ['Pasta', 'Tonno'],
+        resultSource: 'none',
+        assessments: [
+          {
+            inputIndex: 0, name: 'Pasta', disposition: 'not_selected', evidence: 'name_facts',
+            allergenCoverage: 'partial', presentAllergens: ['gluten'], possibleAllergens: ['eggs'], recipeIngredientIndexes: [], reason: 'search_exhausted',
+          },
+          {
+            inputIndex: 1, name: 'Tonno', disposition: 'excluded', evidence: 'name_facts',
+            allergenCoverage: 'complete', presentAllergens: ['fish'], possibleAllergens: [], recipeIngredientIndexes: [], reason: 'excluded_allergen',
+          },
+        ],
+        excludedIngredients: [{ name: 'Tonno', reason: 'excluded_allergen', allergens: ['fish'] }],
+      },
     });
     renderHome();
 
     await user.click(screen.getByRole('button', { name: 'Genera ricetta da dispensa' }));
 
     expect(await screen.findByText('Non ho trovato ingredienti sufficienti per proporre qualcosa di nuovo.')).toBeVisible();
+    expect(screen.getByText(/allergeni esclusi dal profilo: pesce/i)).toBeVisible();
     expect(screen.queryByRole('dialog', { name: 'Anteprima ricetta' })).not.toBeInTheDocument();
   });
 

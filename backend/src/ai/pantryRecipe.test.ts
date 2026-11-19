@@ -8,7 +8,12 @@ import {
 } from '@ikuck/shared/limits';
 import type { DietProfilePayload } from '@ikuck/shared/contracts';
 import type { RecipeReference } from './recipeNovelty.js';
-import { generatePantryRecipeDraft } from './pantryRecipe.js';
+import {
+  evaluatePantryRecipeDraft,
+  evaluateProviderPantryRecipeDraft,
+  generatePantryRecipeDraft,
+  reviewPantryIngredients,
+} from './pantryRecipe.js';
 import { parseGeneratedRecipeDraft } from './validation.js';
 
 const sulphiteExcludingProfile: DietProfilePayload = {
@@ -61,8 +66,15 @@ describe('generatePantryRecipeDraft', () => {
     expect(['Orata', 'Patate']).toContain(recipe?.ingredients[0]?.name);
   });
 
-  it('keeps fallback drafts saveable for 31 to 100 long pantry ingredients', () => {
-    const ingredients = Array.from({ length: 100 }, (_value, index) => `${'Pomodoro '.repeat(12)}${index}`);
+  it('keeps fallback drafts saveable with more eligible identities than one recipe can hold', () => {
+    const eligibleNames = [
+      'Acqua', 'Sale', 'Pepe', 'Riso', 'Ceci', 'Lenticchie', 'Piselli', 'Limone', 'Rucola',
+      'Pomodoro', 'Pomodorini', 'Olive', 'Zucchine', 'Peperoni', 'Spinaci', 'Melanzane', 'Carote',
+      'Sedano', 'Cipolla', 'Aglio', 'Prezzemolo', 'Basilico', 'Patate', 'Pollo', 'Tacchino', 'Manzo',
+      'Tonno', 'Merluzzo', 'Salmone', 'Orata', 'Spigola', 'Trota', 'Uova', 'Latte', 'Grana',
+      'Mortadella', 'Mandorle',
+    ];
+    const ingredients = Array.from({ length: 100 }, (_value, index) => eligibleNames[index % eligibleNames.length]!);
     const recipe = generatePantryRecipeDraft(ingredients, [], () => 0);
 
     expect(recipe).not.toBeNull();
@@ -282,6 +294,7 @@ describe('generatePantryRecipeDraft', () => {
 
       expect(recipe).not.toBeNull();
       expect(recipe?.allergens).toContain('sulphites');
+      expect(reviewPantryIngredients(labels).assessments[0]?.possibleAllergens).toEqual(['sulphites']);
       expect(generatePantryRecipeDraft(labels, [], () => 0, sulphiteExcludingProfile)).toBeNull();
     },
   );
@@ -298,12 +311,16 @@ describe('generatePantryRecipeDraft', () => {
     },
   );
 
-  it.each(['Uvetta e Datteri', 'Uvetta e Mandorle'])(
+  it.each([
+    ['Uvetta e Datteri', ['sulphites']],
+    ['Uvetta e Mandorle', ['nuts', 'sulphites']],
+  ] as const)(
     'retains the sulphite fact from a compound dried-fruit label %s',
-    (ingredient) => {
+    (ingredient, expectedAllergens) => {
       const recipe = generatePantryRecipeDraft([ingredient], [], () => 0);
 
-      expect(recipe?.allergens).toContain('sulphites');
+      expect(recipe?.allergens).toEqual(expectedAllergens);
+      expect(reviewPantryIngredients([ingredient]).assessments[0]?.possibleAllergens).toContain('sulphites');
       expect(generatePantryRecipeDraft([ingredient], [], () => 0, sulphiteExcludingProfile)).toBeNull();
     },
   );
@@ -343,5 +360,195 @@ describe('generatePantryRecipeDraft', () => {
     const recipe = generatePantryRecipeDraft(['Sedano e carote'], [], () => 0);
 
     expect(recipe?.allergens).toContain('celery');
+  });
+
+  it.each([
+    ['raw pantry label', ['Grana']],
+    ['Home-normalized alias', parseIngredientInput('Grana').map(({ label }) => label)],
+  ] as const)('preserves the egg lysozyme risk through %s', (_source, ingredients) => {
+    const recipe = generatePantryRecipeDraft(ingredients, [], () => 0);
+    const review = reviewPantryIngredients(ingredients);
+
+    expect(recipe?.allergens).toEqual(['eggs', 'milk']);
+    expect(review.assessments[0]).toMatchObject({ possibleAllergens: ['eggs'], allergenCoverage: 'partial' });
+  });
+
+  it.each([
+    ['raw pantry label', ['Mortadella']],
+    ['Home-normalized label', parseIngredientInput('Mortadella').map(({ label }) => label)],
+  ] as const)('keeps the tree-nut risk for Mortadella through %s', (_source, ingredients) => {
+    const recipe = generatePantryRecipeDraft([...ingredients], [], () => 0);
+    const review = reviewPantryIngredients(ingredients);
+
+    expect(recipe?.allergens).toEqual(['nuts', 'sulphites']);
+    expect(review.assessments[0]).toMatchObject({ possibleAllergens: ['nuts', 'sulphites'], allergenCoverage: 'partial' });
+  });
+
+  it('unions allergen facts across a compound meat-and-nut pantry label', () => {
+    const recipe = generatePantryRecipeDraft(['Mortadella e pistacchi'], [], () => 0);
+
+    expect(recipe?.allergens).toEqual(['nuts', 'sulphites']);
+    expect(reviewPantryIngredients(['Mortadella e pistacchi']).assessments[0]?.possibleAllergens).toEqual(['sulphites']);
+  });
+
+  it('preserves provider-declared positives and possible name risks in the effective recipe', () => {
+    const pasta = evaluateProviderPantryRecipeDraft(['Pasta'], {
+      title: 'Pasta', description: 'Pasta semplice.',
+      ingredients: [{ name: 'Pasta', amount: '160 g' }], steps: ['Cuoci la pasta.'],
+      diets: ['omnivore'], allergens: ['gluten'],
+    });
+    const rice = evaluateProviderPantryRecipeDraft(['Riso'], {
+      title: 'Riso', description: 'Riso semplice.',
+      ingredients: [{ name: 'Riso', amount: '100 g' }], steps: ['Cuoci il riso.'],
+      diets: ['omnivore'], allergens: ['soybeans'],
+    });
+
+    expect(pasta.recipe?.allergens).toEqual(['gluten', 'eggs']);
+    expect(pasta.ingredientReview.assessments[0]).toMatchObject({ presentAllergens: ['gluten'], possibleAllergens: ['eggs'] });
+    expect(rice.recipe?.allergens).toEqual(['soybeans']);
+  });
+
+  it.each([
+    { diet: 'vegan', allergen: 'milk' },
+    { diet: 'vegan', allergen: 'eggs' },
+    { diet: 'vegan', allergen: 'fish' },
+    { diet: 'vegan', allergen: 'crustaceans' },
+    { diet: 'vegan', allergen: 'molluscs' },
+    { diet: 'vegetarian', allergen: 'fish' },
+    { diet: 'vegetarian', allergen: 'crustaceans' },
+    { diet: 'vegetarian', allergen: 'molluscs' },
+  ] as const)('rejects a provider $diet claim with declared $allergen', ({ diet, allergen }) => {
+    const result = evaluateProviderPantryRecipeDraft(['Riso'], {
+      title: 'Riso dichiarato incompatibile', description: 'Una proposta contraddittoria.',
+      ingredients: [{ name: 'Riso', amount: '100 g' }], steps: ['Cuoci il riso.'],
+      diets: ['omnivore', diet], allergens: [allergen],
+    });
+
+    expect(result.recipe).toBeNull();
+  });
+
+  it.each([
+    { diet: 'omnivore', allergen: 'milk' },
+    { diet: 'vegetarian', allergen: 'milk' },
+    { diet: 'vegetarian', allergen: 'eggs' },
+    { diet: 'pescatarian', allergen: 'fish' },
+  ] as const)('preserves compatible $diet claims with declared $allergen', ({ diet, allergen }) => {
+    const result = evaluateProviderPantryRecipeDraft(['Riso'], {
+      title: 'Riso compatibile', description: 'Una proposta coerente.',
+      ingredients: [{ name: 'Riso', amount: '100 g' }], steps: ['Cuoci il riso.'],
+      diets: [diet], allergens: [allergen],
+    });
+
+    expect(result.recipe?.diets).toContain(diet);
+    expect(result.recipe?.allergens).toContain(allergen);
+  });
+
+  it('reviews every eligible label without treating the proposal cap as pantry exclusion', () => {
+    const ingredients = Array.from({ length: RECIPE_MAX_INGREDIENTS + 5 }, (_value, index) => index % 2 === 0 ? 'Riso' : 'Orata');
+    const review = reviewPantryIngredients(ingredients);
+
+    expect(review.consideredIngredients).toEqual(ingredients);
+    expect(review.assessments).toHaveLength(ingredients.length);
+    expect(review.assessments.every(({ disposition }) => disposition === 'not_selected')).toBe(true);
+    expect(review.excludedIngredients).toEqual([]);
+  });
+
+  it('applies the recipe cap after safety filtering, so later compatible labels remain eligible', () => {
+    const unknownIngredients = Array.from(
+      { length: RECIPE_MAX_INGREDIENTS },
+      (_, index) => `Ingrediente personalizzato ${index + 1}`,
+    );
+    const ingredients = [...unknownIngredients, 'Riso'];
+    const review = reviewPantryIngredients(ingredients);
+    const recipe = generatePantryRecipeDraft(ingredients, [], () => 0);
+
+    expect(recipe?.ingredients.map(({ name }) => name)).toEqual(['Riso']);
+    expect(review.consideredIngredients).toEqual(ingredients);
+    expect(review.excludedIngredients).toHaveLength(RECIPE_MAX_INGREDIENTS);
+    expect(review.excludedIngredients.every(({ reason }) => reason === 'composition_unverified')).toBe(true);
+  });
+
+  it.each([
+    ['Riso e gambero', 'crustaceans'],
+    ['Riso e gamberi', 'crustaceans'],
+    ['Riso e granchio', 'crustaceans'],
+    ['Riso e cozza', 'molluscs'],
+    ['Riso e cozze', 'molluscs'],
+    ['Riso e vongola', 'molluscs'],
+    ['Riso e vongole', 'molluscs'],
+  ] as const)('preserves seafood facts in additive label %s without inventing fish', (label, allergen) => {
+    const recipe = generatePantryRecipeDraft([label], [], () => 0);
+
+    expect(recipe?.allergens).toEqual([allergen]);
+    expect(recipe?.diets).not.toContain('vegetarian');
+    expect(recipe?.diets).not.toContain('vegan');
+    expect(recipe?.allergens).not.toContain('fish');
+  });
+
+  it.each([
+    ['Riso e mandorla', 'nuts'],
+    ['Riso e mandorle', 'nuts'],
+    ['Riso e noce', 'nuts'],
+    ['Riso e noci', 'nuts'],
+    ['Riso e nocciola', 'nuts'],
+    ['Riso e nocciole', 'nuts'],
+    ['Riso e pinolo', 'nuts'],
+    ['Riso e pinoli', 'nuts'],
+    ['Riso e pistacchio', 'nuts'],
+    ['Riso e pistacchi', 'nuts'],
+    ['Riso e anacardo', 'nuts'],
+    ['Riso e anacardi', 'nuts'],
+    ['Riso e arachide', 'peanuts'],
+    ['Riso e arachidi', 'peanuts'],
+    ['Riso e sesamo', 'sesame'],
+  ] as const)('preserves additive allergen facts for %s', (label, allergen) => {
+    expect(generatePantryRecipeDraft([label], [], () => 0)?.allergens).toContain(allergen);
+  });
+
+  it('retains a mustard fact in the review even when local preparation is unavailable', () => {
+    const review = reviewPantryIngredients(['Riso e senape'], {
+      diet: 'omnivore',
+      excludedAllergens: ['mustard'],
+      nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null },
+    });
+
+    expect(review.excludedIngredients).toEqual([{
+      name: 'Riso e senape',
+      reason: 'excluded_allergen',
+      allergens: ['mustard'],
+    }]);
+  });
+
+  it.each(['Latte di mandorla', 'Latte di soia', 'Noce moscata'])('does not tokenize the nonadditive phrase %s into false safety facts', (label) => {
+    expect(generatePantryRecipeDraft([label], [], () => 0)).toBeNull();
+  });
+
+  it('does not create a local fallback from a compound ingredient excluded by its known allergen', () => {
+    const result = evaluatePantryRecipeDraft(['Riso e gamberi'], [], () => 0, {
+      diet: 'vegan',
+      excludedAllergens: ['crustaceans'],
+      nutrition: { maxCaloriesPerServing: null, minProteinGramsPerServing: null },
+    });
+
+    expect(result.recipe).toBeNull();
+    expect(result.ingredientReview.excludedIngredients).toContainEqual({
+      name: 'Riso e gamberi',
+      reason: 'excluded_allergen',
+      allergens: ['crustaceans'],
+    });
+  });
+
+  it('shuffles the full eligible pool before making capped local proposals', () => {
+    const ingredients = [
+      'Acqua', 'Sale', 'Pepe', 'Riso', 'Ceci', 'Lenticchie', 'Piselli', 'Limone', 'Rucola',
+      'Pomodoro', 'Pomodorini', 'Olive', 'Zucchine', 'Peperoni', 'Spinaci', 'Melanzane',
+      'Carote', 'Sedano', 'Cipolla', 'Aglio', 'Prezzemolo', 'Basilico', 'Patate', 'Pollo',
+      'Tacchino', 'Manzo', 'Tonno', 'Merluzzo', 'Salmone', 'Uova', 'Orata',
+    ];
+    let calls = 0;
+    const recipe = generatePantryRecipeDraft(ingredients, [], () => calls++ === 0 ? 0 : 0.999999);
+
+    expect(recipe?.ingredients.map(({ name }) => name)).toContain('Orata');
+    expect(recipe?.ingredients.length).toBeLessThanOrEqual(RECIPE_MAX_INGREDIENTS);
   });
 });
