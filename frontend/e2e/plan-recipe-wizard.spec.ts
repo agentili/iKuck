@@ -2,6 +2,36 @@ import { expect, test } from '@playwright/test';
 import { installOfflineBackend, assertOfflineBackendClean } from './helpers/backendMode';
 import { seedPlanPantry } from './helpers/planWizard';
 
+test('la matita resta compatta e a destra della ricetta anche su uno schermo stretto', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  await installOfflineBackend(page);
+  await seedPlanPantry(page);
+  await page.goto('/plan');
+  const row = page.getByRole('list', { name: 'Pasti da domani' }).getByRole('listitem').first();
+  const title = row.locator('p').first();
+  const edit = row.getByRole('button', { name: /cambia ricetta per/i });
+  await expect(edit).toBeEnabled();
+  await expect(title).toBeVisible();
+
+  for (const fontSize of ['100%', '200%']) {
+    await page.locator('html').evaluate((root, size) => { root.style.fontSize = size; }, fontSize);
+    const [card, recipe, button] = await Promise.all([row.boundingBox(), title.boundingBox(), edit.boundingBox()]);
+    expect(button!.x).toBeGreaterThanOrEqual(recipe!.x + recipe!.width);
+    expect(button!.y).toBeLessThan(recipe!.y + recipe!.height);
+    expect(button!.x + button!.width).toBeLessThan(card!.x + card!.width);
+    expect(button!.width).toBeGreaterThanOrEqual(44);
+    expect(button!.height).toBeGreaterThanOrEqual(44);
+    expect(button!.width).toBeCloseTo(button!.height, 0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  }
+
+  await page.locator('html').evaluate(root => { root.style.fontSize = '100%'; });
+  await row.screenshot({ path: testInfo.outputPath('plan-compact-edit.png'), animations: 'disabled' });
+  await edit.click();
+  await expect(page.getByRole('dialog', { name: 'Definisci la ricetta del giorno' })).toBeVisible();
+  assertOfflineBackendClean(page);
+});
+
 test('annulla da tastiera senza cambiare il piano e restituisce il focus al pulsante', async ({ page }) => {
   await installOfflineBackend(page);
   await seedPlanPantry(page);

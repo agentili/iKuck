@@ -306,6 +306,41 @@ describe('AiRecipePanel', () => {
     expect(screen.queryByRole('heading', { name: recipe.title })).not.toBeInTheDocument();
   });
 
+  it.each([
+    { enabled: false },
+    { enabled: true, homeProvider: 'gemini' as const },
+  ])('reports title generation unavailable without showing consent UI (%j)', async (consent) => {
+    vi.mocked(fetchAiConsentStatus).mockResolvedValue({ consent: { ...consent, updatedAt: '2026-09-13T12:00:00.000Z' }, selectedProvider: 'openai' });
+    renderPanel({ generationMode: 'title', ingredients: [] });
+    const panel = await screen.findByRole('region', { name: 'Ricette AI private' });
+    await userEvent.type(within(panel).getByLabelText('Titolo del piatto'), 'Risotto ai funghi');
+    expect(within(panel).getByRole('button', { name: 'Genera ricetta AI' })).toBeDisabled();
+    expect(await within(panel).findByText('La generazione di ricette AI non è disponibile per questo account.')).toBeVisible();
+    expect(panel).not.toHaveTextContent(/consenso|autorizza|i dati che possono essere inviati/i);
+    expect(within(panel).queryByRole('link')).not.toBeInTheDocument();
+    expect(generateAiRecipe).not.toHaveBeenCalled();
+  });
+
+  it('keeps title generation disabled if the service status cannot be verified', async () => {
+    vi.mocked(fetchAiConsentStatus).mockRejectedValue({ code: 'ai_consent_status_invalid' });
+    renderPanel({ generationMode: 'title', ingredients: [] });
+    const panel = screen.getByRole('region', { name: 'Ricette AI private' });
+    await userEvent.type(within(panel).getByLabelText('Titolo del piatto'), 'Risotto ai funghi');
+    expect(await within(panel).findByRole('alert')).toBeVisible();
+    expect(within(panel).getByRole('button', { name: 'Genera ricetta AI' })).toBeDisabled();
+    expect(panel).not.toHaveTextContent(/consenso|autorizza/i);
+    expect(generateAiRecipe).not.toHaveBeenCalled();
+  });
+
+  it('keeps the verified-account requirement without consent links in guest title mode', () => {
+    renderPanel({ generationMode: 'title', user: null, csrfToken: null });
+    const panel = screen.getByRole('region', { name: 'Ricette AI private' });
+    expect(panel).toHaveTextContent(/accedi con un account verificato/i);
+    expect(panel).not.toHaveTextContent(/consenso/i);
+    expect(within(panel).queryByRole('link')).not.toBeInTheDocument();
+    expect(fetchAiConsentStatus).not.toHaveBeenCalled();
+  });
+
   it('does not generate from a title until consent and diet hydration are ready', async () => {
     const userEvents = userEvent.setup();
     const view = renderPanel({ generationMode: 'title', ingredients: [], generationReady: false });

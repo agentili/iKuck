@@ -48,7 +48,9 @@ interface SavedRecipeCollectionUpdate {
   recipe: GeneratedRecipe;
 }
 
-const errorMessage = (error: unknown): string => {
+const TITLE_GENERATION_UNAVAILABLE = 'La generazione di ricette AI non è disponibile per questo account.';
+
+const errorMessage = (error: unknown, fromTitle = false): string => {
   const code = error instanceof ApiClientError
     ? error.code
     : typeof error === 'object' && error !== null && 'code' in error
@@ -56,7 +58,9 @@ const errorMessage = (error: unknown): string => {
       : undefined;
 
   if (code === 'ai_daily_limit_reached') return 'Hai raggiunto il limite giornaliero per le ricette AI.';
-  if (code === 'ai_consent_required') return 'Salva il consenso prima di generare una ricetta AI.';
+  if (code === 'ai_consent_required') return fromTitle
+    ? TITLE_GENERATION_UNAVAILABLE
+    : 'Salva il consenso prima di generare una ricetta AI.';
   if (code === 'ai_recipe_incompatible') return 'La ricetta generata non rispetta i filtri alimentari attivi.';
   if (code === 'ai_recipe_not_novel') return 'L’IA ha riproposto un’idea troppo simile: non l’ho mostrata. Riprova per una ricetta diversa.';
   if (code === 'network_error') return 'Servizio non raggiungibile: le ricette AI restano disponibili solo online.';
@@ -222,13 +226,13 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
         setSelectedProvider(consentStatus.selectedProvider);
       })
       .catch((loadError: unknown) => {
-        if (!cancelled && isCurrentSession()) setError(errorMessage(loadError));
+        if (!cancelled && isCurrentSession()) setError(errorMessage(loadError, fromTitle));
       });
 
     return () => {
       cancelled = true;
     };
-  }, [verified, userId, csrfToken]);
+  }, [verified, userId, csrfToken, fromTitle]);
 
   useEffect(() => {
     let cancelled = false;
@@ -292,7 +296,7 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
           <div className="min-w-0 flex-1">
             <h2 className="text-xl font-black text-gray-950">{fromTitle ? 'Crea una ricetta con l’AI' : 'Ricette AI private'}</h2>
             <p className="mt-1 text-sm leading-relaxed text-gray-700">{fromTitle ? 'Scrivi il titolo di un piatto e lascia che l’AI crei ingredienti e procedimento. Accedi con un account verificato per iniziare.' : 'Per ospiti e account non verificati, le ricette AI private restano disattivate: ingredienti, profilo alimentare e ricette non vengono inviati a un provider AI. Dopo la verifica vedrai il destinatario e potrai dare un consenso esplicito.'}</p>
-            <a href="/profile#ai-consent-settings" className="mt-3 inline-flex min-h-11 items-center rounded-xl px-2 py-2 font-bold text-emerald-900 underline underline-offset-2">Apri il Profilo per gestire il consenso AI</a>
+            {!fromTitle && <a href="/profile#ai-consent-settings" className="mt-3 inline-flex min-h-11 items-center rounded-xl px-2 py-2 font-bold text-emerald-900 underline underline-offset-2">Apri il Profilo per gestire il consenso AI</a>}
           </div>
         </div>
       </section>
@@ -313,7 +317,9 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
       && consentEpochRef.current === generation.epoch
       && isAiRecipeProposalGenerationCurrent(generation);
     if (!isCurrentGeneration()) {
-      setError('Non posso verificare lo stato attuale del consenso. Aggiorna la pagina prima di generare.');
+      setError(fromTitle
+        ? 'Non posso avviare la generazione. Aggiorna la pagina e riprova.'
+        : 'Non posso verificare lo stato attuale del consenso. Aggiorna la pagina prima di generare.');
       return;
     }
 
@@ -335,7 +341,7 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
       if (onRecipeProposed) onRecipeProposed(recipe);
       else setDrafts((current) => [recipe, ...current.filter((item) => item.id !== recipe.id)]);
     } catch (generationError) {
-      if (isCurrentGeneration()) setError(errorMessage(generationError));
+      if (isCurrentGeneration()) setError(errorMessage(generationError, fromTitle));
     } finally {
       if (mountedRef.current && sessionScopeRef.current.generation === generationScope.generation) setIsGenerating(false);
     }
@@ -360,7 +366,7 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
       }));
       onRecipeSaved?.(saved);
     } catch (saveError) {
-      if (isCurrentSave()) setError(errorMessage(saveError));
+      if (isCurrentSave()) setError(errorMessage(saveError, fromTitle));
     } finally {
       if (isCurrentSave()) setSavingDraftId(null);
     }
@@ -430,10 +436,10 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
 
       {error !== null && <p role="alert" className="mt-4 rounded-xl bg-rose-100 p-3 text-sm font-semibold text-rose-900">{error}</p>}
 
-      {consent !== null && selectedProviderLabel === null && (
+      {!fromTitle && consent !== null && selectedProviderLabel === null && (
         <details data-ai-consent className="mt-5 rounded-2xl border border-emerald-200 bg-white px-4">
           <summary className="min-h-11 cursor-pointer py-3 font-bold text-gray-950 focus-visible:rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">
-            Consenso AI per {fromTitle ? 'creare dal titolo' : onRecipeProposed ? 'Piano' : 'Home'} <span className="block pl-5 text-sm font-medium text-amber-900">Provider non disponibile</span>
+            Consenso AI per {onRecipeProposed ? 'Piano' : 'Home'} <span className="block pl-5 text-sm font-medium text-amber-900">Provider non disponibile</span>
           </summary>
           <div className="border-t border-emerald-100 py-4">
             <p role="status" className="text-sm leading-relaxed text-gray-700">Il provider delle ricette AI non è disponibile: non inviamo dati e la generazione resta disattivata.</p>
@@ -441,12 +447,12 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
         </details>
       )}
 
-      {consent !== null && selectedProviderLabel !== null && (
+      {!fromTitle && consent !== null && selectedProviderLabel !== null && (
         <div data-ai-consent className="mt-5 grid gap-3 rounded-2xl border border-emerald-200 bg-white p-4">
-          <h3 className="font-bold text-gray-950">Consenso AI per {fromTitle ? 'creare dal titolo' : onRecipeProposed ? 'Piano' : 'Home'}</h3>
+          <h3 className="font-bold text-gray-950">Consenso AI per {onRecipeProposed ? 'Piano' : 'Home'}</h3>
           <p role="status" className="text-sm font-semibold text-gray-700">{homeConsentEnabled ? `Attivo per ${selectedProviderLabel}` : `Da autorizzare per ${selectedProviderLabel}`}</p>
           <p className="text-xs leading-relaxed text-gray-600">
-            I dati che possono essere inviati a {selectedProviderLabel}: {fromDescription ? 'descrizione del piatto' : fromTitle ? 'titolo del piatto' : 'nomi degli ingredienti della dispensa'}; profilo alimentare (dieta scelta, allergeni esclusi, calorie massime e proteine minime per porzione); titoli e nomi/quantità degli ingredienti delle ricette AI salvate o già proposte. {constraints.length === 0 ? 'Inviamo anche l’elenco dei vincoli di generazione, attualmente vuoto.' : 'Inviamo anche il numero di porzioni e le indicazioni di generazione inserite.'}
+            I dati che possono essere inviati a {selectedProviderLabel}: {fromDescription ? 'descrizione del piatto' : 'nomi degli ingredienti della dispensa'}; profilo alimentare (dieta scelta, allergeni esclusi, calorie massime e proteine minime per porzione); titoli e nomi/quantità degli ingredienti delle ricette AI salvate o già proposte. {constraints.length === 0 ? 'Inviamo anche l’elenco dei vincoli di generazione, attualmente vuoto.' : 'Inviamo anche il numero di porzioni e le indicazioni di generazione inserite.'}
           </p>
           {consent.enabled && !homeConsentEnabled && <p className="text-xs font-semibold leading-relaxed text-amber-900">Il provider è cambiato o il consenso precedente non specificava il destinatario: non inviamo dati a {selectedProviderLabel} finché non approvi questa scelta.</p>}
           <p className="text-xs leading-relaxed text-gray-600">Le ricette già salvate restano visibili anche quando il consenso non è attivo. Per concedere o revocare il consenso, usa le impostazioni del Profilo.</p>
@@ -466,7 +472,8 @@ export default function AiRecipePanel({ ingredients, dietProfile, user, csrfToke
             <Sparkles size={17} aria-hidden="true" />
             {isGenerating ? 'Creo la ricetta…' : 'Genera ricetta AI'}
           </button>
-          {(fromTitle || fromDescription) && !homeConsentEnabled && <p className="mt-3 text-sm text-[var(--ik-ink-muted)]">Autorizza l’invio dei dati al provider AI per creare la ricetta.</p>}
+          {fromTitle && consent !== null && !homeConsentEnabled && <p role="status" className="mt-3 text-sm text-[var(--ik-ink-muted)]">{TITLE_GENERATION_UNAVAILABLE}</p>}
+          {!fromTitle && fromDescription && !homeConsentEnabled && <p className="mt-3 text-sm text-[var(--ik-ink-muted)]">Autorizza l’invio dei dati al provider AI per creare la ricetta.</p>}
           {isGenerating && <p role="status" aria-live="polite" className="mt-3 text-sm text-[var(--ik-ink-muted)]">L’AI sta preparando ingredienti e procedimento…</p>}
           {fromTitle || fromDescription || pantryLabels.length > 0
             ? <p className="mt-3 text-xs leading-relaxed text-gray-600">La ricetta generata resta un’anteprima fino alla conferma del salvataggio.</p>

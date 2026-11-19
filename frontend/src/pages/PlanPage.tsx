@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Pencil, Plus, ShoppingCart, Sparkles } from 'lucide-react';
+import { Loader2, Pencil, Plus, ShoppingCart, Sparkles } from 'lucide-react';
 import type { DietProfile, PlanCommand, PlanState, SyncMutationScope } from '@ikuck/shared/contracts';
 import { APP_TIME_ZONE } from '@ikuck/shared/contracts';
 import { ApiClientError } from '../api/apiClient';
@@ -803,8 +803,8 @@ export default function PlanPage() {
             const recipe = state?.recipeId === null || state === null ? undefined : libraryRecipes.find((candidate) => candidate.id === state.recipeId);
             const rowPending = pending || currentView.mode === 'offline' && state !== null && currentView.overlays[date] !== undefined;
             return (
-              <li key={date} className="grid gap-y-2 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-3 sm:grid-cols-[minmax(10rem,0.85fr)_minmax(0,1.7fr)_auto] sm:items-center sm:gap-x-4 sm:gap-y-1.5 sm:p-4" data-date={date}>
-                <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-3">
+              <li key={date} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 rounded-[var(--ik-radius-panel)] border border-[var(--ik-border)] bg-[var(--ik-surface)] p-3 sm:gap-x-4 sm:gap-y-1.5 sm:p-4" data-date={date}>
+                <div className="col-span-2 flex flex-wrap items-center justify-between gap-2">
                   <time dateTime={date} className="text-sm font-bold capitalize text-[var(--ik-basil-dark)]">{label}</time>
                   <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
                     {state?.kind === 'manual' && <span className="rounded-full bg-[var(--ik-sage)] px-2.5 py-1 text-[var(--ik-basil-dark)]">Scelta manuale</span>}
@@ -812,7 +812,7 @@ export default function PlanPage() {
                     {rowPending && <span className="rounded-full bg-[var(--ik-yolk-soft)] px-2.5 py-1 text-[var(--ik-warn-ink)]">In attesa di conferma · non condivisa</span>}
                   </div>
                 </div>
-                <div className="min-w-0 sm:col-span-2">
+                <div className="min-w-0">
                   <div className="flex min-w-0 items-start gap-2.5">
                     {state?.kind === 'automatic' && (
                       <span
@@ -824,7 +824,7 @@ export default function PlanPage() {
                         <Sparkles size={18} strokeWidth={2.2} aria-hidden="true" />
                       </span>
                     )}
-                    <div className="min-w-0">
+                    <div className="min-w-0 break-words">
                       {recipe !== undefined ? <p className="text-lg font-bold leading-snug text-[var(--ik-ink)]">{recipe.title}</p>
                         : state?.kind === 'deleted' ? <p className="font-semibold text-[var(--ik-ink)]">Pasto rimosso</p>
                           : state !== null ? <p className="font-semibold text-[var(--ik-ink)]">Ricetta non più disponibile nel catalogo</p>
@@ -835,12 +835,16 @@ export default function PlanPage() {
                 {currentView.canEdit && (
                   <button
                     type="button"
-                    className="inline-flex min-h-11 w-fit items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border-2 border-[var(--ik-basil)] bg-[var(--ik-surface)] px-3 py-1.5 text-sm font-bold text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)] disabled:opacity-60 sm:col-start-3 sm:row-start-2"
+                    className="inline-flex h-11 w-11 items-center justify-center justify-self-end rounded-xl text-[var(--ik-basil-dark)] hover:bg-[var(--ik-sage)] disabled:opacity-60"
                     aria-label={`Cambia ricetta per ${label}`}
+                    title={busyDate === date ? 'Salvataggio…' : 'Cambia ricetta'}
+                    aria-busy={busyDate === date}
                     disabled={busyDate !== null || !scopeWritable}
                     onClick={() => setWizard({ date, label, token: contextToken })}
                   >
-                    {busyDate === date ? 'Salvataggio…' : <><Pencil size={15} aria-hidden="true" /> Cambia ricetta</>}
+                    {busyDate === date
+                      ? <Loader2 size={18} className="motion-safe:animate-spin" aria-hidden="true" />
+                      : <Pencil size={18} aria-hidden="true" />}
                   </button>
                 )}
               </li>
