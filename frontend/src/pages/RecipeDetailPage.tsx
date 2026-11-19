@@ -1,5 +1,5 @@
 import { ArrowLeft, ChefHat, Clock, Heart, ShoppingCart, Star, Users } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import type { CookEvent } from '@ikuck/shared/contracts';
 import type { DinnerEntry } from '@ikuck/shared/dinnerDiary';
@@ -97,6 +97,11 @@ export default function RecipeDetailPage() {
   const [searchParams] = useSearchParams();
   const returnLinkLabel = 'Torna a Chef';
   const requestedScope = searchParams.get('scope');
+
+  useLayoutEffect(() => {
+    document.scrollingElement?.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [recipeId, requestedScope]);
+
   const activeScope = getActiveDataScope();
   const savedDiaryRecipes = useDinnerDiaryStore((state) => state.recipes);
   const savedDiaryRecipe = requestedScope === activeScope

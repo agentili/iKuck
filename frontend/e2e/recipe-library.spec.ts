@@ -148,12 +148,17 @@ test('gruppo salvate: la card espandibile mostra ingredienti e procedimento', as
   ).toBeVisible();
 });
 
-test('gruppo suggerite: la card apre /recipes/:recipeId', async ({ page }) => {
+test('la ricetta si apre dall’inizio anche partendo dalla raccolta già scorsa', async ({ page }) => {
   await installVerifiedBackend(page);
   await page.goto('/recipes');
-  await page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' }).click();
+  const recipeLink = page.getByRole('link', { name: 'Apri Pasta tonno e pomodoro' });
+  await recipeLink.scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  await recipeLink.click();
   await expect(page).toHaveURL('/recipes/pasta-tonno-pomodoro');
-  await expect(page.getByRole('heading', { name: 'Pasta tonno e pomodoro' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Pasta tonno e pomodoro', level: 1 })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(page.getByRole('link', { name: 'Torna a Chef' })).toBeInViewport();
 });
 
 test('ospite: catalogo visibile nella raccolta unificata', async ({ page }) => {
@@ -364,6 +369,8 @@ test('crea una ricetta AI dal titolo e la aggiunge alla raccolta solo dopo il sa
   const generate = panel.getByRole('button', { name: 'Genera ricetta AI' });
   await expect(generate).toBeDisabled();
   await panel.getByRole('textbox', { name: 'Titolo del piatto', exact: true }).fill('  Orata al cartoccio  ');
+  await expect(generate).toBeEnabled();
+  await expect(panel).not.toContainText(/consenso|autorizza|i dati che possono essere inviati/i);
   await generate.click();
   await expect(panel.getByRole('heading', { name: recipe.title })).toBeVisible();
   expect(submissions).toHaveLength(1);

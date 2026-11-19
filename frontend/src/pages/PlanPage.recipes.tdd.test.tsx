@@ -57,7 +57,8 @@ describe('PlanPage recipe proposals', () => {
     expect(await screen.findAllByRole('button', { name: /cambia ricetta/i })).toHaveLength(7);
     for (const row of screen.getAllByRole('listitem')) {
       const button = within(row).getByRole('button', { name: /cambia ricetta/i });
-      expect(button).toHaveTextContent('Cambia ricetta');
+      expect(button).toHaveAccessibleName(/^Cambia ricetta per .+/i);
+      expect(button.textContent).toBe('');
       expect(button).toBeEnabled();
     }
   });
