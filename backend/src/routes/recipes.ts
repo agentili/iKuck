@@ -1,8 +1,14 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import type { AiRecipeProvider, DietProfilePayload, GeneratedRecipeDraft, SyncChange } from '@ikuck/shared/contracts';
+import type {
+  AiRecipeProvider,
+  DietProfilePayload,
+  GeneratedRecipeDraft,
+  PantryIngredientReview,
+  SyncChange,
+} from '@ikuck/shared/contracts';
 import { AI_RECIPE_MAX_GENERATION_INGREDIENTS } from '@ikuck/shared/limits';
-import { generatePantryRecipeDraft } from '../ai/pantryRecipe.js';
+import { evaluatePantryRecipeDraft, evaluateProviderPantryRecipeDraft, reviewPantryIngredients } from '../ai/pantryRecipe.js';
 import {
   MAX_NOVELTY_GENERATION_ATTEMPTS,
   MAX_NOVELTY_REFERENCES_IN_PROMPT,
@@ -134,6 +140,7 @@ export const registerRecipeRoutes = ({
     }
 
     let draft: GeneratedRecipeDraft | null = null;
+    let ingredientReview: PantryIngredientReview | null = null;
     let noveltyConflict: ReturnType<typeof findRecipeNoveltyConflict> = null;
     const rejectedRecipes: RecipeReference[] = [];
     const requestAbort = createReplyAbortSignal(reply);
@@ -169,6 +176,15 @@ export const registerRecipeRoutes = ({
           throw new AuthServiceError('ai_recipe_incompatible', 422, 'Generated recipe does not match the active dietary profile');
         }
 
+        const providerEvaluation = evaluateProviderPantryRecipeDraft(ingredients, draft, dietProfile);
+        if (providerEvaluation.recipe === null) {
+          draft = null;
+          noveltyConflict = null;
+          break;
+        }
+        draft = providerEvaluation.recipe;
+        ingredientReview = providerEvaluation.ingredientReview;
+
         noveltyConflict = findRecipeNoveltyConflict(draft, knownReferences);
         if (noveltyConflict === null) break;
         rejectedRecipes.push({ title: draft.title, ingredients: draft.ingredients });
@@ -196,8 +212,9 @@ export const registerRecipeRoutes = ({
     }
 
     if (draft === null || noveltyConflict !== null) {
-      const fallback = generatePantryRecipeDraft(ingredients, knownReferences, Math.random, dietProfile);
-      draft = fallback === null ? null : parseGeneratedRecipeDraft(fallback);
+      const fallback = evaluatePantryRecipeDraft(ingredients, knownReferences, Math.random, dietProfile);
+      ingredientReview = fallback.ingredientReview;
+      draft = fallback.recipe === null ? null : parseGeneratedRecipeDraft(fallback.recipe);
       if (draft !== null && !isGeneratedRecipeCompatible(draft, dietProfile)) draft = null;
       noveltyConflict = null;
     }
@@ -207,6 +224,7 @@ export const registerRecipeRoutes = ({
       return {
         kind: 'none_available',
         message: 'Non ho trovato ingredienti sufficienti per proporre una ricetta nuova.',
+        ingredientReview: ingredientReview ?? reviewPantryIngredients(ingredients, dietProfile),
       };
     }
 
@@ -215,6 +233,7 @@ export const registerRecipeRoutes = ({
       return {
         kind: 'none_available',
         message: 'Non sono riuscito a creare una ricetta diversa da quelle già nel ricettario.',
+        ingredientReview: ingredientReview ?? reviewPantryIngredients(ingredients, dietProfile),
       };
     }
 
@@ -225,6 +244,10 @@ export const registerRecipeRoutes = ({
       throw error;
     }
 
-    return { kind: 'candidate', recipe: draft };
+    return {
+      kind: 'candidate',
+      recipe: draft,
+      ingredientReview: ingredientReview ?? reviewPantryIngredients(ingredients, dietProfile),
+    };
   });
 };

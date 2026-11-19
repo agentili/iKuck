@@ -16,3 +16,10 @@ it('serializes the dish description and portions as generation data', () => {
   expect(RECIPE_GENERATION_INSTRUCTIONS).toContain('Se dishDescription è presente');
   expect(RECIPE_GENERATION_INSTRUCTIONS).toContain('numero di porzioni');
 });
+
+it('preserves every custom pantry label and instructs the model not to silently drop ingredients', () => {
+  const ingredients = ['Orata', 'Tempeh', 'Ingrediente personalizzato'];
+  expect(JSON.parse(serializeRecipeGenerationInput({ ingredients, constraints: [] })).ingredients).toEqual(ingredients);
+  expect(RECIPE_GENERATION_INSTRUCTIONS).toContain('Valuta tutti gli ingredienti di dispensa forniti');
+  expect(RECIPE_GENERATION_INSTRUCTIONS).toContain('non inventare una variante sicura');
+});

@@ -12,8 +12,9 @@ import {
   isSameAiRecipeCollectionOwner,
   type AiRecipeCollectionOwner,
 } from '../ai/aiRecipeOwnership';
-import type { GeneratedRecipe, GeneratedRecipeDraft } from '@ikuck/shared/contracts';
+import type { GeneratedRecipe, GeneratedRecipeDraft, PantryIngredientReview } from '@ikuck/shared/contracts';
 import { createSeededRandom, findRecipeSuggestions } from '../domain/suggestions';
+import { ALLERGEN_LABELS } from '../domain/dietary';
 import { RECIPES } from '../domain/recipes';
 import { toDiaryPantryRecipe } from '../domain/diaryRecipes';
 import { aggregatePantryLots } from '../domain/pantryLots';
@@ -239,7 +240,7 @@ export default function HomePage() {
   const hasRecoverablePantryConflict = pantryConflict && !malformedPantryBackup && pantryConflictCopyCount > 0;
 
   const availableIngredientIds = useMemo(
-    () => [...pantryItems.filter((item) => item.known).map((item) => item.id), ...stapleIds],
+    () => [...pantryItems.map((item) => item.id), ...stapleIds],
     [pantryItems, stapleIds],
   );
   const quantitySummaries = useMemo(
@@ -558,9 +559,10 @@ export default function HomePage() {
             </button>
           )}
           {noneAvailable !== null && (
-            <p role="status" className="w-full rounded-xl border border-[var(--ik-border)] bg-[var(--ik-mist)] px-4 py-3 text-sm text-[var(--ik-ink-muted)]">
+            <div role="status" className="w-full rounded-xl border border-[var(--ik-border)] bg-[var(--ik-mist)] px-4 py-3 text-sm text-[var(--ik-ink-muted)]">
               {noneAvailable.message}
-            </p>
+              {noneAvailable.ingredientReview !== undefined && <IngredientReviewSummary review={noneAvailable.ingredientReview} />}
+            </div>
           )}
           <Link to="/pantry" className="inline-flex min-h-11 items-center rounded-xl px-3 py-2 font-bold text-[var(--ik-basil-dark)] underline decoration-[var(--ik-border-strong)] underline-offset-4 hover:bg-[var(--ik-mist)]">Apri tutta la dispensa</Link>
           <SuggestionControls allowOneMissing={allowOneMissing} disabled={!hasPantryItems} onAllowOneMissingChange={setAllowOneMissing} onSearch={() => search()} />
@@ -687,7 +689,7 @@ export default function HomePage() {
               </div>
             )}
             {candidate !== null && (
-              <GenerateCandidatePreview recipe={candidate.recipe} onSave={saveGeneratedRecipe} onDiscard={discardGeneratedRecipe} isSaving={isSavingRecipe} />
+              <GenerateCandidatePreview recipe={candidate.recipe} ingredientReview={candidate.ingredientReview} onSave={saveGeneratedRecipe} onDiscard={discardGeneratedRecipe} isSaving={isSavingRecipe} />
             )}
           </dialog>
         </div>
@@ -696,12 +698,13 @@ export default function HomePage() {
   );
 }
 
-function GenerateCandidatePreview({ recipe, onSave, onDiscard, isSaving }: { recipe: GeneratedRecipeDraft; onSave: () => void; onDiscard: () => void; isSaving: boolean }) {
+function GenerateCandidatePreview({ recipe, ingredientReview, onSave, onDiscard, isSaving }: { recipe: GeneratedRecipeDraft; ingredientReview?: PantryIngredientReview; onSave: () => void; onDiscard: () => void; isSaving: boolean }) {
   return (
     <div aria-busy={isSaving} className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         <h3 className="text-lg font-bold text-[var(--ik-ink)]">{recipe.title}</h3>
         <p className="mt-4 text-sm text-[var(--ik-ink-muted)]">{recipe.description}</p>
+        {ingredientReview !== undefined && <IngredientReviewSummary review={ingredientReview} />}
         <div className="mt-4">
           <h4 className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--ik-basil-dark)]">Ingredienti</h4>
           <ul className="mt-1 list-inside list-disc space-y-1 text-sm text-[var(--ik-ink)]">
@@ -742,6 +745,62 @@ function GenerateCandidatePreview({ recipe, onSave, onDiscard, isSaving }: { rec
           Scarta
         </button>
       </div>
+    </div>
+  );
+}
+
+function IngredientReviewSummary({ review }: { review: PantryIngredientReview }) {
+  const count = review.consideredIngredients.length;
+  const usedCount = review.assessments.filter((item) => item.disposition === 'used').length;
+  const notSelectedCount = review.assessments.filter((item) => item.disposition === 'not_selected').length;
+  const excludedCount = review.assessments.filter((item) => item.disposition === 'excluded').length;
+  const explanation = (item: PantryIngredientReview['excludedIngredients'][number]): string => {
+    switch (item.reason) {
+      case 'composition_unverified': return 'composizione non verificabile dal solo nome';
+      case 'diet_incompatible': return 'non compatibile con la dieta selezionata';
+      case 'excluded_allergen': return `allergeni esclusi dal profilo: ${item.allergens.map((allergen) => ALLERGEN_LABELS[allergen]).join(', ')}`;
+    }
+  };
+  const uncertainUsed = review.assessments.filter((item) => item.disposition === 'used' && item.allergenCoverage !== 'complete');
+
+  return (
+    <div className="mt-4 rounded-xl border border-[var(--ik-border)] bg-[var(--ik-mist)] p-3 text-sm text-[var(--ik-ink-muted)]">
+      {count > 0 && (
+        <p>
+          Ingredienti valutati: {count}. Usati nella proposta: {usedCount}; non usati nella proposta: {notSelectedCount}; esclusi per sicurezza: {excludedCount}.
+        </p>
+      )}
+      {uncertainUsed.map((item, index) => (
+        <div key={`${item.inputIndex}-${index}`} className="mt-2">
+          <p>{item.warning ?? (item.evidence === 'provider_declared'
+            ? "Composizione proposta, non verifica del prodotto: controlla l'etichetta. L'assenza di altri allergeni non è verificata."
+            : "Composizione non completamente verificata dal solo nome: controlla l'etichetta. L'assenza di altri allergeni non è verificata.")}</p>
+          {item.presentAllergens.length > 0 && (
+            <p>{item.evidence === 'provider_declared' ? 'Allergeni dichiarati nella proposta' : 'Allergeni implicati dal nome'}: {item.presentAllergens.map((allergen) => ALLERGEN_LABELS[allergen]).join(', ')}.</p>
+          )}
+          {item.possibleAllergens.length > 0 && (
+            <p>Rischio possibile per {item.name}: {item.possibleAllergens.map((allergen) => ALLERGEN_LABELS[allergen]).join(', ')}.</p>
+          )}
+        </div>
+      ))}
+      {(review.recipeIngredientWarnings ?? []).map((item) => (
+        <div key={`recipe-ingredient-${item.ingredientIndex}`} className="mt-2">
+          <p>{item.name}: {item.warning}</p>
+          {item.presentAllergens.length > 0 && (
+            <p>Allergeni implicati dal nome: {item.presentAllergens.map((allergen) => ALLERGEN_LABELS[allergen]).join(', ')}.</p>
+          )}
+          {item.possibleAllergens.length > 0 && (
+            <p>Rischio possibile per {item.name}: {item.possibleAllergens.map((allergen) => ALLERGEN_LABELS[allergen]).join(', ')}.</p>
+          )}
+        </div>
+      ))}
+      {review.excludedIngredients.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {review.excludedIngredients.map((item, index) => (
+            <li key={`${item.name}-${index}`}><strong>{item.name}</strong>: {explanation(item)}.</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

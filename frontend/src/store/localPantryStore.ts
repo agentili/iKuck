@@ -284,7 +284,7 @@ export const usePantryStore = create<PantryState>()(
           }
         },
         getAvailableIngredientIds: () => [
-          ...normalizeStateSnapshot(get()).pantryItems.filter((item) => item.known).map((item) => item.id),
+          ...normalizeStateSnapshot(get()).pantryItems.map((item) => item.id),
           ...get().stapleIds,
         ],
         reconcileKnownFlags: () => {
