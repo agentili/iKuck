@@ -4,20 +4,61 @@ test('catalog image arrives asynchronously with attribution and remains availabl
   await installOfflineBackend(page);
   // New read-only image endpoints are explicitly mocked after the context guard.
   await context.route('**/v1/recipe-images/**', async route => {
-    if (route.request().url().includes('/assets/')) {
+    const request = new URL(route.request().url());
+    expect(request.searchParams.getAll('metadataVersion')).toEqual(['2']);
+    if (request.pathname.includes('/assets/')) {
       // A small valid WebP fixture is served by the existing local artwork.
       const response = await page.request.get('/recipe-images/uova-al-pomodoro.webp');
       await route.fulfill({ status: 200, contentType: 'image/webp', body: await response.body() });
-    } else await route.fulfill({ json: { state: 'ready', url: '/v1/recipe-images/assets/11111111-1111-1111-1111-111111111111', width: 720, height: 720, source: 'pexels', author: 'Test photographer', sourceUrl: 'https://www.pexels.com/photo/test', license: 'Pexels' } });
+    } else await route.fulfill({ json: { state: 'ready', metadataVersion: 2, url: '/v1/recipe-images/assets/11111111-1111-1111-1111-111111111111?metadataVersion=2', width: 720, height: 720, source: 'wikimedia', author: 'Test photographer', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Test.jpg', license: 'https://creativecommons.org/publicdomain/zero/1.0/' } });
   });
   await page.goto('/recipes/pollo-al-limone');
   await expect(page.getByRole('img', { name: 'Pollo al limone: immagine illustrativa' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Pexels', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Wikimedia Commons', exact: true })).toHaveAttribute('href', 'https://commons.wikimedia.org/wiki/File:Test.jpg');
+  await expect(page.getByRole('link', { name: 'CC0 1.0', exact: true })).toHaveAttribute('href', 'https://creativecommons.org/publicdomain/zero/1.0/');
+  await expect(page.getByText(/Test photographer.*convertita in WebP/)).toBeVisible();
   // SPA navigation exercises the bounded offline cache without relying on a service worker.
   await context.setOffline(true);
   await page.getByRole('link', { name: 'Chef', exact: true }).first().click();
   await page.goBack();
   await expect(page.getByRole('img', { name: 'Pollo al limone: immagine illustrativa' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'CC0 1.0', exact: true })).toBeVisible();
+});
+
+test('ignores unversioned Commons online and in the old public cache, but still credits legacy Pexels', async ({ page, context }) => {
+  await installOfflineBackend(page);
+  const asset = '/v1/recipe-images/assets/11111111-1111-1111-1111-111111111111';
+  const legacy = { state: 'ready', url: asset, width: 720, height: 720, source: 'wikimedia', author: 'Legacy credit',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Test.jpg', license: 'https://creativecommons.org/publicdomain/zero/1.0/' };
+  let pexels = false;
+  let assetRequests = 0;
+  await context.route('**/v1/recipe-images/**', async route => {
+    if (route.request().url().includes('/assets/')) {
+      assetRequests += 1;
+      const response = await page.request.get('/recipe-images/uova-al-pomodoro.webp');
+      await route.fulfill({ contentType: 'image/webp', body: await response.body() });
+    } else await route.fulfill({ json: pexels ? { ...legacy, source: 'pexels', sourceUrl: 'https://www.pexels.com/photo/test-1/', license: 'https://www.pexels.com/license/' } : legacy });
+  });
+  await page.goto('/recipes/pollo-al-limone');
+  const photo = page.getByRole('img', { name: 'Pollo al limone: immagine illustrativa' });
+  await expect(page.getByRole('img', { name: 'Illustrazione per Pollo al limone' })).toBeVisible();
+  await expect(photo).toHaveCount(0);
+  await page.evaluate(async ({ legacy, asset }) => {
+    const cache = await caches.open('ikuck-public-recipe-images-v1');
+    await cache.put('/v1/recipe-images/pollo-al-limone?kind=catalog', new Response(JSON.stringify(legacy)));
+    await cache.put(asset, await fetch('/recipe-images/uova-al-pomodoro.webp'));
+  }, { legacy, asset });
+  await context.setOffline(true);
+  await page.getByRole('link', { name: 'Chef', exact: true }).first().click();
+  await page.goBack();
+  await expect(page.getByRole('img', { name: 'Illustrazione per Pollo al limone' })).toBeVisible();
+  expect(assetRequests).toBe(0);
+  await context.setOffline(false);
+  pexels = true;
+  await page.reload();
+  await expect(photo).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Pexels', exact: true })).toHaveAttribute('href', 'https://www.pexels.com/photo/test-1/');
+  await expect(page.getByText(/Unsplash/)).toHaveCount(0);
 });
 
 test('Profile grants image consent to its selected provider without granting Home recipe consent', async ({ page }) => {
@@ -32,7 +73,7 @@ test('Profile grants image consent to its selected provider without granting Hom
       selectedProvider: 'gemini', selectedImageProvider: 'openai',
     } },
     'PUT /v1/ai-recipes/consent': { json: {
-      consent: { enabled: true, imageProvider: 'openai', imagePolicyVersion: 'recipe-images-v1', updatedAt: '2026-11-01T00:01:00Z' },
+      consent: { enabled: true, imageProvider: 'openai', imagePolicyVersion: 'recipe-images-v2', updatedAt: '2026-11-01T00:01:00Z' },
       selectedProvider: 'gemini', selectedImageProvider: 'openai',
     } },
   } });
@@ -58,7 +99,7 @@ test('Profile grants image consent to its selected provider without granting Hom
   expect(imageGrantRequests[0]?.headers()['x-csrf-token']).toBe('image-csrf');
   expect(imageGrantRequests[0]?.postDataJSON()).toEqual({
     enabled: true,
-    imagePolicyVersion: 'recipe-images-v1',
+    imagePolicyVersion: 'recipe-images-v2',
     imageProvider: 'openai',
     expectedRevision: '2026-11-01T00:00:00Z',
   });
@@ -95,7 +136,7 @@ test('Profile fails closed when image provider is null and availability is omitt
 });
 
 test('bulk generation is only in profile and single generation stays in recipe detail', async ({ page, context }) => {
-  const consent = { enabled: true, updatedAt: '2026-11-01T00:00:00Z', imageProvider: 'openai', imagePolicyVersion: 'recipe-images-v1' };
+  const consent = { enabled: true, updatedAt: '2026-11-01T00:00:00Z', imageProvider: 'openai', imagePolicyVersion: 'recipe-images-v2' };
   await installOfflineBackend(page, { responses: {
     'GET /v1/auth/session': { json: { authenticated: true, user: { id: 'image-user', email: 'images@example.com', emailVerifiedAt: '2026-11-01T00:00:00Z' }, csrfToken: 'image-csrf', expiresAt: '2099-01-01T00:00:00Z' } },
     'GET /v1/profile': { json: { profile: { displayName: 'Images' } } },

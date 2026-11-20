@@ -184,7 +184,7 @@ describe('AI recipe routes', () => {
     vi.stubEnv('RECIPE_IMAGE_PROVIDER', 'openai');
     vi.stubEnv('RECIPE_IMAGE_MODEL', 'test-image');
     vi.stubEnv('RECIPE_IMAGE_VISION_MODEL', 'test-vision');
-    vi.stubEnv('PEXELS_API_KEY', 'test-search');
+
     vi.stubEnv('OPENAI_API_KEY', 'test-image-provider');
     const { app, repository, provider } = createAiApp({ recipeProvider: 'gemini' });
 
@@ -192,7 +192,7 @@ describe('AI recipe routes', () => {
       const current = await app.inject({ method: 'GET', url: '/v1/ai-recipes/consent', headers });
       const imageOnlyPayload = {
         enabled: true,
-        imagePolicyVersion: 'recipe-images-v1',
+        imagePolicyVersion: 'recipe-images-v2',
         imageProvider: current.json().selectedImageProvider as 'openai',
         expectedRevision: current.json().consent.updatedAt as string,
       };
@@ -203,14 +203,14 @@ describe('AI recipe routes', () => {
       expect(granted.statusCode).toBe(200);
       expect(granted.json().consent).toMatchObject({
         enabled: true,
-        imagePolicyVersion: 'recipe-images-v1',
+        imagePolicyVersion: 'recipe-images-v2',
         imageProvider: 'openai',
       });
       expect(granted.json().consent).not.toHaveProperty('homeProvider');
       expect(granted.json().consent).not.toHaveProperty('dinnerProvider');
       expect(granted.json().consent).not.toHaveProperty('chatProvider');
       await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toMatchObject({
-        payload: { enabled: true, imagePolicyVersion: 'recipe-images-v1', imageProvider: 'openai' },
+        payload: { enabled: true, imagePolicyVersion: 'recipe-images-v2', imageProvider: 'openai' },
       });
       await expect(repository.withAiConsentDispatch('user-1', { kind: 'home', provider: 'gemini' }, async () => 'dispatched'))
         .rejects.toMatchObject({ code: 'ai_consent_required' });
@@ -221,7 +221,7 @@ describe('AI recipe routes', () => {
 
       const missingRevision = await app.inject({
         method: 'PUT', url: '/v1/ai-recipes/consent', headers,
-        payload: { enabled: true, imagePolicyVersion: 'recipe-images-v1', imageProvider: 'openai' },
+        payload: { enabled: true, imagePolicyVersion: 'recipe-images-v2', imageProvider: 'openai' },
       });
       expect(missingRevision.statusCode).toBe(428);
       expect(missingRevision.json()).toMatchObject({ code: 'ai_consent_revision_required' });
@@ -261,7 +261,7 @@ describe('AI recipe routes', () => {
         method: 'PUT', url: '/v1/ai-recipes/consent', headers,
         payload: {
           enabled: true,
-          imagePolicyVersion: 'recipe-images-v1',
+          imagePolicyVersion: 'recipe-images-v2',
           imageProvider: 'openai',
           expectedRevision: current.json().consent.updatedAt,
         },
@@ -287,7 +287,7 @@ describe('AI recipe routes', () => {
         method: 'PUT', url: '/v1/ai-recipes/consent', headers,
         payload: {
           enabled: true,
-          imagePolicyVersion: 'recipe-images-v1',
+          imagePolicyVersion: 'recipe-images-v2',
           imageProvider: 'openai',
           expectedRevision: DEFAULT_AI_CONSENT_REVISION,
         },

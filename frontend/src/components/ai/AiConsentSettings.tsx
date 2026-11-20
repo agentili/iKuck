@@ -67,7 +67,7 @@ export default function AiConsentSettings() {
   const imageConsentEnabled = status !== null
     && status.selectedImageProvider !== undefined
     && status.consent.enabled
-    && status.consent.imagePolicyVersion === 'recipe-images-v1'
+    && status.consent.imagePolicyVersion === 'recipe-images-v2'
     && status.consent.imageProvider === status.selectedImageProvider;
 
   useEffect(() => {
@@ -98,7 +98,7 @@ export default function AiConsentSettings() {
         setConsentDraft(nextStatus.consent.enabled && nextStatus.consent.homeProvider === nextStatus.selectedProvider);
         setImageConsentDraft(nextStatus.selectedImageProvider !== undefined
           && nextStatus.consent.enabled
-          && nextStatus.consent.imagePolicyVersion === 'recipe-images-v1'
+          && nextStatus.consent.imagePolicyVersion === 'recipe-images-v2'
           && nextStatus.consent.imageProvider === nextStatus.selectedImageProvider);
       })
       .catch((loadError: unknown) => {
@@ -135,7 +135,7 @@ export default function AiConsentSettings() {
           setConsentDraft(latest.consent.enabled && latest.consent.homeProvider === latest.selectedProvider);
           setImageConsentDraft(latest.selectedImageProvider !== undefined
             && latest.consent.enabled
-            && latest.consent.imagePolicyVersion === 'recipe-images-v1'
+            && latest.consent.imagePolicyVersion === 'recipe-images-v2'
             && latest.consent.imageProvider === latest.selectedImageProvider);
           setError('Il consenso è cambiato in un’altra scheda. Ho aggiornato lo stato: controlla la scelta prima di salvare di nuovo.');
         } catch {
@@ -162,7 +162,7 @@ export default function AiConsentSettings() {
       const consent = await updateAiConsent(true, requestOwner.csrfToken, status.consent.updatedAt, undefined, undefined, true, status.selectedImageProvider);
       if (!isCurrentConsentOwner(requestOwner, generation, requestGeneration, mounted)) return;
       setStatusRecord({ owner: requestOwner, status: { ...status, consent } });
-      setImageConsentDraft(consent.enabled && consent.imagePolicyVersion === 'recipe-images-v1' && consent.imageProvider === status.selectedImageProvider);
+      setImageConsentDraft(consent.enabled && consent.imagePolicyVersion === 'recipe-images-v2' && consent.imageProvider === status.selectedImageProvider);
     } catch (saveError) {
       if (!isCurrentConsentOwner(requestOwner, generation, requestGeneration, mounted)) return;
       if (saveError instanceof ApiClientError && saveError.code === 'ai_consent_revision_conflict') {
@@ -173,7 +173,7 @@ export default function AiConsentSettings() {
           setConsentDraft(latest.consent.enabled && latest.consent.homeProvider === latest.selectedProvider);
           setImageConsentDraft(latest.selectedImageProvider !== undefined
             && latest.consent.enabled
-            && latest.consent.imagePolicyVersion === 'recipe-images-v1'
+            && latest.consent.imagePolicyVersion === 'recipe-images-v2'
             && latest.consent.imageProvider === latest.selectedImageProvider);
           setError('Il consenso è cambiato in un’altra scheda. Ho aggiornato lo stato: controlla la scelta prima di salvare di nuovo.');
         } catch {
@@ -242,7 +242,7 @@ export default function AiConsentSettings() {
             {status.selectedImageProvider !== undefined && (
               <div className="grid gap-3 border-t border-[var(--ik-border)] pt-3">
                 <h3 className="font-bold text-[var(--ik-ink)]">Consenso per le immagini delle ricette</h3>
-                <p className="text-sm leading-relaxed text-[var(--ik-ink-muted)]">Per cercare, valutare o generare immagini illustrative, il titolo del piatto viene inviato a Pexels; titolo, ingredienti e foto candidate vengono inviati a {status.selectedImageProvider === 'gemini' ? 'Google Gemini' : 'OpenAI'}. Questo consenso è separato da quello per creare ricette.</p>
+                <p className="text-sm leading-relaxed text-[var(--ik-ink-muted)]">Per cercare, valutare o generare immagini illustrative, il titolo del piatto viene inviato a Wikimedia Commons; titolo, ingredienti e foto candidate vengono inviati a {status.selectedImageProvider === 'gemini' ? 'Google Gemini' : 'OpenAI'}. Questo consenso è separato da quello per creare ricette.</p>
                 <label className="flex min-h-11 items-start gap-3 font-semibold text-[var(--ik-ink)]">
                   <input
                     type="checkbox"

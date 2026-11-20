@@ -90,6 +90,15 @@ jobs:
         run: npm test
       - name: Explicit disposable integration tests
         run: npm run test:integration
+      - name: Image cutover shell tests (fake Docker)
+        run: sh ../deploy/image-cutover.test.sh
+      - name: Recipe image migration from 0019 on a separate disposable database
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec "$POSTGRES_CONTAINER" createdb -U ikuck ikuck_image_upgrade
+          INTEGRATION_RECIPE_IMAGE_UPGRADE_DATABASE_URL="${INTEGRATION_DATABASE_URL%/*}/ikuck_image_upgrade" \
+            npm test -- src/integration/recipe-image-upgrade.integration.test.ts
       - name: Production build
         run: npm run build
       - name: Runtime dependency audit

@@ -167,7 +167,7 @@ export interface AiConsent {
   dinnerProvider?: AiRecipeProvider;
   chatProvider?: AiRecipeProvider;
   chatPolicyVersion?: 'chef-chat-v1';
-  imagePolicyVersion?: 'recipe-images-v1';
+  imagePolicyVersion?: 'recipe-images-v1' | 'recipe-images-v2';
   imageProvider?: AiRecipeProvider;
 }
 
@@ -373,12 +373,29 @@ export type GenerateRecipeNone = {
 export type GenerateRecipeResponse = GenerateRecipeCandidate | GenerateRecipeNone;
 
 export type RecipeImageState = 'missing' | 'pending' | 'processing' | 'ready' | 'failed' | 'consent_required' | 'quota_exceeded' | 'disabled';
+export const RECIPE_IMAGE_METADATA_VERSION = 2;
+export const COMMONS_CC0_LICENSE = 'https://creativecommons.org/publicdomain/zero/1.0/';
+
+// Do not repair lossy credit or accept aliases, redirects or non-file links.
+export function hasCommonsImageCredit(author: unknown, file: unknown, license: unknown): boolean {
+  if (license !== COMMONS_CC0_LICENSE || typeof author !== 'string' || author.length > 500 || !author.trim()
+    || /[<>\p{Cc}\p{Cf}]|&[#a-z]/iu.test(author) || typeof file !== 'string') return false;
+  const url = URL.parse(file);
+  if (!url || url.href !== file || url.origin !== 'https://commons.wikimedia.org'
+    || url.username || url.password || !/^\/wiki\/File:[^/?#]+$/.test(url.pathname) || /[?#]/.test(file)) return false;
+  try {
+    const name = decodeURIComponent(url.pathname.slice('/wiki/File:'.length));
+    return !!name.trim() && !/[/\\?#<>\s\p{Cc}\p{Cf}]/u.test(name) && !/^\.+$/.test(name);
+  } catch { return false; }
+}
+
 export interface RecipeImageMetadata {
   state: RecipeImageState;
+  metadataVersion?: typeof RECIPE_IMAGE_METADATA_VERSION;
   url?: string;
   width?: number;
   height?: number;
-  source?: 'pexels' | 'ai';
+  source?: 'pexels' | 'wikimedia' | 'ai';
   author?: string;
   sourceUrl?: string;
   license?: string;

@@ -1,6 +1,6 @@
 # iKuck standalone su mini PC
 
-Questa modalità esegue iKuck dentro quattro container sulla rete locale: Caddy serve la PWA, l’API prepara il backend, PostgreSQL conserva i dati e Redis fornisce la cache. Solo Caddy è raggiungibile dalla LAN; PostgreSQL, Redis e API restano nella rete privata di Docker.
+Questa modalità esegue iKuck sulla rete locale: Caddy serve la PWA, l’API prepara il backend, PostgreSQL conserva i dati, Redis fornisce la cache e il worker immagini resta inattivo con `RECIPE_IMAGES_ENABLED=false`. Solo Caddy è raggiungibile dalla LAN; PostgreSQL, Redis e API restano nella rete privata di Docker.
 
 La modalità è pensata per un mini PC Linux Debian o Ubuntu con Docker Engine e Docker Compose plugin. Non richiede un dominio pubblico né port forwarding. Dal browser si accede a `http://IP_DEL_MINI_PC:8080`.
 
@@ -46,23 +46,22 @@ Modifica almeno:
 
 Per provare le ricette AI in modalità standalone puoi configurare `RECIPE_PROVIDER=gemini`, `GEMINI_API_KEY` e `GEMINI_MODEL` nel file env. La chiave resta solo nel backend; il pannello richiede un account verificato, il consenso esplicito e almeno un ingrediente nella dispensa. Il limite applicativo è di cinque generazioni per account ogni giorno UTC.
 
-## 4. Avviare i container
+## 4. Prima installazione su un database nuovo
 
-Dal repository:
+Usa `fresh` solo dopo aver verificato che il database è nuovo e che non esistono worker immagini collegati, nemmeno da altri progetti o host. Dalla release compatibile con la policy immagini v2, indica il nome Compose verificato. Il gate non modifica l’env e avvia la composizione con le immagini disabilitate:
 
 ```bash
-docker compose \
-  --env-file deploy/.env.standalone \
-  -f deploy/docker-compose.standalone.yml \
-  up -d --build
+sh deploy/image-cutover.sh all-db-workers-quiesced fresh "$VERIFIED_PROJECT" \
+  deploy/.env.standalone deploy/docker-compose.standalone.yml
 ```
 
 La prima esecuzione scarica le immagini e costruisce API e frontend, quindi può richiedere alcuni minuti. Le migrazioni PostgreSQL vengono eseguite automaticamente prima dell’avvio dell’API.
 
-Controlla lo stato:
+Usa lo stesso `-p "$VERIFIED_PROJECT"` anche per i comandi successivi. Controlla lo stato:
 
 ```bash
 docker compose \
+  -p "$VERIFIED_PROJECT" \
   --env-file deploy/.env.standalone \
   -f deploy/docker-compose.standalone.yml \
   ps
@@ -74,6 +73,7 @@ Per verificare l’health check dell’API senza esporla alla LAN:
 
 ```bash
 docker compose \
+  -p "$VERIFIED_PROJECT" \
   --env-file deploy/.env.standalone \
   -f deploy/docker-compose.standalone.yml \
   exec api node -e "fetch('http://127.0.0.1:3000/healthz').then(async (response) => { console.log(await response.text()); process.exit(response.ok ? 0 : 1); }).catch((error) => { console.error(error); process.exit(1); })"
@@ -84,23 +84,23 @@ docker compose \
 Vedere i log:
 
 ```bash
-docker compose --env-file deploy/.env.standalone -f deploy/docker-compose.standalone.yml logs -f --tail=100
+docker compose -p "$VERIFIED_PROJECT" --env-file deploy/.env.standalone -f deploy/docker-compose.standalone.yml logs -f --tail=100
 ```
 
 Fermare i container mantenendo i dati:
 
 ```bash
-docker compose --env-file deploy/.env.standalone -f deploy/docker-compose.standalone.yml down
+docker compose -p "$VERIFIED_PROJECT" --env-file deploy/.env.standalone -f deploy/docker-compose.standalone.yml stop
 ```
 
-Aggiornare una versione del progetto:
+Per aggiornare alla release con la migrazione `0020`, non fare `git pull` seguito da `compose up`. Prima fai un backup verificato, identifica progetto e database esistenti e ferma in modo pulito tutti i worker immagini collegati a quel database. Compose non vede processi manuali, altri progetti o altri host. Blocca deploy concorrenti e riavvii, conserva i container fermi per l’ispezione e usa la release v2 approvata. Solo dopo aver verificato la quiescenza puoi attestare:
 
 ```bash
-git pull
-docker compose --env-file deploy/.env.standalone -f deploy/docker-compose.standalone.yml up -d --build
+sh deploy/image-cutover.sh all-db-workers-quiesced upgrade "$VERIFIED_PROJECT" \
+  deploy/.env.standalone deploy/docker-compose.standalone.yml
 ```
 
-Non usare `down --volumes` durante la gestione normale: elimina i volumi PostgreSQL, Redis e Caddy insieme ai dati persistenti.
+Il gate rifiuta un inventario worker vuoto o non verificabile in upgrade: non usare `fresh` come scorciatoia. Dopo aver verificato l’avvio disabilitato, abilita le immagini separatamente come nel [runbook immagini](recipe-images.md#activating-an-existing-deployment). Per il rollback ferma i worker e ricrea l’API compatibile con v2 con `RECIPE_IMAGES_ENABLED=false`; non ripristinare binari precedenti a v2, non fare downgrade dello schema e non azzerare quote o marcatori di invio. Non usare `down --volumes`: elimina i volumi persistenti.
 
 ## 6. Backup e ripristino
 
@@ -111,17 +111,19 @@ set -a
 . deploy/.env.standalone
 set +a
 mkdir -p /var/backups/ikuck
+COMPOSE_PROJECT_NAME="$VERIFIED_PROJECT" \
 COMPOSE_FILE=deploy/docker-compose.standalone.yml \
   BACKUP_DIR=/var/backups/ikuck \
   sh deploy/backup-postgres.sh
 ```
 
-Per ripristinare un archivio verificato, fermati prima e assicurati di avere una copia dei dati correnti:
+Per ripristinare un archivio verificato, fermati prima e assicurati di avere una copia dei dati correnti. Il ripristino riavvia l’API: se c’è un passaggio alla policy v2, non usarlo per aggirare la procedura di cutover. Dopo `0020` non usare un restore pre-v2 come rollback delle immagini:
 
 ```bash
 set -a
 . deploy/.env.standalone
 set +a
+COMPOSE_PROJECT_NAME="$VERIFIED_PROJECT" \
 COMPOSE_FILE=deploy/docker-compose.standalone.yml \
   ARCHIVE_PATH=/var/backups/ikuck/ikuck-YYYYMMDDTHHMMSSZ.dump \
   sh deploy/restore-postgres.sh

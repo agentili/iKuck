@@ -1,8 +1,8 @@
-import type { RecipeImageMetadata } from '@ikuck/shared/contracts';
+import { RECIPE_IMAGE_METADATA_VERSION, type RecipeImageMetadata } from '@ikuck/shared/contracts';
 import { getActiveDataScope, subscribeActiveDataScope } from '../sync/scopeContext';
 type Entry = { metadata: RecipeImageMetadata; blob: Blob; updatedAt: number };
 const database = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
-  const request = indexedDB.open('ikuck-private-images-v1', 1);
+  const request = indexedDB.open(`ikuck-private-images-v${RECIPE_IMAGE_METADATA_VERSION}`, 1);
   request.onupgradeneeded = () => request.result.createObjectStore('images');
   request.onsuccess = () => resolve(request.result);
   request.onerror = () => reject(request.error);

@@ -24,7 +24,6 @@ Copia `deploy/.env.example` in `deploy/.env` sul VPS e sostituisci tutti i place
 | `RECIPE_IMAGE_PROVIDER` | no | `openai` o `gemini`; se vuota usa `RECIPE_PROVIDER` |
 | `RECIPE_IMAGE_MODEL` | con immagini | modello compatibile con la generazione immagini del provider selezionato |
 | `RECIPE_IMAGE_VISION_MODEL` | con immagini | modello multimodale compatibile con la valutazione delle foto |
-| `PEXELS_API_KEY` | con immagini | chiave Pexels, solo server |
 | `RECIPE_IMAGE_DAILY_LIMIT` | no | limite di generazioni al giorno per utente e catalogo; default `5` |
 | `PUSH_ENABLED` | no | `false` per default; `true` abilita le API push e richiede VAPID |
 | `PUSH_VAPID_PUBLIC_KEY` | con push | chiave pubblica P-256 base64url |
@@ -69,14 +68,9 @@ Prima del deployment servono:
 - PostgreSQL, Redis e API non pubblicati sulla rete internet;
 - volume persistente per PostgreSQL, Redis e certificati Caddy.
 
-Il deployment production è:
+Per il cutover con migrazione `0020`, non eseguire `compose up` direttamente: l'API migra all'avvio. Prima verifica il backup, identifica progetto e database effettivi, ferma tutti i worker che condividono quel database e lascia sospesi i riavvii concorrenti. Compose può verificare solo i container del progetto selezionato sul Docker engine selezionato, non i worker di altri progetti/host o quelli avviati manualmente. Nel workflow Deploy approvato inserisci `compose_project`, scegli `cutover_target=upgrade` e conferma `all_db_workers_quiesced` solo dopo la verifica. `fresh` è riservato a un database verificato nuovo senza worker esistenti; un inventario upgrade vuoto o non verificabile blocca il deploy.
 
-```powershell
-docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml build --pull
-docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml up -d
-docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml ps
-docker compose --env-file deploy/.env -f deploy/docker-compose.production.yml logs --tail=200 api caddy
-```
+Per il deploy manuale approvato usa lo stesso gate `deploy/image-cutover.sh` dalla release compatibile con v2, seguendo il [runbook immagini](recipe-images.md#activating-an-existing-deployment). Il gate avvia API e worker con `RECIPE_IMAGES_ENABLED=false`, senza riscrivere l'env del server. Verifica health, migrazione e build coerenti con la funzione disabilitata prima dell'eventuale abilitazione separata e approvata.
 
 Le immagini esterne di PostgreSQL, Redis, Node e Caddy sono pinnate a digest nel Compose/Dockerfile. I digest sono un dato di release e vanno aggiornati deliberatamente con `docker buildx imagetools inspect <image:tag>`, una verifica delle note di rilascio, il gate completo e un nuovo tag; non sostituire il digest con un tag mobile durante un hotfix.
 
@@ -106,6 +100,7 @@ Usa prima `DRY_RUN=true` per registrare i conteggi, poi esegui la cancellazione 
 Esegui un backup prima di migrazioni, modifiche ai provider o operazioni distruttive. Il percorso del backup deve essere fuori dal repository:
 
 ```bash
+COMPOSE_PROJECT_NAME="$VERIFIED_PROJECT" \
 COMPOSE_FILE=deploy/docker-compose.production.yml \
   BACKUP_DIR=/var/backups/ikuck \
   sh deploy/backup-postgres.sh
@@ -114,14 +109,15 @@ COMPOSE_FILE=deploy/docker-compose.production.yml \
 `backup-postgres.sh` scrive il dump in un file temporaneo nella stessa directory, verifica che non sia vuoto, esegue `pg_restore --list`, crea il file `.sha256` e pubblica archivio e checksum solo dopo la verifica. Applica la retention solo dopo un backup valido; imposta `BACKUP_RETENTION_COUNT` a un valore esplicito maggiore di zero. Verifica checksum e contenuto dell'archivio con gli strumenti PostgreSQL prima di considerarlo valido. Per un ripristino usa solo un archivio verificato e una destinazione isolata; il ripristino production è distruttivo e richiede una copia di sicurezza aggiuntiva:
 
 ```bash
+COMPOSE_PROJECT_NAME="$VERIFIED_PROJECT" \
 COMPOSE_FILE=deploy/docker-compose.production.yml \
   ARCHIVE_PATH=/var/backups/ikuck/ikuck-YYYYMMDDTHHMMSSZ.dump \
   sh deploy/restore-postgres.sh
 ```
 
-Il restore richiede `RESTORE_TARGET` e una conferma esatta in `RESTORE_CONFIRM` (`RESTORE <target>`). Prima di modificare dati verifica checksum, estensione custom-format, versione degli strumenti PostgreSQL e spazio libero; `--dry-run` esegue solo il preflight. Nel percorso distruttivo crea automaticamente un nuovo backup, ferma l'API, esegue `pg_restore` in transazione singola, riavvia l'API e verifica health, migrazioni e la query sentinella `SELECT 1`. Un errore lascia intatto l'archivio indicato e stampa di mantenere il backup per il recovery manuale.
+Il restore richiede `RESTORE_TARGET` e una conferma esatta in `RESTORE_CONFIRM` (`RESTORE <target>`). Prima di modificare dati verifica checksum, estensione custom-format, versione degli strumenti PostgreSQL e spazio libero; `--dry-run` esegue solo il preflight. Nel percorso distruttivo crea automaticamente un nuovo backup, ferma l'API, esegue `pg_restore` in transazione singola, riavvia l'API e verifica health, migrazioni e la query sentinella `SELECT 1`. Dato che riavvia l'API, non usare il restore per aggirare il cutover con `0020`. Un errore lascia intatto l'archivio indicato e stampa di mantenere il backup per il recovery manuale.
 
-Per il rollback applicativo, conserva il riferimento all'immagine o al commit precedente, esegui un backup, riporta il repository alla release nota e ricostruisci i servizi. Non eseguire downgrade dello schema senza una procedura di migrazione reversibile verificata.
+Per il rollback delle immagini dopo la migrazione `0020`, ferma il worker e ricrea l'API compatibile con v2 con `RECIPE_IMAGES_ENABLED=false`. Non ripristinare API o worker precedenti a v2 e non riportare indietro lo schema, le quote o i marcatori di invio. Per il rollback di altri componenti, conserva il riferimento all'immagine precedente ed esegui un backup; la release di ripristino deve rispettare comunque il contratto v2.
 
 ## Provider e smoke test
 

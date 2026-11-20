@@ -6,7 +6,6 @@ const imageConfig: ImageConfig = {
   enabled: true,
   provider: 'openai',
   apiKey: '',
-  searchKey: '',
   model: '',
   visionModel: '',
   dailyLimit: 5,
@@ -17,23 +16,26 @@ const databaseWithConsent = (payload: unknown): Parameters<typeof hasImageConsen
 }) as unknown as Parameters<typeof hasImageConsent>[0];
 
 describe('recipe image consent', () => {
+  it('does not authorize Wikimedia with the previous Pexels consent', async () => {
+    await expect(hasImageConsent(databaseWithConsent({ enabled: true, imagePolicyVersion: 'recipe-images-v1', imageProvider: 'openai' }), 'user-1', imageConfig)).resolves.toBe(false);
+  });
   it('requires an explicit image provider matching the configured image provider', async () => {
     await expect(hasImageConsent(databaseWithConsent({
       enabled: true,
-      imagePolicyVersion: 'recipe-images-v1',
+      imagePolicyVersion: 'recipe-images-v2',
       homeProvider: 'openai',
     }), 'user-1', imageConfig)).resolves.toBe(false);
 
     await expect(hasImageConsent(databaseWithConsent({
       enabled: true,
-      imagePolicyVersion: 'recipe-images-v1',
+      imagePolicyVersion: 'recipe-images-v2',
       imageProvider: 'gemini',
       homeProvider: 'openai',
     }), 'user-1', imageConfig)).resolves.toBe(false);
 
     await expect(hasImageConsent(databaseWithConsent({
       enabled: true,
-      imagePolicyVersion: 'recipe-images-v1',
+      imagePolicyVersion: 'recipe-images-v2',
       imageProvider: 'openai',
     }), 'user-1', imageConfig)).resolves.toBe(true);
   });

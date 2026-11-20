@@ -5,6 +5,8 @@ import type { ApplicationDatabase } from '../db/client.js';
 import type { ImageConfig } from './config.js';
 
 type Database = Pick<ApplicationDatabase['db'], 'execute'>;
+// The existing model slot is a provenance tag for Commons, never an AI model.
+export const COMMONS_ASSET_PROVENANCE = 'commons-cc0-v2';
 export const catalogImageRecipes = RECIPES.filter(recipe => recipe.id !== 'uova-al-pomodoro').map(recipe => ({
   id: recipe.id,
   title: recipe.title,
@@ -12,9 +14,9 @@ export const catalogImageRecipes = RECIPES.filter(recipe => recipe.id !== 'uova-
 }));
 
 export async function hasImageConsent(db: Database, userId: string, config: ImageConfig) {
-  const [row] = await db.execute(sql`SELECT payload FROM sync_items WHERE scope_type='user' AND scope_id=${userId} AND entity_type='ai_consent' AND NOT deleted`);
+  const [row] = await db.execute(sql`SELECT payload FROM sync_items WHERE scope_type='user' AND scope_id=${userId} AND entity_type='ai_consent' AND entity_id='profile' AND NOT deleted`);
   const consent = row?.payload as { enabled?: boolean; imagePolicyVersion?: string; imageProvider?: string } | undefined;
-  return consent?.enabled === true && consent.imagePolicyVersion === 'recipe-images-v1'
+  return consent?.enabled === true && consent.imagePolicyVersion === 'recipe-images-v2'
     && consent.imageProvider === config.provider;
 }
 

@@ -7,7 +7,7 @@ import { setActiveDataScope } from '../../sync/scopeContext';
 
 const account = { id: 'image-user', email: 'images@example.com', emailVerifiedAt: '2026-11-01T00:00:00Z' };
 const status = (enabled = true) => ({
-  consent: { enabled, updatedAt: '2026-11-01T00:00:00Z', ...(enabled ? { imageProvider: 'openai', imagePolicyVersion: 'recipe-images-v1' } : {}) },
+  consent: { enabled, updatedAt: '2026-11-01T00:00:00Z', ...(enabled ? { imageProvider: 'openai', imagePolicyVersion: 'recipe-images-v2' } : {}) },
   selectedProvider: 'gemini', selectedImageProvider: 'openai',
 });
 const json = (data: unknown, code = 200) => new Response(JSON.stringify(data), { status: code });

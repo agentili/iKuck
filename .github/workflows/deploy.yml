@@ -14,9 +14,30 @@ on:
         description: 'Git ref (branch, tag or SHA)'
         required: true
         default: main
+      compose_project:
+        description: 'Verified Compose project name on the target host'
+        required: true
+        type: string
+      all_db_workers_quiesced:
+        description: 'I verified all image workers sharing this database are quiesced, including other projects and hosts, and will stay stopped through cutover'
+        required: true
+        type: boolean
+        default: false
+      cutover_target:
+        description: 'Choose fresh only after verifying a fresh target database and no existing image workers'
+        required: true
+        type: choice
+        default: upgrade
+        options:
+          - upgrade
+          - fresh
 
 permissions:
   contents: read
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -29,17 +50,19 @@ jobs:
         with:
           ref: ${{ github.event.inputs.ref }}
 
-      - name: Write environment file on disk
+      - name: Require operator attestation and verified target
+        env:
+          WORKERS_QUIESCED: ${{ inputs.all_db_workers_quiesced }}
+          COMPOSE_PROJECT: ${{ inputs.compose_project }}
+          CUTOVER_TARGET: ${{ inputs.cutover_target }}
         run: |
-          mkdir -p deploy
-          if [ "${{ github.event.inputs.environment }}" = "production" ]; then
-            printf '%s\n' "${{ secrets.PRODUCTION_ENV_FILE }}" > deploy/.env
-            COMPOSE_FILE_ARG="--env-file deploy/.env -f deploy/docker-compose.production.yml"
-          else
-            printf '%s\n' "${{ secrets.STAGING_ENV_FILE }}" > deploy/.env.standalone
-            COMPOSE_FILE_ARG="--env-file deploy/.env.standalone -f deploy/docker-compose.standalone.yml"
+          if [ "$WORKERS_QUIESCED" != true ]; then
+            printf '%s\n' 'Operator attestation for all image workers sharing this DB is required.' >&2
+            exit 1
           fi
-          printf '%s\n' "$COMPOSE_FILE_ARG" > /tmp/compose-args.txt
+          case "$COMPOSE_PROJECT" in ''|[-_]*|*[!a-z0-9_-]*) exit 1;; esac
+          case "$CUTOVER_TARGET" in upgrade|fresh) ;; *) exit 1;; esac
+          printf 'COMPOSE_PROJECT=%s\nCUTOVER_TARGET=%s\n' "$COMPOSE_PROJECT" "$CUTOVER_TARGET" >> "$GITHUB_ENV"
 
       - name: Install SSH key
         run: |
@@ -54,17 +77,27 @@ jobs:
           chmod 600 ~/.ssh/id_deploy
           printf '%s\n' "$TARGET" > /tmp/deploy-target.txt
 
-      - name: Deploy via SSH
+      - name: Deploy disabled-first via SSH
         run: |
           TARGET=$(cat /tmp/deploy-target.txt)
-          COMPOSE_ARGS=$(cat /tmp/compose-args.txt)
+          # Use the existing environment file on the target; do not rewrite it.
+          if [ "${{ github.event.inputs.environment }}" = "production" ]; then
+            ENV_FILE=deploy/.env
+            COMPOSE_FILE=deploy/docker-compose.production.yml
+          else
+            ENV_FILE=deploy/.env.standalone
+            COMPOSE_FILE=deploy/docker-compose.standalone.yml
+          fi
+          DEPLOY_SHA=$(git rev-parse HEAD)
           ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/id_deploy "$TARGET" "
-            set -e
+            set -eu
             cd /opt/ikuck
             git fetch origin
-            git checkout '${{ github.event.inputs.ref }}'
-            docker compose $COMPOSE_ARGS up -d --build
-            docker compose $COMPOSE_ARGS ps
+            git checkout --detach '$DEPLOY_SHA'
+            # Never start a pre-fence API or worker, including as a rollback.
+            git grep -Fq 'CREATE FUNCTION public.set_recipe_image_policy_v2()' HEAD -- backend/src/db/migrations/0020_wikimedia_image_consent.sql
+            sh deploy/image-cutover.sh all-db-workers-quiesced '$CUTOVER_TARGET' '$COMPOSE_PROJECT' '$ENV_FILE' '$COMPOSE_FILE'
+            docker compose -p '$COMPOSE_PROJECT' --env-file '$ENV_FILE' -f '$COMPOSE_FILE' ps
           "
 
   smoke-test:
