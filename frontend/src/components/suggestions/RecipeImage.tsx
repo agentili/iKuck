@@ -11,7 +11,8 @@ interface RecipeImageProps {
 
 export default function RecipeImage({ recipeId, recipeTitle, variant = 'card' }: RecipeImageProps) {
   const remote = useRecipeImage(recipeId);
-  const asset = RECIPE_IMAGES[recipeId] ?? (remote.url && remote.metadata ? { src: remote.url, width: remote.metadata.width, height: remote.metadata.height, alt: `${recipeTitle}: immagine illustrativa`, illustrative: true, author: remote.metadata.author } : undefined);
+  const local = RECIPE_IMAGES[recipeId];
+  const asset = local ?? (remote.url && remote.metadata ? { src: remote.url, width: remote.metadata.width, height: remote.metadata.height, alt: `${recipeTitle}: immagine illustrativa`, illustrative: true, author: remote.metadata.author } : undefined);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => setFailed(false), [recipeId, remote.url]);
@@ -49,7 +50,9 @@ export default function RecipeImage({ recipeId, recipeTitle, variant = 'card' }:
       )}
       {asset !== undefined && !failed ? (
         <figcaption>
-          {remote.metadata?.source === 'ai' ? 'Immagine generata con AI' : asset.illustrative ? 'Foto illustrativa' : 'Foto della ricetta'} · {asset.author} · {remote.metadata?.source === 'pexels' ? <a href={remote.metadata.sourceUrl} rel="noopener noreferrer" target="_blank">Pexels</a> : remote.metadata?.source === 'ai' ? 'AI' : 'Unsplash'}
+          {remote.metadata?.source === 'ai' ? 'Immagine generata con AI' : asset.illustrative ? 'Foto illustrativa' : 'Foto della ricetta'} · {asset.author} · {remote.metadata?.source === 'wikimedia' ? <>
+            <a href={remote.metadata.sourceUrl} rel="noopener noreferrer" target="_blank">Wikimedia Commons</a> · <a href={remote.metadata.license} rel="noopener noreferrer" target="_blank">CC0 1.0</a> · Orientamento corretto e ridimensionata se necessario; convertita in WebP, solo il primo fotogramma se animata
+          </> : remote.metadata?.source === 'pexels' ? <a href={remote.metadata.sourceUrl} rel="noopener noreferrer" target="_blank">Pexels</a> : remote.metadata?.source === 'ai' ? 'AI' : local ? 'Unsplash' : 'Fonte non disponibile'}
         </figcaption>
       ) : <figcaption>Illustrazione della ricetta</figcaption>}
       {remote.metadata?.state === 'processing' || remote.metadata?.state === 'pending' ? <p role="status">Immagine in preparazione…</p> : null}

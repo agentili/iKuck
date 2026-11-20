@@ -40,7 +40,7 @@ function GenerationControl({ recipeId, disabled = false }: Props) {
         const status = await fetchAiConsentStatus();
         if (!isCurrent()) return;
         if (!status.selectedImageProvider) throw new ApiClientError(503, 'images_disabled', 'Images unavailable');
-        const valid = status.consent.enabled && status.consent.imagePolicyVersion === 'recipe-images-v1'
+        const valid = status.consent.enabled && status.consent.imagePolicyVersion === 'recipe-images-v2'
           && status.consent.imageProvider === status.selectedImageProvider;
         if (!valid) {
           setConsent(status);
@@ -78,7 +78,7 @@ function GenerationControl({ recipeId, disabled = false }: Props) {
       </button>
       {!verified && <p className="text-sm">Accedi con un account verificato per creare le immagini.</p>}
       {consent !== null && <div className="grid gap-3">
-        <p className="text-sm">Per creare le immagini, il titolo del piatto viene inviato a Pexels; titolo, ingredienti e foto candidate vengono inviati a {consent.selectedImageProvider === 'gemini' ? 'Google Gemini' : 'OpenAI'} per cercare, valutare o generare immagini illustrative. Puoi concedere o revocare questo consenso nel Profilo.</p>
+        <p className="text-sm">Per creare le immagini, il titolo del piatto viene inviato a Wikimedia Commons; titolo, ingredienti e foto candidate vengono inviati a {consent.selectedImageProvider === 'gemini' ? 'Google Gemini' : 'OpenAI'} per cercare, valutare o generare immagini illustrative. Puoi concedere o revocare questo consenso nel Profilo.</p>
         <a href="/profile#ai-consent-settings" className="inline-flex min-h-11 w-fit items-center rounded-xl px-2 py-2 font-bold text-[var(--ik-basil-dark)] underline underline-offset-2">Gestisci il consenso immagini nel Profilo</a>
       </div>}
       {message !== null && <p role="status" className="text-sm">{message}</p>}

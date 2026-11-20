@@ -305,14 +305,14 @@ describe('sync repository', () => {
     const initialRevision = '1970-01-01T00:00:00.000Z';
     const imageConsent = await repository.updateAiConsent('user-1', {
       enabled: true,
-      imagePolicyVersion: 'recipe-images-v1',
+      imagePolicyVersion: 'recipe-images-v2',
       imageProvider: 'gemini',
       expectedRevision: initialRevision,
     });
 
     expect(imageConsent).toMatchObject({
       enabled: true,
-      imagePolicyVersion: 'recipe-images-v1',
+      imagePolicyVersion: 'recipe-images-v2',
       imageProvider: 'gemini',
     });
     expect(imageConsent).not.toHaveProperty('homeProvider');
@@ -321,23 +321,23 @@ describe('sync repository', () => {
     await expect(repository.withAiConsentDispatch('user-1', { kind: 'home', provider: 'gemini' }, async () => 'dispatched'))
       .rejects.toMatchObject({ code: 'ai_consent_required' });
     await expect(repository.updateAiConsent('user-1', {
-      imagePolicyVersion: 'recipe-images-v1',
+      imagePolicyVersion: 'recipe-images-v2',
       expectedRevision: imageConsent.updatedAt,
     })).rejects.toMatchObject({ code: 'ai_consent_revision_required' });
     await expect(repository.updateAiConsent('user-1', {
-      imagePolicyVersion: 'recipe-images-v1',
+      imagePolicyVersion: 'recipe-images-v2',
       imageProvider: null as unknown as 'gemini',
       expectedRevision: imageConsent.updatedAt,
     })).rejects.toMatchObject({ code: 'ai_consent_revision_required' });
 
     await expect(repository.updateAiConsent('user-1', {
       enabled: true,
-      imagePolicyVersion: 'recipe-images-v1',
+      imagePolicyVersion: 'recipe-images-v2',
       imageProvider: 'gemini',
     })).rejects.toMatchObject({ code: 'ai_consent_revision_required' });
     await expect(repository.updateAiConsent('user-1', {
       enabled: true,
-      imagePolicyVersion: 'recipe-images-v1',
+      imagePolicyVersion: 'recipe-images-v2',
       imageProvider: 'gemini',
       expectedRevision: initialRevision,
     })).rejects.toMatchObject({ code: 'ai_consent_revision_conflict' });

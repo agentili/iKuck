@@ -97,7 +97,7 @@ const statusFor = (principal: FakePrincipal) => principal.key === 'owner-a'
       enabled: true,
       homeProvider: 'gemini',
       imageProvider: 'openai',
-      imagePolicyVersion: 'recipe-images-v1',
+      imagePolicyVersion: 'recipe-images-v2',
       updatedAt: '2026-11-16T12:03:00.000Z',
     },
     selectedProvider: 'gemini',
@@ -370,7 +370,7 @@ for (const permission of ['home', 'images'] as const) {
       csrfToken: ownerA.csrfToken,
       body: permission === 'home'
         ? { enabled: true, homeProvider: 'openai', expectedRevision: '2026-11-16T12:00:00.000Z' }
-        : { enabled: true, imagePolicyVersion: 'recipe-images-v1', imageProvider: 'gemini', expectedRevision: '2026-11-16T12:00:00.000Z' },
+        : { enabled: true, imagePolicyVersion: 'recipe-images-v2', imageProvider: 'gemini', expectedRevision: '2026-11-16T12:00:00.000Z' },
     });
     expect(staleRefreshRecord).toMatchObject({
       method: 'GET',

@@ -53,6 +53,9 @@ integration('pending push delivery upgrade to UTC', () => {
     }
     const journalPath = join(folder, 'meta', '_journal.json');
     journal = JSON.parse(await readFile(journalPath, 'utf8')) as typeof journal;
+    // This fixture isolates the 0018 → 0019 upgrade under its own search_path.
+    // Later migrations may deliberately create objects in public.
+    journal.entries = journal.entries.filter(entry => entry.idx <= 19);
     await writeFile(journalPath, JSON.stringify({ ...journal, entries: journal.entries.filter(entry => entry.idx < 19) }));
     await migrate(db, { migrationsFolder: folder, migrationsSchema: namespace });
     owner = randomUUID(); session = randomUUID();

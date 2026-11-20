@@ -44,7 +44,7 @@ const consentRequestSchema = z.object({
   dinnerProvider: z.enum(['openai', 'gemini']).nullable().optional(),
   chatProvider: z.enum(['openai', 'gemini']).nullable().optional(),
   chatPolicyVersion: z.literal('chef-chat-v1').optional(),
-  imagePolicyVersion: z.literal('recipe-images-v1').optional(),
+  imagePolicyVersion: z.literal('recipe-images-v2').optional(),
   imageProvider: z.enum(['openai', 'gemini']).optional(),
   expectedRevision: z.string().datetime({ offset: true }).optional(),
 }).strict().refine((value) => (
@@ -217,7 +217,7 @@ export const registerAiRecipeRoutes = ({
         throw new AuthServiceError('provider_unavailable', 503, 'Recipe image service is unavailable');
       }
       selectedImageProvider = imageService.provider;
-      if (update.imagePolicyVersion !== 'recipe-images-v1' || update.imageProvider !== selectedImageProvider) {
+      if (update.imagePolicyVersion !== 'recipe-images-v2' || update.imageProvider !== selectedImageProvider) {
         throw new AuthServiceError('ai_provider_mismatch', 409, 'Image consent provider does not match the selected provider');
       }
     }

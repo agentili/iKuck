@@ -157,7 +157,7 @@ describe('ProfilePage', () => {
     const fetch = vi.fn().mockImplementation((path: string, options?: RequestInit) => {
       if (path === '/v1/ai-recipes/consent' && options?.method === 'PUT') {
         return Promise.resolve(new Response(JSON.stringify({
-          consent: { enabled: true, imageProvider: 'gemini', imagePolicyVersion: 'recipe-images-v1', updatedAt: '2026-09-13T12:01:00.000Z' },
+          consent: { enabled: true, imageProvider: 'gemini', imagePolicyVersion: 'recipe-images-v2', updatedAt: '2026-09-13T12:01:00.000Z' },
           selectedProvider: 'openai',
           selectedImageProvider: 'gemini',
         }), { status: 200 }));
@@ -185,7 +185,7 @@ describe('ProfilePage', () => {
 
     expect(fetch).toHaveBeenCalledWith('/v1/ai-recipes/consent', expect.objectContaining({
       method: 'PUT',
-      body: JSON.stringify({ enabled: true, imagePolicyVersion: 'recipe-images-v1', imageProvider: 'gemini', expectedRevision: '2026-09-13T12:00:00.000Z' }),
+      body: JSON.stringify({ enabled: true, imagePolicyVersion: 'recipe-images-v2', imageProvider: 'gemini', expectedRevision: '2026-09-13T12:00:00.000Z' }),
       headers: { 'content-type': 'application/json', 'x-csrf-token': 'csrf-1' },
     }));
     expect(screen.getByRole('checkbox', { name: /Acconsento all’invio a OpenAI dei dati necessari per creare ricette AI/i })).not.toBeChecked();
@@ -249,7 +249,7 @@ describe('ProfilePage', () => {
       }
       if (path === '/v1/ai-recipes/consent') {
         return Promise.resolve(new Response(JSON.stringify({
-          consent: { enabled: true, homeProvider: 'openai', imageProvider: 'gemini', imagePolicyVersion: 'recipe-images-v1', updatedAt: '2026-09-13T12:00:00.000Z' },
+          consent: { enabled: true, homeProvider: 'openai', imageProvider: 'gemini', imagePolicyVersion: 'recipe-images-v2', updatedAt: '2026-09-13T12:00:00.000Z' },
           selectedProvider: 'openai',
           selectedImageProvider: 'gemini',
         }), { status: 200 }));

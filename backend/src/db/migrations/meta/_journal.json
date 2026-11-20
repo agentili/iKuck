@@ -141,6 +141,13 @@
       "when": 1794922540598,
       "tag": "0019_fixed_utc",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795000000000,
+      "tag": "0020_wikimedia_image_consent",
+      "breakpoints": true
     }
   ]
 }

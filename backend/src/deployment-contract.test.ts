@@ -51,6 +51,15 @@ afterEach(() => {
 });
 
 describe('deployment contracts', () => {
+  it('requires operator attestation and routes deploys through the v2 cutover gate', () => {
+    const workflow = readFileSync(resolve(process.cwd(), '..', '.github/workflows/deploy.yml'), 'utf8');
+    expect(workflow).toMatch(/concurrency:[\s\S]*cancel-in-progress: false/);
+    expect(workflow).toMatch(/all_db_workers_quiesced:[\s\S]*type: boolean[\s\S]*default: false/);
+    expect(workflow).toMatch(/WORKERS_QUIESCED: \$\{\{ inputs\.all_db_workers_quiesced \}\}[\s\S]*\[ "\$WORKERS_QUIESCED" != true \][\s\S]*exit 1/);
+    expect(workflow).toMatch(/environment: \$\{\{ github\.event\.inputs\.environment \}\}/);
+    expect(workflow).toMatch(/set_recipe_image_policy_v2[\s\S]*sh deploy\/image-cutover\.sh all-db-workers-quiesced '\$CUTOVER_TARGET' '\$COMPOSE_PROJECT'/);
+    expect(workflow).not.toMatch(/docker compose .*\bup\b/);
+  });
   const describeWithDockerCompose = dockerComposeAvailable ? describe : describe.skip;
 
   describeWithDockerCompose('with Docker Compose available', () => {
@@ -109,7 +118,7 @@ describe('deployment contracts', () => {
       expect(worker).toBeDefined();
       expect(worker.profiles).toBeUndefined();
       expect(worker.command).toEqual(['node', 'dist/recipeImages/worker.js']);
-      for (const name of ['RECIPE_IMAGES_ENABLED', 'RECIPE_IMAGE_PROVIDER', 'RECIPE_IMAGE_MODEL', 'RECIPE_IMAGE_VISION_MODEL', 'RECIPE_IMAGE_DAILY_LIMIT', 'PEXELS_API_KEY']) {
+      for (const name of ['RECIPE_IMAGES_ENABLED', 'RECIPE_IMAGE_PROVIDER', 'RECIPE_IMAGE_MODEL', 'RECIPE_IMAGE_VISION_MODEL', 'RECIPE_IMAGE_DAILY_LIMIT']) {
         expect(worker.environment).toHaveProperty(name);
         expect(worker.environment?.[name]).toEqual(compose.services.api.environment?.[name]);
       }

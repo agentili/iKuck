@@ -66,7 +66,7 @@ export const fetchAiConsentStatus = async (request: ApiRequest = apiRequest): Pr
       enabled: candidateConsent.enabled,
       updatedAt: candidateConsent.updatedAt,
       ...(['openai','gemini'].includes(String(candidateConsent.imageProvider)) ? { imageProvider: candidateConsent.imageProvider as AiRecipeProvider } : {}),
-      ...(candidateConsent.imagePolicyVersion === 'recipe-images-v1' ? { imagePolicyVersion: 'recipe-images-v1' as const } : {}),
+      ...(candidateConsent.imagePolicyVersion === 'recipe-images-v2' ? { imagePolicyVersion: 'recipe-images-v2' as const } : {}),
       ...(candidateConsent.homeProvider === undefined
         ? {}
         : { homeProvider: candidateConsent.homeProvider as AiRecipeProvider }),
@@ -97,7 +97,7 @@ export const updateAiConsent = async (
     method: 'PUT',
     body: {
       enabled,
-      ...(enabled && includeImages ? { imagePolicyVersion: 'recipe-images-v1', imageProvider } : {}),
+      ...(enabled && includeImages ? { imagePolicyVersion: 'recipe-images-v2', imageProvider } : {}),
       ...(enabled && homeProvider !== undefined ? { homeProvider } : {}),
       ...(enabled && expectedRevision !== undefined ? { expectedRevision } : {}),
     },

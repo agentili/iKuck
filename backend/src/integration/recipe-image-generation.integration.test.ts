@@ -18,7 +18,7 @@ const url = process.env.INTEGRATION_DATABASE_URL;
   const owner = randomUUID(); const other = randomUUID(); const house = randomUUID();
   const origin = 'https://images.test';
   const headers = { cookie: 'ikuck_session=owner', origin, 'x-csrf-token': 'image-csrf' };
-  const config = { enabled: true, provider: 'openai' as const, apiKey: 'test', searchKey: 'test', model: 'test', visionModel: 'test', dailyLimit: 5 };
+  const config = { enabled: true, provider: 'openai' as const, apiKey: 'test', model: 'test', visionModel: 'test', dailyLimit: 5 };
   const auth = { authenticate: async (token: string) => token === 'owner' ? {
     id: 'image-session', userId: owner, email: 'images@example.com', emailVerifiedAt: new Date(),
     csrfTokenHash: hashOpaqueToken('image-csrf'), expiresAt: new Date('2099-01-01'),
@@ -27,7 +27,7 @@ const url = process.env.INTEGRATION_DATABASE_URL;
   const save = async (userId: string, id: string, entityType = 'saved_recipe', scopeId = userId, deleted = false) => {
     const rows = await db.execute(sql`INSERT INTO sync_items(user_id,scope_type,scope_id,entity_type,entity_id,device_id,payload,deleted,client_updated_at,mutation_id)
       VALUES(${userId}::uuid,${scopeId === house ? 'house' : 'user'},${scopeId},${entityType},${id},'image-test',
-        ${JSON.stringify(entityType === 'ai_consent' ? { enabled: true, imagePolicyVersion: 'recipe-images-v1', imageProvider: 'openai' } : { title: id, ingredients: [{ name: 'Riso' }] })}::jsonb,
+        ${JSON.stringify(entityType === 'ai_consent' ? { enabled: true, imagePolicyVersion: 'recipe-images-v2', imageProvider: 'openai' } : { title: id, ingredients: [{ name: 'Riso' }] })}::jsonb,
         ${deleted},now(),${randomUUID()}) RETURNING id`);
     return String(rows[0].id);
   };
@@ -37,7 +37,7 @@ const url = process.env.INTEGRATION_DATABASE_URL;
     await db.execute(sql`INSERT INTO houses(id,name,created_by_user_id) VALUES(${house},'Image test',${owner})`);
     await db.execute(sql`INSERT INTO house_memberships(house_id,user_id,role) VALUES(${house},${owner},'admin'),(${house},${other},'member')`);
     vi.stubEnv('RECIPE_IMAGES_ENABLED', 'true'); vi.stubEnv('RECIPE_IMAGE_PROVIDER', 'openai');
-    vi.stubEnv('OPENAI_API_KEY', 'test'); vi.stubEnv('PEXELS_API_KEY', 'test');
+    vi.stubEnv('OPENAI_API_KEY', 'test');
     vi.stubEnv('RECIPE_IMAGE_MODEL', 'test'); vi.stubEnv('RECIPE_IMAGE_VISION_MODEL', 'test');
     await app.register(imageRoutes(db, auth, origin));
     await app.ready();
@@ -86,27 +86,27 @@ const url = process.env.INTEGRATION_DATABASE_URL;
     const repository = createDrizzleSyncRepository(db);
     const granted = await repository.updateAiConsent(owner, {
       enabled: true,
-      imagePolicyVersion: 'recipe-images-v1',
+      imagePolicyVersion: 'recipe-images-v2',
       imageProvider: 'openai',
       expectedRevision: DEFAULT_AI_CONSENT_REVISION,
     });
 
-    expect(granted).toMatchObject({ enabled: true, imagePolicyVersion: 'recipe-images-v1', imageProvider: 'openai' });
+    expect(granted).toMatchObject({ enabled: true, imagePolicyVersion: 'recipe-images-v2', imageProvider: 'openai' });
     expect(granted).not.toHaveProperty('homeProvider');
     await expect(repository.withAiConsentDispatch(owner, { kind: 'home', provider: 'openai' }, async () => 'dispatched'))
       .rejects.toMatchObject({ code: 'ai_consent_required' });
     await expect(repository.updateAiConsent(owner, {
-      enabled: true, imagePolicyVersion: 'recipe-images-v1', imageProvider: 'openai',
+      enabled: true, imagePolicyVersion: 'recipe-images-v2', imageProvider: 'openai',
     })).rejects.toMatchObject({ code: 'ai_consent_revision_required' });
     await expect(repository.updateAiConsent(owner, {
-      enabled: true, imagePolicyVersion: 'recipe-images-v1', imageProvider: 'openai',
+      enabled: true, imagePolicyVersion: 'recipe-images-v2', imageProvider: 'openai',
       expectedRevision: DEFAULT_AI_CONSENT_REVISION,
     })).rejects.toMatchObject({ code: 'ai_consent_revision_conflict' });
     expect((await single('image-only-recipe')).statusCode).toBe(202);
 
     const mismatched = await repository.updateAiConsent(owner, {
       enabled: true,
-      imagePolicyVersion: 'recipe-images-v1',
+      imagePolicyVersion: 'recipe-images-v2',
       imageProvider: 'gemini',
       expectedRevision: granted.updatedAt,
     });
@@ -164,7 +164,10 @@ const url = process.env.INTEGRATION_DATABASE_URL;
     await save(owner, 'profile', 'ai_consent');
     for (const state of ['ready', 'processing', 'quota_exceeded', 'failed']) {
       const id = await save(owner, state);
-      await db.execute(sql`UPDATE recipe_image_jobs SET state=${state},attempts=2,dispatched_at=now(),available_at=now()+interval '1 day' WHERE sync_item_id=${id}::uuid`);
+      await db.transaction(async tx => {
+        if (state === 'processing') await tx.execute(sql`SELECT public.set_recipe_image_policy_v2()`);
+        await tx.execute(sql`UPDATE recipe_image_jobs SET state=${state},attempts=2,dispatched_at=now(),available_at=now()+interval '1 day' WHERE sync_item_id=${id}::uuid`);
+      });
       const response = await single(state);
       expect(response.statusCode).toBe(202);
       expect(response.json().queued).toBe(state === 'failed' ? 1 : 0);
