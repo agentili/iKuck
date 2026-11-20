@@ -1,4 +1,5 @@
 import { DailyRecipeCard } from './DailyRecipeCard';
+import ChefPantryRecipe from '../ai/ChefPantryRecipe';
 
 export const ChatView = () => (
   <main id="main-content" className="chef-chat-page mx-auto w-full max-w-2xl bg-[var(--ik-porcelain)]">
@@ -8,6 +9,7 @@ export const ChatView = () => (
         Trova una ricetta adatta alla tua dispensa e organizza i pasti della settimana.
       </p>
     </header>
+    <ChefPantryRecipe />
     <DailyRecipeCard />
   </main>
 );

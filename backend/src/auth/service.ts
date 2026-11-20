@@ -18,6 +18,7 @@ export type AuthErrorCode =
   | 'csrf_failed'
   | 'invalid_payload'
   | 'ai_consent_required'
+  | 'sync_scope_changed'
   | 'ai_consent_revision_required'
   | 'ai_consent_revision_conflict'
   | 'ai_provider_mismatch'

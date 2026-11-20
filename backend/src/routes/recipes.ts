@@ -6,9 +6,13 @@ import type {
   GeneratedRecipeDraft,
   PantryIngredientReview,
   SyncChange,
+  SyncMutationScope,
 } from '@ikuck/shared/contracts';
-import { AI_RECIPE_MAX_GENERATION_INGREDIENTS } from '@ikuck/shared/limits';
-import { evaluatePantryRecipeDraft, evaluateProviderPantryRecipeDraft, reviewPantryIngredients } from '../ai/pantryRecipe.js';
+import { AI_RECIPE_MAX_GENERATION_INGREDIENTS, RECIPE_MAX_INGREDIENTS } from '@ikuck/shared/limits';
+import { RECIPES } from '@ikuck/shared/recipeCatalog';
+import { getIngredient } from '@ikuck/shared/ingredients';
+import { CHEF_PREPARATION_RULES, renderChefPreparation } from '../ai/chefPreparation.js';
+import { chefCoverage, chefIngredientIdentity, evaluatePantryRecipeDraft, evaluateProviderPantryRecipeDraft, reviewPantryIngredients } from '../ai/pantryRecipe.js';
 import {
   MAX_NOVELTY_GENERATION_ATTEMPTS,
   MAX_NOVELTY_REFERENCES_IN_PROMPT,
@@ -20,7 +24,7 @@ import type { GenerationRateLimiter, GenerationRateReservation } from '../ai/rat
 import { isGeneratedRecipeCompatible, parseGeneratedRecipeDraft } from '../ai/validation.js';
 import { AuthServiceError, type AuthService } from '../auth/service.js';
 import { dietProfilePayloadSchema } from '../diet/validation.js';
-import { AiConsentRequiredError, type SyncRepository } from '../sync/repository.js';
+import { AiConsentRequiredError, SyncMembershipRequiredError, SyncScopeInvalidError, type SyncRepository } from '../sync/repository.js';
 import { ensureCsrf, ensureSameOrigin, requireVerifiedSession } from './auth.js';
 import type { RecipeGenerationProvider } from '../providers/types.js';
 
@@ -30,7 +34,12 @@ const generationRequestSchema = z.object({
     .min(1)
     .max(AI_RECIPE_MAX_GENERATION_INGREDIENTS),
   dietProfile: dietProfilePayloadSchema,
-}).strict();
+  mode: z.literal('chef_coverage').optional(),
+  confirmedReferences: z.literal(true).optional(),
+  syncScope: z.custom<SyncMutationScope>((value) => typeof value === 'string' && /^(account|house):[^\s:]{1,128}$/.test(value)).optional(),
+}).strict().refine(({ mode, confirmedReferences, syncScope }) => mode === 'chef_coverage'
+  ? confirmedReferences === true && syncScope !== undefined
+  : confirmedReferences === undefined && syncScope === undefined);
 
 const invalidPayload = (): AuthServiceError =>
   new AuthServiceError('invalid_payload', 400, 'Request payload is invalid');
@@ -113,20 +122,34 @@ export const registerRecipeRoutes = ({
 
     const ingredients = parsed.data.ingredients;
     const dietProfile = parsed.data.dietProfile as DietProfilePayload;
+    const strictCoverage = parsed.data.mode === 'chef_coverage';
+    if (strictCoverage && new Set(ingredients.map(chefIngredientIdentity)).size > RECIPE_MAX_INGREDIENTS + 1) {
+      return { kind: 'none_available', message: 'La dispensa supera il numero di ingredienti utilizzabili in una singola ricetta.' };
+    }
 
     let savedRecipes: { title: string; ingredients: { name: string; amount: string }[] }[];
     try {
-      const changes = await repository.readAll(session.userId);
+      const changes = await repository.readAll(session.userId, parsed.data.syncScope);
       savedRecipes = changes
         .filter(isSavedRecipeReference)
         .map((change) => change.payload);
-    } catch {
+    } catch (error) {
+      if (error instanceof SyncMembershipRequiredError || error instanceof SyncScopeInvalidError) {
+        throw new AuthServiceError('sync_scope_changed', 409, 'The active pantry scope changed');
+      }
       throw new AuthServiceError('provider_unavailable', 503, 'Saved recipes are unavailable');
     }
 
-    const knownReferences: RecipeReference[] = uniqueRecipeReferences(
-      savedRecipes.map(({ title, ingredients }) => ({ title, ingredients })),
-    );
+    const knownReferences: RecipeReference[] = uniqueRecipeReferences([
+      ...savedRecipes.map(({ title, ingredients }) => ({ title, ingredients })),
+      ...(strictCoverage ? RECIPES.map(({ title, ingredients }) => ({
+        title,
+        ingredients: ingredients.map(({ name, amount, ingredientId }) => ({ name: name ?? getIngredient(ingredientId)?.label ?? ingredientId, amount })),
+      })) : []),
+    ]);
+    if (strictCoverage && knownReferences.length > MAX_NOVELTY_REFERENCES_IN_PROMPT) {
+      return { kind: 'none_available', message: 'Il ricettario è troppo grande per essere inviato per intero al servizio AI.' };
+    }
 
     let reservation: GenerationRateReservation;
     try {
@@ -143,10 +166,11 @@ export const registerRecipeRoutes = ({
     let ingredientReview: PantryIngredientReview | null = null;
     let noveltyConflict: ReturnType<typeof findRecipeNoveltyConflict> = null;
     const rejectedRecipes: RecipeReference[] = [];
+    let partial: { recipe: GeneratedRecipeDraft; review: PantryIngredientReview; omitted: string } | null = null;
     const requestAbort = createReplyAbortSignal(reply);
     try {
       for (let attempt = 0; attempt < MAX_NOVELTY_GENERATION_ATTEMPTS; attempt += 1) {
-        const existingRecipes = uniqueRecipeReferences([
+        const existingRecipes = strictCoverage ? knownReferences : uniqueRecipeReferences([
           ...rejectedRecipes.slice(-10),
           ...knownReferences.slice(0, MAX_NOVELTY_REFERENCES_IN_PROMPT),
         ]).slice(0, MAX_NOVELTY_REFERENCES_IN_PROMPT);
@@ -155,7 +179,11 @@ export const registerRecipeRoutes = ({
           try {
             const generated = await provider.generate({
               ingredients,
-              constraints: [],
+              constraints: strictCoverage ? [
+                'Usa tutti gli ingredienti distinti della dispensa, oppure omettine al massimo uno. Non aggiungere ingredienti fuori elenco. Usa ogni ingrediente dichiarato nel procedimento.',
+                'La ricetta deve essere diversa da tutte quelle indicate e rispettare dieta e allergeni.',
+                ...CHEF_PREPARATION_RULES,
+              ] : [],
               dietProfile,
               existingRecipes,
               signal: requestAbort.signal,
@@ -170,6 +198,25 @@ export const registerRecipeRoutes = ({
 
         if (draft === null) {
           throw new AuthServiceError('provider_unavailable', 503, 'Recipe provider is unavailable');
+        }
+
+        if (strictCoverage) {
+          const coverage = chefCoverage(ingredients, draft);
+          const preparation = coverage === null ? null : renderChefPreparation(draft);
+          const evaluated = preparation === null ? null : evaluateProviderPantryRecipeDraft(ingredients, preparation, dietProfile);
+          if (coverage !== null && evaluated?.recipe != null
+            && isGeneratedRecipeCompatible(evaluated.recipe, dietProfile)
+            && findRecipeNoveltyConflict(evaluated.recipe, knownReferences) === null) {
+            if (coverage.omitted === undefined) {
+              draft = evaluated.recipe;
+              ingredientReview = evaluated.ingredientReview;
+              partial = null;
+              break;
+            }
+            partial ??= { recipe: evaluated.recipe, review: evaluated.ingredientReview, omitted: coverage.omitted };
+          }
+          draft = null;
+          continue;
         }
 
         if (!isGeneratedRecipeCompatible(draft, dietProfile)) {
@@ -197,6 +244,12 @@ export const registerRecipeRoutes = ({
       const canUseLocalFallback = error instanceof AiConsentRequiredError
         || error instanceof AuthServiceError && error.code === 'provider_unavailable'
         || code === 'ai_dispatch_capacity';
+      if (strictCoverage) {
+        await releaseGeneration(reservation);
+        if (error instanceof AiConsentRequiredError) throw new AuthServiceError('ai_consent_required', 403, 'Valid AI recipe consent is required');
+        if (code === 'ai_dispatch_aborted' || code === 'ai_dispatch_capacity') throw new AuthServiceError('provider_unavailable', 503, 'Recipe provider is unavailable');
+        throw error;
+      }
       if (canUseLocalFallback) {
         draft = null;
         noveltyConflict = null;
@@ -211,7 +264,12 @@ export const registerRecipeRoutes = ({
       requestAbort.dispose();
     }
 
-    if (draft === null || noveltyConflict !== null) {
+    if (strictCoverage && draft === null && partial !== null) {
+      draft = partial.recipe;
+      ingredientReview = partial.review;
+    }
+
+    if (!strictCoverage && (draft === null || noveltyConflict !== null)) {
       const fallback = evaluatePantryRecipeDraft(ingredients, knownReferences, Math.random, dietProfile);
       ingredientReview = fallback.ingredientReview;
       draft = fallback.recipe === null ? null : parseGeneratedRecipeDraft(fallback.recipe);
@@ -223,7 +281,7 @@ export const registerRecipeRoutes = ({
       await releaseGeneration(reservation);
       return {
         kind: 'none_available',
-        message: 'Non ho trovato ingredienti sufficienti per proporre una ricetta nuova.',
+        message: strictCoverage ? 'Non ho trovato una ricetta nuova che usi tutti gli ingredienti o tutti tranne uno.' : 'Non ho trovato ingredienti sufficienti per proporre una ricetta nuova.',
         ingredientReview: ingredientReview ?? reviewPantryIngredients(ingredients, dietProfile),
       };
     }
@@ -247,6 +305,7 @@ export const registerRecipeRoutes = ({
     return {
       kind: 'candidate',
       recipe: draft,
+      ...(partial === null ? {} : { omittedIngredient: partial.omitted }),
       ingredientReview: ingredientReview ?? reviewPantryIngredients(ingredients, dietProfile),
     };
   });

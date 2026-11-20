@@ -306,6 +306,9 @@ export interface WeeklyPushPayload {
 export interface GenerateRecipeRequest {
   ingredients: string[];
   dietProfile: DietProfilePayload;
+  mode?: 'chef_coverage';
+  confirmedReferences?: true;
+  syncScope?: SyncMutationScope;
 }
 
 export type PantryIngredientExclusion =
@@ -358,6 +361,7 @@ export type GenerateRecipeCandidate = {
   kind: 'candidate';
   recipe: GeneratedRecipeDraft;
   ingredientReview?: PantryIngredientReview;
+  omittedIngredient?: string;
 };
 
 export type GenerateRecipeNone = {

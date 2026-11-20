@@ -2,7 +2,7 @@ import { imageConfig } from '../recipeImages/config.js';
 import { randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import type { AiConsent, AiRecipeProvider, DietProfilePayload, GeneratedRecipe, GeneratedRecipeDraft, SyncChange, SyncMutation } from '@ikuck/shared/contracts';
+import type { AiConsent, AiRecipeProvider, DietProfilePayload, GeneratedRecipe, GeneratedRecipeDraft, SyncChange, SyncMutation, SyncMutationScope } from '@ikuck/shared/contracts';
 import { AI_RECIPE_MAX_GENERATION_INGREDIENTS, DIARY_MAX_RECIPES, DIARY_SERVINGS_MAX, DIARY_SERVINGS_MIN, DIARY_TEXT_MAX_LENGTH } from '@ikuck/shared/limits';
 import { isDiaryRecipeDraft, type DiaryRecipeDraft } from '@ikuck/shared/dinnerDiary';
 import { isGeneratedRecipeCompatible, isAiConsent, isGeneratedRecipe, parseGeneratedRecipeDraft, generatedRecipeSchema } from '../ai/validation.js';
@@ -23,6 +23,8 @@ import {
   AiConsentRevisionRequiredError,
   DEFAULT_AI_CONSENT_REVISION,
   type SyncRepository,
+  SyncMembershipRequiredError,
+  SyncScopeInvalidError,
 } from '../sync/repository.js';
 import { ensureCsrf, ensureSameOrigin, requireVerifiedSession } from './auth.js';
 
@@ -54,7 +56,10 @@ const dinnerReconstructionRequestSchema = z.object({
   servings: z.number().int().min(DIARY_SERVINGS_MIN).max(DIARY_SERVINGS_MAX).nullable(),
 }).strict();
 
-const saveRequestSchema = z.object({ recipe: generatedRecipeSchema }).strict();
+const saveRequestSchema = z.object({
+  recipe: generatedRecipeSchema,
+  syncScope: z.custom<SyncMutationScope>((value) => typeof value === 'string' && /^(account|house):[^\s:]{1,128}$/.test(value)).optional(),
+}).strict();
 
 const generationRequestSchema = z.object({
   dishTitle: z.string().trim().min(1).max(240).optional(),
@@ -144,10 +149,10 @@ const parseConsentUpdate = (body: unknown): z.infer<typeof consentRequestSchema>
   return result.data;
 };
 
-const parseSavableRecipe = (body: unknown): GeneratedRecipe => {
+const parseSavableRecipe = (body: unknown): z.infer<typeof saveRequestSchema> => {
   const result = saveRequestSchema.safeParse(body);
   if (!result.success) throw invalidPayload();
-  return result.data.recipe;
+  return result.data;
 };
 
 const reserveGeneration = async (limiter: GenerationRateLimiter, userId: string): Promise<GenerationRateReservation> => {
@@ -404,9 +409,16 @@ export const registerAiRecipeRoutes = ({
     ensureSameOrigin(request, appOrigin);
     const { session } = await requireVerifiedSession(request, authService);
     ensureCsrf(request, session.csrfTokenHash);
-    const recipe = parseSavableRecipe(request.body);
+    const { recipe, syncScope } = parseSavableRecipe(request.body);
     const now = new Date().toISOString();
-    await repository.applyMutation(session.userId, createMutation('generated_recipe', recipe.id, 'upsert', recipe, now));
+    try {
+      await repository.applyMutation(session.userId, { ...createMutation('generated_recipe', recipe.id, 'upsert', recipe, now), syncScope });
+    } catch (error) {
+      if (error instanceof SyncMembershipRequiredError || error instanceof SyncScopeInvalidError) {
+        throw new AuthServiceError('sync_scope_changed', 409, 'The active recipe scope changed');
+      }
+      throw error;
+    }
     return { recipe };
   });
 

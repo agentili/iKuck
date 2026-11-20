@@ -314,6 +314,28 @@ export interface PantryRecipeEvaluation {
   ingredientReview: PantryIngredientReview;
 }
 
+// Full identities, not overlapping components. Do not merge different safety facts.
+export const chefIngredientIdentity = (name: string): string => {
+  const facts = resolveFoodFacts(name);
+  return JSON.stringify([
+    facts.identityKey ?? normalizeIngredientName(name), facts.identityComplete,
+    facts.allergenCoverage, [...facts.presentAllergens].sort(), [...facts.possibleAllergens].sort(),
+  ]);
+};
+
+export const chefCoverage = (ingredients: readonly string[], draft: GeneratedRecipeDraft): { omitted?: string } | null => {
+  const available = new Map(ingredients.map(name => [chefIngredientIdentity(name), name]));
+  const used = new Set<string>();
+  for (const { name } of draft.ingredients) {
+    const key = chefIngredientIdentity(name);
+    if (!available.has(key) || used.has(key)) return null;
+    used.add(key);
+  }
+  if (used.size === 0 || used.size < available.size - 1) return null;
+  const omitted = [...available].find(([key]) => !used.has(key))?.[1];
+  return omitted === undefined ? {} : { omitted };
+};
+
 const emptyReview = (pantryInputs: readonly PantryFoodInput[], dietProfile?: DietProfilePayload): PantryIngredientReview =>
   createReview(pantryInputs, 'none', dietProfile, new Map(), 0, 0, true);
 

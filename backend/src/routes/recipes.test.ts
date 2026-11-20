@@ -90,7 +90,7 @@ const createRecipeApp = ({
 
 const generate = (
   app: ReturnType<typeof createApp>,
-  input?: { ingredients?: string[]; dietProfile?: DietProfilePayload },
+  input?: { ingredients?: string[]; dietProfile?: DietProfilePayload; mode?: 'chef_coverage' },
 ) => app.inject({
   method: 'POST',
   url: '/v1/recipes/generate',
@@ -98,14 +98,16 @@ const generate = (
   payload: {
     ingredients: input?.ingredients ?? ['Orata', 'Patate'],
     dietProfile: input?.dietProfile ?? defaultDietProfile,
+    ...(input?.mode === undefined ? {} : { mode: input.mode, confirmedReferences: true, syncScope: 'account:user-1' }),
   },
 });
 
-const explicitlySave = (app: ReturnType<typeof createApp>, recipe: GeneratedRecipeDraft) => app.inject({
+const explicitlySave = (app: ReturnType<typeof createApp>, recipe: GeneratedRecipeDraft, syncScope?: string) => app.inject({
   method: 'POST',
   url: '/v1/ai-recipes/save',
   headers,
   payload: {
+    ...(syncScope === undefined ? {} : { syncScope }),
     recipe: {
       ...recipe,
       id: 'generated-preview-1',
@@ -202,6 +204,81 @@ describe('recipe novelty dedup', () => {
 // ---------- B5: integration test endpoint ----------
 
 describe('POST /v1/recipes/generate', () => {
+  it('Chef does not dispatch when the requested pantry scope is stale', async () => {
+    const provider = { generate: vi.fn().mockResolvedValue(draft) };
+    const { app } = createRecipeApp({ provider, bypassConsent: true });
+    try {
+      const response = await app.inject({ method: 'POST', url: '/v1/recipes/generate', headers, payload: {
+        mode: 'chef_coverage', confirmedReferences: true, syncScope: 'house:former-house',
+        ingredients: ['Orata', 'Patate'], dietProfile: defaultDietProfile,
+      } });
+      expect(response.statusCode).toBe(409);
+      expect(provider.generate).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
+  it('rejects saving a Chef preview into a former house', async () => {
+    const { app, repository } = createRecipeApp();
+    try {
+      expect((await explicitlySave(app, draft, 'house:former-house')).statusCode).toBe(409);
+      expect(await repository.readAll('user-1')).toHaveLength(0);
+    } finally { await app.close(); }
+  });
+
+  it.each([
+    { steps: ['Cuoci Orata e Patate e aggiungi burro di arachidi.'] },
+    { steps: ['BAKE 1,2,3'] },
+    { steps: ['BAKE 1'] },
+    { steps: ['BAKE 1,2 0'] },
+    { steps: ['BAKE 1,2'], ingredients: [{ name: 'Orata', amount: '1 con burro' }, draft.ingredients[1]!] },
+  ])('Chef rejects unsafe or incomplete preparation: $steps', async (overrides) => {
+    const provider = { generate: vi.fn().mockResolvedValue({ ...draft, ...overrides }) };
+    const { app } = createRecipeApp({ provider, bypassConsent: true });
+    try {
+      const response = await generate(app, { mode: 'chef_coverage' });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ kind: 'none_available' });
+      expect(provider.generate).toHaveBeenCalledTimes(3);
+    } finally { await app.close(); }
+  });
+
+  it('Chef prefers complete pantry coverage and sends catalogue references', async () => {
+    const complete = { ...draft, steps: ['BAKE 1,2 30 180', 'ADD 3'], ingredients: [...draft.ingredients, { name: 'Olive', amount: '50 g' }] };
+    const provider = { generate: vi.fn().mockResolvedValueOnce({ ...draft, steps: ['BAKE 1,2 30 180'] }).mockResolvedValueOnce(complete) };
+    const { app } = createRecipeApp({ provider, bypassConsent: true });
+    try {
+      const response = await generate(app, { mode: 'chef_coverage', ingredients: ['Orata', 'Patate', 'Olive'] });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ kind: 'candidate', recipe: { ingredients: complete.ingredients, steps: ['Cuoci in forno: Orata, Patate — per 30 min, a 180 °C.', 'Aggiungi: Olive.'] } });
+      expect(response.json().recipe.description).not.toBe(complete.description);
+      expect(provider.generate).toHaveBeenCalledWith(expect.objectContaining({ ingredients: ['Orata', 'Patate', 'Olive'], existingRecipes: expect.arrayContaining([expect.objectContaining({ title: 'Pollo al limone' })]) }));
+    } finally { await app.close(); }
+  });
+
+  it('Chef does not provide a local substitute without provider consent', async () => {
+    const provider = { generate: vi.fn().mockResolvedValue(draft) };
+    const { app } = createRecipeApp({ provider });
+    try {
+      const response = await generate(app, { mode: 'chef_coverage' });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({ code: 'ai_consent_required' });
+      expect(provider.generate).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
+  it.each([
+    { pantry: ['Orata', 'Patate', 'Olive', 'Riso'], expected: 'none_available' },
+    { pantry: ['Orata'], expected: 'none_available' },
+    { pantry: ['Orata', 'Patate', 'Olive'], expected: 'candidate' },
+  ])('Chef only accepts pantry-only drafts with at most one omission: $pantry', async ({ pantry, expected }) => {
+    const { app } = createRecipeApp({ bypassConsent: true, provider: { generate: vi.fn().mockResolvedValue({ ...draft, steps: ['BAKE 1,2'] }) } });
+    try {
+      const response = await generate(app, { mode: 'chef_coverage', ingredients: pantry });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ kind: expected });
+    } finally { await app.close(); }
+  });
+
   afterEach(() => {
     vi.unstubAllEnvs();
   });
