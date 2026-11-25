@@ -24,8 +24,16 @@ function Assert-Condition {
     }
 }
 
+function Assert-RecipeImagePolicy {
+    param([string]$Policy)
+
+    $blobDirectives = @([regex]::Matches($Policy, '(?:^|;)\s*([a-z-]+)\s+[^;]*?(?<!\S)blob:(?=\s|;|"|$)'))
+    Assert-Condition ($blobDirectives.Count -eq 1 -and $blobDirectives[0].Groups[1].Value -eq 'img-src') 'CSP must permit blob URLs only for images, including cached recipe images.'
+}
+
 $caddyfile = Get-Content -Raw -LiteralPath $CaddyfilePath
-Assert-Condition ($caddyfile -match 'Content-Security-Policy') 'Caddyfile must define Content-Security-Policy.'
+Assert-Condition ($caddyfile -match 'Content-Security-Policy "([^"\r\n]+)"') 'Caddyfile must define Content-Security-Policy.'
+Assert-RecipeImagePolicy $Matches[1]
 Assert-Condition ($caddyfile -match 'frame-src https://accounts\.google\.com/gsi/') 'CSP must allow the Google Identity Services button iframe.'
 Assert-Condition ($caddyfile -match 'connect-src [^\"]*https://accounts\.google\.com/gsi/') 'CSP must allow Google Identity Services endpoints.'
 Assert-Condition ($caddyfile -match 'style-src [^\"]*https://accounts\.google\.com/gsi/style') 'CSP must allow Google Identity Services styles.'
@@ -41,6 +49,7 @@ $headers = $response.Headers
 $contentSecurityPolicy = [string]$headers['Content-Security-Policy']
 $hsts = [string]$headers['Strict-Transport-Security']
 Assert-Condition ([bool]$contentSecurityPolicy -and $contentSecurityPolicy -notmatch 'unsafe-eval') 'Live response must expose CSP without unsafe-eval.'
+Assert-RecipeImagePolicy $contentSecurityPolicy
 Assert-Condition ([string]$headers['X-Content-Type-Options'] -eq 'nosniff') 'Live response must expose nosniff.'
 Assert-Condition ([string]$headers['X-Frame-Options'] -eq 'DENY') 'Live response must deny framing.'
 Assert-Condition ([string]$headers['Referrer-Policy'] -eq 'strict-origin-when-cross-origin') 'Live response must expose the documented referrer policy.'
