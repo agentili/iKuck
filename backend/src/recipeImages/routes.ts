@@ -46,34 +46,33 @@ export const imageRoutes = (db: ApplicationDatabase['db'], auth: AuthService, ap
     reply.header('Cache-Control', job.catalog_id ? 'public, max-age=86400' : 'private, no-store').header('X-Content-Type-Options','nosniff').type('image/webp');
     return reply.send(asset.content);
   });
-  app.post('/v1/recipe-images/generate', async (request, reply) => {
-    ensureSameOrigin(request, appOrigin);
-    const { session } = await requireVerifiedSession(request, auth);
-    ensureCsrf(request, session.csrfTokenHash);
-    if (!config.enabled) return reply.code(503).send({ code: 'images_disabled' });
-    if (!await hasImageConsent(db, session.userId, config)) return reply.code(403).send({ code: 'image_consent_required' });
-    const queued = await db.transaction(async tx =>
-      await queueCatalogImages(tx) + await queuePrivateImages(tx, session.userId));
-    return reply.code(202).send({ queued });
-  });
   const generateSingle = async (request: import('fastify').FastifyRequest<{ Params: { recipeId: string }; Querystring: { kind?: string } }>, reply: import('fastify').FastifyReply) => {
     ensureSameOrigin(request, appOrigin);
     const { session } = await requireVerifiedSession(request, auth);
     ensureCsrf(request, session.csrfTokenHash);
     if (!config.enabled) return reply.code(503).send({ code: 'images_disabled' });
+    if (request.query.kind !== undefined && request.query.kind !== 'catalog' && request.query.kind !== 'private') {
+      return reply.code(400).send({ code: 'invalid_image_kind' });
+    }
     const recipeId = request.params.recipeId;
     if (request.query.kind === 'catalog') {
       if (!RECIPES.some(recipe => recipe.id === recipeId)) return reply.code(404).send({ code: 'recipe_not_found' });
-      const queued = await queueCatalogImages(db, recipeId);
+      const queued = await db.transaction(async tx => {
+        await tx.execute(sql`SELECT public.set_recipe_image_request_v3()`);
+        return queueCatalogImages(tx, recipeId);
+      });
       return reply.code(202).send({ queued });
     }
-    if (!await hasImageConsent(db, session.userId, config)) return reply.code(403).send({ code: 'image_consent_required' });
+    if (!await hasImageConsent(db, session.userId)) return reply.code(403).send({ code: 'image_consent_required' });
     const [recipe] = await db.execute(sql`SELECT s.id FROM sync_items s WHERE s.entity_id=${recipeId} AND s.user_id=${session.userId}::uuid
       AND NOT s.deleted AND s.entity_type IN ('generated_recipe','saved_recipe')
       AND ((s.scope_type='user' AND s.scope_id=${session.userId}) OR (s.scope_type='house' AND EXISTS(
         SELECT 1 FROM house_memberships m WHERE m.house_id::text=s.scope_id AND m.user_id=${session.userId}::uuid))) LIMIT 1`);
     if (!recipe) return reply.code(404).send({ code: 'recipe_not_found' });
-    const queued = await queuePrivateImages(db, session.userId, recipeId);
+    const queued = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT public.set_recipe_image_request_v3()`);
+      return queuePrivateImages(tx, session.userId, recipeId);
+    });
     return reply.code(202).send({ queued });
   };
   app.post<{ Params: { recipeId: string }; Querystring: { kind?: string } }>('/v1/recipe-images/:recipeId/generate', generateSingle);

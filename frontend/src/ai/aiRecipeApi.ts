@@ -12,7 +12,7 @@ import { ApiClientError, apiRequest, type ApiRequest } from '../api/apiClient';
 export interface AiRecipeConsentStatus {
   consent: AiConsent;
   selectedProvider: AiRecipeProvider;
-  selectedImageProvider?: AiRecipeProvider;
+  selectedImageProvider?: 'openai';
 }
 
 export interface AiRecipeGenerationInput {
@@ -66,7 +66,9 @@ export const fetchAiConsentStatus = async (request: ApiRequest = apiRequest): Pr
       enabled: candidateConsent.enabled,
       updatedAt: candidateConsent.updatedAt,
       ...(['openai','gemini'].includes(String(candidateConsent.imageProvider)) ? { imageProvider: candidateConsent.imageProvider as AiRecipeProvider } : {}),
-      ...(candidateConsent.imagePolicyVersion === 'recipe-images-v2' ? { imagePolicyVersion: 'recipe-images-v2' as const } : {}),
+      ...(['recipe-images-v1', 'recipe-images-v2', 'recipe-images-v3'].includes(String(candidateConsent.imagePolicyVersion))
+        ? { imagePolicyVersion: candidateConsent.imagePolicyVersion as AiConsent['imagePolicyVersion'] }
+        : {}),
       ...(candidateConsent.homeProvider === undefined
         ? {}
         : { homeProvider: candidateConsent.homeProvider as AiRecipeProvider }),
@@ -75,7 +77,7 @@ export const fetchAiConsentStatus = async (request: ApiRequest = apiRequest): Pr
         : { dinnerProvider: candidateConsent.dinnerProvider as AiRecipeProvider }),
     },
     selectedProvider: candidate.selectedProvider,
-    ...(['openai','gemini'].includes(String(candidate.selectedImageProvider)) ? { selectedImageProvider: candidate.selectedImageProvider as AiRecipeProvider } : {}),
+    ...(candidate.selectedImageProvider === 'openai' ? { selectedImageProvider: 'openai' as const } : {}),
   };
 };
 
@@ -91,13 +93,13 @@ export const updateAiConsent = async (
   request: ApiRequest = apiRequest,
   homeProvider?: AiRecipeProvider,
   includeImages = false,
-  imageProvider?: AiRecipeProvider,
+  imageProvider?: 'openai',
 ): Promise<AiConsent> => {
   const response = await request<ConsentResponse>('/v1/ai-recipes/consent', {
     method: 'PUT',
     body: {
       enabled,
-      ...(enabled && includeImages ? { imagePolicyVersion: 'recipe-images-v2', imageProvider } : {}),
+      ...(enabled && includeImages ? { imagePolicyVersion: 'recipe-images-v3', imageProvider } : {}),
       ...(enabled && homeProvider !== undefined ? { homeProvider } : {}),
       ...(enabled && expectedRevision !== undefined ? { expectedRevision } : {}),
     },

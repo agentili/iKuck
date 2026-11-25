@@ -684,7 +684,7 @@ test('Profile consent authorizes and revokes private recipes without leaking the
   const revoke = page.getByRole('button', { name: 'Revoca consenso AI globale' });
   await expect(revoke).toBeVisible();
   await revoke.click();
-  await expect(page.getByText('Consenso AI revocato. Non invieremo nuovi dati al provider delle ricette.')).toBeVisible();
+  await expect(page.getByText('Consenso AI revocato. Non invieremo nuove richieste ai provider per ricette o immagini.')).toBeVisible();
   expect(consentUpdates).toEqual([
     { userId: 'browser-user', enabled: true, csrfToken: 'csrf-token' },
     { userId: 'browser-user', enabled: false, csrfToken: 'csrf-token' },

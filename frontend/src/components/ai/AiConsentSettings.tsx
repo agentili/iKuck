@@ -65,10 +65,10 @@ export default function AiConsentSettings() {
   const mounted = useRef(false);
   const status = statusRecord !== null && hasSameOwner(owner, statusRecord.owner) ? statusRecord.status : null;
   const imageConsentEnabled = status !== null
-    && status.selectedImageProvider !== undefined
+    && status.selectedImageProvider === 'openai'
     && status.consent.enabled
-    && status.consent.imagePolicyVersion === 'recipe-images-v2'
-    && status.consent.imageProvider === status.selectedImageProvider;
+    && status.consent.imagePolicyVersion === 'recipe-images-v3'
+    && status.consent.imageProvider === 'openai';
 
   useEffect(() => {
     mounted.current = true;
@@ -96,10 +96,10 @@ export default function AiConsentSettings() {
         if (!active || !isCurrentConsentOwner(requestOwner, generation, requestGeneration, mounted)) return;
         setStatusRecord({ owner: requestOwner, status: nextStatus });
         setConsentDraft(nextStatus.consent.enabled && nextStatus.consent.homeProvider === nextStatus.selectedProvider);
-        setImageConsentDraft(nextStatus.selectedImageProvider !== undefined
+        setImageConsentDraft(nextStatus.selectedImageProvider === 'openai'
           && nextStatus.consent.enabled
-          && nextStatus.consent.imagePolicyVersion === 'recipe-images-v2'
-          && nextStatus.consent.imageProvider === nextStatus.selectedImageProvider);
+          && nextStatus.consent.imagePolicyVersion === 'recipe-images-v3'
+          && nextStatus.consent.imageProvider === 'openai');
       })
       .catch((loadError: unknown) => {
         if (active && isCurrentConsentOwner(requestOwner, generation, requestGeneration, mounted)) setError(errorMessage(loadError));
@@ -133,10 +133,10 @@ export default function AiConsentSettings() {
           if (!isCurrentConsentOwner(requestOwner, generation, requestGeneration, mounted)) return;
           setStatusRecord({ owner: requestOwner, status: latest });
           setConsentDraft(latest.consent.enabled && latest.consent.homeProvider === latest.selectedProvider);
-          setImageConsentDraft(latest.selectedImageProvider !== undefined
+          setImageConsentDraft(latest.selectedImageProvider === 'openai'
             && latest.consent.enabled
-            && latest.consent.imagePolicyVersion === 'recipe-images-v2'
-            && latest.consent.imageProvider === latest.selectedImageProvider);
+            && latest.consent.imagePolicyVersion === 'recipe-images-v3'
+            && latest.consent.imageProvider === 'openai');
           setError('Il consenso è cambiato in un’altra scheda. Ho aggiornato lo stato: controlla la scelta prima di salvare di nuovo.');
         } catch {
           if (!isCurrentConsentOwner(requestOwner, generation, requestGeneration, mounted)) return;
@@ -154,7 +154,7 @@ export default function AiConsentSettings() {
     const requestOwner = owner;
     const generation = requestGeneration.current;
     if (requestOwner === null || !isCurrentConsentOwner(requestOwner, generation, requestGeneration, mounted)
-      || status === null || status.selectedImageProvider === undefined || !imageConsentDraft || imageConsentEnabled || isSaving) return;
+      || status === null || status.selectedImageProvider !== 'openai' || !imageConsentDraft || imageConsentEnabled || isSaving) return;
     setIsSaving(true);
     setError(null);
     setNotice(null);
@@ -162,7 +162,7 @@ export default function AiConsentSettings() {
       const consent = await updateAiConsent(true, requestOwner.csrfToken, status.consent.updatedAt, undefined, undefined, true, status.selectedImageProvider);
       if (!isCurrentConsentOwner(requestOwner, generation, requestGeneration, mounted)) return;
       setStatusRecord({ owner: requestOwner, status: { ...status, consent } });
-      setImageConsentDraft(consent.enabled && consent.imagePolicyVersion === 'recipe-images-v2' && consent.imageProvider === status.selectedImageProvider);
+      setImageConsentDraft(consent.enabled && consent.imagePolicyVersion === 'recipe-images-v3' && consent.imageProvider === 'openai');
     } catch (saveError) {
       if (!isCurrentConsentOwner(requestOwner, generation, requestGeneration, mounted)) return;
       if (saveError instanceof ApiClientError && saveError.code === 'ai_consent_revision_conflict') {
@@ -171,10 +171,10 @@ export default function AiConsentSettings() {
           if (!isCurrentConsentOwner(requestOwner, generation, requestGeneration, mounted)) return;
           setStatusRecord({ owner: requestOwner, status: latest });
           setConsentDraft(latest.consent.enabled && latest.consent.homeProvider === latest.selectedProvider);
-          setImageConsentDraft(latest.selectedImageProvider !== undefined
+          setImageConsentDraft(latest.selectedImageProvider === 'openai'
             && latest.consent.enabled
-            && latest.consent.imagePolicyVersion === 'recipe-images-v2'
-            && latest.consent.imageProvider === latest.selectedImageProvider);
+            && latest.consent.imagePolicyVersion === 'recipe-images-v3'
+            && latest.consent.imageProvider === 'openai');
           setError('Il consenso è cambiato in un’altra scheda. Ho aggiornato lo stato: controlla la scelta prima di salvare di nuovo.');
         } catch {
           if (!isCurrentConsentOwner(requestOwner, generation, requestGeneration, mounted)) return;
@@ -204,7 +204,7 @@ export default function AiConsentSettings() {
       setImageConsentDraft(false);
       const historyCleared = await clearAiRecipeProposalHistory(requestOwner.userId).catch(() => false);
       if (!isCurrentConsentOwner(requestOwner, generation, requestGeneration, mounted)) return;
-      setNotice('Consenso AI revocato. Non invieremo nuovi dati al provider delle ricette.');
+      setNotice('Consenso AI revocato. Non invieremo nuove richieste ai provider per ricette o immagini.');
       if (!historyCleared) {
         setError('Consenso revocato, ma non è stato possibile sincronizzare la cancellazione della cronologia tra schede. Chiudi le altre schede e ricarica la pagina.');
       }
@@ -242,25 +242,25 @@ export default function AiConsentSettings() {
             {status.selectedImageProvider !== undefined && (
               <div className="grid gap-3 border-t border-[var(--ik-border)] pt-3">
                 <h3 className="font-bold text-[var(--ik-ink)]">Consenso per le immagini delle ricette</h3>
-                <p className="text-sm leading-relaxed text-[var(--ik-ink-muted)]">Per cercare, valutare o generare immagini illustrative, il titolo del piatto viene inviato a Wikimedia Commons; titolo, ingredienti e foto candidate vengono inviati a {status.selectedImageProvider === 'gemini' ? 'Google Gemini' : 'OpenAI'}. Questo consenso è separato da quello per creare ricette.</p>
+                <p className="text-sm leading-relaxed text-[var(--ik-ink-muted)]">Per generare un’immagine inviamo a OpenAI soltanto il titolo della ricetta e i nomi degli ingredienti. Non inviamo quantità, descrizione, passaggi, profilo alimentare o dispensa. Questo consenso per le immagini è separato da quello per creare ricette AI.</p>
                 <label className="flex min-h-11 items-start gap-3 font-semibold text-[var(--ik-ink)]">
                   <input
                     type="checkbox"
                     checked={imageConsentDraft}
                     onChange={(event) => setImageConsentDraft(event.target.checked)}
                     disabled={isSaving || imageConsentEnabled}
-                    aria-label={`Acconsento all’invio a ${status.selectedImageProvider === 'gemini' ? 'Gemini di Google' : 'OpenAI'} per le immagini delle ricette`}
+                    aria-label="Acconsento all’invio a OpenAI per le immagini delle ricette"
                     className="mt-0.5 h-5 w-5 accent-[var(--ik-basil)]"
                   />
-                  <span>Acconsento all’invio dei dati indicati per cercare, valutare o generare immagini.</span>
+                  <span>Acconsento all’invio a OpenAI del titolo e dei nomi degli ingredienti per creare immagini delle ricette.</span>
                 </label>
                 {!imageConsentEnabled
                   ? <button type="button" onClick={() => void saveImageConsent()} disabled={!imageConsentDraft || isSaving} className="ik-button-secondary min-h-11 w-full px-4 py-2 font-bold disabled:opacity-60 sm:w-fit">{isSaving ? 'Salvataggio…' : 'Salva consenso immagini AI'}</button>
-                  : <p role="status" className="text-sm font-semibold text-[var(--ik-basil-dark)]">Consenso immagini attivo per {status.selectedImageProvider === 'gemini' ? 'Gemini di Google' : 'OpenAI'}.</p>}
+                  : <p role="status" className="text-sm font-semibold text-[var(--ik-basil-dark)]">Consenso immagini attivo per OpenAI.</p>}
               </div>
             )}
             {status.consent.enabled && <button type="button" onClick={() => void revokeConsent()} disabled={isSaving} className="min-h-11 justify-self-start rounded-xl border-2 border-[var(--ik-tomato)] px-4 py-2 font-bold text-[var(--ik-tomato)] disabled:opacity-60">{isSaving ? 'Salvataggio…' : 'Revoca consenso AI globale'}</button>}
-            {status.selectedImageProvider === undefined && <p className="text-sm text-[var(--ik-ink-muted)]">Il servizio per la creazione di immagini non è disponibile sul server; non è possibile autorizzare l’invio per le immagini.</p>}
+            {status.selectedImageProvider !== 'openai' && <p className="text-sm text-[var(--ik-ink-muted)]">Il servizio per le immagini OpenAI non è disponibile sul server; non è possibile autorizzare l’invio.</p>}
             {notice !== null && <p role="status" className="text-sm font-semibold text-[var(--ik-basil-dark)]">{notice}</p>}
             {error !== null && <p role="alert" className="text-sm font-semibold text-[var(--ik-tomato)]">{error}</p>}
           </>

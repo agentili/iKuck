@@ -39,6 +39,17 @@ Use stable entity IDs, never titles, when linking records; titles can collide or
 
 Keep optional pantry exploration closed by default. Verify that the primary recipe action remains above the fixed mobile navigation at 390×844 by comparing the button and navigation bounding boxes; visibility alone does not prove it is reachable.
 
+## OpenAI recipe-image flow
+
+Treat Profile consent as a **Configure** surface and a recipe-detail request as a separate **Operate** action. Keep the existing image presentation, attribution, offline cache and loading/error/quota states; do not redesign the recipe surface for this provider change.
+
+- Keep image authorization separate from text-recipe consent. Only an explicit Profile action may send `{ enabled: true, imagePolicyVersion: 'recipe-images-v3', imageProvider: 'openai', expectedRevision }` to `/v1/ai-recipes/consent`. Start unchecked for legacy v1/v2 grants. A sync/import record, a text consent, a stale Gemini provider or absent runtime image provider must never authorize a private image request.
+- Name OpenAI in the disclosure and state that only the recipe title and ingredient names are sent. Do not claim that quantities, descriptions, steps, diet/profile or pantry data are sent; those fields are excluded. Keep the global revoke action accessible and label its scope clearly because it disables both text and image authorization.
+- Keep exactly one **Genera immagine** action on a recipe detail/modal. Require an explicit click; mounting, reload, polling, or changing accounts must not dispatch generation. Do not expose a profile/catalog bulk action. Public catalog requests still use their existing verified-session, CSRF and scope guards and do not require private-data consent.
+- Keep `GET /v1/ai-recipes/consent` fixtures aligned with `{ consent, selectedProvider, selectedImageProvider? }`; image grants return the OpenAI v3 marker and fresh `expectedRevision`. Offline E2E must assert the exact PUT body, one recipe-specific POST after the visible click, no POST on reload, and no external request. Preserve owner-switch, auth, same-origin, CSRF, scope and disabled-service guard coverage when removing obsolete bulk cases.
+
+Run the focused component/Profile tests and `frontend/e2e/recipe-images.spec.ts` plus `frontend/e2e/consent-owner-race.spec.ts` after editing these fixtures.
+
 ## Cross-route component moves
 
 When moving a stateful panel from one route to another:

@@ -1,289 +1,573 @@
-import Fastify from 'fastify';
-import { imageRoutes } from '../recipeImages/routes.js';
-import type { AuthService } from '../auth/service.js';
 import { randomUUID } from 'node:crypto';
-import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { sql } from 'drizzle-orm';
-import { beforeAll, beforeEach, afterAll, describe, it, expect, vi } from 'vitest';
-import { createDatabase } from '../db/client.js';
-import { runImageTick as tick } from '../recipeImages/repository.js';
-import { ImageProviderError } from '../recipeImages/providers.js';
-import { createDrizzleSyncRepository } from '../sync/repository.js';
-import { COMMONS_ASSET_PROVENANCE } from '../recipeImages/generation.js';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
+import { DEFAULT_AI_CONSENT_REVISION, createDrizzleSyncRepository } from '../sync/repository.js';
+import { createDatabase } from '../db/client.js';
+import { COMMONS_ASSET_PROVENANCE, queuePrivateImages } from '../recipeImages/generation.js';
+import { runImageTick } from '../recipeImages/repository.js';
+
 const url = process.env.INTEGRATION_DATABASE_URL;
-(url ? describe : describe.skip)('recipe image persistence', () => {
+(url ? describe : describe.skip)('OpenAI recipe image worker', () => {
   const database = createDatabase(url!, { max: 5 });
-  const db = database.db;
+  const { db } = database;
   const userId = randomUUID();
-  const config = { enabled: true, provider: 'openai' as const, apiKey: 'test', model: 'test', visionModel: 'test', dailyLimit: 5 };
-  const runImageTick = async () => {
-    const [job] = await db.execute(sql`SELECT id FROM recipe_image_jobs WHERE user_id=${userId} AND state='pending' ORDER BY available_at LIMIT 1`);
-    if (job) await tick(db,config,provider,String(job.id));
-  };
-  const result = { bytes: Buffer.from('test-binary'), width: 10, height: 10, source: 'ai' as const, author: 'openai', sourceUrl: '', license: '' };
-  const provider = { search: vi.fn().mockResolvedValue(null), generate: vi.fn().mockResolvedValue(result) };
-  beforeAll(async () => {
-    await migrate(db, { migrationsFolder: 'src/db/migrations' });
-    await db.execute(sql`INSERT INTO users(id,email) VALUES(${userId},${`${userId}@images.test`})`);
-  });
-  beforeEach(async () => {
-    await db.execute(sql`DELETE FROM sync_items WHERE user_id=${userId}::uuid`);
-    await db.execute(sql`DELETE FROM recipe_image_jobs WHERE user_id=${userId}::uuid`);
-    await db.execute(sql`DELETE FROM recipe_image_quota WHERE principal=${userId}`);
-    provider.search.mockReset().mockResolvedValue(null);
-    provider.generate.mockReset().mockResolvedValue(result);
-  });
-  afterAll(async () => {
-    await db.execute(sql`DELETE FROM sync_items WHERE scope_id=${userId}`);
-    await db.execute(sql`DELETE FROM processed_sync_mutations WHERE scope_type='user' AND scope_id=${userId} AND user_id=${userId}`);
-    await db.execute(sql`DELETE FROM users WHERE id=${userId}`);
-    await db.execute(sql`DELETE FROM recipe_image_quota WHERE principal=${userId}`);
-    await database.close();
-  });
-  const save = async (entityType: string, id: string, payload: unknown) => db.execute(sql`INSERT INTO sync_items(user_id,scope_type,scope_id,entity_type,entity_id,device_id,payload,client_updated_at,mutation_id) VALUES(${userId},'user',${userId},${entityType},${id},'test',${JSON.stringify(payload)}::jsonb,now(),${randomUUID()}) ON CONFLICT(scope_type,scope_id,entity_type,entity_id) DO UPDATE SET payload=excluded.payload`);
-  const grantImageConsent = () => save('ai_consent', 'profile', {
+  const otherUserId = randomUUID();
+  const config = {
     enabled: true,
-    homeProvider: 'openai',
-    imagePolicyVersion: 'recipe-images-v2',
-    imageProvider: 'openai',
+    provider: 'openai' as const,
+    apiKey: 'disposable-test-key',
+    model: 'gpt-image-2.5-flare',
+    dailyLimit: 5,
+  };
+  const save = (entityId: string, payload: unknown, entityType = 'saved_recipe', ownerId: string = userId) => db.execute(sql`
+    INSERT INTO sync_items(user_id,scope_type,scope_id,entity_type,entity_id,device_id,payload,client_updated_at,mutation_id)
+    VALUES(${ownerId}::uuid,'user',${ownerId},${entityType},${entityId},'image-integration',${JSON.stringify(payload)}::jsonb,now(),${randomUUID()})
+    ON CONFLICT(scope_type,scope_id,entity_type,entity_id) DO UPDATE SET payload=excluded.payload,deleted=false
+  `);
+  const grantImageConsent = async (ownerId: string = userId) => {
+    const [row] = await db.execute(sql`SELECT payload FROM sync_items WHERE user_id=${ownerId}::uuid AND entity_type='ai_consent' AND entity_id='profile' AND NOT deleted`);
+    const payload = row?.payload as { updatedAt?: string } | undefined;
+    return createDrizzleSyncRepository(db).updateAiConsent(ownerId, {
+      enabled: true,
+      imagePolicyVersion: 'recipe-images-v3',
+      imageProvider: 'openai',
+      expectedRevision: payload?.updatedAt ?? DEFAULT_AI_CONSENT_REVISION,
+    });
+  };
+  const enqueuePrivate = async (recipeId: string, ownerId: string = userId) => db.transaction(async tx => {
+    await tx.execute(sql`SELECT public.set_recipe_image_request_v3()`);
+    await queuePrivateImages(tx, ownerId, recipeId);
+    const [job] = await tx.execute(sql`SELECT id FROM recipe_image_jobs WHERE user_id=${ownerId}::uuid AND sync_item_id=(
+      SELECT id FROM sync_items WHERE user_id=${ownerId}::uuid AND entity_id=${recipeId} AND entity_type='saved_recipe')`);
+    return String(job.id);
   });
-  const enqueue = async (id: string) => {
-    await grantImageConsent();
-    await save('saved_recipe', id, { title: id, ingredients: [] });
-    const [job] = await db.execute(sql`SELECT id FROM recipe_image_jobs WHERE user_id=${userId} AND recipe->>'title'=${id}`);
+  const enqueueCatalog = async (catalogId: string, recipe: unknown) => {
+    const [job] = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT public.set_recipe_image_request_v3()`);
+      return tx.execute(sql`INSERT INTO recipe_image_jobs(catalog_id,recipe,state)
+        VALUES(${catalogId},${JSON.stringify(recipe)}::jsonb,'pending') RETURNING id`);
+    });
     return String(job.id);
   };
-  it.each(['pending', 'quota_exceeded'])('fences old %s claims and keeps the marker transaction-local', async state => {
-    const id = await enqueue('guard');
-    await db.execute(sql`UPDATE recipe_image_jobs SET state=${state},available_at=now()-interval '1 second' WHERE id=${id}`);
-    const legacyClaim = () => sql`UPDATE recipe_image_jobs SET state='processing' WHERE id=${id} AND state IN ('pending','quota_exceeded')`;
-    await expect(db.execute(legacyClaim())).rejects.toMatchObject({ cause: { code: '55000' } });
-    await expect(db.transaction(async tx => {
-      await tx.execute(sql`SELECT set_config('ikuck.recipe_image_policy','recipe-images-v20',true)`);
-      await tx.execute(legacyClaim());
-    })).rejects.toMatchObject({ cause: { code: '55000' } });
-    const single = createDatabase(url!, { max: 1 });
-    try {
-      await single.db.transaction(async tx => { await tx.execute(sql`SELECT public.set_recipe_image_policy_v2()`); });
-      const [marker] = await single.db.execute(sql`SELECT current_setting('ikuck.recipe_image_policy', true) AS value`);
-      expect(marker.value).not.toBe('recipe-images-v2');
-      await expect(single.db.execute(legacyClaim())).rejects.toMatchObject({ cause: { code: '55000' } });
-    } finally { await single.close(); }
-  });
-  it('rolls back quota and never dispatches when the exact claim becomes stale during search', async () => {
-    const id = await enqueue('stale while searching');
-    provider.search.mockImplementationOnce(async () => {
-      await db.execute(sql`UPDATE recipe_image_jobs SET attempts=attempts+1 WHERE id=${id}`);
-      return null;
-    });
-    await tick(db, config, provider, id);
-    expect(provider.generate).not.toHaveBeenCalled();
-    expect(await db.execute(sql`SELECT used FROM recipe_image_quota WHERE principal=${userId}`)).toHaveLength(0);
-    const [job] = await db.execute(sql`SELECT state,attempts,dispatched_at FROM recipe_image_jobs WHERE id=${id}`);
-    expect(job).toMatchObject({ state: 'processing', dispatched_at: null });
-    expect(Number(job.attempts)).toBe(2);
-  });
-  it('serializes revocation with an active dispatch and does not dispatch a later private job', async () => {
-    const id = await enqueue('dispatch before revoke');
-    const next = await enqueue('waiting for revoke');
-    const started = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<typeof result>();
-    provider.generate.mockImplementationOnce(() => { started.resolve(); return release.promise; });
-    const processing = tick(db, config, provider, id);
-    await Promise.race([started.promise, processing.then(() => { throw new Error('missing dispatch'); })]);
-    const repository = createDrizzleSyncRepository(db);
-    let revoked = false;
-    const revoking = repository.updateAiConsent(userId, { enabled: false }).then(() => { revoked = true; });
-    try {
-      const [marker] = await db.execute(sql`SELECT dispatched_at FROM recipe_image_jobs WHERE id=${id}`);
-      expect(marker.dispatched_at).not.toBeNull();
-      expect(revoked).toBe(false);
-    } finally { release.resolve(result); await Promise.all([processing, revoking]); }
-    await tick(db, config, provider, next);
-    expect(provider.search).toHaveBeenCalledTimes(1);
-    expect(provider.generate).toHaveBeenCalledTimes(1);
-    const [job] = await db.execute(sql`SELECT state FROM recipe_image_jobs WHERE id=${next}`);
-    expect(job.state).toBe('consent_required');
-  });
-  it('does not reserve quota or generate after a failed Commons/vision lookup', async () => {
-    const id = await enqueue('failed lookup');
-    provider.search.mockRejectedValueOnce(new ImageProviderError());
-    await tick(db, config, provider, id);
-    expect(provider.generate).not.toHaveBeenCalled();
-    expect(await db.execute(sql`SELECT used FROM recipe_image_quota WHERE principal=${userId}`)).toHaveLength(0);
-    const [job] = await db.execute(sql`SELECT state,dispatched_at FROM recipe_image_jobs WHERE id=${id}`);
-    expect(job).toMatchObject({ state: 'pending', dispatched_at: null });
-  });
-  const pixel = () => sharp({ create: { width: 16, height: 16, channels: 3, background: '#123456' } }).png().toBuffer();
-  const unlicensedPage = (index: number) => {
-    const file = `Dish_${index}.jpg`;
-    const url = `https://upload.wikimedia.org/wikipedia/commons/a/ab/${file}`;
-    return { pageid: index + 100, index, ns: 6, title: `File:Dish ${index}.jpg`, imagerepository: 'local',
-      imageinfo: [{ url, thumburl: url, descriptionurl: `https://commons.wikimedia.org/wiki/File:${file}`, thumbwidth: 500, thumbheight: 500 }] };
+  const pollUntil = async (condition: () => Promise<boolean>, message: string) => {
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      if (await condition()) return;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    throw new Error(message);
   };
-  const paginatedBatch = (ranks: number[], offset: number) => ({
-    batchcomplete: true, continue: { gsroffset: offset, continue: 'gsroffset||' }, query: { pages: ranks.map(unlicensedPage) },
+  const waitForBothProcessing = (firstJobId: string, secondJobId: string) => pollUntil(async () => {
+    const rows = await db.execute(sql`SELECT state FROM recipe_image_jobs
+      WHERE id IN (${firstJobId}::uuid,${secondJobId}::uuid)`);
+    return rows.length === 2 && rows.every(row => row.state === 'processing');
+  }, 'Expected both distinct jobs to reach processing before releasing the provider stub');
+  const imageBytes = () => sharp({
+    create: { width: 32, height: 24, channels: 3, background: '#386641' },
+  }).png().toBuffer();
+  const imageResponse = async () => Response.json({
+    data: [{ b64_json: (await imageBytes()).toString('base64') }],
   });
-  it.each([
-    ['malformed', { batchcomplete: true, query: { pages: [{}] } }, false],
-    ['incomplete', { batchcomplete: false, query: { pages: [] } }, false],
-    ['missing ranked pages', paginatedBatch([5], 5), false],
-    ['impossible continuation offset', paginatedBatch([1, 2, 3, 4, 5], 1000), false],
-    ['gap in a final batch', { batchcomplete: true, query: { pages: [unlicensedPage(1), unlicensedPage(3)] } }, false],
-    ['complete first batch', paginatedBatch([5, 1, 3, 2, 4], 5), true],
-    ['complete short final batch', { batchcomplete: true, query: { pages: [unlicensedPage(2), unlicensedPage(1)] } }, true],
-    ['valid empty', { batchcomplete: true }, true],
-  ] as const)('runs the real worker on a %s Commons response', async (label, response, dispatch) => {
-    const id = await enqueue(label);
-    const fetch = vi.fn().mockResolvedValueOnce(Response.json(response))
-      .mockResolvedValueOnce(Response.json({ data: [{ b64_json: (await pixel()).toString('base64') }] }));
-    vi.stubGlobal('fetch', fetch);
-    try {
-      await tick(db, config, undefined, id);
-      const [job] = await db.execute(sql`SELECT state,dispatched_at,available_at>now() AS backing_off FROM recipe_image_jobs WHERE id=${id}`);
-      const quota = await db.execute(sql`SELECT used FROM recipe_image_quota WHERE principal=${userId}`);
-      expect(fetch).toHaveBeenNthCalledWith(1, expect.stringMatching(/^https:\/\/commons\.wikimedia\.org/), expect.anything());
-      if (dispatch) {
-        expect(fetch).toHaveBeenCalledTimes(2);
-        expect(fetch).toHaveBeenNthCalledWith(2, 'https://api.openai.com/v1/images/generations', expect.anything());
-        expect(job.state).toBe('ready'); expect(job.dispatched_at).not.toBeNull();
-        expect(quota.map(row => Number(row.used))).toEqual([1]);
-      } else {
-        expect({ requests: fetch.mock.calls.length, job, quota }).toEqual({ requests: 1, job: { state: 'pending', dispatched_at: null, backing_off: true }, quota: [] });
-      }
-    } finally { vi.unstubAllGlobals(); }
+  const seededProvenance = (provenance: {
+    source: string;
+    author: string;
+    model: string | null;
+    sourceUrl?: string;
+    license?: string;
+  }) => ({
+    source: provenance.source,
+    author: provenance.author,
+    model: provenance.model,
+    sourceUrl: provenance.sourceUrl ?? '',
+    license: provenance.license ?? '',
   });
-  it('stores and reuses proven Commons credit from a real adapter match without consuming quota', async () => {
-    const id = await enqueue('Pizza with mushrooms and cheese');
-    const duplicate = await enqueue('Duplicate Commons match');
-    await db.execute(sql`UPDATE recipe_image_jobs SET recipe=(SELECT recipe FROM recipe_image_jobs WHERE id=${id}) WHERE id=${duplicate}`);
-    const file = 'Pizza_with_mushrooms_and_cheese.jpg';
-    const sourceUrl = `https://commons.wikimedia.org/wiki/File:${file}`;
-    const fetch = vi.fn().mockResolvedValueOnce(Response.json({ batchcomplete: true, query: { pages: [{
-      pageid: 79703781, ns: 6, title: 'File:Pizza with mushrooms and cheese.jpg', index: 1, imagerepository: 'local',
-      imageinfo: [{ url: `https://upload.wikimedia.org/wikipedia/commons/1/16/${file}`, descriptionurl: sourceUrl,
-        thumburl: `https://thumb.wikimedia.org/wikipedia/commons/thumb/1/16/${file}/960px-${file}`, thumbwidth: 960, thumbheight: 1440,
-        extmetadata: { Artist: { value: 'LEi - DESIGN' }, License: { value: 'cc0' }, LicenseUrl: { value: 'http://creativecommons.org/publicdomain/zero/1.0/deed.en' },
-          LicenseShortName: { value: 'CC0' }, UsageTerms: { value: 'Creative Commons Zero, Public Domain Dedication' }, AttributionRequired: { value: 'false' }, Restrictions: { value: '' } },
-      }],
-    }] } })).mockResolvedValueOnce(new Response(new Uint8Array(await pixel()))).mockResolvedValueOnce(Response.json({ choices: [{ message: { content: 'MATCH' } }] }));
-    vi.stubGlobal('fetch', fetch);
-    try {
-      await tick(db, config, undefined, id);
-      await tick(db, config, undefined, duplicate);
-      expect(fetch).toHaveBeenCalledTimes(3);
-      const assets = await db.execute(sql`SELECT a.hash,a.source,a.author,a.source_url,a.license,a.model,j.dispatched_at FROM recipe_image_assets a JOIN recipe_image_jobs j ON j.id=a.job_id WHERE a.job_id IN (${id},${duplicate})`);
-      expect(assets).toHaveLength(2);
-      expect(assets[0]).toMatchObject({ source: 'wikimedia', author: 'LEi - DESIGN', source_url: sourceUrl, license: 'https://creativecommons.org/publicdomain/zero/1.0/', model: COMMONS_ASSET_PROVENANCE, dispatched_at: null });
-      expect(assets[1]).toEqual(assets[0]);
-      expect(await db.execute(sql`SELECT used FROM recipe_image_quota WHERE principal=${userId}`)).toHaveLength(0);
-    } finally { vi.unstubAllGlobals(); }
-  });
-  it('queues atomically, waits for consent, resumes and persists binary without changing the recipe', async () => {
-    await save('generated_recipe', 'image-recipe', { title: 'Pasta', ingredients: [{ name: 'Pasta' }] });
-    await runImageTick();
-    let rows = await db.execute(sql`SELECT state FROM recipe_image_jobs WHERE user_id=${userId}`);
-    expect(rows[0].state).toBe('consent_required'); expect(provider.search).not.toHaveBeenCalled();
-    await save('ai_consent','profile',{ enabled: true, homeProvider: 'openai', imagePolicyVersion: 'recipe-images-v1', imageProvider: 'openai' });
-    expect((await db.execute(sql`SELECT state FROM recipe_image_jobs WHERE user_id=${userId}`))[0].state).toBe('consent_required');
-    await save('ai_consent','profile',{ enabled: true, homeProvider: 'openai', imagePolicyVersion: 'recipe-images-v2', imageProvider: 'openai' });
-    await Promise.all([runImageTick(),runImageTick()]);
-    expect(provider.generate).toHaveBeenCalledTimes(1);
-    rows = await db.execute(sql`SELECT a.content,j.state FROM recipe_image_assets a JOIN recipe_image_jobs j ON j.id=a.job_id WHERE j.user_id=${userId}`);
-    expect(rows[0].state).toBe('ready'); expect(Buffer.from(rows[0].content as Uint8Array)).toEqual(result.bytes);
-    await db.execute(sql`UPDATE sync_items SET deleted=true,payload=NULL WHERE scope_id=${userId} AND entity_id='image-recipe'`);
-    expect((await db.execute(sql`SELECT * FROM recipe_image_assets a JOIN recipe_image_jobs j ON j.id=a.job_id WHERE j.user_id=${userId}`)).length).toBe(0);
-  });
-  it('does not reuse Home consent as image permission when imageProvider is absent', async () => {
-    const searchesBefore = provider.search.mock.calls.length;
-    const generationsBefore = provider.generate.mock.calls.length;
-    await save('generated_recipe', 'home-only-image-job', { title: 'Home-only image', ingredients: [{ name: 'Riso' }] });
-    await save('ai_consent', 'profile', {
-      enabled: true,
-      homeProvider: 'openai',
-      imagePolicyVersion: 'recipe-images-v2',
+  const seedReadyPrivateAsset = async (
+    ownerId: string,
+    recipeId: string,
+    recipe: unknown,
+    provenance: ReturnType<typeof seededProvenance>,
+  ) => {
+    await save(recipeId, recipe, 'saved_recipe', ownerId);
+    const jobId = await enqueuePrivate(recipeId, ownerId);
+    await db.transaction(async tx => {
+      await tx.execute(sql`SELECT public.set_recipe_image_policy_v3()`);
+      await tx.execute(sql`UPDATE recipe_image_jobs SET state='ready',dispatched_at=clock_timestamp() WHERE id=${jobId}::uuid`);
+      await tx.execute(sql`INSERT INTO recipe_image_assets(job_id,content,hash,width,height,source,author,source_url,license,model)
+        VALUES(${jobId}::uuid,${Buffer.from('synthetic-source-image')},'synthetic-source-hash',32,24,
+          ${provenance.source},${provenance.author},${provenance.sourceUrl},${provenance.license},${provenance.model})`);
     });
-    const [job] = await db.execute(sql`SELECT id FROM recipe_image_jobs
-      WHERE user_id=${userId}::uuid AND recipe->>'title'='Home-only image'`);
+    return jobId;
+  };
+  const seedReadyCatalogAsset = async (
+    recipe: unknown,
+    provenance: ReturnType<typeof seededProvenance>,
+  ) => {
+    const [job] = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT public.set_recipe_image_request_v3()`);
+      return tx.execute(sql`INSERT INTO recipe_image_jobs(catalog_id,recipe,state)
+        VALUES(${`red-dedup:${randomUUID()}`},${JSON.stringify(recipe)}::jsonb,'ready') RETURNING id`);
+    });
+    const jobId = String(job.id);
+    await db.execute(sql`INSERT INTO recipe_image_assets(job_id,content,hash,width,height,source,author,source_url,license,model)
+      VALUES(${jobId}::uuid,${Buffer.from('synthetic-catalog-image')},'synthetic-catalog-hash',32,24,
+        ${provenance.source},${provenance.author},${provenance.sourceUrl},${provenance.license},${provenance.model})`);
+    return jobId;
+  };
 
-    await tick(db, config, provider, String(job.id));
-
-    const [stored] = await db.execute(sql`SELECT state FROM recipe_image_jobs WHERE id=${String(job.id)}::uuid`);
-    expect(stored.state).toBe('consent_required');
-    expect(provider.search).toHaveBeenCalledTimes(searchesBefore);
-    expect(provider.generate).toHaveBeenCalledTimes(generationsBefore);
+  beforeAll(async () => {
+    await migrate(db, { migrationsFolder: 'src/db/migrations' });
+    await db.execute(sql`INSERT INTO users(id,email) VALUES
+      (${userId},${`${userId}@images.test`}),(${otherUserId},${`${otherUserId}@images.test`})`);
+  });
+  beforeEach(async () => {
+    await db.execute(sql`DELETE FROM sync_items WHERE user_id IN (${userId}::uuid,${otherUserId}::uuid)`);
+    await db.execute(sql`DELETE FROM recipe_image_jobs WHERE user_id IN (${userId}::uuid,${otherUserId}::uuid)`);
+    await db.execute(sql`DELETE FROM recipe_image_jobs WHERE catalog_id LIKE 'red-dedup:%'`);
+    await db.execute(sql`DELETE FROM recipe_image_quota WHERE principal IN (${userId},${otherUserId},'catalog')`);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+  afterAll(async () => {
+    await db.execute(sql`DELETE FROM sync_items WHERE scope_id IN (${userId},${otherUserId})`);
+    await db.execute(sql`DELETE FROM processed_sync_mutations
+      WHERE scope_type='user' AND scope_id IN (${userId},${otherUserId})
+        AND user_id IN (${userId}::uuid,${otherUserId}::uuid)`);
+    await db.execute(sql`DELETE FROM recipe_image_jobs WHERE catalog_id LIKE 'red-dedup:%'`);
+    await db.execute(sql`DELETE FROM users WHERE id IN (${userId}::uuid,${otherUserId}::uuid)`);
+    await db.execute(sql`DELETE FROM recipe_image_quota WHERE principal IN (${userId},${otherUserId},'catalog')`);
+    await database.close();
   });
 
-  it('does not automatically repeat an ambiguous paid generation', async () => {
-    provider.generate.mockRejectedValueOnce(new ImageProviderError(true));
+  it('does not enqueue jobs when a recipe is saved or private consent changes', async () => {
+    await save('automatic-path', { title: 'Saved only', ingredients: [{ name: 'Rice' }] });
     await grantImageConsent();
-    await save('saved_recipe', 'ambiguous', { title: 'Rice', ingredients: [{ name: 'Rice' }] });
-    await runImageTick();
-    const rows = await db.execute(sql`SELECT state,dispatched_at FROM recipe_image_jobs WHERE user_id=${userId}`);
-    expect(rows[0].state).toBe('failed'); expect(rows[0].dispatched_at).not.toBeNull();
-    const count = provider.generate.mock.calls.length;
-    await runImageTick(); expect(provider.generate).toHaveBeenCalledTimes(count);
-  });
-  it('enforces the daily generation quota before dispatch', async () => {
-    await grantImageConsent();
-    await db.execute(sql`INSERT INTO recipe_image_quota(principal,day,used) VALUES(${userId},CURRENT_DATE,5) ON CONFLICT(principal,day) DO UPDATE SET used=5`);
-    await save('generated_recipe','over-quota',{ title: 'Soup', ingredients: [{ name: 'Soup' }] });
-    const calls = provider.generate.mock.calls.length;
-    await runImageTick();
-    const [row] = await db.execute(sql`SELECT state FROM recipe_image_jobs j JOIN sync_items s ON s.id=j.sync_item_id WHERE s.entity_id='over-quota' AND j.user_id=${userId}`);
-    expect(row.state).toBe('quota_exceeded'); expect(provider.generate).toHaveBeenCalledTimes(calls);
-  });
-  it('requires explicit v2 for compliant Commons metadata and bytes, without bypassing private access', async () => {
-    vi.stubEnv('RECIPE_IMAGES_ENABLED','true'); vi.stubEnv('RECIPE_IMAGE_PROVIDER','openai'); vi.stubEnv('OPENAI_API_KEY','test'); vi.stubEnv('RECIPE_IMAGE_MODEL','test'); vi.stubEnv('RECIPE_IMAGE_VISION_MODEL','test');
-    const id = await enqueue('commons');
-    const credit = { source: 'wikimedia' as const, author: 'A. Photographer', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Dish.jpg', license: 'https://creativecommons.org/publicdomain/zero/1.0/' };
-    provider.search.mockResolvedValueOnce({ ...result, ...credit });
-    await tick(db, config, provider, id);
-    const auth = { authenticate: async (token: string) => ({ id: 'test', userId: token === 'owner' ? userId : randomUUID(), email: 'test@example.com', emailVerifiedAt: new Date(), csrfTokenHash: 'test', expiresAt: new Date('2099-01-01') }) } as unknown as AuthService;
-    const app = Fastify(); await app.register(imageRoutes(db,auth,'https://example.com'));
-    const metadata = '/v1/recipe-images/commons?kind=private';
-    const asset = `/v1/recipe-images/assets/${id}`;
-    const get = (url: string, token = 'owner') => app.inject({ url, headers: { cookie: `ikuck_session=${token}` } });
-    try {
-      expect((await get(metadata)).json()).toEqual({ state: 'missing' });
-      expect((await get(asset)).statusCode).toBe(404);
-      for (const query of ['metadataVersion=1', 'metadataVersion=', 'metadataVersion=2&metadataVersion=2']) {
-        expect((await get(`${metadata}&${query}`)).statusCode).toBe(400);
-        expect((await get(`${asset}?${query}`)).statusCode).toBe(400);
-      }
-      const meta = await get(`${metadata}&metadataVersion=2`);
-      expect(meta.headers['cache-control']).toBe('no-store');
-      expect(meta.json()).toMatchObject({ state: 'ready', metadataVersion: 2, ...credit, url: `${asset}?metadataVersion=2` });
-      expect((await get(`${metadata}&metadataVersion=2`, 'other')).json()).toEqual({ state: 'missing', metadataVersion: 2 });
-      expect((await get(`${asset}?metadataVersion=2`, 'other')).statusCode).toBe(404);
-      const binary = await get(`${asset}?metadataVersion=2`);
-      expect(binary.statusCode).toBe(200);
-      expect(binary.headers['cache-control']).toBe('private, no-store');
-      expect(binary.rawPayload).toEqual(result.bytes);
-      // Even credit which happens to look compliant does not establish pre-fix provenance.
-      await db.execute(sql`UPDATE recipe_image_assets SET model=NULL WHERE job_id=${id}`);
-      expect((await get(`${metadata}&metadataVersion=2`)).json()).toEqual({ state: 'missing', metadataVersion: 2 });
-      expect((await get(`${asset}?metadataVersion=2`)).statusCode).toBe(404);
-      const duplicate = await enqueue('duplicate commons');
-      await db.execute(sql`UPDATE recipe_image_jobs SET recipe=(SELECT recipe FROM recipe_image_jobs WHERE id=${id}) WHERE id=${duplicate}`);
-      await tick(db, config, provider, duplicate);
-      expect(provider.generate).toHaveBeenCalledTimes(1);
-    } finally { await app.close(); vi.unstubAllEnvs(); }
-  });
-  it('never serves another user private assets, and marks authorized binaries no-store', async () => {
-    vi.stubEnv('RECIPE_IMAGES_ENABLED','true'); vi.stubEnv('OPENAI_API_KEY','test'); vi.stubEnv('RECIPE_IMAGE_MODEL','test'); vi.stubEnv('RECIPE_IMAGE_VISION_MODEL','test');
-    await save('generated_recipe', 'private-asset-recipe', { title: 'Private asset recipe', ingredients: [{ name: 'Riso' }] });
-    const [job] = await db.execute(sql`SELECT id FROM recipe_image_jobs WHERE user_id=${userId} AND recipe->>'title'='Private asset recipe'`);
-    await db.execute(sql`INSERT INTO recipe_image_assets(job_id,content,hash,width,height,source,author,source_url,license) VALUES(${String(job.id)},${result.bytes},'hash',10,10,'ai','test','','') ON CONFLICT DO NOTHING`);
-    const auth = { authenticate: async (token: string) => ({ id: 'test', userId: token === 'owner' ? userId : randomUUID(), email: 'test@example.com', emailVerifiedAt: new Date(), csrfTokenHash: 'test', expiresAt: new Date('2099-01-01') }) } as unknown as AuthService;
-    const app = Fastify(); await app.register(imageRoutes(db,auth,'https://example.com'));
-    try {
-      const forbidden = await app.inject({ url: `/v1/recipe-images/assets/${job.id}`, headers: { cookie: 'ikuck_session=other' } });
-      expect(forbidden.statusCode).toBe(404);
-      const allowed = await app.inject({ url: `/v1/recipe-images/assets/${job.id}`, headers: { cookie: 'ikuck_session=owner' } });
-      expect(allowed.statusCode).toBe(200); expect(allowed.headers['cache-control']).toBe('private, no-store'); expect(allowed.rawPayload).toEqual(result.bytes);
-    } finally { await app.close(); vi.unstubAllEnvs(); }
+    expect(await db.execute(sql`SELECT id FROM recipe_image_jobs WHERE user_id=${userId}::uuid`)).toEqual([]);
   });
 
+  it('uses only the v3 worker marker and keeps it transaction-local', async () => {
+    await grantImageConsent();
+    await save('fenced', { title: 'Fenced', ingredients: [{ name: 'Rice' }] });
+    const jobId = await enqueuePrivate('fenced');
+    const claim = sql`UPDATE recipe_image_jobs SET state='processing' WHERE id=${jobId}::uuid AND state='pending'`;
+    await expect(db.execute(claim)).rejects.toMatchObject({ cause: { code: '55000' } });
+    await expect(db.transaction(async tx => {
+      await tx.execute(sql`SELECT public.set_recipe_image_policy_v2()`);
+      await tx.execute(claim);
+    })).rejects.toMatchObject({ cause: { code: '55000' } });
+    await expect(db.transaction(async tx => {
+      await tx.execute(sql`SELECT public.set_recipe_image_policy_v3()`);
+      await tx.execute(claim);
+    })).resolves.toBeUndefined();
+    const [marker] = await db.execute(sql`SELECT current_setting('ikuck.recipe_image_policy', true) AS value`);
+    expect(marker.value).not.toBe('recipe-images-v3');
+  });
+
+  it('dispatches one medium square OpenAI request across concurrent claims and reserves one quota unit', async () => {
+    await grantImageConsent();
+    await save('private-dish', {
+      title: 'Private rice bowl',
+      description: 'Do not send',
+      steps: ['Do not send'],
+      ingredients: [{ name: 'Rice', amount: '250 g', privateId: 'Do not send' }],
+    });
+    const jobId = await enqueuePrivate('private-dish');
+    const fetch = vi.fn().mockImplementation(imageResponse);
+    vi.stubGlobal('fetch', fetch);
+
+    await Promise.all([
+      runImageTick(db, config, undefined, jobId),
+      runImageTick(db, config, undefined, jobId),
+    ]);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [target, init] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(target).toBe('https://api.openai.com/v1/images/generations');
+    expect(init.method).toBe('POST');
+    const request = JSON.parse(String(init.body)) as Record<string, unknown>;
+    expect(Object.keys(request).sort()).toEqual(['model', 'n', 'prompt', 'quality', 'size']);
+    expect(request).toMatchObject({ model: config.model, n: 1, size: '1024x1024', quality: 'medium' });
+    expect(request.prompt).toContain('Private rice bowl');
+    expect(request.prompt).toContain('Rice');
+    expect(request.prompt).not.toContain('250 g');
+    expect(request.prompt).not.toContain('Do not send');
+    const [job] = await db.execute(sql`SELECT state,dispatched_at,recipe FROM recipe_image_jobs WHERE id=${jobId}::uuid`);
+    expect(job.state).toBe('ready');
+    expect(job.dispatched_at).not.toBeNull();
+    expect(job.recipe).toEqual({ title: 'Private rice bowl', ingredients: [{ name: 'Rice' }] });
+    const [quota] = await db.execute(sql`SELECT used FROM recipe_image_quota WHERE principal=${userId}`);
+    expect(Number(quota.used)).toBe(1);
+    const [asset] = await db.execute(sql`SELECT source,author,source_url,license,model FROM recipe_image_assets WHERE job_id=${jobId}::uuid`);
+    expect(asset).toEqual({ source: 'ai', author: 'openai', source_url: '', license: '', model: config.model });
+  });
+
+  it('reuses a ready OpenAI image for an equivalent private recipe without a second quota dispatch', async () => {
+    await grantImageConsent();
+    const recipe = { title: 'Equivalent rice bowl', ingredients: [{ name: 'Rice' }, { name: 'Tomato' }] };
+    await save('equivalent-first', recipe);
+    await save('equivalent-second', recipe);
+    const firstJobId = await enqueuePrivate('equivalent-first');
+    const secondJobId = await enqueuePrivate('equivalent-second');
+    expect(firstJobId).not.toBe(secondJobId);
+
+    const fetch = vi.fn().mockImplementation(imageResponse);
+    vi.stubGlobal('fetch', fetch);
+    await runImageTick(db, config, undefined, firstJobId);
+    await db.execute(sql`UPDATE recipe_image_assets SET model='gpt-image-prior-model' WHERE job_id=${firstJobId}::uuid`);
+    const [sourceBeforeReuse] = await db.execute(sql`SELECT encode(content,'base64') AS bytes,hash,width,height,
+      source,author,source_url,license,model FROM recipe_image_assets WHERE job_id=${firstJobId}::uuid`);
+    await runImageTick(db, config, undefined, secondJobId);
+
+    const jobs = await db.execute(sql`SELECT id,state,dispatched_at FROM recipe_image_jobs
+      WHERE id IN (${firstJobId}::uuid,${secondJobId}::uuid) ORDER BY id`);
+    const [quota] = await db.execute(sql`SELECT used FROM recipe_image_quota WHERE principal=${userId}`);
+    const [assets] = await db.execute(sql`SELECT count(*) AS count FROM recipe_image_assets
+      WHERE job_id IN (${firstJobId}::uuid,${secondJobId}::uuid)`);
+    const snapshot = {
+      distinctJobs: jobs.length,
+      states: jobs.map(job => String(job.state)).sort(),
+      generatorDispatched: jobs.find(job => String(job.id) === firstJobId)?.dispatched_at !== null,
+      reusedJobDispatched: jobs.find(job => String(job.id) === secondJobId)?.dispatched_at !== null,
+      providerCalls: fetch.mock.calls.length,
+      quotaUsed: Number(quota?.used ?? 0),
+      assets: Number(assets.count),
+    };
+    expect(snapshot).toEqual({
+      distinctJobs: 2,
+      states: ['ready', 'ready'],
+      generatorDispatched: true,
+      reusedJobDispatched: false,
+      providerCalls: 1,
+      quotaUsed: 1,
+      assets: 2,
+    });
+
+    const [sourceAfterReuse] = await db.execute(sql`SELECT encode(content,'base64') AS bytes,hash,width,height,
+      source,author,source_url,license,model FROM recipe_image_assets WHERE job_id=${firstJobId}::uuid`);
+    const [reusedAsset] = await db.execute(sql`SELECT encode(content,'base64') AS bytes,hash,width,height,
+      source,author,source_url,license,model FROM recipe_image_assets WHERE job_id=${secondJobId}::uuid`);
+    expect(sourceBeforeReuse).toMatchObject({
+      source: 'ai', author: 'openai', source_url: '', license: '', model: 'gpt-image-prior-model',
+    });
+    expect(sourceAfterReuse).toEqual(sourceBeforeReuse);
+    expect(reusedAsset).toEqual(sourceBeforeReuse);
+  });
+
+  it('deduplicates equivalent private jobs when distinct claims run concurrently', async () => {
+    await grantImageConsent();
+    const recipe = { title: 'Concurrent private dish', ingredients: [{ name: 'Chickpeas' }] };
+    await save('concurrent-private-first', recipe);
+    await save('concurrent-private-second', recipe);
+    const firstJobId = await enqueuePrivate('concurrent-private-first');
+    const secondJobId = await enqueuePrivate('concurrent-private-second');
+    expect(firstJobId).not.toBe(secondJobId);
+
+    let releaseProvider: () => void = () => undefined;
+    const providerGate = new Promise<void>(resolve => { releaseProvider = resolve; });
+    const fetch = vi.fn().mockImplementation(async () => {
+      await providerGate;
+      return imageResponse();
+    });
+    vi.stubGlobal('fetch', fetch);
+    const runs: Promise<void>[] = [runImageTick(db, config, undefined, firstJobId)];
+    try {
+      await pollUntil(async () => fetch.mock.calls.length === 1, 'First private provider request did not start');
+      runs.push(runImageTick(db, config, undefined, secondJobId));
+      await waitForBothProcessing(firstJobId, secondJobId);
+    } finally {
+      releaseProvider();
+      await Promise.all(runs);
+    }
+
+    const jobs = await db.execute(sql`SELECT id,state,dispatched_at FROM recipe_image_jobs
+      WHERE id IN (${firstJobId}::uuid,${secondJobId}::uuid)`);
+    const [quota] = await db.execute(sql`SELECT used FROM recipe_image_quota WHERE principal=${userId}`);
+    const [assets] = await db.execute(sql`SELECT count(*) AS count FROM recipe_image_assets
+      WHERE job_id IN (${firstJobId}::uuid,${secondJobId}::uuid)`);
+    expect({
+      distinctJobs: jobs.length,
+      states: jobs.map(job => String(job.state)).sort(),
+      firstDispatched: jobs.find(job => String(job.id) === firstJobId)?.dispatched_at !== null,
+      secondDispatched: jobs.find(job => String(job.id) === secondJobId)?.dispatched_at !== null,
+      providerCalls: fetch.mock.calls.length,
+      quotaUsed: Number(quota?.used ?? 0),
+      assets: Number(assets.count),
+    }).toEqual({
+      distinctJobs: 2,
+      states: ['ready', 'ready'],
+      firstDispatched: true,
+      secondDispatched: false,
+      providerCalls: 1,
+      quotaUsed: 1,
+      assets: 2,
+    });
+  });
+
+  it('deduplicates equivalent catalog jobs when distinct claims run concurrently', async () => {
+    const recipe = { title: 'Concurrent catalog dish', ingredients: [{ name: 'Polenta' }] };
+    const firstJobId = await enqueueCatalog(`red-dedup:${randomUUID()}`, recipe);
+    const secondJobId = await enqueueCatalog(`red-dedup:${randomUUID()}`, recipe);
+    expect(firstJobId).not.toBe(secondJobId);
+
+    let releaseProvider: () => void = () => undefined;
+    const providerGate = new Promise<void>(resolve => { releaseProvider = resolve; });
+    const fetch = vi.fn().mockImplementation(async () => {
+      await providerGate;
+      return imageResponse();
+    });
+    vi.stubGlobal('fetch', fetch);
+    const runs: Promise<void>[] = [runImageTick(db, config, undefined, firstJobId)];
+    try {
+      await pollUntil(async () => fetch.mock.calls.length === 1, 'First catalog provider request did not start');
+      runs.push(runImageTick(db, config, undefined, secondJobId));
+      await waitForBothProcessing(firstJobId, secondJobId);
+    } finally {
+      releaseProvider();
+      await Promise.all(runs);
+    }
+
+    const jobs = await db.execute(sql`SELECT id,state,dispatched_at FROM recipe_image_jobs
+      WHERE id IN (${firstJobId}::uuid,${secondJobId}::uuid)`);
+    const [quota] = await db.execute(sql`SELECT used FROM recipe_image_quota WHERE principal='catalog'`);
+    const [assets] = await db.execute(sql`SELECT count(*) AS count FROM recipe_image_assets
+      WHERE job_id IN (${firstJobId}::uuid,${secondJobId}::uuid)`);
+    expect({
+      distinctJobs: jobs.length,
+      states: jobs.map(job => String(job.state)).sort(),
+      firstDispatched: jobs.find(job => String(job.id) === firstJobId)?.dispatched_at !== null,
+      secondDispatched: jobs.find(job => String(job.id) === secondJobId)?.dispatched_at !== null,
+      providerCalls: fetch.mock.calls.length,
+      quotaUsed: Number(quota?.used ?? 0),
+      assets: Number(assets.count),
+    }).toEqual({
+      distinctJobs: 2,
+      states: ['ready', 'ready'],
+      firstDispatched: true,
+      secondDispatched: false,
+      providerCalls: 1,
+      quotaUsed: 1,
+      assets: 2,
+    });
+  });
+
+  it('does not reuse a private image across different user principals', async () => {
+    const recipe = { title: 'Shared text, private identity', ingredients: [{ name: 'Beans' }] };
+    await grantImageConsent(userId);
+    await grantImageConsent(otherUserId);
+    await save('principal-owner', recipe, 'saved_recipe', userId);
+    await save('principal-other', recipe, 'saved_recipe', otherUserId);
+    const ownerJobId = await enqueuePrivate('principal-owner', userId);
+    const otherJobId = await enqueuePrivate('principal-other', otherUserId);
+    const fetch = vi.fn().mockImplementation(imageResponse);
+    vi.stubGlobal('fetch', fetch);
+
+    await runImageTick(db, config, undefined, ownerJobId);
+    await runImageTick(db, config, undefined, otherJobId);
+
+    const jobs = await db.execute(sql`SELECT state FROM recipe_image_jobs
+      WHERE id IN (${ownerJobId}::uuid,${otherJobId}::uuid)`);
+    const quotas = await db.execute(sql`SELECT principal,used FROM recipe_image_quota
+      WHERE principal IN (${userId},${otherUserId}) ORDER BY principal`);
+    expect({
+      distinctJobs: jobs.length,
+      states: jobs.map(job => String(job.state)).sort(),
+      providerCalls: fetch.mock.calls.length,
+      quotaUsedByPrincipal: quotas.map(row => Number(row.used)),
+    }).toEqual({
+      distinctJobs: 2,
+      states: ['ready', 'ready'],
+      providerCalls: 2,
+      quotaUsedByPrincipal: [1, 1],
+    });
+  });
+
+  it('does not reuse a catalog image for a private recipe with identical content', async () => {
+    const recipe = { title: 'Catalog only image', ingredients: [{ name: 'Polenta' }] };
+    const catalogJobId = await seedReadyCatalogAsset(recipe, seededProvenance({
+      source: 'ai', author: 'openai', model: 'gpt-image-prior-model',
+    }));
+    await grantImageConsent();
+    await save('private-catalog-match', recipe);
+    const privateJobId = await enqueuePrivate('private-catalog-match');
+    const fetch = vi.fn().mockImplementation(imageResponse);
+    vi.stubGlobal('fetch', fetch);
+
+    await runImageTick(db, config, undefined, privateJobId);
+
+    const [privateJob] = await db.execute(sql`SELECT state FROM recipe_image_jobs WHERE id=${privateJobId}::uuid`);
+    const [sourceAsset] = await db.execute(sql`SELECT source,author,model FROM recipe_image_assets WHERE job_id=${catalogJobId}::uuid`);
+    const [quota] = await db.execute(sql`SELECT used FROM recipe_image_quota WHERE principal=${userId}`);
+    expect({
+      privateState: privateJob.state,
+      providerCalls: fetch.mock.calls.length,
+      privateQuota: Number(quota?.used ?? 0),
+      catalogSource: sourceAsset,
+    }).toEqual({
+      privateState: 'ready',
+      providerCalls: 1,
+      privateQuota: 1,
+      catalogSource: { source: 'ai', author: 'openai', model: 'gpt-image-prior-model' },
+    });
+  });
+
+  it.each([
+    ['Gemini-marked AI', { source: 'ai', author: 'gemini', model: 'gemini-image-model' }],
+    ['AI with an empty author marker', { source: 'ai', author: '', model: 'openai-image-model' }],
+    ['AI with no model marker', { source: 'ai', author: 'openai', model: null }],
+    ['AI with an empty model marker', { source: 'ai', author: 'openai', model: '' }],
+    ['Pexels with valid credit', {
+      source: 'pexels', author: 'Pexels contributor', model: null,
+      sourceUrl: 'https://www.pexels.com/photo/example', license: 'https://www.pexels.com/license/',
+    }],
+    ['Wikimedia CC0 with valid credit', {
+      source: 'wikimedia', author: 'Commons contributor', model: COMMONS_ASSET_PROVENANCE,
+      sourceUrl: 'https://commons.wikimedia.org/wiki/File:Example.jpg',
+      license: 'https://creativecommons.org/publicdomain/zero/1.0/',
+    }],
+  ] as const)('does not reuse %s as an OpenAI source asset', async (_label, source) => {
+    const recipe = { title: 'Provenance control', ingredients: [{ name: 'Lentils' }] };
+    await grantImageConsent();
+    const expectedSource = seededProvenance(source);
+    const sourceJobId = await seedReadyPrivateAsset(userId, 'source-provenance', recipe, expectedSource);
+    await save('target-provenance', recipe);
+    const targetJobId = await enqueuePrivate('target-provenance');
+    const fetch = vi.fn().mockImplementation(imageResponse);
+    vi.stubGlobal('fetch', fetch);
+
+    await runImageTick(db, config, undefined, targetJobId);
+
+    const [targetJob] = await db.execute(sql`SELECT state FROM recipe_image_jobs WHERE id=${targetJobId}::uuid`);
+    const [quota] = await db.execute(sql`SELECT used FROM recipe_image_quota WHERE principal=${userId}`);
+    const [sourceAsset] = await db.execute(sql`SELECT source,author,source_url,license,model
+      FROM recipe_image_assets WHERE job_id=${sourceJobId}::uuid`);
+    expect({
+      targetState: targetJob.state,
+      providerCalls: fetch.mock.calls.length,
+      quotaUsed: Number(quota?.used ?? 0),
+      sourceAsset,
+    }).toEqual({
+      targetState: 'ready',
+      providerCalls: 1,
+      quotaUsed: 1,
+      sourceAsset: {
+        source: expectedSource.source, author: expectedSource.author, source_url: expectedSource.sourceUrl,
+        license: expectedSource.license, model: expectedSource.model,
+      },
+    });
+  });
+
+  it('does not automatically retry an ambiguous dispatch but permits a fresh single retry', async () => {
+    await grantImageConsent();
+    await save('ambiguous', { title: 'Ambiguous dish', ingredients: [{ name: 'Rice' }] });
+    const jobId = await enqueuePrivate('ambiguous');
+    const fetch = vi.fn().mockRejectedValueOnce(new Error('connection reset'));
+    vi.stubGlobal('fetch', fetch);
+
+    await runImageTick(db, config, undefined, jobId);
+    await runImageTick(db, config, undefined, jobId);
+    const [failed] = await db.execute(sql`SELECT state,dispatched_at FROM recipe_image_jobs WHERE id=${jobId}::uuid`);
+    expect(failed.state).toBe('failed');
+    expect(failed.dispatched_at).not.toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [firstQuota] = await db.execute(sql`SELECT used FROM recipe_image_quota WHERE principal=${userId}`);
+    expect(Number(firstQuota.used)).toBe(1);
+
+    expect(await enqueuePrivate('ambiguous')).toBe(jobId);
+    fetch.mockResolvedValueOnce(await imageResponse());
+    await runImageTick(db, config, undefined, jobId);
+    const [ready] = await db.execute(sql`SELECT state,dispatched_at FROM recipe_image_jobs WHERE id=${jobId}::uuid`);
+    expect(ready.state).toBe('ready');
+    expect(ready.dispatched_at).not.toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const [quota] = await db.execute(sql`SELECT used FROM recipe_image_quota WHERE principal=${userId}`);
+    expect(Number(quota.used)).toBe(2);
+  });
+
+  it.each([
+    ['missing v3 grant', false],
+    ['revoked v3 grant', true],
+  ] as const)('requires current image consent before reusing a ready asset when %s', async (_consentState, revokeGrant) => {
+    const suffix = randomUUID();
+    const recipe = { title: 'R12 private dish', ingredients: [{ name: 'Rice' }, { name: 'Beans' }] };
+    const sourceJobId = await seedReadyPrivateAsset(userId, `r12-source-${suffix}`, recipe, seededProvenance({
+      source: 'ai', author: 'openai', model: 'gpt-image-r12-prior-model',
+    }));
+    await save(`r12-target-${suffix}`, recipe);
+    const targetJobId = await enqueuePrivate(`r12-target-${suffix}`);
+    expect(targetJobId).not.toBe(sourceJobId);
+
+    const jobsBefore = await db.execute(sql`SELECT id,user_id,sync_item_id,state,dispatched_at,recipe
+      FROM recipe_image_jobs WHERE id IN (${sourceJobId}::uuid,${targetJobId}::uuid)`);
+    const sourceBefore = jobsBefore.find(job => String(job.id) === sourceJobId);
+    const targetBefore = jobsBefore.find(job => String(job.id) === targetJobId);
+    expect(sourceBefore).toMatchObject({ user_id: userId, state: 'ready', recipe });
+    expect(targetBefore).toMatchObject({ user_id: userId, state: 'pending', recipe });
+    expect(sourceBefore?.sync_item_id).not.toBe(targetBefore?.sync_item_id);
+
+    if (revokeGrant) {
+      await grantImageConsent();
+      await createDrizzleSyncRepository(db).updateAiConsent(userId, { enabled: false });
+    }
+
+    await db.execute(sql`INSERT INTO recipe_image_quota(principal,day,used) VALUES(${userId},CURRENT_DATE,2)`);
+    const [sourceAssetBefore] = await db.execute(sql`SELECT job_id,encode(content,'base64') AS bytes,hash,width,height,
+      source,author,source_url,license,model FROM recipe_image_assets WHERE job_id=${sourceJobId}::uuid`);
+    expect(sourceAssetBefore).toMatchObject({
+      job_id: sourceJobId, source: 'ai', author: 'openai', model: 'gpt-image-r12-prior-model',
+    });
+    const fetch = vi.fn().mockImplementation(imageResponse);
+    vi.stubGlobal('fetch', fetch);
+
+    await runImageTick(db, config, undefined, targetJobId);
+
+    const [targetAfter] = await db.execute(sql`SELECT state,dispatched_at FROM recipe_image_jobs WHERE id=${targetJobId}::uuid`);
+    const [targetAssets] = await db.execute(sql`SELECT count(*) AS count FROM recipe_image_assets WHERE job_id=${targetJobId}::uuid`);
+    const [quotaAfter] = await db.execute(sql`SELECT used FROM recipe_image_quota WHERE principal=${userId} AND day=CURRENT_DATE`);
+    const [sourceJobAfter] = await db.execute(sql`SELECT id,user_id,sync_item_id,state,dispatched_at,recipe
+      FROM recipe_image_jobs WHERE id=${sourceJobId}::uuid`);
+    const [sourceAssetAfter] = await db.execute(sql`SELECT job_id,encode(content,'base64') AS bytes,hash,width,height,
+      source,author,source_url,license,model FROM recipe_image_assets WHERE job_id=${sourceJobId}::uuid`);
+
+    expect({
+      targetState: targetAfter.state,
+      targetDispatched: targetAfter.dispatched_at !== null,
+      targetAssets: Number(targetAssets.count),
+      providerCalls: fetch.mock.calls.length,
+      quotaUsed: Number(quotaAfter.used),
+      sourceJob: sourceJobAfter,
+      sourceAsset: sourceAssetAfter,
+    }).toEqual({
+      targetState: 'consent_required',
+      targetDispatched: false,
+      targetAssets: 0,
+      providerCalls: 0,
+      quotaUsed: 2,
+      sourceJob: sourceBefore,
+      sourceAsset: sourceAssetBefore,
+    });
+  });
+
+  it('rechecks private consent immediately before dispatch and respects the daily quota', async () => {
+    await grantImageConsent();
+    await save('revoked', { title: 'Private after revoke', ingredients: [{ name: 'Rice' }] });
+    const revokedJob = await enqueuePrivate('revoked');
+    await createDrizzleSyncRepository(db).updateAiConsent(userId, { enabled: false });
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    await runImageTick(db, config, undefined, revokedJob);
+    const [revoked] = await db.execute(sql`SELECT state FROM recipe_image_jobs WHERE id=${revokedJob}::uuid`);
+    expect(revoked.state).toBe('consent_required');
+    expect(fetch).not.toHaveBeenCalled();
+
+    await grantImageConsent();
+    await save('quota-boundary', { title: 'At limit', ingredients: [{ name: 'Rice' }] });
+    const quotaJob = await enqueuePrivate('quota-boundary');
+    await db.execute(sql`INSERT INTO recipe_image_quota(principal,day,used) VALUES(${userId},CURRENT_DATE,5)
+      ON CONFLICT(principal,day) DO UPDATE SET used=5`);
+    await runImageTick(db, config, undefined, quotaJob);
+    const [limited] = await db.execute(sql`SELECT state,dispatched_at FROM recipe_image_jobs WHERE id=${quotaJob}::uuid`);
+    expect(limited.state).toBe('quota_exceeded');
+    expect(limited.dispatched_at).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });

@@ -6,27 +6,42 @@ import { useAuthStore } from '../../auth/authStore';
 import { setActiveDataScope } from '../../sync/scopeContext';
 
 const account = { id: 'image-user', email: 'images@example.com', emailVerifiedAt: '2026-11-01T00:00:00Z' };
-const status = (enabled = true) => ({
-  consent: { enabled, updatedAt: '2026-11-01T00:00:00Z', ...(enabled ? { imageProvider: 'openai', imagePolicyVersion: 'recipe-images-v2' } : {}) },
-  selectedProvider: 'gemini', selectedImageProvider: 'openai',
+const status = (enabled = true, imagePolicyVersion = 'recipe-images-v3') => ({
+  consent: {
+    enabled,
+    updatedAt: '2026-11-01T00:00:00Z',
+    ...(enabled ? { imageProvider: 'openai', imagePolicyVersion } : {}),
+  },
+  selectedProvider: 'gemini',
+  selectedImageProvider: 'openai',
 });
 const json = (data: unknown, code = 200) => new Response(JSON.stringify(data), { status: code });
 
 beforeEach(() => {
-  vi.stubEnv('VITE_RECIPE_IMAGES_ENABLED', 'true');
   useAuthStore.setState({ user: account, csrfToken: 'image-csrf' });
   setActiveDataScope('account:image-user');
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe('RecipeImageGeneration', () => {
-  it('queues the collection once with CSRF and reports the accepted count', async () => {
-    const fetch = vi.fn().mockResolvedValueOnce(json(status())).mockResolvedValueOnce(json({ queued: 12 }, 202));
+  it('shows one recipe action and dispatches only after the visible catalog button is clicked', async () => {
+    const fetch = vi.fn().mockResolvedValue(json({ queued: 1 }, 202));
     vi.stubGlobal('fetch', fetch);
-    render(<RecipeImageGeneration />);
-    await userEvent.click(screen.getByRole('button', { name: 'Genera tutte le immagini' }));
-    expect(await screen.findByRole('status')).toHaveTextContent('12 immagini aggiunte alla coda');
-    expect(fetch).toHaveBeenLastCalledWith('/v1/recipe-images/generate', expect.objectContaining({ method: 'POST', headers: { 'x-csrf-token': 'image-csrf' } }));
+    render(<RecipeImageGeneration recipeId="pollo-al-limone" />);
+
+    const generateButton = screen.getByRole('button', { name: 'Genera immagine' });
+    expect(generateButton).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Genera tutte le immagini' })).not.toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled();
+
+    await userEvent.click(generateButton);
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Immagine aggiunta alla coda');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith('/v1/recipe-images/pollo-al-limone/generate?kind=catalog', expect.objectContaining({
+      method: 'POST',
+      headers: { 'x-csrf-token': 'image-csrf' },
+    }));
   });
 
   it('requests a catalog image without requesting private-data consent', async () => {
@@ -34,52 +49,79 @@ describe('RecipeImageGeneration', () => {
     vi.stubGlobal('fetch', fetch);
     render(<RecipeImageGeneration recipeId="pollo-al-limone" />);
     await userEvent.click(screen.getByRole('button', { name: 'Genera immagine' }));
+
     expect(await screen.findByRole('status')).toHaveTextContent('Immagine aggiunta alla coda');
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledWith('/v1/recipe-images/pollo-al-limone/generate?kind=catalog', expect.objectContaining({ method: 'POST' }));
   });
 
-  it('links to Profile settings when private image consent is missing', async () => {
+  it('shows the exact OpenAI disclosure and Profile link when private image consent is missing', async () => {
     const fetch = vi.fn().mockResolvedValueOnce(json(status(false)));
     vi.stubGlobal('fetch', fetch);
     render(<RecipeImageGeneration recipeId="personal-recipe" />);
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Genera immagine' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Genera immagine' }));
 
-    expect(screen.getByText(/foto candidate vengono inviati a OpenAI/)).toBeInTheDocument();
-    const settingsLink = screen.getByRole('link', { name: /gestisci il consenso immagini nel profilo/i });
-    expect(settingsLink).toHaveAttribute('href', '/profile#ai-consent-settings');
+    expect(screen.getByText(/inviamo a OpenAI soltanto il titolo della ricetta e i nomi degli ingredienti/i)).toBeVisible();
+    expect(screen.getByText(/Quantità, descrizione, passaggi, profilo alimentare e dispensa non vengono inviati/i)).toBeVisible();
+    expect(screen.queryByText(/Wikimedia Commons|foto candidate|Gemini/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /gestisci il consenso immagini nel profilo/i })).toHaveAttribute('href', '/profile#ai-consent-settings');
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Conferma e genera' })).not.toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch).not.toHaveBeenCalledWith('/v1/recipe-images/personal-recipe/generate?kind=private', expect.anything());
   });
 
-  it('refreshes the server-selected image provider and keeps the Profile settings link', async () => {
-    const fetch = vi.fn().mockResolvedValueOnce(json(status(false)))
-      .mockResolvedValueOnce(json({ ...status(false), selectedImageProvider: 'gemini' }));
+  it('requires a fresh v3 grant before sending a private recipe with a legacy v2 grant', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(json(status(true, 'recipe-images-v2')));
     vi.stubGlobal('fetch', fetch);
-    render(<RecipeImageGeneration />);
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Genera tutte le immagini' }));
-    expect(await screen.findByText(/foto candidate vengono inviati a OpenAI/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /gestisci il consenso immagini nel profilo/i })).toHaveAttribute('href', '/profile#ai-consent-settings');
+    render(<RecipeImageGeneration recipeId="personal-recipe" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Genera immagine' }));
 
-    await user.click(screen.getByRole('button', { name: 'Genera tutte le immagini' }));
-    expect(await screen.findByText(/foto candidate vengono inviati a Google Gemini/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /gestisci il consenso immagini nel profilo/i })).toBeInTheDocument();
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.getByText(/inviamo a OpenAI soltanto il titolo della ricetta e i nomi degli ingredienti/i)).toBeVisible();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalledWith('/v1/recipe-images/personal-recipe/generate?kind=private', expect.anything());
+  });
+
+  it('sends one private request only after the matching OpenAI v3 grant is confirmed', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(json(status()))
+      .mockResolvedValueOnce(json({ queued: 1 }, 202));
+    vi.stubGlobal('fetch', fetch);
+    render(<RecipeImageGeneration recipeId="personal-recipe" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Genera immagine' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Immagine aggiunta alla coda');
     expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenNthCalledWith(2, '/v1/recipe-images/personal-recipe/generate?kind=private', expect.objectContaining({
+      method: 'POST',
+      headers: { 'x-csrf-token': 'image-csrf' },
+    }));
+  });
+
+  it('fails closed for a stale Gemini image provider', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(json({
+      ...status(true, 'recipe-images-v3'),
+      consent: { enabled: true, imageProvider: 'gemini', imagePolicyVersion: 'recipe-images-v3', updatedAt: '2026-11-01T00:00:00Z' },
+      selectedImageProvider: 'gemini',
+    }));
+    vi.stubGlobal('fetch', fetch);
+    render(<RecipeImageGeneration recipeId="personal-recipe" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Genera immagine' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Il servizio immagini non è attivo sul server.');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalledWith('/v1/recipe-images/personal-recipe/generate?kind=private', expect.anything());
   });
 
   it('does not queue or show stale results after switching accounts', async () => {
     let resolve!: (value: Response) => void;
     const fetch = vi.fn().mockReturnValue(new Promise<Response>(done => { resolve = done; }));
     vi.stubGlobal('fetch', fetch);
-    render(<RecipeImageGeneration />);
-    await userEvent.click(screen.getByRole('button', { name: 'Genera tutte le immagini' }));
+    render(<RecipeImageGeneration recipeId="personal-recipe" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Genera immagine' }));
     act(() => useAuthStore.setState({ user: { ...account, id: 'other-user' }, csrfToken: 'other-csrf' }));
     await act(async () => { resolve(json(status())); });
+
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
@@ -94,24 +136,15 @@ describe('RecipeImageGeneration', () => {
 
   it('keeps generation disabled for guests', () => {
     useAuthStore.setState({ user: null, csrfToken: null });
-    render(<RecipeImageGeneration />);
-    expect(screen.getByRole('button')).toBeDisabled();
+    render(<RecipeImageGeneration recipeId="pollo-al-limone" />);
+    expect(screen.getByRole('button', { name: 'Genera immagine' })).toBeDisabled();
     expect(screen.getByText(/Accedi con un account verificato/)).toBeInTheDocument();
-  });
-
-  it('uses the runtime service even when the old build flag was disabled', async () => {
-    vi.stubEnv('VITE_RECIPE_IMAGES_ENABLED', 'false');
-    const fetch = vi.fn().mockResolvedValueOnce(json(status())).mockResolvedValueOnce(json({ queued: 1 }, 202));
-    vi.stubGlobal('fetch', fetch);
-    render(<RecipeImageGeneration />);
-    await userEvent.click(screen.getByRole('button', { name: 'Genera tutte le immagini' }));
-    expect(await screen.findByRole('status')).toHaveTextContent('Immagine aggiunta alla coda');
   });
 
   it.each([
     ['null', { ...status(), selectedImageProvider: null }],
     ['omitted', { ...status(), selectedImageProvider: undefined }],
-  ])('fails closed for private image dispatch when the selected image provider is %s', async (_availability, response) => {
+  ])('fails closed for private dispatch when the image provider is %s', async (_availability, response) => {
     const fetch = vi.fn().mockResolvedValue(json(response));
     vi.stubGlobal('fetch', fetch);
     render(<RecipeImageGeneration recipeId="personal-recipe" />);

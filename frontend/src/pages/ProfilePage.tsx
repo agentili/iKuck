@@ -1,4 +1,3 @@
-import RecipeImageGeneration from '../components/recipe/RecipeImageGeneration';
 import { safePushDestination } from '../push/payload';
 import PushSettings from '../push/PushSettings';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -393,11 +392,6 @@ export default function ProfilePage() {
         </div>
 
         <AiConsentSettings />
-
-        <section className="mt-7 border-t border-[var(--ik-border)] pt-6" aria-labelledby="recipe-images-heading">
-          <h2 id="recipe-images-heading" className="text-xl font-black text-[var(--ik-ink)]">Immagini delle ricette</h2>
-          <RecipeImageGeneration />
-        </section>
 
         <div className="mt-7 grid gap-3 border-t border-[var(--ik-border)] pt-6">
           <h2 className="text-xl font-black text-[var(--ik-ink)]">I tuoi dati</h2>

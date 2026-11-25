@@ -167,7 +167,7 @@ export interface AiConsent {
   dinnerProvider?: AiRecipeProvider;
   chatProvider?: AiRecipeProvider;
   chatPolicyVersion?: 'chef-chat-v1';
-  imagePolicyVersion?: 'recipe-images-v1' | 'recipe-images-v2';
+  imagePolicyVersion?: 'recipe-images-v1' | 'recipe-images-v2' | 'recipe-images-v3';
   imageProvider?: AiRecipeProvider;
 }
 

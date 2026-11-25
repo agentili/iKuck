@@ -53,7 +53,7 @@ const aiConsentObjectSchema = z.object({
   dinnerProvider: z.enum(['openai', 'gemini']).optional(),
   chatProvider: z.enum(['openai', 'gemini']).optional(),
   chatPolicyVersion: z.literal('chef-chat-v1').optional(),
-  imagePolicyVersion: z.enum(['recipe-images-v1', 'recipe-images-v2']).optional(),
+  imagePolicyVersion: z.enum(['recipe-images-v1', 'recipe-images-v2', 'recipe-images-v3']).optional(),
   imageProvider: z.enum(['openai', 'gemini']).optional(),
 }).strict();
 

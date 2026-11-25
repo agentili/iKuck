@@ -300,45 +300,48 @@ describe('sync repository', () => {
     await expect(repository.readEntity('user-1', 'ai_consent', 'profile')).resolves.toBeNull();
   });
 
-  it('accepts image-only consent with a current revision without granting Home and clears it on revoke', async () => {
+  it('accepts only explicit v3 OpenAI image consent with a current revision and clears it on revoke', async () => {
     const repository = createMemorySyncRepository();
     const initialRevision = '1970-01-01T00:00:00.000Z';
     const imageConsent = await repository.updateAiConsent('user-1', {
       enabled: true,
-      imagePolicyVersion: 'recipe-images-v2',
-      imageProvider: 'gemini',
+      imagePolicyVersion: 'recipe-images-v3',
+      imageProvider: 'openai',
       expectedRevision: initialRevision,
     });
 
     expect(imageConsent).toMatchObject({
       enabled: true,
-      imagePolicyVersion: 'recipe-images-v2',
-      imageProvider: 'gemini',
+      imagePolicyVersion: 'recipe-images-v3',
+      imageProvider: 'openai',
     });
     expect(imageConsent).not.toHaveProperty('homeProvider');
     expect(imageConsent).not.toHaveProperty('dinnerProvider');
     expect(imageConsent).not.toHaveProperty('chatProvider');
-    await expect(repository.withAiConsentDispatch('user-1', { kind: 'home', provider: 'gemini' }, async () => 'dispatched'))
+    await expect(repository.withAiConsentDispatch('user-1', { kind: 'home', provider: 'openai' }, async () => 'dispatched'))
       .rejects.toMatchObject({ code: 'ai_consent_required' });
-    await expect(repository.updateAiConsent('user-1', {
-      imagePolicyVersion: 'recipe-images-v2',
-      expectedRevision: imageConsent.updatedAt,
-    })).rejects.toMatchObject({ code: 'ai_consent_revision_required' });
-    await expect(repository.updateAiConsent('user-1', {
-      imagePolicyVersion: 'recipe-images-v2',
-      imageProvider: null as unknown as 'gemini',
-      expectedRevision: imageConsent.updatedAt,
-    })).rejects.toMatchObject({ code: 'ai_consent_revision_required' });
 
     await expect(repository.updateAiConsent('user-1', {
       enabled: true,
-      imagePolicyVersion: 'recipe-images-v2',
-      imageProvider: 'gemini',
+      imagePolicyVersion: 'recipe-images-v2' as 'recipe-images-v3',
+      imageProvider: 'openai',
+      expectedRevision: imageConsent.updatedAt,
     })).rejects.toMatchObject({ code: 'ai_consent_revision_required' });
     await expect(repository.updateAiConsent('user-1', {
       enabled: true,
-      imagePolicyVersion: 'recipe-images-v2',
+      imagePolicyVersion: 'recipe-images-v3',
       imageProvider: 'gemini',
+      expectedRevision: imageConsent.updatedAt,
+    })).rejects.toMatchObject({ code: 'ai_consent_revision_required' });
+    await expect(repository.updateAiConsent('user-1', {
+      enabled: true,
+      imagePolicyVersion: 'recipe-images-v3',
+      imageProvider: 'openai',
+    })).rejects.toMatchObject({ code: 'ai_consent_revision_required' });
+    await expect(repository.updateAiConsent('user-1', {
+      enabled: true,
+      imagePolicyVersion: 'recipe-images-v3',
+      imageProvider: 'openai',
       expectedRevision: initialRevision,
     })).rejects.toMatchObject({ code: 'ai_consent_revision_conflict' });
 

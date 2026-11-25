@@ -90,14 +90,14 @@ const statusFor = (principal: FakePrincipal) => principal.key === 'owner-a'
   ? {
     consent: { enabled: false, updatedAt: '2026-11-16T12:00:00.000Z' },
     selectedProvider: 'openai',
-    selectedImageProvider: 'gemini',
+    selectedImageProvider: 'openai',
   }
   : {
     consent: {
       enabled: true,
       homeProvider: 'gemini',
       imageProvider: 'openai',
-      imagePolicyVersion: 'recipe-images-v2',
+      imagePolicyVersion: 'recipe-images-v3',
       updatedAt: '2026-11-16T12:03:00.000Z',
     },
     selectedProvider: 'gemini',
@@ -279,7 +279,7 @@ for (const permission of ['home', 'images'] as const) {
       name: 'Acconsento all’invio a OpenAI dei dati necessari per creare ricette AI',
     });
     const ownerAImagesCheckbox = raceSettings.getByRole('checkbox', {
-      name: 'Acconsento all’invio a Gemini di Google per le immagini delle ricette',
+      name: 'Acconsento all’invio a OpenAI per le immagini delle ricette',
     });
     if (permission === 'home') {
       await expect(ownerAHomeCheckbox).not.toBeChecked();
@@ -360,7 +360,7 @@ for (const permission of ['home', 'images'] as const) {
     await expect(raceSettings.getByRole('alert')).toHaveCount(0);
     await expect(raceSettings.getByText(/Il consenso è cambiato/i)).toHaveCount(0);
     await expect(raceSettings.getByText('Consenso attivo per OpenAI.')).toHaveCount(0);
-    await expect(raceSettings.getByText(/Consenso immagini attivo per Gemini di Google/)).toHaveCount(0);
+    await expect(raceSettings.getByText(/Consenso immagini attivo per OpenAI/)).toBeVisible();
 
     const grantWrites = consentRequests.filter((request) => request.method === 'PUT');
     expect(grantWrites).toHaveLength(1);
@@ -370,7 +370,7 @@ for (const permission of ['home', 'images'] as const) {
       csrfToken: ownerA.csrfToken,
       body: permission === 'home'
         ? { enabled: true, homeProvider: 'openai', expectedRevision: '2026-11-16T12:00:00.000Z' }
-        : { enabled: true, imagePolicyVersion: 'recipe-images-v2', imageProvider: 'gemini', expectedRevision: '2026-11-16T12:00:00.000Z' },
+        : { enabled: true, imagePolicyVersion: 'recipe-images-v3', imageProvider: 'openai', expectedRevision: '2026-11-16T12:00:00.000Z' },
     });
     expect(staleRefreshRecord).toMatchObject({
       method: 'GET',
