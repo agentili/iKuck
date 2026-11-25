@@ -48,10 +48,10 @@ Per provare le ricette AI in modalità standalone puoi configurare `RECIPE_PROVI
 
 ## 4. Prima installazione su un database nuovo
 
-Usa `fresh` solo dopo aver verificato che il database è nuovo e che non esistono worker immagini collegati, nemmeno da altri progetti o host. Dalla release compatibile con la policy immagini v2, indica il nome Compose verificato. Il gate non modifica l’env e avvia la composizione con le immagini disabilitate:
+Usa `fresh` solo dopo aver verificato che il database è nuovo e che non esistono API o worker immagini collegati, nemmeno da altri progetti o host. Dalla release compatibile con la policy immagini v3, indica il nome Compose verificato. Il gate non modifica l’env e avvia la composizione con le immagini disabilitate:
 
 ```bash
-sh deploy/image-cutover.sh all-db-workers-quiesced fresh "$VERIFIED_PROJECT" \
+sh deploy/image-cutover.sh all-db-image-clients-quiesced fresh "$VERIFIED_PROJECT" \
   deploy/.env.standalone deploy/docker-compose.standalone.yml
 ```
 
@@ -93,14 +93,14 @@ Fermare i container mantenendo i dati:
 docker compose -p "$VERIFIED_PROJECT" --env-file deploy/.env.standalone -f deploy/docker-compose.standalone.yml stop
 ```
 
-Per aggiornare alla release con la migrazione `0020`, non fare `git pull` seguito da `compose up`. Prima fai un backup verificato, identifica progetto e database esistenti e ferma in modo pulito tutti i worker immagini collegati a quel database. Compose non vede processi manuali, altri progetti o altri host. Blocca deploy concorrenti e riavvii, conserva i container fermi per l’ispezione e usa la release v2 approvata. Solo dopo aver verificato la quiescenza puoi attestare:
+Per aggiornare alla release con la migrazione `0021`, non fare `git pull` seguito da `compose up`. Prima fai un backup verificato, identifica progetto e database esistenti e quiesci in modo pulito tutte le vecchie API immagini e i worker collegati a quel database. Compose non vede processi manuali, altri progetti o altri host; il blocco DB rifiuta comunque enqueue API e dispatch worker v2. Blocca deploy concorrenti e riavvii, conserva i container fermi per l’ispezione e usa la release v3 approvata. Solo dopo aver verificato la quiescenza puoi attestare:
 
 ```bash
-sh deploy/image-cutover.sh all-db-workers-quiesced upgrade "$VERIFIED_PROJECT" \
+sh deploy/image-cutover.sh all-db-image-clients-quiesced upgrade "$VERIFIED_PROJECT" \
   deploy/.env.standalone deploy/docker-compose.standalone.yml
 ```
 
-Il gate rifiuta un inventario worker vuoto o non verificabile in upgrade: non usare `fresh` come scorciatoia. Dopo aver verificato l’avvio disabilitato, abilita le immagini separatamente come nel [runbook immagini](recipe-images.md#activating-an-existing-deployment). Per il rollback ferma i worker e ricrea l’API compatibile con v2 con `RECIPE_IMAGES_ENABLED=false`; non ripristinare binari precedenti a v2, non fare downgrade dello schema e non azzerare quote o marcatori di invio. Non usare `down --volumes`: elimina i volumi persistenti.
+Il gate rifiuta un inventario API/worker vuoto o non verificabile in upgrade: non usare `fresh` come scorciatoia. Dopo aver verificato l’avvio disabilitato, abilita le immagini separatamente come nel [runbook immagini](recipe-images.md#activating-an-existing-deployment). Per il rollback quiesci API e worker e ricrea l’API/worker compatibili con v3 con `RECIPE_IMAGES_ENABLED=false`; non ripristinare binari precedenti a v3, non fare downgrade dello schema e non azzerare quote o marcatori di invio. Non usare `down --volumes`: elimina i volumi persistenti.
 
 ## 6. Backup e ripristino
 
@@ -117,7 +117,7 @@ COMPOSE_FILE=deploy/docker-compose.standalone.yml \
   sh deploy/backup-postgres.sh
 ```
 
-Per ripristinare un archivio verificato, fermati prima e assicurati di avere una copia dei dati correnti. Il ripristino riavvia l’API: se c’è un passaggio alla policy v2, non usarlo per aggirare la procedura di cutover. Dopo `0020` non usare un restore pre-v2 come rollback delle immagini:
+Per ripristinare un archivio verificato, fermati prima e assicurati di avere una copia dei dati correnti. Il ripristino riavvia l’API: se c’è un passaggio alla policy v3, non usarlo per aggirare la procedura di cutover. Dopo `0021` non usare un restore pre-v3 come rollback delle immagini:
 
 ```bash
 set -a

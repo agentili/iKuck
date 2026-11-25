@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -51,13 +51,20 @@ afterEach(() => {
 });
 
 describe('deployment contracts', () => {
-  it('requires operator attestation and routes deploys through the v2 cutover gate', () => {
+  it('does not expose a bulk recipe-image backfill command', () => {
+    const root = resolve(process.cwd(), '..');
+    const pkg = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8')) as { scripts: Record<string, string> };
+    expect(pkg.scripts).not.toHaveProperty('images:backfill');
+    expect(existsSync(resolve(root, 'backend/scripts/backfill-recipe-images.ts'))).toBe(false);
+  });
+
+  it('requires operator attestation and routes deploys through the v3 cutover gate', () => {
     const workflow = readFileSync(resolve(process.cwd(), '..', '.github/workflows/deploy.yml'), 'utf8');
     expect(workflow).toMatch(/concurrency:[\s\S]*cancel-in-progress: false/);
-    expect(workflow).toMatch(/all_db_workers_quiesced:[\s\S]*type: boolean[\s\S]*default: false/);
-    expect(workflow).toMatch(/WORKERS_QUIESCED: \$\{\{ inputs\.all_db_workers_quiesced \}\}[\s\S]*\[ "\$WORKERS_QUIESCED" != true \][\s\S]*exit 1/);
+    expect(workflow).toMatch(/all_db_image_clients_quiesced:[\s\S]*type: boolean[\s\S]*default: false/);
+    expect(workflow).toMatch(/IMAGE_CLIENTS_QUIESCED: \$\{\{ inputs\.all_db_image_clients_quiesced \}\}[\s\S]*\[ "\$IMAGE_CLIENTS_QUIESCED" != true \][\s\S]*exit 1/);
     expect(workflow).toMatch(/environment: \$\{\{ github\.event\.inputs\.environment \}\}/);
-    expect(workflow).toMatch(/set_recipe_image_policy_v2[\s\S]*sh deploy\/image-cutover\.sh all-db-workers-quiesced '\$CUTOVER_TARGET' '\$COMPOSE_PROJECT'/);
+    expect(workflow).toMatch(/set_recipe_image_policy_v3[\s\S]*sh deploy\/image-cutover\.sh all-db-image-clients-quiesced '\$CUTOVER_TARGET' '\$COMPOSE_PROJECT'/);
     expect(workflow).not.toMatch(/docker compose .*\bup\b/);
   });
   const describeWithDockerCompose = dockerComposeAvailable ? describe : describe.skip;
@@ -118,10 +125,12 @@ describe('deployment contracts', () => {
       expect(worker).toBeDefined();
       expect(worker.profiles).toBeUndefined();
       expect(worker.command).toEqual(['node', 'dist/recipeImages/worker.js']);
-      for (const name of ['RECIPE_IMAGES_ENABLED', 'RECIPE_IMAGE_PROVIDER', 'RECIPE_IMAGE_MODEL', 'RECIPE_IMAGE_VISION_MODEL', 'RECIPE_IMAGE_DAILY_LIMIT']) {
+      for (const name of ['RECIPE_IMAGES_ENABLED', 'RECIPE_IMAGE_MODEL', 'RECIPE_IMAGE_DAILY_LIMIT', 'OPENAI_API_KEY']) {
         expect(worker.environment).toHaveProperty(name);
         expect(worker.environment?.[name]).toEqual(compose.services.api.environment?.[name]);
       }
+      expect(worker.environment).not.toHaveProperty('RECIPE_PROVIDER');
+      expect(worker.environment).not.toHaveProperty('GEMINI_API_KEY');
     }
   });
 

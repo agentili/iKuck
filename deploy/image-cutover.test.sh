@@ -13,7 +13,7 @@ cat > "$test_root/docker" <<'EOF'
 set -eu
 printf '%s\n' "$*" >> "$FAKE_LOG"
 case "$*" in
-  'compose -p cutover --env-file env.test -f compose.test.yml --profile images ps --all --quiet --no-trunc image-worker')
+  'compose -p cutover --env-file env.test -f compose.test.yml --profile images ps --all --quiet --no-trunc api image-worker')
     case "$SCENARIO" in
       inventory-error) exit 2 ;;
       empty) exit 0 ;;
@@ -25,7 +25,7 @@ case "$*" in
     else
       printf '%s\n' "$ONE" "$TWO"
     fi ;;
-  'compose -p cutover --env-file env.test -f compose.test.yml --profile images stop --timeout 420 image-worker')
+  'compose -p cutover --env-file env.test -f compose.test.yml --profile images stop --timeout 420 api image-worker')
     [ "$SCENARIO" != stop-error ] || exit 2
     touch "$FAKE_LOG.stopped" ;;
   'inspect --format {{.State.Status}} {{.State.ExitCode}} {{.State.OOMKilled}} '*)
@@ -56,7 +56,7 @@ refuses() {
   if grep -q 'up -d' "$FAKE_LOG"; then fail "$1/$2 attempted to start services"; fi
   printf 'PASS: refused %s (%s)\n' "$1" "$2"
 }
-attested=all-db-workers-quiesced
+attested=all-db-image-clients-quiesced
 refuses ok upgrade '' attestation
 [ ! -s "$FAKE_LOG" ] || fail 'Docker called before attestation'
 refuses empty upgrade "$attested" empty
@@ -72,9 +72,9 @@ refuses inspect-error upgrade "$attested" inspect
 
 run ok "$attested" upgrade || fail 'clean upgrade failed'
 expected=$(printf '%s\n' \
-  'compose -p cutover --env-file env.test -f compose.test.yml --profile images ps --all --quiet --no-trunc image-worker' \
-  'compose -p cutover --env-file env.test -f compose.test.yml --profile images stop --timeout 420 image-worker' \
-  'compose -p cutover --env-file env.test -f compose.test.yml --profile images ps --all --quiet --no-trunc image-worker' \
+  'compose -p cutover --env-file env.test -f compose.test.yml --profile images ps --all --quiet --no-trunc api image-worker' \
+  'compose -p cutover --env-file env.test -f compose.test.yml --profile images stop --timeout 420 api image-worker' \
+  'compose -p cutover --env-file env.test -f compose.test.yml --profile images ps --all --quiet --no-trunc api image-worker' \
   "inspect --format {{.State.Status}} {{.State.ExitCode}} {{.State.OOMKilled}} $ONE" \
   "inspect --format {{.State.Status}} {{.State.ExitCode}} {{.State.OOMKilled}} $TWO" \
   'compose -p cutover --env-file env.test -f compose.test.yml up -d --build')

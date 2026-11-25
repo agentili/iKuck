@@ -255,7 +255,7 @@ export interface AiConsentUpdate {
   dinnerProvider?: AiRecipeProvider | null;
   chatProvider?: AiRecipeProvider | null;
   chatPolicyVersion?: 'chef-chat-v1';
-  imagePolicyVersion?: 'recipe-images-v2';
+  imagePolicyVersion?: 'recipe-images-v3';
   imageProvider?: AiRecipeProvider;
   expectedRevision?: string;
 }
@@ -494,8 +494,8 @@ const applyAiConsentUpdate = (
 };
 
 const hasImageConsentGrant = (update: AiConsentUpdate): boolean => (
-  update.imagePolicyVersion === 'recipe-images-v2'
-  && (update.imageProvider === 'openai' || update.imageProvider === 'gemini')
+  update.imagePolicyVersion === 'recipe-images-v3'
+  && update.imageProvider === 'openai'
 );
 
 const isAiConsentGrant = (update: AiConsentUpdate): boolean => update.enabled === true

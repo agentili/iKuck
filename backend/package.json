@@ -20,8 +20,7 @@
     "db:cleanup-bring-candidates": "node dist/db/cleanupBringCandidates.js",
     "s2s-admin": "node --env-file-if-exists=.env dist/s2s/adminCli.js",
     "push:worker": "node --env-file-if-exists=.env dist/push/worker.js",
-    "images:worker": "node --env-file-if-exists=.env dist/recipeImages/worker.js",
-    "images:backfill": "tsx scripts/backfill-recipe-images.ts"
+    "images:worker": "node --env-file-if-exists=.env dist/recipeImages/worker.js"
   },
   "dependencies": {
     "@ikuck/shared": "file:../shared",

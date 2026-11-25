@@ -6,7 +6,7 @@ import { useAuthStore } from '../../auth/authStore';
 import { RECIPES } from '../../domain/recipes';
 import { getActiveDataScope, subscribeActiveDataScope } from '../../sync/scopeContext';
 
-interface Props { recipeId?: string; disabled?: boolean }
+interface Props { recipeId: string; disabled?: boolean }
 
 export default function RecipeImageGeneration(props: Props) {
   const user = useAuthStore(state => state.user);
@@ -26,7 +26,7 @@ function GenerationControl({ recipeId, disabled = false }: Props) {
   const running = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const verified = user !== null && user.emailVerifiedAt.trim() !== '' && csrfToken !== null;
-  const catalog = recipeId !== undefined && RECIPES.some(recipe => recipe.id === recipeId);
+  const catalog = RECIPES.some(recipe => recipe.id === recipeId);
   const scope = getActiveDataScope();
   const isCurrent = () => mounted.current && useAuthStore.getState().user?.id === user?.id
     && useAuthStore.getState().csrfToken === csrfToken && getActiveDataScope() === scope;
@@ -40,21 +40,20 @@ function GenerationControl({ recipeId, disabled = false }: Props) {
         const status = await fetchAiConsentStatus();
         if (!isCurrent()) return;
         if (!status.selectedImageProvider) throw new ApiClientError(503, 'images_disabled', 'Images unavailable');
-        const valid = status.consent.enabled && status.consent.imagePolicyVersion === 'recipe-images-v2'
-          && status.consent.imageProvider === status.selectedImageProvider;
+        const valid = status.consent.enabled && status.consent.imagePolicyVersion === 'recipe-images-v3'
+          && status.consent.imageProvider === 'openai' && status.selectedImageProvider === 'openai';
         if (!valid) {
           setConsent(status);
           return;
         }
       }
-      const path = recipeId === undefined ? '/v1/recipe-images/generate'
-        : `/v1/recipe-images/${encodeURIComponent(recipeId)}/generate?kind=${catalog ? 'catalog' : 'private'}`;
+      const path = `/v1/recipe-images/${encodeURIComponent(recipeId)}/generate?kind=${catalog ? 'catalog' : 'private'}`;
       const response = await apiRequest<{ queued: number }>(path, { method: 'POST', csrfToken: csrfToken! });
       if (!isCurrent()) return;
       setConsent(null);
       setMessage(response.queued > 0
-        ? `${response.queued === 1 ? 'Immagine aggiunta' : `${response.queued} immagini aggiunte`} alla coda. La preparazione continua automaticamente; i limiti giornalieri possono richiedere più giorni.`
-        : 'Le immagini sono già disponibili o in preparazione.');
+        ? 'Immagine aggiunta alla coda. La preparazione continua automaticamente; il limite giornaliero può richiedere più giorni.'
+        : 'L’immagine è già disponibile o in preparazione.');
       window.dispatchEvent(new Event('recipe-image-retry'));
     } catch (cause) {
       if (!isCurrent()) return;
@@ -71,14 +70,13 @@ function GenerationControl({ recipeId, disabled = false }: Props) {
 
   return (
     <div className="my-3 grid gap-3 rounded-xl bg-[var(--ik-mist)] p-3 text-[var(--ik-ink)]">
-      {recipeId === undefined && <p className="text-sm">Crea le immagini mancanti del catalogo e delle tue ricette salvate online, anche nella Casa. Le immagini già pronte vengono conservate.</p>}
       <button type="button" disabled={!verified || busy || disabled} onClick={() => void generate()}
         className="ik-button-secondary min-h-12 px-4 py-2 font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ik-focus)] disabled:opacity-60">
-        {busy ? 'Avvio in corso…' : recipeId === undefined ? 'Genera tutte le immagini' : 'Genera immagine'}
+        {busy ? 'Avvio in corso…' : 'Genera immagine'}
       </button>
       {!verified && <p className="text-sm">Accedi con un account verificato per creare le immagini.</p>}
       {consent !== null && <div className="grid gap-3">
-        <p className="text-sm">Per creare le immagini, il titolo del piatto viene inviato a Wikimedia Commons; titolo, ingredienti e foto candidate vengono inviati a {consent.selectedImageProvider === 'gemini' ? 'Google Gemini' : 'OpenAI'} per cercare, valutare o generare immagini illustrative. Puoi concedere o revocare questo consenso nel Profilo.</p>
+        <p className="text-sm">Per generare un’immagine privata inviamo a OpenAI soltanto il titolo della ricetta e i nomi degli ingredienti. Quantità, descrizione, passaggi, profilo alimentare e dispensa non vengono inviati. Il consenso immagini è distinto da quello per creare ricette AI.</p>
         <a href="/profile#ai-consent-settings" className="inline-flex min-h-11 w-fit items-center rounded-xl px-2 py-2 font-bold text-[var(--ik-basil-dark)] underline underline-offset-2">Gestisci il consenso immagini nel Profilo</a>
       </div>}
       {message !== null && <p role="status" className="text-sm">{message}</p>}

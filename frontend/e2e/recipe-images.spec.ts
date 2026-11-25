@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { installOfflineBackend } from './helpers/backendMode';
+import { assertOfflineBackendClean, installOfflineBackend } from './helpers/backendMode';
+
+test.afterEach(async ({ page }) => {
+  assertOfflineBackendClean(page);
+});
+
 test('catalog image arrives asynchronously with attribution and remains available offline', async ({ page, context }) => {
   await installOfflineBackend(page);
   // New read-only image endpoints are explicitly mocked after the context guard.
@@ -73,7 +78,7 @@ test('Profile grants image consent to its selected provider without granting Hom
       selectedProvider: 'gemini', selectedImageProvider: 'openai',
     } },
     'PUT /v1/ai-recipes/consent': { json: {
-      consent: { enabled: true, imageProvider: 'openai', imagePolicyVersion: 'recipe-images-v2', updatedAt: '2026-11-01T00:01:00Z' },
+      consent: { enabled: true, imageProvider: 'openai', imagePolicyVersion: 'recipe-images-v3', updatedAt: '2026-11-01T00:01:00Z' },
       selectedProvider: 'gemini', selectedImageProvider: 'openai',
     } },
   } });
@@ -89,6 +94,7 @@ test('Profile grants image consent to its selected provider without granting Hom
   const homeConsent = page.getByRole('checkbox', { name: 'Acconsento all’invio a Gemini di Google dei dati necessari per creare ricette AI' });
   const imageConsent = page.getByRole('checkbox', { name: 'Acconsento all’invio a OpenAI per le immagini delle ricette' });
   await expect(imageConsent).toBeVisible();
+  await expect(imageConsent).not.toBeChecked();
   await expect(homeConsent).not.toBeChecked();
   await imageConsent.check();
   await page.getByRole('button', { name: 'Salva consenso immagini AI' }).click();
@@ -99,7 +105,7 @@ test('Profile grants image consent to its selected provider without granting Hom
   expect(imageGrantRequests[0]?.headers()['x-csrf-token']).toBe('image-csrf');
   expect(imageGrantRequests[0]?.postDataJSON()).toEqual({
     enabled: true,
-    imagePolicyVersion: 'recipe-images-v2',
+    imagePolicyVersion: 'recipe-images-v3',
     imageProvider: 'openai',
     expectedRevision: '2026-11-01T00:00:00Z',
   });
@@ -127,16 +133,16 @@ test('Profile fails closed when image provider is null and availability is omitt
   });
 
   await page.goto('/profile');
-  await expect(page.getByText(/Il servizio per la creazione di immagini non è disponibile sul server/i)).toBeVisible();
+  await expect(page.getByText(/Il servizio per le immagini OpenAI non è disponibile sul server/i)).toBeVisible();
   await expect(page.getByRole('checkbox', { name: /per le immagini/i })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Salva consenso immagini AI' })).toHaveCount(0);
-  await expect(page.getByText(/foto candidate vengono inviati a/i)).toHaveCount(0);
+  await expect(page.getByText(/Per generare un’immagine inviamo a OpenAI soltanto il titolo della ricetta/i)).toHaveCount(0);
   expect(consentWrites).toBe(0);
   expect(recipeCollectionReads).toBe(0);
 });
 
-test('bulk generation is only in profile and single generation stays in recipe detail', async ({ page, context }) => {
-  const consent = { enabled: true, updatedAt: '2026-11-01T00:00:00Z', imageProvider: 'openai', imagePolicyVersion: 'recipe-images-v2' };
+test('single generation is only available in recipe detail and dispatches only after the visible click', async ({ page, context }) => {
+  const consent = { enabled: true, updatedAt: '2026-11-01T00:00:00Z', imageProvider: 'openai', imagePolicyVersion: 'recipe-images-v3' };
   await installOfflineBackend(page, { responses: {
     'GET /v1/auth/session': { json: { authenticated: true, user: { id: 'image-user', email: 'images@example.com', emailVerifiedAt: '2026-11-01T00:00:00Z' }, csrfToken: 'image-csrf', expiresAt: '2099-01-01T00:00:00Z' } },
     'GET /v1/profile': { json: { profile: { displayName: 'Images' } } },
@@ -146,14 +152,15 @@ test('bulk generation is only in profile and single generation stays in recipe d
     'GET /v1/ai-recipes': { json: { recipes: [] } },
     'GET /v1/ai-recipes/consent': { json: { consent, selectedProvider: 'openai', selectedImageProvider: 'openai' } },
   } });
-  let collectionRequests = 0; let singleRequests = 0; let requested = false;
+  let singleRequests = 0; let requested = false;
   await context.route('**/v1/recipe-images/**', async route => {
     const request = route.request(); const url = new URL(request.url());
     if (request.method() === 'POST') {
       expect(request.headers()['x-csrf-token']).toBe('image-csrf');
-      if (url.pathname === '/v1/recipe-images/generate') collectionRequests += 1;
-      else { expect(url.pathname).toBe('/v1/recipe-images/pollo-al-limone/generate'); singleRequests += 1; requested = true; }
-      await route.fulfill({ status: 202, json: { queued: url.pathname === '/v1/recipe-images/generate' ? 20 : 1 } });
+      expect(url.pathname).toBe('/v1/recipe-images/pollo-al-limone/generate');
+      expect(url.searchParams.get('kind')).toBe('catalog');
+      singleRequests += 1; requested = true;
+      await route.fulfill({ status: 202, json: { queued: 1 } });
     } else if (url.pathname.includes('/assets/')) {
       const image = await page.request.get('/recipe-images/uova-al-pomodoro.webp');
       await route.fulfill({ contentType: 'image/webp', body: await image.body() });
@@ -162,14 +169,19 @@ test('bulk generation is only in profile and single generation stays in recipe d
       : { state: 'missing' } });
   });
   await page.goto('/profile');
-  await page.getByRole('button', { name: 'Genera tutte le immagini', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: '20 immagini aggiunte alla coda' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Genera tutte le immagini', exact: true })).toHaveCount(0);
   await page.goto('/recipes');
   await expect(page.getByRole('heading', { name: 'Ricette', exact: true, level: 1 })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Genera tutte le immagini', exact: true })).toHaveCount(0);
-  expect(collectionRequests).toBe(1);
+  expect(singleRequests).toBe(0);
   await page.goto('/recipes/pollo-al-limone');
-  await page.getByRole('button', { name: 'Genera immagine', exact: true }).click();
+  const generateButton = page.getByRole('button', { name: 'Genera immagine', exact: true });
+  await expect(generateButton).toBeVisible();
+  expect(singleRequests).toBe(0);
+  await page.reload();
+  await expect(generateButton).toBeVisible();
+  expect(singleRequests).toBe(0);
+  await generateButton.click();
   await expect(page.getByRole('img', { name: 'Pollo al limone: immagine illustrativa' })).toBeVisible();
   await expect(page.getByText(/Immagine generata con AI/)).toBeVisible();
   expect(singleRequests).toBe(1);

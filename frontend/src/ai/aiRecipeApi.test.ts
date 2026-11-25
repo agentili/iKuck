@@ -73,6 +73,45 @@ describe('AI recipe API', () => {
     });
   });
 
+  it('reads and grants the explicit OpenAI image policy v3 with the current revision', async () => {
+    const consentStatus = {
+      consent: {
+        enabled: true,
+        updatedAt: '2026-09-13T12:01:00.000Z',
+        imageProvider: 'openai' as const,
+        imagePolicyVersion: 'recipe-images-v3' as const,
+      },
+      selectedProvider: 'gemini' as const,
+      selectedImageProvider: 'openai' as const,
+    };
+    const request = vi.fn()
+      .mockResolvedValueOnce(consentStatus)
+      .mockResolvedValueOnce(consentStatus) as unknown as ApiRequest;
+
+    await expect(fetchAiConsentStatus(request)).resolves.toEqual(consentStatus);
+    await expect(updateAiConsent(
+      true,
+      'csrf-token',
+      '2026-09-13T12:00:00.000Z',
+      request,
+      undefined,
+      true,
+      'openai',
+    )).resolves.toEqual(consentStatus.consent);
+
+    expect(request).toHaveBeenNthCalledWith(1, '/v1/ai-recipes/consent');
+    expect(request).toHaveBeenNthCalledWith(2, '/v1/ai-recipes/consent', {
+      method: 'PUT',
+      body: {
+        enabled: true,
+        imagePolicyVersion: 'recipe-images-v3',
+        imageProvider: 'openai',
+        expectedRevision: '2026-09-13T12:00:00.000Z',
+      },
+      csrfToken: 'csrf-token',
+    });
+  });
+
   it('keeps Home and Dinner revocations available without a revision', async () => {
     const request = vi.fn()
       .mockResolvedValueOnce({ consent: { enabled: false, updatedAt: '2026-09-13T12:02:00.000Z' } })

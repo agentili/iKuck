@@ -157,11 +157,79 @@ describe('ProfilePage', () => {
     const fetch = vi.fn().mockImplementation((path: string, options?: RequestInit) => {
       if (path === '/v1/ai-recipes/consent' && options?.method === 'PUT') {
         return Promise.resolve(new Response(JSON.stringify({
-          consent: { enabled: true, imageProvider: 'gemini', imagePolicyVersion: 'recipe-images-v2', updatedAt: '2026-09-13T12:01:00.000Z' },
+          consent: { enabled: true, imageProvider: 'openai', imagePolicyVersion: 'recipe-images-v3', updatedAt: '2026-09-13T12:01:00.000Z' },
           selectedProvider: 'openai',
-          selectedImageProvider: 'gemini',
+          selectedImageProvider: 'openai',
         }), { status: 200 }));
       }
+      if (path === '/v1/ai-recipes/consent') {
+        return Promise.resolve(new Response(JSON.stringify({
+          consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' },
+          selectedProvider: 'openai',
+          selectedImageProvider: 'openai',
+        }), { status: 200 }));
+      }
+      if (path === '/v1/profile') {
+        return Promise.resolve(new Response(JSON.stringify({ profile: { displayName: 'Ale' } }), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ changes: [], nextCursor: 0 }), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetch);
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1', expiresAt: '2026-10-12T10:00:00.000Z' });
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    const imageConsent = await screen.findByRole('checkbox', { name: /Acconsento all’invio a OpenAI per le immagini/i });
+    expect(imageConsent).not.toBeChecked();
+    expect(screen.getByText(/inviamo a OpenAI soltanto il titolo della ricetta e i nomi degli ingredienti/i)).toBeVisible();
+    expect(screen.queryByText(/Wikimedia Commons|foto candidate/i)).not.toBeInTheDocument();
+    await user.click(imageConsent);
+    await user.click(screen.getByRole('button', { name: 'Salva consenso immagini AI' }));
+
+    expect(fetch).toHaveBeenCalledWith('/v1/ai-recipes/consent', expect.objectContaining({
+      method: 'PUT',
+      body: JSON.stringify({ enabled: true, imagePolicyVersion: 'recipe-images-v3', imageProvider: 'openai', expectedRevision: '2026-09-13T12:00:00.000Z' }),
+      headers: { 'content-type': 'application/json', 'x-csrf-token': 'csrf-1' },
+    }));
+    expect(screen.getByRole('checkbox', { name: /Acconsento all’invio a OpenAI dei dati necessari per creare ricette AI/i })).not.toBeChecked();
+    expect(await screen.findByText('Consenso immagini attivo per OpenAI.')).toBeVisible();
+  });
+
+  it('does not treat an older v2 image consent as approval for the v3 OpenAI request', async () => {
+    const fetch = vi.fn().mockImplementation((path: string) => {
+      if (path === '/v1/ai-recipes/consent') {
+        return Promise.resolve(new Response(JSON.stringify({
+          consent: {
+            enabled: true,
+            imageProvider: 'openai',
+            imagePolicyVersion: 'recipe-images-v2',
+            updatedAt: '2026-09-13T12:00:00.000Z',
+          },
+          selectedProvider: 'gemini',
+          selectedImageProvider: 'openai',
+        }), { status: 200 }));
+      }
+      if (path === '/v1/profile') {
+        return Promise.resolve(new Response(JSON.stringify({ profile: { displayName: 'Ale' } }), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ changes: [], nextCursor: 0 }), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetch);
+    useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1', expiresAt: '2026-10-12T10:00:00.000Z' });
+    render(<MemoryRouter><ProfilePage /></MemoryRouter>);
+
+    const imageConsent = await screen.findByRole('checkbox', { name: /Acconsento all’invio a OpenAI per le immagini/i });
+    expect(imageConsent).not.toBeChecked();
+    expect(screen.queryByText('Consenso immagini attivo per OpenAI.')).not.toBeInTheDocument();
+    const saveImageConsent = screen.getByRole('button', { name: 'Salva consenso immagini AI' });
+    expect(saveImageConsent).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Revoca consenso AI globale' })).toBeVisible();
+    expect(fetch).not.toHaveBeenCalledWith('/v1/ai-recipes/consent', expect.objectContaining({ method: 'PUT' }));
+    await userEvent.setup().click(imageConsent);
+    expect(saveImageConsent).toBeEnabled();
+  });
+
+  it('does not offer image approval when a stale runtime image provider is not OpenAI', async () => {
+    const fetch = vi.fn().mockImplementation((path: string) => {
       if (path === '/v1/ai-recipes/consent') {
         return Promise.resolve(new Response(JSON.stringify({
           consent: { enabled: false, updatedAt: '2026-09-13T12:00:00.000Z' },
@@ -178,18 +246,10 @@ describe('ProfilePage', () => {
     useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1', expiresAt: '2026-10-12T10:00:00.000Z' });
     render(<MemoryRouter><ProfilePage /></MemoryRouter>);
 
-    const imageConsent = await screen.findByRole('checkbox', { name: /Acconsento all’invio a Gemini di Google per le immagini/i });
-    expect(imageConsent).not.toBeChecked();
-    await user.click(imageConsent);
-    await user.click(screen.getByRole('button', { name: 'Salva consenso immagini AI' }));
-
-    expect(fetch).toHaveBeenCalledWith('/v1/ai-recipes/consent', expect.objectContaining({
-      method: 'PUT',
-      body: JSON.stringify({ enabled: true, imagePolicyVersion: 'recipe-images-v2', imageProvider: 'gemini', expectedRevision: '2026-09-13T12:00:00.000Z' }),
-      headers: { 'content-type': 'application/json', 'x-csrf-token': 'csrf-1' },
-    }));
-    expect(screen.getByRole('checkbox', { name: /Acconsento all’invio a OpenAI dei dati necessari per creare ricette AI/i })).not.toBeChecked();
-    expect(await screen.findByText(/Consenso immagini attivo per Gemini di Google/)).toBeVisible();
+    expect(await screen.findByText(/non è possibile autorizzare l’invio/i)).toBeVisible();
+    expect(screen.queryByRole('checkbox', { name: /per le immagini/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Salva consenso immagini AI' })).not.toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalledWith('/v1/ai-recipes/consent', expect.objectContaining({ method: 'PUT' }));
   });
 
   it('fails closed when the server has no selected image provider', async () => {
@@ -210,7 +270,7 @@ describe('ProfilePage', () => {
     useAuthStore.setState({ user: verifiedUser, csrfToken: 'csrf-1', expiresAt: '2026-10-12T10:00:00.000Z' });
     render(<MemoryRouter><ProfilePage /></MemoryRouter>);
 
-    expect(await screen.findByText(/Il servizio per la creazione di immagini non è disponibile sul server/i)).toBeVisible();
+    expect(await screen.findByText(/Il servizio per le immagini OpenAI non è disponibile sul server/i)).toBeVisible();
     expect(screen.queryByRole('checkbox', { name: /per le immagini/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Salva consenso immagini AI' })).not.toBeInTheDocument();
     expect(screen.queryByText(/foto candidate vengono inviati a/i)).not.toBeInTheDocument();
@@ -244,14 +304,14 @@ describe('ProfilePage', () => {
         return Promise.resolve(new Response(JSON.stringify({
           consent: { enabled: false, updatedAt: '2026-09-13T12:02:00.000Z' },
           selectedProvider: 'openai',
-          selectedImageProvider: 'gemini',
+          selectedImageProvider: 'openai',
         }), { status: 200 }));
       }
       if (path === '/v1/ai-recipes/consent') {
         return Promise.resolve(new Response(JSON.stringify({
-          consent: { enabled: true, homeProvider: 'openai', imageProvider: 'gemini', imagePolicyVersion: 'recipe-images-v2', updatedAt: '2026-09-13T12:00:00.000Z' },
+          consent: { enabled: true, homeProvider: 'openai', imageProvider: 'openai', imagePolicyVersion: 'recipe-images-v3', updatedAt: '2026-09-13T12:00:00.000Z' },
           selectedProvider: 'openai',
-          selectedImageProvider: 'gemini',
+          selectedImageProvider: 'openai',
         }), { status: 200 }));
       }
       if (path === '/v1/profile') {
@@ -328,7 +388,7 @@ describe('ProfilePage', () => {
           return Promise.resolve(new Response(JSON.stringify({
             consent: { enabled: false, updatedAt: isNewOwner ? '2026-09-13T12:03:00.000Z' : '2026-09-13T12:00:00.000Z' },
             selectedProvider: isNewOwner ? 'gemini' : 'openai',
-            selectedImageProvider: isNewOwner ? 'openai' : 'gemini',
+            selectedImageProvider: 'openai',
           }), { status: 200 }));
         }
         if (path === '/v1/profile') {
@@ -343,7 +403,7 @@ describe('ProfilePage', () => {
 
       const oldControlName = permission === 'home'
         ? /Acconsento all’invio a OpenAI dei dati necessari per creare ricette AI/i
-        : /Acconsento all’invio a Gemini di Google per le immagini/i;
+        : /Acconsento all’invio a OpenAI per le immagini/i;
       const newControlName = permission === 'home'
         ? /Acconsento all’invio a Gemini di Google dei dati necessari per creare ricette AI/i
         : /Acconsento all’invio a OpenAI per le immagini delle ricette/i;
@@ -475,6 +535,7 @@ describe('ProfilePage', () => {
     expect(screen.getByRole('button', { name: 'Importa i dati locali' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'La mia casa' })).toHaveAttribute('href', '/house');
     expect(screen.getByRole('button', { name: 'Esporta i miei dati' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Genera tutte le immagini' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Elimina account' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Accedi con Google' })).not.toBeInTheDocument();
     expect(screen.getByText('Accesso con Google non disponibile in questo ambiente.')).toBeVisible();
